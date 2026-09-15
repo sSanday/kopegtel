@@ -15,6 +15,8 @@ os.environ["DASHBOARD_PASSWORD"] = "admin12345"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
 os.environ["AGENT_API_KEY"] = "test-agent-key"
+# Matikan scheduler + startup alert selama test (lebih cepat, tanpa efek samping)
+os.environ["NMS_DISABLE_SCHEDULER"] = "1"
 
 import app as m  # noqa: E402
 
@@ -35,7 +37,12 @@ class NmsTest(unittest.TestCase):
         conn.close()
         r = cls.client.post("/login",
                             data={"username": "admin", "password": "admin12345"})
-        assert r.status_code in (302, 200), r.status_code
+        # Login sukses HARUS redirect 302 ke / (gagal = render ulang 200).
+        # Assert lama `in (302, 200)` lolos di kedua kasus sehingga auth rusak
+        # tidak tertangkap di sini.
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+        r2 = cls.client.get(r.headers.get("Location", "/"))
+        assert r2.status_code == 200, f"sesudah login gagal, status={r2.status_code}"
 
     def test_health_tidak_bocor(self):
         r = self.client.get("/health")

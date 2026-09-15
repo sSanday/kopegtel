@@ -5,6 +5,10 @@ services:
     build: .
     container_name: nms-dashboard
     restart: always
+    # Config via env_file agar SECRET_KEY dkk terbaca eksplisit di container
+    # (load_dotenv di app.py juga membaca /app/.env dari bind-mount di bawah).
+    env_file:
+      - .env
     ports:
       # Expose ke 127.0.0.1 (localhost) agar aman dan ditangani oleh Nginx Host
       - "127.0.0.1:5000:5000"
@@ -13,6 +17,9 @@ services:
       # Mount file satu-per-satu menyebabkan Docker membuat DIREKTORI bernama
       # "network.db-wal" saat file belum ada di host -> database corrupt saat start.
       # Solusi: mount seluruh folder proyek (kode di host == kode di container).
+      # CATATAN: env/, __pycache__/, .git/ ikut termount tapi TIDAK dipakai container
+      # (Python image memakai site-packages sendiri; bytecode basi diregenerasi otomatis).
+      # .env ikut termount dan memang dibutuhkan app (lihat env_file di atas).
       - ./:/app
       # Pastikan file network.db, .env sudah ada di host sebelum `docker compose up`
       # (sentuh manual: touch network.db .env), atau compose akan gagal fast-fail

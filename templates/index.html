@@ -615,10 +615,12 @@ body::after{
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1a5 5 0 015 5v3l1.5 2.5H1.5L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg>
       notif
     </button>
-    <a href="/logout" class="tb-btn danger" onclick="return confirm('Yakin ingin logout?')">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
-      logout
-    </a>
+    <form action="/logout" method="post" style="display:inline" onsubmit="return confirm('Yakin ingin logout?')">
+      <button type="submit" class="tb-btn danger">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
+        logout
+      </button>
+    </form>
   </div>
 </div>
 

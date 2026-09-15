@@ -473,7 +473,7 @@ const PERIODS = [
   { hours: 6,    id: '6h',    titleKey:'Last 6H',  sub:'30 Second Samples',  fmtFn: t => t.split(' ')[1]?.slice(0,5) || t },
   { hours: 24,   id: '24h',   titleKey:'Daily',    sub:'5 Minute Average',   fmtFn: t => t.split(' ')[1]?.slice(0,5) || t },
   { hours: 72,   id: '72h',   titleKey:'3 Days',   sub:'15 Minute Average',  fmtFn: t => { const d=new Date(t); return (d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours().toString().padStart(2,'0')+':00' } },
-  { hours: 168,  id: '168h',  titleKey:'Weekly',   sub:'30 Minute Average',  fmtFn: t => { const d=new Date(t); return ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d.getDay()]+' '+d.getHours().toString().padStart(2,'0')+':00' } },
+  { hours: 168,  id: '168h',  titleKey:'Weekly',   sub:'30 Minute Average',  fmtFn: t => { const d=new Date(t); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+d.getHours().toString().padStart(2,'0')+':00' } },
 ];
 
 // ── CHART BUILDER ──────────────────────────────────────────────────────────────

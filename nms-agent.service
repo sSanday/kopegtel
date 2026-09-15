@@ -4,6 +4,14 @@ After=network.target
 
 [Service]
 WorkingDirectory=/home/sandayy/nms-dashboard1
+# Ambil AGENT_API_KEY dari .env server agar sama persis (tanpa ini laporan
+# ditolak 403 saat server mengaktifkan AGENT_API_KEY). Variabel NMS_URL /
+# AGENT_IP / AGENT_INTERVAL ikut terbaca jika ada di file tersebut.
+EnvironmentFile=/home/sandayy/nms-dashboard1/.env
+# Override khusus agent bila perlu (uncomment + sesuaikan):
+#Environment=NMS_URL=http://127.0.0.1:5000/api/agent/report
+#Environment=AGENT_IP=
+#Environment=AGENT_INTERVAL=60
 # Gunakan python dari virtual env, atau python3 sistem jika agent tidak butuh dependensi
 ExecStart=/home/sandayy/nms-dashboard1/env/bin/python nms-agent.py
 Restart=always

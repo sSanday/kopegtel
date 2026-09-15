@@ -25,26 +25,53 @@ INTERVAL = _get_interval()
 
 
 def get_ip_address():
-    """Deteksi IP lokal secara otomatis, atau pakai AGENT_IP jika diisi manual."""
+    """Deteksi IP lokal secara otomatis, atau pakai AGENT_IP jika diisi manual.
+
+    Urutan: AGENT_IP (eksplisit, disarankan untuk host NAT/multi-homed) ->
+    IP interface keluar -> hostname yang ter-resolve ke IP -> hostname mentah.
+    Jika hasil akhir bukan IP, server akan menolak 404 "Host belum terdaftar":
+    daftarkan IP yang TERCETAK di log "[OK]/[ERR]" ke dashboard, atau set AGENT_IP.
+    """
     if AGENT_IP:
         return AGENT_IP
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        # Validasi: harus IPv4 valid, bukan 127.x
+        parts = ip.split(".")
+        if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts) \
+                and not ip.startswith("127."):
+            return ip
     except Exception:
-        return socket.gethostname()
+        pass
+    try:
+        resolved = socket.gethostbyname(socket.gethostname())
+        if not resolved.startswith("127."):
+            return resolved
+    except Exception:
+        pass
+    return socket.gethostname()
 
 def main():
     ap = argparse.ArgumentParser(description="NMS Agent")
     ap.add_argument("--server", default=DEFAULT_URL)
     ap.add_argument("--interval", type=int, default=INTERVAL)
     ap.add_argument("--api-key", default=API_KEY)
+    ap.add_argument("--host-ip", default=AGENT_IP,
+                    help="Identitas IP pelapor (lebih diutamakan dari AGENT_IP). "
+                         "Wajib sama dengan IP yang terdaftar di dashboard.")
     a = ap.parse_args()
+    # Samakan batas bawah dengan jalur ENV (max 5): cegah busy-loop POST/detik
+    # yang membanjiri agent_metrics saat --interval 0/negatif.
+    if a.interval is None or a.interval < 5:
+        print(f"[WARN] --interval {a.interval} tidak valid, dipakai 5 detik (minimal).")
+        a.interval = 5
 
-    my_ip = get_ip_address()
+    my_ip = a.host_ip or get_ip_address()
     headers = {"X-API-Key": a.api_key} if a.api_key else {}
     print(f"NMS Agent mulai berjalan...")
     print(f"Melapor sebagai Host: {my_ip}")
@@ -96,7 +123,13 @@ def main():
                 print("[ERR] API key ditolak server. Samakan AGENT_API_KEY dengan server!")
                 time.sleep(min(a.interval, 60))
             else:
-                print(f"[ERR] Server merespon dengan kode: {res.status_code}")
+                # Tampilkan body diagnosa server (bedakan 404 belum-registrasi
+                # vs error lain) maksimal 200 karakter.
+                try:
+                    detail = (res.text or "").strip()[:200]
+                except Exception:
+                    detail = ""
+                print(f"[ERR] Server merespon dengan kode: {res.status_code} {detail}")
 
         except requests.exceptions.ConnectionError:
             print(f"[ERR] Gagal terhubung ke {a.server}. Pastikan NMS Dashboard menyala.")
