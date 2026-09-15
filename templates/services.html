@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Monitoring — NMS KOPEGTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14;
+      --surface:#0c1220;
+      --card:rgba(12,18,32,0.8);
+      --border:rgba(0,255,136,0.1);
+      --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff;
+      --accent2:#00ff88;
+      --t1:#e0f0ff;
+      --t2:#6a8aaa;
+      --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444;
+      --success:#00ff88;
+      --warn:#ffaa00;
+      --info:#00a2ff;
+    }
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
+
+    body{
+      font-family:'Inter',sans-serif;
+      background:var(--bg);color:var(--t1);
+      min-height:100vh;overflow-x:hidden;
+    }
+
+    body::before{
+      content:'';position:fixed;inset:0;
+      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
+      pointer-events:none;z-index:9999;
+    }
+    body::after{
+      content:'';position:fixed;inset:0;
+      background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);
+      pointer-events:none;z-index:0;
+    }
+
+    .topbar{
+      position:sticky;top:0;z-index:100;
+      height:52px;background:rgba(8,12,20,0.97);
+      border-bottom:1px solid var(--border2);
+      backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;
+    }
+    .tb-brand{
+      display:flex;align-items:center;gap:12px;
+      font-family:var(--mono);font-size:.72rem;
+    }
+    .tb-logo{
+      width:26px;height:26px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
+    }
+    .tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+    .tb-path .crumb.active{color:var(--accent2)}
+    .tb-sep{color:var(--t3)}
+    .back-btn{
+      display:flex;align-items:center;gap:6px;
+      background:transparent;border:1px solid var(--border2);
+      color:var(--t2);padding:6px 12px;border-radius:5px;
+      font-family:var(--mono);font-size:.65rem;
+      text-decoration:none;transition:.15s;
+    }
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.12)}
+
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+
+    .sec-label{
+      font-family:var(--mono);font-size:.62rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:2px;
+      color:var(--t3);display:flex;align-items:center;gap:6px;
+      margin-bottom:14px;
+    }
+    .sec-label::before{content:'//';color:var(--accent2)}
+
+    .filter-bar{
+      display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      padding:14px 16px;
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;margin-bottom:16px;
+      backdrop-filter:blur(8px);
+    }
+    .filter-btns{display:flex;gap:6px;flex-wrap:wrap}
+    .filter-btn{
+      background:transparent;border:1px solid var(--border2);
+      color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
+      padding:4px 10px;border-radius:4px;cursor:pointer;transition:.15s;
+    }
+    .filter-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
+    .filter-btn.active{background:rgba(0,255,136,0.12);border-color:rgba(0,255,136,0.45);color:var(--success)}
+    .filter-search{
+      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
+      padding:6px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;
+      min-width:160px;outline:none;
+    }
+    .filter-search:focus{border-color:rgba(0,162,255,0.45)}
+    .filter-search::placeholder{color:var(--t3)}
+    .filter-select{
+      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
+      padding:6px 8px;border-radius:4px;font-family:var(--mono);font-size:.62rem;outline:none;
+    }
+    .filter-stats{margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);display:flex;gap:10px}
+    .filter-stats b{color:var(--t1)}
+    .table-scroll{overflow-x:auto}
+    .table-scroll table{min-width:860px}
+    .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
+    .add-btn {
+      background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.3);
+      color:var(--accent);padding:8px 16px;border-radius:5px;
+      font-family:var(--mono);font-size:.7rem;cursor:pointer;
+      transition:.2s;display:flex;align-items:center;gap:6px;margin-left:auto;
+    }
+    .add-btn:hover {background:rgba(0,162,255,0.2);color:#fff;border-color:rgba(0,162,255,0.5)}
+
+    .log-card{
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
+    }
+    .term-topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
+    }
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    
+    .refresh-btn {
+      background:transparent;border:1px solid rgba(0,255,136,0.3);
+      color:var(--accent2);padding:4px 10px;border-radius:4px;
+      font-family:var(--mono);font-size:.6rem;cursor:pointer;
+      transition:.2s;display:flex;align-items:center;gap:4px;
+    }
+    .refresh-btn:hover {background:rgba(0,255,136,0.1);color:#fff}
+    .refresh-btn.spin svg {animation:spin 1s linear infinite}
+    @keyframes spin {100%{transform:rotate(360deg)}}
+
+    table{width:100%;border-collapse:collapse}
+    th{
+      text-align:left;color:var(--t3);font-weight:600;
+      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
+      padding:10px 14px;border-bottom:1px solid var(--border2);
+      background:rgba(0,0,0,0.15);white-space:nowrap;
+    }
+    td{
+      padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
+      font-family:var(--mono);font-size:.7rem;color:var(--t2);
+      transition:.12s;vertical-align:middle;
+    }
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,0.02);color:var(--t1)}
+    
+    .col-name{color:var(--t1)!important;font-weight:500;}
+    
+    .tag{
+      font-family:var(--mono);font-size:.55rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.8px;
+      border-radius:3px;padding:3px 8px;white-space:nowrap;
+      display:inline-block;
+    }
+    .tag.tcp{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
+    .tag.http{background:rgba(170,0,255,0.1);color:#a0f;border:1px solid rgba(170,0,255,0.25)}
+    .tag.online{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.offline{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .tag.pending{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
+    
+    .action-btn {
+      background:transparent;border:none;color:var(--t3);cursor:pointer;
+      transition:.2s;padding:4px;border-radius:4px;
+    }
+    .action-btn:hover {color:var(--danger);background:rgba(255,68,68,0.1)}
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position:fixed;inset:0;background:rgba(0,0,0,0.6);
+      backdrop-filter:blur(4px);z-index:999;
+      display:flex;align-items:center;justify-content:center;
+      opacity:0;pointer-events:none;transition:0.3s;
+    }
+    .modal-overlay.active {opacity:1;pointer-events:auto;}
+    .modal {
+      background:var(--surface);width:400px;border-radius:8px;
+      border:1px solid var(--border2);box-shadow:0 10px 40px rgba(0,0,0,0.5);
+      transform:translateY(20px);transition:0.3s;
+    }
+    .modal-overlay.active .modal {transform:translateY(0);}
+    .modal-header {
+      padding:16px 20px;border-bottom:1px solid var(--border2);
+      font-family:var(--mono);font-size:0.8rem;color:var(--t1);
+      display:flex;justify-content:space-between;align-items:center;
+    }
+    .modal-body {padding:20px;}
+    .form-group {margin-bottom:15px;}
+    .form-group label {display:block;font-size:0.7rem;color:var(--t2);margin-bottom:6px;font-family:var(--mono)}
+    .form-group input, .form-group select {
+      width:100%;background:rgba(0,0,0,0.3);border:1px solid var(--border2);
+      color:var(--t1);padding:10px;border-radius:5px;font-family:var(--mono);font-size:0.75rem;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline:none;border-color:rgba(0,162,255,0.4);
+    }
+    .btn-row {display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+    .btn {padding:8px 16px;border-radius:5px;font-size:0.75rem;font-family:var(--mono);cursor:pointer;border:none;}
+    .btn-cancel {background:transparent;color:var(--t2);border:1px solid var(--border2);}
+    .btn-submit {background:var(--accent);color:#fff;}
+    
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    tbody tr{animation:fadeIn .25s ease both}
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">⬡</div>
+      <div class="tb-path">
+        <span class="crumb">~/noc</span>
+        <span class="tb-sep">/</span>
+        <span class="crumb">dashboard</span>
+        <span class="tb-sep">/</span>
+        <span class="crumb active">services</span>
+      </div>
+    </div>
+    <a href="/" class="back-btn">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
+      cd ..
+    </a>
+  </div>
+
+  <div class="wrap">
+    <div class="sec-label">service_monitor.list</div>
+    <div class="filter-bar">
+      <div class="filter-btns" id="statusBtns">
+        <button class="filter-btn active" data-status="all">all</button>
+        <button class="filter-btn" data-status="online">online</button>
+        <button class="filter-btn" data-status="offline">offline</button>
+        <button class="filter-btn" data-status="pending">pending</button>
+      </div>
+      <select class="filter-select" id="typeSelect" title="Filter tipe">
+        <option value="all">type: all</option>
+        <option value="tcp">tcp</option>
+        <option value="http">http</option>
+      </select>
+      <input class="filter-search" id="svcSearch" type="text" placeholder="grep service..." autocomplete="off">
+      <div class="filter-stats"><span>ONLINE <b id="cnt-online">0</b></span><span>OFFLINE <b id="cnt-offline">0</b></span><span>PENDING <b id="cnt-pending">0</b></span></div>
+      <button class="add-btn" onclick="openModal()">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v12M2 8h12"/></svg>
+        Add Service
+      </button>
+    </div>
+
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        </div>
+        <div class="term-title">services_status.sh</div>
+        <button class="refresh-btn" onclick="fetchServices()" id="refBtn">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
+          refresh
+        </button>
+      </div>
+      
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:250px">Service Name</th>
+            <th style="width:100px">Type</th>
+            <th style="width:200px">Target</th>
+            <th style="width:120px">Status</th>
+            <th style="width:100px">Latency</th>
+            <th style="width:150px">Last Checked</th>
+            <th style="width:50px"></th>
+          </tr>
+        </thead>
+        <tbody id="servicesBody"></tbody>
+      </table>
+      </div>
+      <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border2)"><span class="last-updated">updated: <span id="lastUpdated">—</span></span></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <span>Add New Service Monitor</span>
+        <button onclick="closeModal()" style="background:none;border:none;color:var(--t3);cursor:pointer">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="addForm" onsubmit="submitForm(event)">
+          <div class="form-group">
+            <label>Service Name (e.g. Web Server)</label>
+            <input type="text" id="svcName" required>
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="svcType" onchange="toggleFields()">
+              <option value="tcp">TCP Port</option>
+              <option value="http">HTTP URL</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Host IP / Domain</label>
+            <input type="text" id="svcIp" required>
+          </div>
+          <div class="form-group" id="portGroup">
+            <label>TCP Port</label>
+            <input type="number" id="svcPort">
+          </div>
+          <div class="form-group" id="urlGroup" style="display:none">
+            <label>URL (e.g. https://example.com)</label>
+            <input type="url" id="svcUrl">
+          </div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-submit" id="submitBtn">Add Service</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allServices = [];
+    let statusFilter = 'all';
+    let typeFilter = 'all';
+    let searchQuery = '';
+    function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function openModal(){
+      document.getElementById('modalOverlay').classList.add('active');
+      setTimeout(()=>{ const el=document.getElementById('svcName'); if(el) el.focus(); }, 60);
+    }
+    function closeModal(){ document.getElementById('modalOverlay').classList.remove('active'); document.getElementById('addForm').reset(); toggleFields(); const btn=document.getElementById('submitBtn'); if(btn) btn.disabled=false; }
+    function toggleFields(){
+      const t = document.getElementById('svcType').value;
+      if(t === 'tcp'){
+        document.getElementById('portGroup').style.display = 'block';
+        document.getElementById('urlGroup').style.display = 'none';
+        document.getElementById('svcPort').required = true;
+        document.getElementById('svcUrl').required = false;
+      }else{
+        document.getElementById('portGroup').style.display = 'none';
+        document.getElementById('urlGroup').style.display = 'block';
+        document.getElementById('svcPort').required = false;
+        document.getElementById('svcUrl').required = true;
+      }
+    }
+
+    function getFilteredServices(){
+      const q = (searchQuery || '').toLowerCase().trim();
+      return (allServices || []).filter(s=>{
+        const st = String(s.status || 'pending').toLowerCase();
+        if(statusFilter !== 'all' && st !== statusFilter) return false;
+        if(typeFilter !== 'all' && String(s.type || '').toLowerCase() !== typeFilter) return false;
+        if(q){
+          const target = s.type === 'tcp' ? `${s.ip}:${s.port}` : (s.url || '');
+          const hay = `${s.name} ${s.ip} ${target} ${s.type}`.toLowerCase();
+          if(!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+    function renderServices(){
+      const tbody = document.getElementById('servicesBody');
+      let on=0, off=0, pen=0;
+      (allServices || []).forEach(s=>{
+        const st = String(s.status || 'pending').toLowerCase();
+        if(st === 'online') on++; else if(st === 'offline') off++; else pen++;
+      });
+      document.getElementById('cnt-online').textContent = on;
+      document.getElementById('cnt-offline').textContent = off;
+      document.getElementById('cnt-pending').textContent = pen;
+      const rows = getFilteredServices();
+      let html = '';
+      if(!allServices || allServices.length === 0){
+        html = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">No services configured. Click Add Service to start monitoring.</td></tr>`;
+      } else if(!rows.length){
+        html = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">$ filter = NO_MATCH — tidak ada service yang cocok.</td></tr>`;
+      } else {
+        rows.forEach(s => {
+          const target = s.type === 'tcp' ? `${s.ip}:${s.port ?? '-'}` : (s.url || '-');
+          const statusRaw = String(s.status || 'PENDING');
+          const statusClass = statusRaw.toLowerCase();
+          const latStr = (statusRaw.toUpperCase() !== 'ONLINE') ? '-' : (s.latency === null || s.latency === undefined ? '-' : `${Number(s.latency).toFixed(1)} ms`);
+
+          html += `<tr>
+            <td class="col-name">${esc(s.name)}</td>
+            <td><span class="tag ${esc(String(s.type || ''))}">${esc(String(s.type || '').toUpperCase())}</span></td>
+            <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc(target)}</span></td>
+            <td><span class="tag ${esc(statusClass)}">${esc(statusRaw)}</span></td>
+            <td style="font-family:var(--mono);font-size:0.65rem;color:var(--t1)">${esc(latStr)}</td>
+            <td style="font-size:0.6rem">${esc(s.last_checked || '-')}</td>
+            <td>
+              <button class="action-btn" onclick="deleteService(${Number(s.id)})" title="Delete Service">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M5 4V2h6v2M6 7v6M10 7v6M4 4v10h8V4"/></svg>
+              </button>
+            </td>
+          </tr>`;
+        });
+      }
+      tbody.innerHTML = html;
+    }
+
+    async function fetchServices(){
+      const btn = document.getElementById('refBtn');
+      const tbody = document.getElementById('servicesBody');
+      if(btn) btn.classList.add('spin');
+
+      try{
+        const res = await fetch('/api/services');
+        if(res.status === 401) return;
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        allServices = await res.json() || [];
+        renderServices();
+        const lu = document.getElementById('lastUpdated');
+        if(lu) lu.textContent = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      } catch(e){
+        console.error(e);
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">Error loading services: ${esc(e.message)}</td></tr>`;
+      } finally {
+        if(btn) setTimeout(() => btn.classList.remove('spin'), 400);
+      }
+    }
+
+    async function submitForm(e){
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const svcType = document.getElementById('svcType').value;
+      const payload = {
+        name: document.getElementById('svcName').value.trim(),
+        type: svcType,
+        ip: document.getElementById('svcIp').value.trim(),
+        port: document.getElementById('svcPort').value,
+        url: document.getElementById('svcUrl').value.trim()
+      };
+      if(svcType === 'tcp'){
+        const p = parseInt(payload.port, 10);
+        if(!Number.isFinite(p) || p < 1 || p > 65535){ alert('Error: TCP Port harus 1-65535'); return; }
+        payload.port = p;
+      } else {
+        if(!/^https?:\/\/\S+$/i.test(payload.url)){ alert('Error: URL harus diawali http(s)://'); return; }
+      }
+      if(btn) btn.disabled = true;
+      try {
+        const r = await fetch('/api/services', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        let msg = '';
+        try{ const j = await r.json(); msg = j.error || ''; if(j.id) payload.id = j.id; }catch(_){}
+        if(r.ok){
+          closeModal();
+          fetchServices();
+        } else {
+          alert(msg ? 'Error: ' + msg : 'Failed to add service');
+        }
+      } catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
+      finally { if(btn) btn.disabled = false; }
+    }
+
+    async function deleteService(id){
+      if(!confirm('Delete this service monitor?')) return;
+      try{
+        const r = await fetch(`/api/services/${encodeURIComponent(id)}`, {method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
+        if(!r.ok && r.status !== 404){
+          let m = 'Gagal hapus service';
+          try{ const j = await r.json(); m = j.error || m; }catch(_){}
+          alert('Error: ' + m); return;
+        }
+        fetchServices();
+      }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('#statusBtns .filter-btn').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          document.querySelectorAll('#statusBtns .filter-btn').forEach(x=>x.classList.remove('active'));
+          b.classList.add('active');
+          statusFilter = b.getAttribute('data-status');
+          renderServices();
+        });
+      });
+      const ts = document.getElementById('typeSelect');
+      if(ts) ts.addEventListener('change', ()=>{ typeFilter = ts.value; renderServices(); });
+      const si = document.getElementById('svcSearch');
+      let deb = null;
+      if(si) si.addEventListener('input', ()=>{ clearTimeout(deb); deb=setTimeout(()=>{ searchQuery=si.value; renderServices(); }, 180); });
+      document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+      document.addEventListener('keydown', (e)=>{
+        if(e.key === 'Escape') closeModal();
+        const tag=(document.activeElement&&document.activeElement.tagName)||'';
+        if(e.key==='/' && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){ e.preventDefault(); const s=document.getElementById('svcSearch'); if(s) s.focus(); }
+      });
+      toggleFields();
+      fetchServices();
+      setInterval(fetchServices, 10000); // refresh every 10s
+    });
+  </script>
+<script>
+// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

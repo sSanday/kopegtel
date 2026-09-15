@@ -1,0 +1,8 @@
+flask
+apscheduler
+requests
+python-dotenv
+gunicorn
+flask-login
+psutil
+urllib3

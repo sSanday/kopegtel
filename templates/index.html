@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NMS KOPEGTEL — Network Operations Center</title>
+<meta name="description" content="Network Monitoring System - Real-time uptime and latency dashboard">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c14;
+  --bg2:#0c1220;
+  --surface:#0f1928;
+  --card:rgba(15,25,40,0.8);
+  --card-h:rgba(20,32,52,0.9);
+  --border:rgba(0,255,136,0.12);
+  --border2:rgba(255,255,255,0.06);
+  --glow:rgba(0,255,136,0.4);
+  --glow-blue:rgba(0,162,255,0.4);
+  --up:#00ff88;
+  --up-dim:rgba(0,255,136,0.1);
+  --down:#ff4444;
+  --down-dim:rgba(255,68,68,0.1);
+  --warn:#ffaa00;
+  --accent:#00a2ff;
+  --accent2:#00ff88;
+  --t1:#e0f0ff;
+  --t2:#6a8aaa;
+  --t3:#2a4060;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Inter',sans-serif;
+}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,255,136,0.4)}
+
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  min-height:100vh;
+  color:var(--t1);
+  overflow-x:hidden;
+}
+
+/* Scan lines overlay */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* Ambient glow */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 5%,rgba(0,162,255,0.05) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 90%,rgba(0,255,136,0.04) 0%,transparent 60%);
+  pointer-events:none;z-index:0;
+}
+
+.wrap{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 24px 64px}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 0;
+  height:56px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:0;
+  background:rgba(8,12,20,0.95);
+  position:sticky;top:0;z-index:100;
+  backdrop-filter:blur(12px);
+}
+.tb-left{display:flex;align-items:center;gap:0}
+.tb-logo{
+  display:flex;align-items:center;gap:10px;
+  padding:0 24px;
+  height:56px;
+  border-right:1px solid var(--border);
+}
+.logo-icon{
+  width:28px;height:28px;
+  background:linear-gradient(135deg,#00a2ff,#00ff88);
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;
+  box-shadow:0 0 16px rgba(0,162,255,0.5);
+}
+.logo-name{
+  font-family:var(--mono);font-size:.78rem;font-weight:700;
+  color:var(--t1);letter-spacing:1px;text-transform:uppercase;
+}
+.logo-name span{color:var(--accent2);margin-left:2px}
+
+.tb-path{
+  padding:0 20px;height:56px;
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:.72rem;color:var(--t2);
+  border-right:1px solid var(--border);
+}
+.tb-path .crumb{color:var(--t2)}
+.tb-path .crumb.active{color:var(--accent2)}
+.tb-sep{color:var(--t3)}
+
+.tb-search{
+  display:flex;align-items:center;height:100%;
+  padding-left:16px;border-left:1px solid var(--border);
+}
+.tb-search input{
+  background:transparent;border:none;outline:none;
+  color:var(--t1);font-family:var(--mono);font-size:.72rem;
+  width:200px;transition:.2s;
+}
+.tb-search input::placeholder{color:var(--t3)}
+.tb-search input:focus{width:260px}
+
+.tb-right{display:flex;align-items:center;height:56px}
+.tb-btn{
+  display:flex;align-items:center;gap:6px;
+  height:56px;padding:0 16px;
+  background:transparent;border:none;border-left:1px solid var(--border);
+  color:var(--t2);font-family:var(--mono);font-size:.72rem;
+  cursor:pointer;transition:.2s;text-decoration:none;white-space:nowrap;
+}
+.tb-btn:hover{color:var(--t1);background:rgba(255,255,255,0.04)}
+.tb-btn svg{width:14px;height:14px;flex-shrink:0}
+.tb-btn.danger{color:rgba(255,68,68,0.7)}
+.tb-btn.danger:hover{color:#ff4444;background:rgba(255,68,68,0.06)}
+.tb-btn.active-notif{color:var(--accent2);border-bottom:2px solid var(--accent2)}
+
+.live-pill{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(0,255,136,0.08);
+  border:1px solid rgba(0,255,136,0.25);
+  border-radius:4px;
+  padding:3px 8px;
+  font-family:var(--mono);font-size:.65rem;font-weight:700;
+  color:var(--accent2);letter-spacing:1.5px;
+  margin:0 12px;
+}
+.live-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite}
+.live-pill.off{background:rgba(255,68,68,0.08);border-color:rgba(255,68,68,0.35);color:var(--down)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── MAIN AREA ── */
+.main{display:flex;min-height:calc(100vh - 56px)}
+
+/* Sidebar */
+.sidebar{
+  width:220px;flex-shrink:0;
+  border-right:1px solid var(--border);
+  padding:20px 0;
+  background:rgba(8,12,20,0.6);
+  backdrop-filter:blur(8px);
+}
+.sb-section{padding:0 16px;margin-bottom:20px}
+.sb-label{
+  font-family:var(--mono);font-size:.6rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:2px;
+  color:var(--t3);margin-bottom:10px;
+}
+.sb-item{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:6px;
+  font-family:var(--mono);font-size:.72rem;color:var(--t2);
+  cursor:pointer;transition:.15s;margin-bottom:2px;
+}
+.sb-item:hover{background:rgba(255,255,255,0.05);color:var(--t1)}
+.sb-item.active{background:rgba(0,255,136,0.08);color:var(--accent2);border-left:2px solid var(--accent2);padding-left:8px}
+.sb-item svg{width:13px;height:13px;flex-shrink:0}
+.sb-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sb-dot.up{background:var(--up);box-shadow:0 0 6px var(--up)}
+.sb-dot.down{background:var(--down);box-shadow:0 0 6px var(--down)}
+.sb-dot.warn,.sb-dot.pending{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+
+/* Content */
+.content{flex:1;min-width:0;padding:24px 28px}
+
+/* Section header */
+.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;margin-top:24px}
+.sec-row:first-child{margin-top:0}
+.sec-title,
+.sec-label{
+  font-family:var(--mono);font-size:.65rem;font-weight:600;
+  color:var(--t3);text-transform:uppercase;letter-spacing:2px;
+  margin-bottom:16px;display:flex;align-items:center;gap:8px;
+}
+.sec-title::before,.sec-label::before{content:'';display:block;width:24px;height:1px;background:var(--border2)}
+
+/* Category Grouping */
+.cat-group{margin-bottom:32px;animation:fadeUp .4s ease}
+.cat-header{
+  font-family:var(--mono);font-size:.75rem;font-weight:700;color:var(--t1);
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px;
+}
+.cat-header::before{content:'///';color:var(--accent2)}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+
+/* Grid & Cards — statusGrid is a vertical container, per-category grid inside */
+.status-grid{display:flex;flex-direction:column;gap:0;margin-bottom:4px}
+.status-grid > .skeleton{margin-bottom:12px}
+.sc{
+  position:relative;
+  background:var(--card);
+  border:1px solid var(--border2);
+  border-radius:8px;padding:18px 20px;
+  overflow:hidden;cursor:default;
+  transition:all .25s;
+  backdrop-filter:blur(8px);
+  animation:fadeUp .4s ease both;
+}
+.sc::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);
+}
+.sc:hover{transform:translateY(-2px);border-color:rgba(255,255,255,0.1)}
+.sc.up{border-color:rgba(0,255,136,0.18);box-shadow:0 0 30px rgba(0,255,136,0.04)}
+.sc.up:hover{border-color:rgba(0,255,136,0.35);box-shadow:0 4px 30px rgba(0,255,136,0.1)}
+.sc.down{border-color:rgba(255,68,68,0.18);box-shadow:0 0 30px rgba(255,68,68,0.04)}
+.sc.down:hover{border-color:rgba(255,68,68,0.35);box-shadow:0 4px 30px rgba(255,68,68,0.1)}
+.sc.pending{border-color:rgba(255,170,0,0.22);box-shadow:0 0 30px rgba(255,170,0,0.05)}
+.sc.pending:hover{border-color:rgba(255,170,0,0.4);box-shadow:0 4px 30px rgba(255,170,0,0.1)}
+
+.sc-glow{
+  position:absolute;top:-40px;right:-40px;width:120px;height:120px;
+  border-radius:50%;opacity:.06;transition:opacity .3s;
+}
+.sc.up .sc-glow{background:var(--up)}.sc.down .sc-glow{background:var(--down)}.sc.pending .sc-glow{background:var(--warn)}
+.sc:hover .sc-glow{opacity:.12}
+
+.sc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sc-host{font-family:var(--mono);font-size:.8rem;color:var(--t2)}
+.sc-pill{
+  font-family:var(--mono);font-size:.6rem;font-weight:700;
+  letter-spacing:1.5px;border-radius:3px;padding:2px 8px;
+}
+.sc.up .sc-pill{background:rgba(0,255,136,0.12);color:var(--up);border:1px solid rgba(0,255,136,0.3)}
+.sc.down .sc-pill{background:rgba(255,68,68,0.12);color:var(--down);border:1px solid rgba(255,68,68,0.3)}
+.sc.pending .sc-pill{background:rgba(255,170,0,0.12);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
+
+.sc-value{font-family:var(--mono);font-size:2rem;font-weight:700;line-height:1;letter-spacing:-1px;margin-bottom:4px}
+.sc.up .sc-value{color:var(--up)}
+.sc.down .sc-value{color:var(--down)}
+.sc.pending .sc-value{color:var(--warn)}
+.sc-unit{font-size:.8rem;font-weight:400;margin-left:3px;opacity:.6}
+.sc-sub{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+
+.sc-metrics{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  margin-top:14px;padding-top:14px;
+  border-top:1px dashed rgba(255,255,255,0.06);
+}
+.sc-metric{font-family:var(--mono);font-size:.68rem}
+.sc-metric .mk{color:var(--t3)}
+.sc-metric .mv{color:var(--t1);font-weight:500}
+.sc-bw{
+  grid-column:1/-1;
+  display:flex;gap:14px;
+  font-family:var(--mono);font-size:.68rem;
+}
+.sc-bw .in{color:var(--accent)}
+.sc-bw .out{color:var(--accent2)}
+.sc-link{font-family:var(--mono);font-size:.6rem;color:var(--accent);margin-top:12px;opacity:0;transition:.2s;transform:translateY(4px)}
+.sc:hover .sc-link{opacity:1;transform:translateY(0)}
+
+/* Pencil/Edit alias button */
+.sc-edit-btn{
+  background:rgba(0,162,255,0.07);border:1px solid rgba(0,162,255,0.18);
+  cursor:pointer;color:var(--accent);padding:3px 5px;border-radius:4px;
+  transition:.15s;flex-shrink:0;line-height:1;
+  opacity:0.55;transform:scale(1);
+  display:inline-flex;align-items:center;gap:3px;
+  font-family:var(--mono);font-size:.58rem;
+}
+.sc:hover .sc-edit-btn{opacity:1;border-color:rgba(0,162,255,0.45)}
+.sc-edit-btn:hover{color:#fff;background:rgba(0,162,255,0.22);border-color:rgba(0,162,255,0.6);transform:scale(1.05)}
+
+/* Rename modal */
+#renameModal{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);
+  z-index:9000;display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(6px);
+}
+#renameModal.open{display:flex}
+.rename-box{
+  background:var(--surface);border:1px solid rgba(0,162,255,0.3);
+  border-radius:10px;width:340px;padding:0;overflow:hidden;
+  box-shadow:0 0 60px rgba(0,162,255,0.15),0 24px 60px rgba(0,0,0,.7);
+  animation:fadeUp .2s ease;
+}
+.rename-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;background:rgba(0,0,0,.3);border-bottom:1px solid var(--border2);
+}
+.rename-title{font-family:var(--mono);font-size:.75rem;font-weight:600;color:var(--t1)}
+.rename-close{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s}
+.rename-close:hover{color:var(--t1)}
+.rename-body{padding:18px}
+.rename-ip{font-family:var(--mono);font-size:.68rem;color:var(--t3);margin-bottom:12px}
+.rename-ip span{color:var(--accent2)}
+.rename-input{
+  width:100%;padding:10px 14px;border-radius:6px;
+  border:1px solid rgba(0,162,255,0.3);background:rgba(0,0,0,.4);
+  color:var(--t1);font-family:var(--mono);font-size:.82rem;
+  outline:none;transition:.2s;
+}
+.rename-input:focus{border-color:rgba(0,162,255,.6);background:rgba(0,162,255,.05)}
+.rename-input::placeholder{color:var(--t3)}
+.rename-actions{display:flex;gap:8px;margin-top:12px}
+.rename-save{
+  flex:1;padding:10px;border-radius:6px;
+  background:linear-gradient(135deg,rgba(0,162,255,.9),rgba(0,100,200,.9));
+  border:none;color:#fff;font-family:var(--mono);font-size:.75rem;
+  font-weight:700;cursor:pointer;transition:.15s;
+}
+.rename-save:hover{opacity:.85}
+.rename-clear{
+  padding:10px 14px;border-radius:6px;
+  background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.2);
+  color:rgba(255,68,68,.7);font-family:var(--mono);font-size:.72rem;
+  cursor:pointer;transition:.15s;
+}
+.rename-clear:hover{background:rgba(255,68,68,.15);color:#ff4444}
+
+/* Uptime Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.stat-card{
+  background:var(--card);border:1px solid var(--border2);border-radius:8px;
+  padding:14px 16px;backdrop-filter:blur(8px);
+  animation:fadeUp .4s ease .1s both;
+  transition:.2s;
+}
+.stat-card:hover{border-color:rgba(255,255,255,0.09)}
+.stat-host{font-family:var(--mono);font-size:.75rem;color:var(--t2);margin-bottom:8px}
+.stat-uptime{font-family:var(--mono);font-size:1.3rem;font-weight:700;margin-bottom:6px}
+.upbar{height:3px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;margin-bottom:8px}
+.upbar-fill{height:100%;border-radius:999px;transition:width .6s ease;position:relative}
+.upbar-fill::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.3) 50%,transparent 100%);
+  animation:shimmerBar 2s ease-in-out infinite;
+}
+@keyframes shimmerBar{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+.stat-row{display:flex;gap:12px;font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+.stat-row b{color:var(--t2);font-weight:500}
+
+/* Chart */
+.chart-card{
+  background:var(--card);border:1px solid var(--border2);border-radius:8px;
+  padding:20px 22px;backdrop-filter:blur(8px);
+  animation:fadeUp .4s ease .15s both;
+}
+.chart-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.chart-title{font-family:var(--mono);font-size:.85rem;font-weight:600;color:var(--t1)}
+.chart-sub{font-family:var(--mono);font-size:.65rem;color:var(--t3);margin-top:3px}
+.chart-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.range-btns{display:flex;gap:2px}
+.range-btn{
+  background:transparent;border:1px solid var(--border2);
+  color:var(--t3);font-family:var(--mono);font-size:.65rem;font-weight:600;
+  padding:4px 9px;border-radius:4px;cursor:pointer;transition:.15s;
+}
+.range-btn:hover,.range-btn.active{
+  background:rgba(0,162,255,0.1);border-color:rgba(0,162,255,0.4);color:var(--accent);
+}
+.sep-v{width:1px;height:22px;background:var(--border2);margin:0 2px}
+.icon-btn{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(0,162,255,0.08);border:1px solid rgba(0,162,255,0.25);
+  color:var(--accent);font-family:var(--mono);font-size:.65rem;font-weight:600;
+  padding:5px 11px;border-radius:4px;cursor:pointer;transition:.15s;
+}
+.icon-btn:hover{background:rgba(0,162,255,0.16);border-color:rgba(0,162,255,0.45)}
+.chart-wrap{position:relative;height:260px}
+
+/* Terminal table (events) */
+.term-card{
+  background:var(--card);border:1px solid var(--border2);border-radius:8px;
+  overflow:hidden;backdrop-filter:blur(8px);
+  animation:fadeUp .4s ease .2s both;
+}
+.term-topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;
+  background:rgba(255,255,255,0.03);
+  border-bottom:1px solid var(--border2);
+}
+.term-dots{display:flex;gap:5px}
+.term-dot{width:10px;height:10px;border-radius:50%}
+.term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+.term-title{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+.term-action{display:flex;gap:6px}
+.events-table{width:100%;border-collapse:collapse;font-size:.72rem}
+.events-table th{
+  text-align:left;color:var(--t3);font-weight:600;
+  font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:1.5px;
+  padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.2);
+}
+.events-table td{
+  padding:9px 14px;border-bottom:1px solid rgba(255,255,255,0.03);
+  color:var(--t2);font-family:var(--mono);font-size:.7rem;
+  transition:.15s;
+}
+.events-table tr:hover td{background:rgba(255,255,255,0.02)}
+.events-table td:first-child{color:var(--t1)}
+.events-table tr:last-child td{border-bottom:none}
+.tag{
+  font-family:var(--mono);font-size:.6rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:1px;border-radius:3px;padding:2px 7px;
+}
+.tag.resolved{background:rgba(0,255,136,0.1);color:var(--up);border:1px solid rgba(0,255,136,0.25)}
+.tag.ongoing{background:rgba(255,68,68,0.1);color:var(--down);border:1px solid rgba(255,68,68,0.25)}
+.no-events{text-align:center;color:var(--t3);padding:32px;font-family:var(--mono);font-size:.72rem}
+.del-btn{
+  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);
+  color:rgba(255,68,68,0.7);padding:3px 7px;border-radius:3px;cursor:pointer;
+  font-family:var(--mono);font-size:.62rem;transition:.15s;
+}
+.del-btn:hover{background:rgba(255,68,68,0.18);color:#ff4444}
+.clear-btn{
+  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);
+  color:rgba(255,68,68,0.7);padding:5px 11px;border-radius:4px;cursor:pointer;
+  font-family:var(--mono);font-size:.65rem;font-weight:600;transition:.15s;
+}
+.clear-btn:hover{background:rgba(255,68,68,0.18);color:#ff4444}
+
+/* Export dropdown */
+.export-wrap{position:relative}
+.export-menu{
+  display:none;position:absolute;right:0;top:calc(100% + 4px);
+  background:var(--surface);border:1px solid var(--border2);border-radius:6px;
+  min-width:190px;z-index:100;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5);
+}
+.export-wrap:hover .export-menu,.export-menu:hover{display:block}
+.export-item{
+  display:block;width:100%;text-align:left;background:transparent;border:none;
+  color:var(--t2);font-family:var(--mono);font-size:.68rem;padding:9px 14px;
+  cursor:pointer;transition:.12s;
+}
+.export-item:hover{background:rgba(255,255,255,0.04);color:var(--t1)}
+
+/* Error banner */
+.err-banner{
+  display:none;align-items:center;gap:8px;
+  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);
+  border-radius:6px;padding:10px 14px;margin-bottom:16px;
+  font-family:var(--mono);font-size:.72rem;color:#ff4444;
+}
+.err-banner.on{display:flex}
+
+/* Skeleton */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton{
+  background:linear-gradient(90deg,var(--card) 25%,rgba(255,255,255,.04) 50%,var(--card) 75%);
+  background-size:800px 100%;animation:shimmer 1.6s infinite;border-radius:8px;
+}
+
+/* Modal */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);
+  z-index:1000;align-items:center;justify-content:center;
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:0;width:100%;max-width:440px;
+  animation:fadeUp .3s ease;overflow:hidden;
+  box-shadow:0 0 60px rgba(0,162,255,0.1),0 32px 80px rgba(0,0,0,.6);
+}
+.modal-header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
+}
+.modal-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
+.close-btn{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s}
+.close-btn:hover{color:var(--t1)}
+.modal-body{padding:18px}
+.host-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:260px;overflow-y:auto}
+.host-item{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  background:rgba(0,0,0,0.3);padding:10px 12px;border-radius:6px;
+  border:1px solid var(--border2);font-family:var(--mono);font-size:.75rem;gap:8px;
+}
+.host-item button{
+  color:rgba(255,68,68,0.7);background:rgba(255,68,68,0.08);
+  border:1px solid rgba(255,68,68,0.2);cursor:pointer;
+  padding:3px 8px;border-radius:3px;font-family:var(--mono);font-size:.65rem;transition:.15s;flex-shrink:0;
+}
+.host-item button:hover{background:rgba(255,68,68,0.2);color:#ff4444}
+.add-host-form{display:flex;gap:6px;flex-wrap:wrap}
+.add-host-form input{
+  flex:1;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);
+  background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;
+  transition:.2s;outline:none;min-width:120px;
+}
+.add-host-form input:focus{border-color:rgba(0,162,255,0.4);background:rgba(0,162,255,0.05)}
+.add-host-form input::placeholder{color:var(--t3)}
+.add-host-form button{
+  padding:9px 14px;border-radius:6px;background:linear-gradient(135deg,#00a2ff,#0066cc);
+  color:#000;border:none;font-family:var(--mono);font-weight:700;font-size:.72rem;cursor:pointer;transition:.15s;
+}
+.add-host-form button:hover{opacity:.85}
+.form-field{margin-bottom:12px}
+.form-label{display:block;font-family:var(--mono);font-size:.65rem;font-weight:600;color:var(--t3);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+.form-input{
+  width:100%;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);
+  background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.78rem;
+  transition:.2s;outline:none;
+}
+.form-input:focus{border-color:rgba(0,162,255,0.4);background:rgba(0,162,255,0.05)}
+.btn-primary{
+  width:100%;padding:10px;border-radius:6px;
+  background:linear-gradient(135deg,#00a2ff,#0066cc);
+  color:#000;border:none;font-family:var(--mono);font-weight:700;font-size:.78rem;
+  cursor:pointer;transition:.15s;margin-top:4px;
+}
+.btn-primary:hover{opacity:.85}
+
+/* Footer */
+.footer{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+  padding:12px 16px;background:rgba(0,0,0,0.3);border:1px solid var(--border2);
+  border-radius:8px;font-family:var(--mono);font-size:.65rem;color:var(--t3);
+  margin-top:24px;
+}
+.footer .fi{display:flex;align-items:center;gap:6px}
+#last-updated{color:var(--t2)}
+.footer-blink{animation:blink 1.5s step-end infinite}
+
+/* Summary row */
+.summary-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.sum-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;backdrop-filter:blur(8px)}
+.sum-card .sk{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+.sum-card .sv{font-family:var(--mono);font-size:1.5rem;font-weight:700;line-height:1}
+.sum-card.total .sv{color:var(--t1)}
+.sum-card.up{border-color:rgba(0,255,136,.2)}
+.sum-card.up .sv{color:var(--up)}
+.sum-card.down{border-color:rgba(255,68,68,.2)}
+.sum-card.down .sv{color:var(--down)}
+.sum-card.avg .sv{color:var(--accent)}
+
+/* Disabled sidebar items */
+.sb-item.sb-disabled{opacity:.38;cursor:not-allowed}
+.sb-item.sb-disabled:hover{background:transparent;color:var(--t2)}
+.soon-badge{margin-left:auto;font-size:.55rem;border:1px solid var(--border2);border-radius:3px;padding:1px 5px;color:var(--t3);letter-spacing:1px}
+
+.hamburger{display:none;background:transparent;border:none;border-right:1px solid var(--border);color:var(--t2);padding:0 14px;height:56px;cursor:pointer;font-size:1.1rem}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:1024px){
+  .tb-path{display:none}
+  .tb-search input{width:120px}
+  .tb-search input:focus{width:160px}
+}
+@media(max-width:768px){
+  .topbar{padding:0;overflow-x:auto}
+  .tb-left{flex-shrink:0}
+  .tb-logo{padding:0 14px}
+  .tb-search{display:none}
+  .tb-right{flex-shrink:0}
+  .live-pill{margin:0 8px}
+  .hamburger{display:block}
+  .main{flex-direction:column}
+  .sidebar{position:fixed;top:56px;left:0;bottom:0;width:240px;z-index:500;transform:translateX(-100%);transition:transform .25s ease;background:rgba(8,12,20,.98)}
+  .sidebar.open{transform:translateX(0);box-shadow:20px 0 60px rgba(0,0,0,.5)}
+  .content{padding:16px}
+  .cat-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .cat-grid,.stats-grid,.summary-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="tb-left">
+    <button class="hamburger" onclick="toggleSidebar()" title="Menu">☰</button>
+    <div class="tb-logo">
+      <div class="logo-icon">⬡</div>
+      <div class="logo-name">NMS<span>KOPEGTEL</span></div>
+    </div>
+    <div class="tb-path">
+      <span class="crumb">~/noc</span>
+      <span class="tb-sep">/</span>
+      <span class="crumb active">dashboard</span>
+    </div>
+    <div class="tb-search">
+      <span style="color:var(--accent);margin-right:6px">❯</span>
+      <input type="text" id="hostSearch" placeholder="grep host..." oninput="filterHosts()">
+    </div>
+  </div>
+  <div class="tb-right">
+    <div class="live-pill"><div class="live-dot"></div>LIVE</div>
+    <a href="/logs" class="tb-btn">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
+      logs
+    </a>
+    <button class="tb-btn" onclick="openSettingsModal()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+      settings
+    </button>
+    <button class="tb-btn" onclick="openHostModal()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M5 7h6M5 10h4"/></svg>
+      hosts
+    </button>
+    <button class="tb-btn" id="notifBtn" onclick="toggleNotif()">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1a5 5 0 015 5v3l1.5 2.5H1.5L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg>
+      notif
+    </button>
+    <a href="/logout" class="tb-btn danger" onclick="return confirm('Yakin ingin logout?')">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
+      logout
+    </a>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar" style="overflow-y: auto;">
+    <div class="sb-section">
+      <div class="sb-label">ZABBIX</div>
+      <a href="/" class="sb-item" data-nav="dashboard" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        Dashboards
+      </a>
+      <a href="/triggers" class="sb-item" data-nav="monitoring" title="Semua trigger aktif" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4v4l2 2"/></svg>
+        Monitoring
+      </a>
+      <a href="/services" class="sb-item" data-nav="services" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 4H2v8h12V4z"/><path d="M6 16v-4M10 16v-4M4 16h8"/></svg>
+        Services
+      </a>
+      <a href="/inventory" class="sb-item" data-nav="inventory" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 7h12"/></svg>
+        Inventory
+      </a>
+      <a href="/reports" class="sb-item" data-nav="reports" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4h8v8M4 16h8M6 8h4"/></svg>
+        Reports
+      </a>
+      <a href="/logs" class="sb-item" data-nav="logs" title="Audit & system logs" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
+        Logs
+      </a>
+      <a href="/triggers?severity=disaster,high" class="sb-item" data-nav="alerts" title="Hanya disaster & high" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 00-4 4v3l-2 2v1h12v-1l-2-2V6a4 4 0 00-4-4z"/><path d="M6 13a2 2 0 004 0"/></svg>
+        Alerts
+      </a>
+      <div class="sb-item sb-disabled" title="Segera hadir">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
+        Users
+        <span class="soon-badge">soon</span>
+      </div>
+      <div class="sb-item sb-disabled" title="Segera hadir">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 12a4 4 0 100-8 4 4 0 000 8z"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.75 3.75l1.5 1.5M10.75 10.75l1.5 1.5M3.75 12.25l1.5-1.5M10.75 5.25l1.5-1.5"/></svg>
+        Administration
+        <span class="soon-badge">soon</span>
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Nodes</div>
+      <div id="sidebarHosts">
+        <div class="sb-item"><div class="sb-dot warn"></div>loading...</div>
+      </div>
+    </div>
+    <div class="sb-section" style="margin-top:auto;border-top:1px solid var(--border2);padding-top:16px;padding-bottom:16px;">
+      <div class="sb-item sb-disabled" title="Segera hadir">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 14A6 6 0 108 2a6 6 0 000 12z"/><path d="M8 11v.01M8 5a2 2 0 012 2c0 1-1 1.5-1 2"/></svg>
+        Support
+        <span class="soon-badge">soon</span>
+      </div>
+      <div class="sb-item sb-disabled" title="Segera hadir">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h8M8 4v8"/></svg>
+        Integrations
+        <span class="soon-badge">soon</span>
+      </div>
+      <div class="sb-item sb-disabled" title="Segera hadir">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 12v-1M8 5a2 2 0 012 2c0 1-1 1.5-1 2"/></svg>
+        Help
+        <span class="soon-badge">soon</span>
+      </div>
+      
+      <div class="sb-item" id="userSettingsToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="userSubmenu" onclick="toggleUserMenu()" onkeydown="if(event.key==='Enter'||event.key===' ') {event.preventDefault();toggleUserMenu();}">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
+        User settings
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:auto"><path d="M4 6l4 4 4-4"/></svg>
+      </div>
+      <div id="userSubmenu" style="display:none; padding-left: 15px; margin-top: 2px;">
+        <div class="sb-item sb-disabled" style="font-size: 0.9em;" title="Segera hadir">Profile <span class="soon-badge">soon</span></div>
+        <div class="sb-item sb-disabled" style="font-size: 0.9em;" title="Segera hadir">API tokens <span class="soon-badge">soon</span></div>
+      </div>
+
+      <div class="sb-item" role="button" tabindex="0" title="Muat ulang data (R)" onclick="refresh()" onkeydown="if(event.key==='Enter'||event.key===' ') {event.preventDefault();refresh();}" style="margin-top:8px;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 8A6 6 0 112 8"/><path d="M14 4v4h-4"/></svg>
+        refresh
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Error Banner -->
+    <div id="errBanner" class="err-banner">
+      <span>ERR</span><span id="errMsg">Gagal mengambil data dari server.</span>
+    </div>
+
+    <!-- Status Cards -->
+    <div class="sec-row">
+      <div class="sec-title">node_status</div>
+    </div>
+    <div id="summaryRow" class="summary-row">
+      <div class="sum-card total"><div class="sk">total nodes</div><div class="sv" id="sumTotal">—</div></div>
+      <div class="sum-card up"><div class="sk">up</div><div class="sv" id="sumUp">—</div></div>
+      <div class="sum-card down"><div class="sk">down</div><div class="sv" id="sumDown">—</div></div>
+      <div class="sum-card avg"><div class="sk">avg uptime 24h</div><div class="sv" id="sumUptime">—</div></div>
+    </div>
+    <div id="statusGrid" class="status-grid">
+      <div class="skeleton" style="height:130px"></div>
+      <div class="skeleton" style="height:130px;animation-delay:.12s"></div>
+      <div class="skeleton" style="height:130px;animation-delay:.24s"></div>
+    </div>
+
+    <!-- Uptime Stats -->
+    <div class="sec-row" style="margin-top:22px">
+      <div class="sec-label">uptime_stats <span style="color:var(--t3);font-weight:400">[24h]</span></div>
+    </div>
+    <div id="statsGrid" class="stats-grid">
+      <div class="skeleton" style="height:80px"></div>
+      <div class="skeleton" style="height:80px;animation-delay:.1s"></div>
+      <div class="skeleton" style="height:80px;animation-delay:.2s"></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="sec-row" style="margin-top:22px">
+      <div class="sec-label">performance_history</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-hd">
+        <div>
+          <div class="chart-title" id="chartTitle">latency_monitor.ts</div>
+          <div class="chart-sub" id="chartSub">// realtime data stream — ms</div>
+        </div>
+        <div class="chart-actions">
+          <div class="range-btns" id="metricBtns">
+            <button class="range-btn active" id="mLatency" onclick="setMetric(this,'latency')">ping</button>
+            <button class="range-btn" id="mCpu" onclick="setMetric(this,'cpu')">cpu</button>
+            <button class="range-btn" id="mRam" onclick="setMetric(this,'ram')">ram</button>
+            <button class="range-btn" id="mDisk" onclick="setMetric(this,'disk')">disk</button>
+            <button class="range-btn" id="mBw" onclick="setMetric(this,'bandwidth')">bw</button>
+          </div>
+          <div class="sep-v"></div>
+          <div class="range-btns" id="rangeBtns">
+            <button class="range-btn" id="r1h" onclick="setRange(this,1)">1H</button>
+            <button class="range-btn active" id="r6h" onclick="setRange(this,6)">6H</button>
+            <button class="range-btn" id="r24h" onclick="setRange(this,24)">24H</button>
+          </div>
+          <button class="icon-btn" onclick="refresh()">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 8A6 6 0 112 8"/><path d="M14 4v4h-4"/></svg>
+            refresh
+          </button>
+          <div class="export-wrap">
+            <button class="icon-btn">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1v9M5 7l3 3 3-3M1 12v2a1 1 0 001 1h12a1 1 0 001-1v-2"/></svg>
+              export
+            </button>
+            <div class="export-menu" id="exportMenu"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="latencyChart"></canvas></div>
+    </div>
+
+    <!-- Events -->
+    <div class="sec-row" style="margin-top:22px">
+      <div class="sec-label">down_events.log</div>
+      <button class="clear-btn" onclick="clearAllEvents()">clear_all</button>
+    </div>
+    <div class="term-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
+        </div>
+        <div class="term-title">bash — nms@kopegtel:~/logs</div>
+        <div style="width:56px"></div>
+      </div>
+      <div id="eventsBody"><p class="no-events">$ cat events.log → loading...</p></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="fi">
+        <span class="footer-blink" style="color:var(--accent2)">▌</span>
+        auto-refresh <b style="color:var(--t2)">30s</b>
+      </div>
+      <div class="fi">
+        last_ping: <span id="last-updated">--:--:--</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Rename / Alias Modal -->
+<div id="renameModal">
+  <div class="rename-box">
+    <div class="rename-header">
+      <div class="rename-title">✏ rename_host()</div>
+      <button class="rename-close" onclick="closeRenameModal()">✕</button>
+    </div>
+    <div class="rename-body">
+      <div class="rename-ip">IP: <span id="renameIpDisplay"></span></div>
+      <input class="rename-input" id="renameInput" type="text" placeholder="nama perangkat (contoh: HP Infinix Sandy)">
+      <input class="rename-input" id="renameCategoryInput" type="text" placeholder="kategori (misal: core, access)" style="margin-top:8px">
+      <div class="rename-actions">
+        <button class="rename-save" onclick="saveAlias()">save_alias()</button>
+        <button class="rename-clear" onclick="clearAlias()">rm alias</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Host Modal -->
+<div class="modal-overlay" id="hostModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">// hosts.config</div>
+      <button class="close-btn" onclick="closeHostModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="host-list" id="hostList"><div style="color:var(--t3);font-family:var(--mono);font-size:.72rem">loading...</div></div>
+      <form class="add-host-form" onsubmit="addHost(event)" style="flex-wrap:wrap;">
+        <input type="text" id="newHostIp" placeholder="ip / domain" required>
+        <input type="text" id="newHostAlias" placeholder="alias / nama" title="Nama Perangkat">
+        <input type="text" id="newHostCategory" placeholder="kategori" title="Kategori Perangkat">
+        <input type="text" id="newHostSnmp" placeholder="snmp (opt)" title="SNMP Community">
+        <input type="number" id="newHostIfIndex" placeholder="ifIdx" value="1" style="width:65px;" title="SNMP Interface Index">
+        <button type="submit">+ add</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">// system.settings</div>
+      <button class="close-btn" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="settingsForm" onsubmit="saveSettings(event)">
+        <div class="form-field">
+          <label class="form-label">cpu_threshold (%)</label>
+          <input type="number" id="cpuThreshold" class="form-input" step="0.1" min="1" max="100" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label">ram_threshold (%)</label>
+          <input type="number" id="ramThreshold" class="form-input" step="0.1" min="1" max="100" required>
+        </div>
+        <div class="form-field">
+          <label class="form-label">disk_threshold (%)</label>
+          <input type="number" id="diskThreshold" class="form-input" step="0.1" min="1" max="100" required>
+        </div>
+        <div class="form-field">
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.</div>
+        </div>
+        <button type="submit" class="btn-primary">save_settings()</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const PALETTE=['#00a2ff','#00ff88','#ff4444','#ffaa00','#a855f7'];
+let myChart, currentRange=6, currentMetric='latency', hosts=[];
+
+const METRIC_CONFIG = {
+  latency:   { title:'latency_monitor.ts',       sub:'// realtime ping data stream — ms',   unit:'ms',   color: null },
+  cpu:       { title:'cpu_usage.ts',             sub:'// cpu utilization over time — %',    unit:'%',    color: '#ff4444' },
+  ram:       { title:'ram_usage.ts',             sub:'// memory usage over time — %',       unit:'%',    color: '#ffaa00' },
+  disk:      { title:'disk_usage.ts',            sub:'// disk utilization over time — %',   unit:'%',    color: '#a855f7' },
+  bandwidth: { title:'bandwidth_monitor.ts',     sub:'// network throughput — Mbps',        unit:'Mbps', color: '#00ff88' },
+};
+
+function showErr(msg){document.getElementById('errMsg').textContent=msg;document.getElementById('errBanner').classList.add('on')}
+function hideErr(){document.getElementById('errBanner').classList.remove('on')}
+
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
+function toggleUserMenu(){
+  const sub = document.getElementById('userSubmenu');
+  const tgl = document.getElementById('userSettingsToggle');
+  if(!sub) return;
+  const isHidden = sub.style.display === 'none' || sub.style.display === '';
+  sub.style.display = isHidden ? 'block' : 'none';
+  if(tgl) tgl.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+}
+function setActiveNav(){
+  // Dashboard index selalu aktif sebagai Dashboards; dukung juga pola path lain jika sidebar dipakai ulang
+  const path = window.location.pathname || '/';
+  const map = {'/':'dashboard','/triggers':'monitoring','/services':'services','/inventory':'inventory','/logs':'logs','/reports':'reports'};
+  let key = map[path] || 'dashboard';
+  const params = new URLSearchParams(window.location.search || '');
+  const sev = (params.get('severity') || '').toLowerCase();
+  if(path === '/triggers' && (sev.includes('disaster') || sev.includes('high'))) key = 'alerts';
+  document.querySelectorAll('[data-nav]').forEach(el=>{
+    el.classList.toggle('active', el.getAttribute('data-nav') === key);
+  });
+}
+function updateSummary(total, up, down, avgUptime, pending){
+  const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v;};
+  set('sumTotal', total);
+  set('sumUp', up);
+  set('sumDown', down);
+  set('sumUptime', avgUptime != null ? avgUptime+'%' : '—');
+  const downEl = document.getElementById('sumDown');
+  if(downEl && pending != null && pending > 0) downEl.title = `${pending} pending (belum ada data ping)`;
+  else if(downEl) downEl.removeAttribute('title');
+}
+
+function renderStatus(pData, aData){
+  const grid = document.getElementById('statusGrid');
+  const sidebar = document.getElementById('sidebarHosts');
+
+  const allHosts = hosts && hosts.length ? hosts : Object.keys(pData || {});
+  const total = allHosts.length;
+  let upCount = 0;
+  let downCount = 0;
+  let pendingCount = 0;
+
+  if (!pData || Object.keys(pData).length === 0) {
+    // Tetap tampilkan semua host sebagai PENDING agar tidak dikira DOWN
+    if(total > 0){
+      pData = {};
+      allHosts.forEach(h=>{ pData[h] = []; });
+    } else {
+      grid.innerHTML = '<p style="color:var(--t3);font-family:var(--mono);font-size:.72rem">$ no hosts configured. add hosts via host manager.</p>';
+      sidebar.innerHTML = '';
+      updateSummary(total, 0, 0, null, 0);
+      return;
+    }
+  }
+
+  grid.innerHTML='';
+  sidebar.innerHTML='';
+
+  // Group by category
+  const groups = {};
+
+  // Pastikan semua host terdaftar tampil, walau belum ada data ping (PENDING)
+  const hostSet = new Set([...Object.keys(pData || {}), ...allHosts]);
+  // First, extract all hosts to groups
+  hostSet.forEach(host => {
+    const latArr = (pData && pData[host]) || [];
+    const hasData = latArr.length > 0;
+    const lat = hasData ? latArr[latArr.length - 1] : null;
+    const isPending = !hasData || lat === null;
+    const up = !isPending && lat !== -1;
+    if (up) upCount++;
+    else if (isPending) pendingCount++;
+    else downCount++;
+    const agent = aData && aData[host];
+    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
+
+    // Find category from window.categoryMap if available, else fallback; normalisasi string kosong
+    let category = window.categoryMap && window.categoryMap[host] ? window.categoryMap[host] : 'Uncategorized';
+    category = String(category || '').trim() || 'Uncategorized';
+
+    if (!groups[category]) groups[category] = [];
+    groups[category].push({ host, lat, up, pending: isPending, agent, displayName, category });
+  });
+
+  updateSummary(total, upCount, downCount, null, pendingCount);
+
+  // Render by category
+  let cardIndex = 0;
+
+  // Render sidebar categories
+  Object.keys(groups).sort().forEach(cat => {
+    const sbCat = document.createElement('div');
+    sbCat.style.cssText = 'font-family:var(--mono);font-size:.6rem;color:var(--t3);margin:10px 0 4px 16px;text-transform:uppercase;letter-spacing:1px';
+    sbCat.textContent = cat;
+    sbCat.dataset.catHeader = '1';
+    sidebar.appendChild(sbCat);
+
+    groups[cat].forEach(item => {
+      const sbEl = document.createElement('div');
+      sbEl.className = 'sb-item';
+      sbEl.style.cursor = 'pointer';
+      sbEl.setAttribute('role', 'link');
+      sbEl.setAttribute('tabindex', '0');
+      sbEl.dataset.search = (item.displayName + ' ' + item.host + ' ' + item.category).toLowerCase();
+      const dot = document.createElement('div');
+      dot.className = 'sb-dot ' + (item.pending ? 'pending' : (item.up ? 'up' : 'down'));
+      const label = document.createElement('span');
+      label.textContent = item.displayName;
+      label.title = item.pending ? `${item.host} (pending — belum ada data)` : item.host;
+      sbEl.title = item.pending ? `${item.host} (pending)` : item.host;
+      sbEl.appendChild(dot);
+      sbEl.appendChild(label);
+      const goHost = () => { window.location.href = '/host/' + encodeURIComponent(item.host); };
+      sbEl.addEventListener('click', goHost);
+      sbEl.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); goHost(); } });
+      sidebar.appendChild(sbEl);
+    });
+  });
+
+  // Render main grid categories
+  Object.keys(groups).sort().forEach(cat => {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'cat-group';
+
+    if (cat !== 'Uncategorized' || Object.keys(groups).length > 1) {
+      const hdr = document.createElement('div');
+      hdr.className = 'cat-header';
+      hdr.textContent = cat;
+      groupEl.appendChild(hdr);
+    }
+
+    const catGrid = document.createElement('div');
+    catGrid.className = 'cat-grid';
+
+    groups[cat].forEach(item => {
+      const card = document.createElement('div');
+      const stateCls = item.pending ? 'pending' : (item.up ? 'up' : 'down');
+      card.className = `sc ${stateCls}`;
+      card.style.animationDelay = `${(cardIndex++) * .04}s`;
+      card.dataset.search = (item.displayName + ' ' + item.host + ' ' + item.category).toLowerCase();
+
+      const cpu = item.agent ? esc(item.agent.cpu) : null;
+
+      const metricsHtml = item.agent ? `
+        <div class="sc-metrics">
+          <div class="sc-metric"><span class="mk">cpu</span> <span class="mv">${esc(item.agent.cpu)}%</span></div>
+          <div class="sc-metric"><span class="mk">ram</span> <span class="mv">${esc(item.agent.ram)}%</span></div>
+          <div class="sc-metric"><span class="mk">disk</span> <span class="mv">${esc(item.agent.disk)}%</span></div>
+          <div class="sc-bw">
+            <span class="in">↓ ${esc(item.agent.net_in||0)} Mbps</span>
+            <span class="out">↑ ${esc(item.agent.net_out||0)} Mbps</span>
+          </div>
+        </div>` : '';
+
+      // Show IP under name only when alias exists
+      const hasAlias = item.displayName !== item.host;
+      const ipSubHtml = hasAlias
+        ? `<div class="sc-ip-sub" style="font-family:var(--mono);font-size:.58rem;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.host)}</div>`
+        : '';
+
+      const latHtml = item.pending ? '<span style="font-size:1.2rem">WAIT</span>' : (item.up ? `${Number(item.lat).toFixed(1)}<span class="sc-unit">ms</span>` : '<span style="font-size:1.2rem">RTO</span>');
+
+      card.innerHTML = `
+        <div class="sc-glow"></div>
+        <div class="sc-header">
+          <div style="flex:1;min-width:0">
+            <div class="sc-host-wrap" style="display:flex;align-items:center;gap:5px">
+              <div class="sc-host" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(item.host)}">${esc(item.displayName)}</div>
+              <button class="sc-edit-btn" data-host="${esc(item.host)}" title="Edit nama / kategori">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2l3 3L5 14H2v-3L11 2z"/></svg>
+                edit
+              </button>
+            </div>
+            ${ipSubHtml}
+          </div>
+          <div class="sc-pill">${item.pending?'PENDING':(item.up?'UP':'DOWN')}</div>
+        </div>
+        <div class="sc-value">${latHtml}</div>
+        <div class="sc-sub">${item.pending?'waiting_first_ping':(item.up?'response_time.latest':'request_timed_out')}</div>
+        ${metricsHtml}
+        <div class="sc-link">click to view details →</div>`;
+
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => { window.location.href = '/host/' + encodeURIComponent(item.host); });
+      const editBtn = card.querySelector('.sc-edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const h = editBtn.getAttribute('data-host');
+          openRenameModal(h, (window.aliasMap && window.aliasMap[h]) || h, (window.categoryMap && window.categoryMap[h]) || 'Uncategorized');
+        });
+      }
+      catGrid.appendChild(card);
+    });
+
+    groupEl.appendChild(catGrid);
+    grid.appendChild(groupEl);
+  });
+
+  buildExportMenu();
+  filterHosts();
+}
+
+function renderStats(stats){
+  const grid=document.getElementById('statsGrid');
+  grid.innerHTML='';
+  const entries = Object.entries(stats || {});
+  if (!entries.length) return;
+  let sumPct = 0;
+  let counted = 0;
+  entries.forEach(([host,s],i)=>{
+    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
+    const pct=s.uptime_pct;
+    const isPending = pct === null || pct === undefined;
+    if(!isPending){ sumPct += Number(pct) || 0; counted++; }
+    const color=isPending ? '#6a8aaa' : (pct>=99?'#00ff88':pct>=95?'#ffaa00':'#ff4444');
+    const card=document.createElement('div');
+    card.className='stat-card';
+    card.dataset.search=(displayName+' '+host).toLowerCase();
+    if(isPending) card.title = 'Belum ada data 24h — menunggu ping pertama';
+    const hostHtml = displayName !== host
+      ? `<div class="stat-host">${esc(displayName)} <span style="color:var(--t3);font-weight:400">· ${esc(host)}</span></div>`
+      : `<div class="stat-host">${esc(host)}</div>`;
+    const pctHtml = isPending ? '—' : `${esc(pct)}%`;
+    const barW = isPending ? 0 : Number(pct);
+    card.innerHTML=`
+      ${hostHtml}
+      <div class="stat-uptime" style="color:${color}">${pctHtml}</div>
+      <div class="upbar"><div class="upbar-fill" style="width:${barW}%;background:${color}"></div></div>
+      <div class="stat-row">
+        <span>avg <b>${isPending?'—':esc(s.avg_ms)+'ms'}</b></span>
+        <span>min <b>${isPending?'—':esc(s.min_ms)+'ms'}</b></span>
+        <span>max <b>${isPending?'—':esc(s.max_ms)+'ms'}</b></span>
+        <span>loss <b>${isPending?'—':esc(s.avg_loss)+'%'}</b></span>
+      </div>`;
+    grid.appendChild(card);
+  });
+  const avg = counted ? (sumPct / counted).toFixed(1) : null;
+  const el = document.getElementById('sumUptime');
+  if (el) el.textContent = avg !== null ? avg + '%' : '—';
+}
+
+function renderChart(labels, datasets, metric='latency'){
+  const ctx=document.getElementById('latencyChart').getContext('2d');
+  const cfg = METRIC_CONFIG[metric] || METRIC_CONFIG.latency;
+  const unit = cfg.unit;
+  const isBandwidth = metric === 'bandwidth';
+
+  const cds=Object.entries(datasets).map(([host,vals],i)=>{
+    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
+    const c = cfg.color || PALETTE[i%PALETTE.length];
+    return{label:displayName,data:vals.map(v=>v===-1?null:v),borderColor:c,
+      backgroundColor:c+'14',borderWidth:2,tension:0.4,fill:!isBandwidth,
+      pointBackgroundColor:c,pointBorderColor:'#080c14',pointBorderWidth:2,
+      pointRadius:2.5,pointHoverRadius:5,spanGaps:true};
+  });
+
+  if(isBandwidth && window._bwOutData){
+    Object.entries(window._bwOutData.datasets).forEach(([host,vals],i)=>{
+      const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
+      const c='#00a2ff';
+      cds.push({label:displayName+' ↑',data:vals,borderColor:c,backgroundColor:c+'14',
+        borderWidth:1.5,tension:0.4,fill:false,pointRadius:2,pointHoverRadius:4,
+        borderDash:[5,3],spanGaps:true});
+    });
+  }
+
+  const fmtLabels=labels.map(l=>l.split(' ')[1]||l);
+  const tooltipLabel = c=>{
+    const v=c.parsed.y;
+    if(v===null) return `  ${c.dataset.label}: —`;
+    return `  ${c.dataset.label}: ${v.toFixed(2)} ${unit}`;
+  };
+  const yTicksCb = v => v+' '+unit;
+
+  const chartOpts = {
+    responsive:true,maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{position:'top',align:'end',labels:{
+        color:'rgba(106,138,170,0.8)',font:{family:'JetBrains Mono',size:10},
+        boxWidth:10,boxHeight:10,borderRadius:2,padding:14,
+        usePointStyle:true,pointStyle:'circle'}},
+      tooltip:{
+        backgroundColor:'rgba(12,18,32,0.97)',
+        borderColor:'rgba(0,162,255,0.25)',borderWidth:1,
+        titleColor:'#e0f0ff',bodyColor:'rgba(106,138,170,0.9)',padding:12,
+        titleFont:{family:'JetBrains Mono',size:11},
+        bodyFont:{family:'JetBrains Mono',size:10},
+        callbacks:{label:tooltipLabel}}
+    },
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,0.03)'},border:{display:false},
+        ticks:{color:'#2a4060',font:{family:'JetBrains Mono',size:9},maxRotation:0,maxTicksLimit:10}},
+      y:{grid:{color:'rgba(255,255,255,0.04)'},border:{display:false},
+        ticks:{color:'#2a4060',font:{family:'JetBrains Mono',size:9},callback:yTicksCb}}
+    }
+  };
+
+  if(!myChart){
+    myChart=new Chart(ctx,{type:'line',data:{labels:fmtLabels,datasets:cds},options:chartOpts});
+  } else {
+    myChart.data.labels=fmtLabels;
+    myChart.data.datasets=cds;
+    myChart.options.scales.y.ticks.callback=yTicksCb;
+    myChart.options.plugins.tooltip.callbacks.label=tooltipLabel;
+    myChart.update('active');
+  }
+}
+
+function renderEvents(events){
+  const body=document.getElementById('eventsBody');
+  if(!events.length){
+    body.innerHTML='<p class="no-events">$ tail -f events.log<br><span style="color:#00ff88">✓ no down events recorded</span></p>';
+    return;
+  }
+  let html='<table class="events-table"><thead><tr><th>host</th><th>started_at</th><th>resolved_at</th><th>duration</th><th>status</th><th>cmd</th></tr></thead><tbody>';
+  events.forEach(e=>{
+    const displayName = window.aliasMap && window.aliasMap[e.host] ? window.aliasMap[e.host] : e.host;
+    const hostCell = displayName !== e.host ? `${esc(displayName)} <span style="color:var(--t3)">· ${esc(e.host)}</span>` : esc(e.host);
+    html+=`<tr>
+      <td>${hostCell}</td>
+      <td>${esc(e.started_at)}</td>
+      <td>${esc(e.resolved_at)||'—'}</td>
+      <td>${esc(e.duration)||'—'}</td>
+      <td><span class="tag ${esc(e.status)}">${e.status==='resolved'?'resolved':'ongoing'}</span></td>
+      <td><button class="del-btn" data-event-id="${Number(e.id)}">rm</button></td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  body.innerHTML=html;
+  body.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> deleteEvent(btn.getAttribute('data-event-id')));
+  });
+}
+
+async function deleteEvent(id){
+  if(!confirm('rm event?')) return;
+  try{
+    const res=await fetch(`/api/events/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(res.ok) refresh();
+  }catch(e){console.error(e);alert('Gagal menghapus event');}
+}
+
+async function clearAllEvents(){
+  if(!confirm('rm -rf events.log?')) return;
+  try{
+    const res=await fetch('/api/events/clear',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(res.ok) refresh();
+  }catch(e){console.error(e);alert('Gagal membersihkan event');}
+}
+
+function buildExportMenu(){
+  const menu=document.getElementById('exportMenu');
+  if(!menu) return;
+  if(!hosts.length){
+    menu.innerHTML=`<div style="padding:9px 14px;color:var(--t3);font-family:var(--mono);font-size:.68rem">no hosts</div>`;
+    return;
+  }
+  menu.innerHTML='';
+  hosts.forEach(h=>{
+    const b=document.createElement('button');
+    b.className='export-item';
+    b.textContent=`${h} (24h)`;
+    b.addEventListener('click', ()=> doExport(h, 24));
+    menu.appendChild(b);
+  });
+  const all=document.createElement('button');
+  all.className='export-item';
+  all.textContent='all hosts (7d)';
+  all.addEventListener('click', ()=> doExport('all', 168));
+  menu.appendChild(all);
+}
+function doExport(host,hours){
+  if(host==='all'){hosts.forEach(h=>window.open(`/api/export?host=${encodeURIComponent(h)}&hours=${encodeURIComponent(hours)}`))}
+  else window.open(`/api/export?host=${encodeURIComponent(host)}&hours=${encodeURIComponent(hours)}`);
+}
+
+function setMetric(btn,metric){
+  document.querySelectorAll('#metricBtns .range-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMetric=metric;
+  const cfg=METRIC_CONFIG[metric];
+  if(cfg){
+    document.getElementById('chartTitle').textContent=cfg.title;
+    document.getElementById('chartSub').textContent=cfg.sub;
+  }
+  fetchChart();
+}
+
+function setRange(btn,range){
+  document.querySelectorAll('#rangeBtns .range-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentRange=range;
+  fetchChart();
+}
+
+let notifEnabled=false;
+try{ notifEnabled = localStorage.getItem('nms_notif')==='1'; }catch(_){ notifEnabled=false; }
+// Host yang sudah dinotif DOWN (dedup: 1 notif sampai pulih, anti-spam tiap 30s)
+const notifiedDown = new Set();
+function toggleNotif(){
+  if(!('Notification' in window)){alert('Browser tidak mendukung notifikasi.');return}
+  if(Notification.permission==='granted'){notifEnabled=!notifEnabled;updateNotifBtn()}
+  else Notification.requestPermission().then(p=>{if(p==='granted'){notifEnabled=true;updateNotifBtn()}else{notifEnabled=false;updateNotifBtn();}});
+}
+function updateNotifBtn(){
+  const btn=document.getElementById('notifBtn');
+  if(!btn) return;
+  btn.classList.toggle('active-notif',notifEnabled);
+  btn.setAttribute('aria-pressed', notifEnabled ? 'true' : 'false');
+  btn.title = notifEnabled ? 'Notifikasi browser AKTIF (klik untuk matikan)' : 'Notifikasi browser MATI (klik untuk aktifkan)';
+  try{
+    if(notifEnabled) localStorage.setItem('nms_notif','1');
+    else localStorage.removeItem('nms_notif');
+  }catch(_){}
+}
+function pushNotifOnce(host,title,body){
+  if(!notifEnabled||Notification.permission!=='granted') return;
+  if(notifiedDown.has(host)) return; // sudah dinotif, tunggu pulih dulu
+  notifiedDown.add(host);
+  try{
+    new Notification(title,{body,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📡</text></svg>'});
+  }catch(_){}
+}
+function pushNotif(title,body){
+  if(notifEnabled&&Notification.permission==='granted')
+    new Notification(title,{body,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📡</text></svg>'});
+}
+
+async function fetchChart(){
+  try{
+    const cfg=METRIC_CONFIG[currentMetric];
+    document.getElementById('chartSub').textContent=`${cfg.sub} [${currentRange}h]`;
+    if(currentMetric==='latency'){
+      const r=await fetch(`/api/history?hours=${currentRange}`);
+      if(!r.ok) throw new Error();
+      const d=await r.json();
+      if(d.datasets&&Object.keys(d.datasets).length) renderChart(d.labels,d.datasets,'latency');
+    } else if(currentMetric==='bandwidth'){
+      const [inRes,outRes]=await Promise.all([
+        fetch(`/api/agent/history?metric=net_in&hours=${currentRange}`),
+        fetch(`/api/agent/history?metric=net_out&hours=${currentRange}`)
+      ]);
+      const dIn=await inRes.json();
+      const dOut=await outRes.json();
+      window._bwOutData=dOut;
+      if(dIn.datasets&&Object.keys(dIn.datasets).length) renderChart(dIn.labels,dIn.datasets,'bandwidth');
+    } else {
+      const r=await fetch(`/api/agent/history?metric=${currentMetric}&hours=${currentRange}`);
+      if(!r.ok) throw new Error();
+      const d=await r.json();
+      if(d.datasets&&Object.keys(d.datasets).length) renderChart(d.labels,d.datasets,currentMetric);
+    }
+  }catch(e){console.error(e)}
+}
+
+async function refresh(){
+  try{
+    const [mRes,sRes,eRes,aRes,hRes]=await Promise.all([
+      fetch(`/api/history?hours=1`),fetch('/api/stats'),
+      fetch('/api/events'),fetch('/api/agent/metrics'),fetch('/api/hosts')
+    ]);
+    // 401 ditangani wrapper global (redirect /login); jangan tampilkan banner untuk itu
+    if([mRes,sRes,eRes,aRes,hRes].some(r=>r.status===401)) return;
+    if(!mRes.ok||!sRes.ok||!hRes.ok) throw new Error(`HTTP ${mRes.status}/${sRes.status}/${hRes.status}`);
+    const [mData,sData,eData,aData,hData]=await Promise.all([
+      mRes.json(),sRes.json(),
+      eRes.ok ? eRes.json() : [],
+      aRes.ok ? aRes.json() : {},
+      hRes.json()
+    ]);
+
+    window.aliasMap = {};
+    window.categoryMap = {};
+    hosts = [];
+    if(hData && hData.forEach){
+      hData.forEach(h => {
+        const cat = String(h.category || '').trim() || 'Uncategorized';
+        window.aliasMap[h.ip] = (h.alias || '').trim() || h.ip;
+        window.categoryMap[h.ip] = cat;
+        hosts.push(h.ip);
+      });
+    }
+
+    hideErr();
+    setLiveState(true);
+    // Selalu render status agar host PENDING tetap tampil walau belum ada ping_logs
+    renderStatus((mData && mData.datasets) || {}, aData || {});
+    // Jangan timpa chart user: fetch sesuai metric/range yang dipilih
+    fetchChart();
+    // Notif DOWN 1x per host sampai pulih (dedup anti-spam); reset saat UP
+    Object.entries(sData || {}).forEach(([host,s])=>{
+      if(s && s.is_down && !s.is_pending) pushNotifOnce(host,'⚠️ Host DOWN',`${host} tidak dapat dijangkau`);
+      else notifiedDown.delete(host);
+    });
+
+    renderStats(sData || {});
+    renderEvents(Array.isArray(eData) ? eData : []);
+    document.getElementById('last-updated').textContent=
+      new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(err){
+    console.error(err);
+    showErr('connection_refused: '+err.message);
+    setLiveState(false);
+  }
+}
+function setLiveState(on){
+  const pill = document.querySelector('.live-pill');
+  if(!pill) return;
+  const dot = pill.querySelector('.live-dot');
+  const label = pill.childNodes[pill.childNodes.length-1];
+  if(on){
+    pill.classList.remove('off');
+    pill.title = 'Terhubung — auto-refresh 30s';
+    if(dot) dot.style.background = '';
+    if(label && label.nodeType === 3) label.textContent = 'LIVE';
+  } else {
+    pill.classList.add('off');
+    pill.title = 'Terputus — cek koneksi ke server';
+    if(dot) dot.style.background = 'var(--down)';
+    if(label && label.nodeType === 3) label.textContent = 'OFFLINE';
+  }
+}
+
+// Rename / Alias
+let _renameTargetIp = '';
+function openRenameModal(ip, currentAlias, currentCategory){
+  _renameTargetIp = ip;
+  document.getElementById('renameIpDisplay').textContent = ip;
+  
+  const inpAlias = document.getElementById('renameInput');
+  inpAlias.value = (currentAlias === ip) ? '' : currentAlias;
+  inpAlias.placeholder = ip;
+  
+  const inpCat = document.getElementById('renameCategoryInput');
+  inpCat.value = (currentCategory === 'Uncategorized') ? '' : currentCategory;
+  
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(() => inpAlias.focus(), 80);
+}
+function closeRenameModal(){
+  document.getElementById('renameModal').classList.remove('open');
+  _renameTargetIp = '';
+}
+async function saveAlias(){
+  const alias = document.getElementById('renameInput').value.trim();
+  let category = document.getElementById('renameCategoryInput').value.trim();
+  if (!category) category = 'Uncategorized';
+  
+  if(!_renameTargetIp) return;
+  try{
+    const res = await fetch(`/api/hosts/${encodeURIComponent(_renameTargetIp)}/alias`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({alias, category})
+    });
+    if(res.ok){
+      closeRenameModal();
+      await loadHosts(); // update memory maps
+      await refresh(); // re-render
+    } else {
+      alert('Gagal menyimpan perubahan');
+    }
+  } catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
+}
+async function clearAlias(){
+  document.getElementById('renameInput').value = '';
+  document.getElementById('renameCategoryInput').value = 'Uncategorized';
+  await saveAlias();
+}
+
+// Search / Filter Hosts — cari by alias, IP, kategori, dan stats
+function filterHosts(){
+  const input = document.getElementById('hostSearch');
+  const query = (input ? input.value : '').toLowerCase().trim();
+
+  // Filter Cards
+  const cards = document.querySelectorAll('.sc');
+  cards.forEach(card => {
+    const text = (card.dataset.search || card.textContent.toLowerCase());
+    card.style.display = !query || text.includes(query) ? '' : 'none';
+  });
+  // Sembunyikan group header yang semua card-nya hidden
+  document.querySelectorAll('.cat-group').forEach(g=>{
+    const visible = [...g.querySelectorAll('.sc')].some(c=>c.style.display !== 'none');
+    g.style.display = visible ? '' : 'none';
+  });
+
+  // Filter Stats
+  document.querySelectorAll('.stat-card').forEach(card=>{
+    const text = (card.dataset.search || card.textContent.toLowerCase());
+    card.style.display = !query || text.includes(query) ? '' : 'none';
+  });
+
+  // Filter Sidebar (skip header kategori)
+  const sbItems = document.querySelectorAll('#sidebarHosts .sb-item');
+  sbItems.forEach(item => {
+    const text = (item.dataset && item.dataset.search) ? item.dataset.search : item.textContent.toLowerCase();
+    item.style.display = !query || text.includes(query) ? 'flex' : 'none';
+  });
+  // Sembunyikan header kategori jika tidak ada child visible
+  const sidebar = document.getElementById('sidebarHosts');
+  if (sidebar) {
+    let hasVisible = false;
+    [...sidebar.children].forEach(child=>{
+      if (child.dataset && child.dataset.catHeader) {
+        // header: tampilkan hanya jika ada item visible setelahnya sampai header berikut
+        child.style.display = 'none';
+      }
+    });
+    let currentHeader = null;
+    let headerHasVisible = false;
+    const children = [...sidebar.children];
+    children.forEach(child=>{
+      if (child.dataset && child.dataset.catHeader) {
+        if (currentHeader && headerHasVisible) currentHeader.style.display = '';
+        currentHeader = child;
+        headerHasVisible = false;
+      } else if (child.style.display !== 'none') {
+        headerHasVisible = true;
+        hasVisible = true;
+      }
+    });
+    if (currentHeader && headerHasVisible) currentHeader.style.display = '';
+  }
+}
+
+// Enter key shortcut on rename input + global shortcuts + active nav
+document.addEventListener('DOMContentLoaded', () => {
+  setActiveNav();
+  updateNotifBtn(); // sinkronkan status notif tersimpan (localStorage)
+  const rInput = document.getElementById('renameInput');
+  if(rInput) rInput.addEventListener('keydown', e => {
+    if(e.key === 'Enter') saveAlias();
+    if(e.key === 'Escape') closeRenameModal();
+  });
+  const rModal = document.getElementById('renameModal');
+  if(rModal) rModal.addEventListener('click', e => {
+    if(e.target === rModal) closeRenameModal();
+  });
+  // Global shortcuts: "/" fokus search, "r" refresh, "Escape" tutup modal/sidebar
+  document.addEventListener('keydown', e => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if(e.key === '/' && !typing){
+      e.preventDefault();
+      const s = document.getElementById('hostSearch');
+      if(s) s.focus();
+    } else if((e.key === 'r' || e.key === 'R') && !typing){
+      refresh();
+    } else if(e.key === 'Escape'){
+      closeHostModal(); closeSettingsModal(); closeRenameModal();
+      const sb = document.getElementById('sidebar');
+      if(sb) sb.classList.remove('open');
+    }
+  });
+});
+
+// Host Management
+async function openHostModal(){document.getElementById('hostModal').classList.add('open');await loadHosts()}
+function closeHostModal(){document.getElementById('hostModal').classList.remove('open')}
+async function loadHosts(){
+  try{
+    const res=await fetch('/api/hosts');
+    if(res.ok){
+      const data = await res.json();
+      const lst = document.getElementById('hostList');
+      lst.innerHTML='';
+      window.aliasMap = {};
+      window.categoryMap = {};
+      hosts = [];
+      data.forEach(h => {
+        window.aliasMap[h.ip] = (h.alias || '').trim() || h.ip;
+        window.categoryMap[h.ip] = String(h.category || '').trim() || 'Uncategorized';
+        hosts.push(h.ip);
+
+        const div = document.createElement('div');
+        div.className = 'host-item';
+        const info = document.createElement('div');
+        info.style.flex = '1';
+        const title = document.createElement('div');
+        title.style.cssText = 'color:var(--t1);font-weight:600;margin-bottom:2px';
+        title.textContent = h.ip;
+        if (h.alias) {
+          const aliasSpan = document.createElement('span');
+          aliasSpan.style.cssText = 'color:var(--accent2);font-weight:400';
+          aliasSpan.textContent = ' (' + h.alias + ')';
+          title.appendChild(aliasSpan);
+        }
+        const sub = document.createElement('div');
+        sub.style.cssText = 'font-size:.65rem;color:var(--t3)';
+        const snmpVal = h.snmp_community || '';
+        const snmpMask = document.createElement('span');
+        snmpMask.textContent = snmpVal ? '••••' : '-';
+        snmpMask.title = snmpVal ? 'Klik 👁 untuk intip' : 'Tidak ada community';
+        sub.appendChild(document.createTextNode('SNMP: '));
+        sub.appendChild(snmpMask);
+        if(snmpVal){
+          const peek = document.createElement('button');
+          peek.textContent = '👁';
+          peek.title = 'Intip community (klik lagi untuk sembunyikan)';
+          peek.style.cssText = 'background:none;border:none;cursor:pointer;font-size:.65rem;padding:0 2px';
+          peek.setAttribute('aria-label', 'Tampilkan community SNMP');
+          peek.addEventListener('click', ()=>{
+            const shown = snmpMask.textContent !== '••••';
+            snmpMask.textContent = shown ? '••••' : snmpVal;
+          });
+          sub.appendChild(document.createTextNode(' '));
+          sub.appendChild(peek);
+        }
+        sub.appendChild(document.createTextNode(` | ifIndex: ${h.if_index} | Cat: ${h.category || 'Uncategorized'}`));
+        info.appendChild(title);
+        info.appendChild(sub);
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'DEL';
+        delBtn.setAttribute('data-host', h.ip);
+        delBtn.addEventListener('click', ()=> delHost(h.ip));
+        div.appendChild(info);
+        div.appendChild(delBtn);
+        lst.appendChild(div);
+      });
+      buildExportMenu();
+    }
+  }catch(e){console.error(e)}
+}
+async function addHost(event){
+  if(event) event.preventDefault();
+  const ip = document.getElementById('newHostIp').value.trim();
+  const alias = document.getElementById('newHostAlias').value.trim();
+  const categoryRaw = document.getElementById('newHostCategory').value.trim();
+  const category = categoryRaw || 'Uncategorized';
+  const snmp = document.getElementById('newHostSnmp').value.trim();
+  let idx = parseInt(document.getElementById('newHostIfIndex').value, 10);
+  if(!Number.isFinite(idx) || idx < 1) idx = 1;
+  if(!ip) return;
+  // Validasi IP/hostname sederhana agar tidak tersimpan data sampah
+  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const hostname = /^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$/;
+  if(ipv4.test(ip)){
+    const octets = ip.split('.').map(Number);
+    if(octets.some(o=>o>255)){ alert('Error: Format IP tidak valid'); return; }
+  } else if(!hostname.test(ip)){
+    alert('Error: IP/hostname tidak valid'); return;
+  }
+  let res;
+  try{
+    res = await fetch('/api/hosts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx})
+    });
+  }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); return; }
+  if(res.ok){
+    document.getElementById('newHostIp').value='';
+    document.getElementById('newHostAlias').value='';
+    document.getElementById('newHostCategory').value='';
+    document.getElementById('newHostSnmp').value='';
+    document.getElementById('newHostIfIndex').value='1';
+    await loadHosts();
+    await refresh();
+  } else {
+    let msg = 'Gagal menambah host';
+    try{ const err = await res.json(); msg = 'Error: ' + (err.error || msg); }catch(_){}
+    alert(msg);
+  }
+}
+async function delHost(ip){
+  if(!confirm(`rm host ${ip}?`)) return;
+  try{
+    const res=await fetch(`/api/hosts/${encodeURIComponent(ip)}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(res.ok){await loadHosts();refresh()}else alert('Gagal hapus host.');
+  }catch(e){console.error(e);alert('Terjadi kesalahan jaringan.');}
+}
+
+// Settings
+async function openSettingsModal(){
+  document.getElementById('settingsModal').classList.add('open');
+  try{
+    const res=await fetch('/api/settings');const data=await res.json();
+    document.getElementById('cpuThreshold').value=data.cpu_threshold;
+    document.getElementById('ramThreshold').value=data.ram_threshold;
+    document.getElementById('diskThreshold').value=data.disk_threshold||90.0;
+  }catch(e){console.error(e)}
+}
+function closeSettingsModal(){document.getElementById('settingsModal').classList.remove('open')}
+async function saveSettings(e){
+  e.preventDefault();
+  const cpu=parseFloat(document.getElementById('cpuThreshold').value);
+  const ram=parseFloat(document.getElementById('ramThreshold').value);
+  const disk=parseFloat(document.getElementById('diskThreshold').value);
+  for(const [label,v] of [['CPU',cpu],['RAM',ram],['Disk',disk]]){
+    if(!Number.isFinite(v) || v < 1 || v > 100){ alert(`Error: threshold ${label} harus angka 1-100`); return; }
+  }
+  try{
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk})});
+    if(!res.ok){
+      let m='Gagal menyimpan pengaturan';
+      try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}
+      alert(m); return;
+    }
+    closeSettingsModal();
+  }catch(e){console.error(e);alert('Terjadi kesalahan jaringan.');}
+}
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o) o.classList.remove('open')});
+});
+
+refresh();
+setInterval(refresh,30000);
+</script>
+<script>
+// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

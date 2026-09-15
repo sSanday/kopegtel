@@ -1,0 +1,8 @@
+{
+  "venvPath": "/home/sandayy/nms-dashboard",
+  "venv": "env",
+  "pythonPath": "/home/sandayy/nms-dashboard/env/bin/python",
+  "extraPaths": [
+    "/home/sandayy/nms-dashboard/env/lib/python3.12/site-packages"
+  ]
+}

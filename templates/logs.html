@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Log Viewer — NMS KOPEGTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14;
+      --surface:#0c1220;
+      --card:rgba(12,18,32,0.8);
+      --border:rgba(0,255,136,0.1);
+      --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff;
+      --accent2:#00ff88;
+      --t1:#e0f0ff;
+      --t2:#6a8aaa;
+      --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444;
+      --success:#00ff88;
+      --warn:#ffaa00;
+      --info:#00a2ff;
+    }
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
+
+    body{
+      font-family:'Inter',sans-serif;
+      background:var(--bg);color:var(--t1);
+      min-height:100vh;overflow-x:hidden;
+    }
+
+    /* Scan lines */
+    body::before{
+      content:'';position:fixed;inset:0;
+      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
+      pointer-events:none;z-index:9999;
+    }
+    /* Ambient bg */
+    body::after{
+      content:'';position:fixed;inset:0;
+      background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);
+      pointer-events:none;z-index:0;
+    }
+
+    /* Topbar */
+    .topbar{
+      position:sticky;top:0;z-index:100;
+      height:52px;background:rgba(8,12,20,0.97);
+      border-bottom:1px solid var(--border2);
+      backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;
+    }
+    .tb-brand{
+      display:flex;align-items:center;gap:12px;
+      font-family:var(--mono);font-size:.72rem;
+    }
+    .tb-logo{
+      width:26px;height:26px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
+    }
+    .tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+    .tb-path .crumb.active{color:var(--accent2)}
+    .tb-sep{color:var(--t3)}
+    .back-btn{
+      display:flex;align-items:center;gap:6px;
+      background:transparent;border:1px solid var(--border2);
+      color:var(--t2);padding:6px 12px;border-radius:5px;
+      font-family:var(--mono);font-size:.65rem;
+      text-decoration:none;transition:.15s;
+    }
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.12)}
+
+    /* Main layout */
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+
+    /* Section label */
+    .sec-label{
+      font-family:var(--mono);font-size:.62rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:2px;
+      color:var(--t3);display:flex;align-items:center;gap:6px;
+      margin-bottom:14px;
+    }
+    .sec-label::before{content:'//';color:var(--accent2)}
+
+    /* Filter bar */
+    .filter-bar{
+      display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      padding:14px 16px;
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;margin-bottom:16px;
+      backdrop-filter:blur(8px);
+    }
+    .filter-label{
+      font-family:var(--mono);font-size:.6rem;color:var(--t3);
+      text-transform:uppercase;letter-spacing:1.5px;flex-shrink:0;
+    }
+    select{
+      background:rgba(0,0,0,0.4);color:var(--t1);
+      border:1px solid var(--border2);padding:7px 10px;
+      border-radius:5px;font-family:var(--mono);font-size:.7rem;
+      outline:none;cursor:pointer;transition:.15s;
+      -webkit-appearance:none;appearance:none;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%232a4060'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 8px center;
+      padding-right:26px;
+    }
+    select:focus{border-color:rgba(0,162,255,0.35);background-color:rgba(0,162,255,0.04)}
+    select option{background:#0c1220}
+
+    .filter-sep{width:1px;height:22px;background:var(--border2);margin:0 4px;flex-shrink:0}
+    .filter-search{
+      background:rgba(0,0,0,0.4);border:1px solid var(--border2);color:var(--t1);
+      padding:7px 10px;border-radius:5px;font-family:var(--mono);font-size:.7rem;
+      min-width:180px;outline:none;
+    }
+    .filter-search:focus{border-color:rgba(0,162,255,0.35)}
+    .filter-search::placeholder{color:var(--t3)}
+    .export-btn{
+      display:inline-flex;align-items:center;gap:6px;background:transparent;
+      border:1px solid var(--border2);color:var(--t2);padding:7px 12px;border-radius:5px;
+      font-family:var(--mono);font-size:.65rem;cursor:pointer;text-decoration:none;transition:.15s;
+    }
+    .export-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
+    .filter-stats{
+      margin-left:auto;font-family:var(--mono);font-size:.65rem;color:var(--t3);
+    }
+    .filter-stats b{color:var(--t2)}
+    .table-scroll{overflow-x:auto}
+    .table-scroll table{min-width:760px}
+
+    /* Log table card */
+    .log-card{
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
+    }
+
+    /* Terminal top bar */
+    .term-topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
+    }
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    .term-badge{
+      font-family:var(--mono);font-size:.58rem;
+      background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);
+      color:var(--accent2);padding:2px 8px;border-radius:3px;letter-spacing:1px;
+      cursor:pointer;user-select:none;
+    }
+    .term-badge.paused{background:rgba(255,255,255,0.04);border-color:var(--border2);color:var(--t3)}
+
+    table{width:100%;border-collapse:collapse}
+    th{
+      text-align:left;color:var(--t3);font-weight:600;
+      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
+      padding:10px 14px;border-bottom:1px solid var(--border2);
+      background:rgba(0,0,0,0.15);white-space:nowrap;
+    }
+    td{
+      padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
+      font-family:var(--mono);font-size:.7rem;color:var(--t2);
+      transition:.12s;vertical-align:top;
+    }
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,0.02);color:var(--t1)}
+    tr:hover td:first-child{color:var(--t2)}
+
+    .col-time{color:var(--t3)!important;white-space:nowrap}
+    .col-host{color:var(--t1)!important;white-space:nowrap}
+    .col-msg{color:var(--t2);line-height:1.4}
+
+    /* Event type tags */
+    .tag{
+      font-family:var(--mono);font-size:.58rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.8px;
+      border-radius:3px;padding:2px 7px;white-space:nowrap;
+    }
+    .tag.down{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.25)}
+    .tag.up{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.warn{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
+    .tag.info{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
+
+    /* Line number gutter */
+    .row-num{
+      color:var(--t3);font-family:var(--mono);font-size:.62rem;
+      text-align:right;padding-right:6px;user-select:none;width:40px;
+    }
+
+    .empty-state{
+      text-align:center;padding:40px;
+      font-family:var(--mono);font-size:.72rem;color:var(--t3);
+      line-height:2;
+    }
+    .empty-state .cmd{color:var(--accent2)}
+
+    /* Pagination */
+    .pagination{
+      display:flex;align-items:center;justify-content:space-between;
+      margin-top:16px;flex-wrap:wrap;gap:10px;
+    }
+    .page-info{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+    .page-info b{color:var(--t2)}
+    .page-btns{display:flex;gap:4px}
+    .page-btn{
+      background:var(--card);color:var(--t2);
+      border:1px solid var(--border2);padding:6px 12px;
+      border-radius:5px;cursor:pointer;font-family:var(--mono);font-size:.65rem;
+      transition:.15s;
+    }
+    .page-btn:hover:not(:disabled){background:rgba(255,255,255,0.05);color:var(--t1)}
+    .page-btn:disabled{opacity:.35;cursor:not-allowed}
+
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    tbody tr{animation:fadeIn .25s ease both}
+  </style>
+</head>
+<body>
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">⬡</div>
+      <div class="tb-path">
+        <span class="crumb">~/noc</span>
+        <span class="tb-sep">/</span>
+        <span class="crumb">dashboard</span>
+        <span class="tb-sep">/</span>
+        <span class="crumb active">audit-logs</span>
+      </div>
+    </div>
+    <a href="/" class="back-btn">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
+      cd ..
+    </a>
+  </div>
+
+  <div class="wrap">
+
+    <!-- Filter Bar -->
+    <div class="sec-label">audit_log.tail</div>
+    <div class="filter-bar">
+      <span class="filter-label">type</span>
+      <select id="typeFilter" onchange="resetAndFetch()">
+        <option value="">all_events</option>
+        <option value="NETWORK_DOWN">NETWORK_DOWN</option>
+        <option value="NETWORK_UP">NETWORK_UP</option>
+        <option value="HIGH_CPU">HIGH_CPU</option>
+        <option value="CPU_NORMAL">CPU_NORMAL</option>
+        <option value="HIGH_RAM">HIGH_RAM</option>
+        <option value="RAM_NORMAL">RAM_NORMAL</option>
+        <option value="HIGH_DISK">HIGH_DISK</option>
+        <option value="DISK_NORMAL">DISK_NORMAL</option>
+        <option value="AGENT_OFFLINE">AGENT_OFFLINE</option>
+        <option value="AGENT_ONLINE">AGENT_ONLINE</option>
+        <option value="AUDIT">AUDIT</option>
+      </select>
+      <div class="filter-sep"></div>
+      <span class="filter-label">host</span>
+      <select id="hostFilter" onchange="resetAndFetch()">
+        <option value="">all_hosts</option>
+      </select>
+      <input class="filter-search" id="qSearch" type="text" placeholder="$ grep message..." autocomplete="off">
+      <a class="export-btn" id="exportBtn" href="/api/system_logs/export">⬇ csv</a>
+      <div class="filter-stats" id="statsLabel">loading...</div>
+    </div>
+
+    <!-- Log Table -->
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
+        </div>
+        <div class="term-title">bash — tail -f /var/log/nms/audit.log</div>
+        <div class="term-badge" id="liveBadge" role="button" tabindex="0" title="Klik untuk pause/resume auto-refresh 10s">LIVE</div>
+      </div>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>timestamp</th>
+            <th>host</th>
+            <th>event_type</th>
+            <th>message</th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody">
+          <tr><td colspan="5" class="empty-state"><span class="cmd">$</span> loading data...</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <div class="page-info" id="pageInfo">page <b>1</b></div>
+      <div class="page-btns">
+        <button class="page-btn" id="prevBtn" onclick="prevPage()" disabled>← prev</button>
+        <button class="page-btn" id="nextBtn" onclick="nextPage()" disabled>next →</button>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  let currentPage=1;
+  const limit=50;
+  let liveOn=true, liveTimer=null;
+
+  function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+  async function init(){
+    try{
+      // Host list dari /api/hosts (lebih lengkap dari /api/stats) + alias
+      const hRes = await fetch('/api/hosts');
+      if(hRes.status===401) return;
+      if(hRes.ok){
+        const hData = await hRes.json();
+        window.aliasMap = {};
+        const hostFilter = document.getElementById('hostFilter');
+        hData.forEach(h => {
+          window.aliasMap[h.ip] = (h.alias || '').trim() || h.ip;
+          const opt = document.createElement('option');
+          opt.value = h.ip;
+          opt.textContent = window.aliasMap[h.ip] !== h.ip ? `${window.aliasMap[h.ip]} (${h.ip})` : h.ip;
+          hostFilter.appendChild(opt);
+        });
+      }
+    } catch (e) { console.error(e); }
+    const qb = document.getElementById('qSearch');
+    let deb=null;
+    qb.addEventListener('input', ()=>{ clearTimeout(deb); deb=setTimeout(resetAndFetch, 250); });
+    const badge = document.getElementById('liveBadge');
+    const toggle = ()=>{ liveOn=!liveOn; badge.textContent=liveOn?'LIVE':'PAUSED'; badge.classList.toggle('paused',!liveOn); restartLive(); };
+    badge.addEventListener('click', toggle);
+    badge.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();} });
+    document.addEventListener('keydown', (e)=>{
+      const tag=(document.activeElement&&document.activeElement.tagName)||'';
+      if(e.key==='/'&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'){e.preventDefault();qb.focus();}
+    });
+    fetchLogs();
+    restartLive();
+  }
+  function restartLive(){
+    if(liveTimer) clearInterval(liveTimer);
+    if(liveOn) liveTimer=setInterval(()=>{ if(currentPage===1) fetchLogs(false); }, 10000);
+  }
+
+  function getTagClass(type){
+    const t = String(type || '');
+    if(t.includes('DOWN')||t.includes('OFFLINE')) return 'down';
+    if(t.includes('UP')||t.includes('ONLINE')||t.includes('NORMAL')) return 'up';
+    if(t.includes('HIGH')||t==='AUDIT') return 'warn';
+    return 'info';
+  }
+
+  function resetAndFetch(){currentPage=1;fetchLogs()}
+  function currentQuery(){
+    const type=document.getElementById('typeFilter').value;
+    const host=document.getElementById('hostFilter').value;
+    const q=document.getElementById('qSearch').value.trim();
+    return {type, host, q};
+  }
+
+  async function fetchLogs(showLoading=true){
+    const {type, host, q} = currentQuery();
+    const tbody=document.getElementById('logTableBody');
+    if(showLoading) tbody.innerHTML='<tr><td colspan="5" class="empty-state"><span style="color:var(--accent2)">$</span> fetching data...</td></tr>';
+    document.getElementById('exportBtn').href = `/api/system_logs/export?host=${encodeURIComponent(host)}&type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`;
+
+    try{
+      const res=await fetch(`/api/system_logs?page=${currentPage}&limit=${limit}&host=${encodeURIComponent(host)}&type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`);
+      if(res.status===401) return;
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+
+      if(!data.logs || data.logs.length===0){
+        tbody.innerHTML='<tr><td colspan="5" class="empty-state"><span style="color:var(--accent2)">$</span> grep: no records found<br><span style="color:var(--t3)">(try adjusting your filters)</span></td></tr>';
+        document.getElementById('prevBtn').disabled=true;
+        document.getElementById('nextBtn').disabled=true;
+        document.getElementById('pageInfo').innerHTML='page <b>1</b> / <b>1</b>';
+        document.getElementById('statsLabel').innerHTML='<b>0</b> events';
+        return;
+      }
+
+      const offset=(currentPage-1)*limit;
+      tbody.innerHTML='';
+      data.logs.forEach((log,i)=>{
+        const rawHost = String(log.host || '');
+        const displayName = window.aliasMap && window.aliasMap[rawHost] ? window.aliasMap[rawHost] : rawHost;
+        const tr=document.createElement('tr');
+        tr.style.animationDelay=`${i*.02}s`;
+        tr.innerHTML=`
+          <td class="row-num">${offset+i+1}</td>
+          <td class="col-time">${esc(log.timestamp)}</td>
+          <td class="col-host">${esc(displayName)}${esc(displayName)!==esc(rawHost)?`<br><span style="color:var(--t3);font-size:.6rem">${esc(rawHost)}</span>`:''}</td>
+          <td><span class="tag ${esc(getTagClass(log.event_type))}">${esc(log.event_type)}</span></td>
+          <td class="col-msg">${esc(log.message)}</td>`;
+        tbody.appendChild(tr);
+      });
+
+      const totalPages=Math.ceil(data.total/limit)||1;
+      document.getElementById('pageInfo').innerHTML=`page <b>${currentPage}</b> / <b>${totalPages}</b>`;
+      document.getElementById('statsLabel').innerHTML=`<b>${data.total}</b> events total`;
+      document.getElementById('prevBtn').disabled=currentPage===1;
+      document.getElementById('nextBtn').disabled=currentPage>=totalPages;
+
+    }catch(e){
+      console.error(e);
+      tbody.innerHTML=`<tr><td colspan="5" class="empty-state" style="color:var(--danger)">ERR: failed to fetch log data: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function prevPage(){if(currentPage>1){currentPage--;fetchLogs()}}
+  function nextPage(){currentPage++;fetchLogs()}
+
+  init();
+</script>
+<script>
+// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

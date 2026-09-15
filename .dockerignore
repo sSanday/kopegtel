@@ -1,0 +1,13 @@
+# Jangan baked ke image: data, secret, artefak lokal
+network.db
+network.db-wal
+network.db-shm
+network.db.corrupt-*
+backups/
+env/
+__pycache__/
+*.pyc
+.git/
+.vscode/
+.env
+*.bak

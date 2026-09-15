@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory — NMS KOPEGTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14; --surface:#0c1220; --card:rgba(12,18,32,0.8);
+      --border:rgba(0,255,136,0.1); --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff; --accent2:#00ff88;
+      --t1:#e0f0ff; --t2:#6a8aaa; --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444; --success:#00ff88; --warn:#ffaa00; --info:#00a2ff;
+    }
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden}
+    body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);pointer-events:none;z-index:9999}
+    body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);pointer-events:none;z-index:0}
+    .topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,0.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+    .tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
+    .tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4)}
+    .tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+    .tb-path .crumb.active{color:var(--accent2)}
+    .tb-sep{color:var(--t3)}
+    .back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none;transition:.15s}
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.12)}
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+    .sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);display:flex;align-items:center;gap:6px;margin-bottom:14px}
+    .sec-label::before{content:'//';color:var(--accent2)}
+    .filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px;backdrop-filter:blur(8px)}
+    .add-btn{display:flex;align-items:center;gap:6px;background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:var(--accent2);padding:8px 14px;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;transition:.2s}
+    .add-btn:hover{background:rgba(0,255,136,0.2)}
+    .ghost-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:8px 14px;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;transition:.2s;text-decoration:none}
+    .ghost-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.12)}
+    .search-input{background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);padding:8px 12px;border-radius:5px;font-family:var(--mono);font-size:.7rem;min-width:220px}
+    .search-input:focus{outline:none;border-color:rgba(0,162,255,0.4)}
+    .filter-select{background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);padding:8px 10px;border-radius:5px;font-family:var(--mono);font-size:.65rem}
+    .filter-stats{margin-left:auto;font-family:var(--mono);font-size:.65rem;color:var(--t3);display:flex;gap:12px}
+    .filter-stats b{color:var(--t1)}
+    .log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden;backdrop-filter:blur(8px)}
+    .term-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2)}
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    .refresh-btn{background:transparent;border:1px solid rgba(0,162,255,0.3);color:var(--accent);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:.6rem;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:4px}
+    .refresh-btn:hover{background:rgba(0,162,255,0.1);color:#fff}
+    .refresh-btn.spin svg{animation:spin 1s linear infinite}
+    @keyframes spin{100%{transform:rotate(360deg)}}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;color:var(--t3);font-weight:600;font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.15);white-space:nowrap}
+    td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);transition:.12s;vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,0.02);color:var(--t1)}
+    .col-host{color:var(--t1)!important;white-space:nowrap;font-weight:500}
+    .sub{display:block;font-size:.6rem;color:var(--t3);margin-top:2px}
+    .tag{font-family:var(--mono);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap;display:inline-block}
+    .tag.up{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.down{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .tag.pending{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
+    .tag.unmonitored{background:rgba(255,255,255,0.05);color:var(--t3);border:1px solid var(--border2)}
+    .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
+    .tag.aktif{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.cadangan{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
+    .tag.rusak,.tag.hilang{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .action-btn{background:transparent;border:none;color:var(--t3);cursor:pointer;transition:.2s;padding:4px;border-radius:4px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
+    .action-btn:hover{color:var(--t1);background:rgba(255,255,255,0.06)}
+    .action-btn.del:hover{color:var(--danger);background:rgba(255,68,68,0.1)}
+    .empty-state{text-align:center;padding:60px 20px;font-family:var(--mono);font-size:.72rem;color:var(--t2);line-height:2}
+    .empty-state .cmd{color:var(--accent2);display:block;font-size:1.2rem;margin-bottom:8px}
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:999;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:0.3s;padding:16px}
+    .modal-overlay.active{opacity:1;pointer-events:auto}
+    .modal{background:var(--surface);width:560px;max-width:100%;max-height:90vh;overflow-y:auto;border-radius:8px;border:1px solid var(--border2);box-shadow:0 10px 40px rgba(0,0,0,0.5);transform:translateY(20px);transition:0.3s}
+    .modal-overlay.active .modal{transform:translateY(0)}
+    .modal-header{padding:16px 20px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:0.8rem;color:var(--t1);display:flex;justify-content:space-between;align-items:center}
+    .modal-body{padding:20px}
+    .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form-group{margin-bottom:12px}
+    .form-group.full{grid-column:1/-1}
+    .form-group label{display:block;font-size:0.65rem;color:var(--t2);margin-bottom:6px;font-family:var(--mono)}
+    .form-group label b{color:var(--danger)}
+    .form-group input,.form-group select,.form-group textarea{width:100%;background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);padding:10px;border-radius:5px;font-family:var(--mono);font-size:0.75rem}
+    .form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:rgba(0,162,255,0.4)}
+    .btn-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+    .btn{padding:8px 16px;border-radius:5px;font-size:0.75rem;font-family:var(--mono);cursor:pointer;border:none}
+    .btn-cancel{background:transparent;color:var(--t2);border:1px solid var(--border2)}
+    .btn-submit{background:var(--accent);color:#fff}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    tbody tr{animation:fadeIn .25s ease both}
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">⬡</div>
+      <div class="tb-path">
+        <span class="crumb">~/noc</span><span class="tb-sep">/</span>
+        <span class="crumb">dashboard</span><span class="tb-sep">/</span>
+        <span class="crumb active">inventory</span>
+      </div>
+    </div>
+    <a href="/" class="back-btn">cd ..</a>
+  </div>
+
+  <div class="wrap">
+    <div class="sec-label">device_inventory.list</div>
+    <div class="filter-bar">
+      <button class="add-btn" onclick="openModal()">+ Add Device</button>
+      <input class="search-input" id="q" placeholder="$ search hostname / ip / lokasi..." autocomplete="off">
+      <select class="filter-select" id="fType" onchange="render()"><option value="">semua tipe</option></select>
+      <select class="filter-select" id="fLive" onchange="render()">
+        <option value="">semua status</option><option value="up">up</option>
+        <option value="down">down</option><option value="pending">pending</option><option value="unmonitored">unmonitored</option>
+      </select>
+      <a class="ghost-btn" href="/api/inventory/export">⬇ export.csv</a>
+      <div class="filter-stats"><span>total <b id="cTotal">0</b></span><span style="color:var(--success)">up <b id="cUp">0</b></span><span style="color:var(--danger)">down <b id="cDown">0</b></span></div>
+    </div>
+
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div></div>
+        <div class="term-title">inventory_db.sh</div>
+        <div style="display:flex;align-items:center;gap:8px"><span class="last-updated">updated: <span id="lastUpdated">—</span></span><button class="refresh-btn" onclick="load()" id="refBtn">refresh</button></div>
+      </div>
+      <div style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Live</th><th>Hostname / IP</th><th>Tipe</th><th>Lokasi</th>
+          <th>PIC</th><th>Aset</th><th></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header"><span id="mTitle">$ add_device</span><button class="action-btn" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="fId">
+        <div class="frow">
+          <div class="form-group"><label>Hostname <b>*</b></label><input id="fHostname" placeholder="MIKROTIK-CORE" required maxlength="100"></div>
+          <div class="form-group"><label>IP Address <b>*</b></label><input id="fIp" placeholder="192.168.1.1" required maxlength="45" inputmode="decimal"></div>
+          <div class="form-group"><label>Tipe</label><select id="fDeviceType">
+            <option value="">—</option><option>Router</option><option>Switch</option><option>Access Point</option>
+            <option>Server</option><option>OLT</option><option>ONT/Modem</option><option>CCTV</option><option>Lainnya</option>
+          </select></div>
+          <div class="form-group"><label>Merek / Model</label><input id="fBrand" placeholder="Mikrotik RB4011"></div>
+          <div class="form-group"><label>Lokasi</label><input id="fLocation" placeholder="Gedung A Lt.2"></div>
+          <div class="form-group"><label>No. Aset</label><input id="fAssetNo" placeholder="AST-001"></div>
+          <div class="form-group"><label>PIC</label><input id="fPic" placeholder="Nama penanggung jawab"></div>
+          <div class="form-group"><label>No. HP PIC</label><input id="fPhone" placeholder="08xx..."></div>
+          <div class="form-group"><label>Tgl. Pasang</label><input id="fInstall" type="date"></div>
+          <div class="form-group"><label>Status Aset</label><select id="fAssetStatus">
+            <option>aktif</option><option>cadangan</option><option>rusak</option><option>hilang</option>
+          </select></div>
+          <div class="form-group full"><label>Catatan</label><input id="fNotes" placeholder="cth: port 3 ke switch lantai 1"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-cancel" onclick="closeModal()">batal</button>
+          <button class="btn btn-submit" id="saveBtn" onclick="save()">simpan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let DATA=[];
+const LIVE_OK=new Set(['up','down','pending','unmonitored']);
+function liveCls(v){ return LIVE_OK.has(v) ? v : 'unmonitored'; }
+async function load(){
+  const btn=document.getElementById('refBtn');btn.classList.add('spin');
+  try{
+    const res=await fetch('/api/inventory');
+    if(res.status===401) return;
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    DATA=await res.json();
+    const types=[...new Set(DATA.map(d=>d.device_type).filter(Boolean))].sort();
+    const sel=document.getElementById('fType'),cur=sel.value;
+    sel.innerHTML='<option value="">semua tipe</option>'+types.map(t=>`<option value="${esc(t)}" ${t===cur?'selected':''}>${esc(t)}</option>`).join('');
+    document.getElementById('cTotal').textContent=DATA.length;
+    document.getElementById('cUp').textContent=DATA.filter(d=>d.live==='up').length;
+    document.getElementById('cDown').textContent=DATA.filter(d=>d.live==='down').length;
+    render();
+    const lu=document.getElementById('lastUpdated');
+    if(lu) lu.textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }catch(e){console.error(e);document.getElementById('tbody').innerHTML=`<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">gagal memuat: ${esc(e.message)}</td></tr>`;}
+  finally{setTimeout(()=>btn.classList.remove('spin'),400);}
+}
+function render(){
+  const q=document.getElementById('q').value.toLowerCase(),
+        ft=document.getElementById('fType').value, fl=document.getElementById('fLive').value;
+  const rows=DATA.filter(d=>{
+    if(ft&&d.device_type!==ft)return false;
+    if(fl&&d.live!==fl)return false;
+    if(q&&!(d.hostname+' '+d.ip+' '+(d.location||'')+' '+(d.pic_name||'')).toLowerCase().includes(q))return false;
+    return true;
+  });
+  document.getElementById('tbody').innerHTML=rows.map(d=>`<tr>
+    <td><span class="tag ${liveCls(d.live)}">${esc(d.live)}</span>${d.last_latency!=null?`<span class="sub">${esc(d.last_latency)} ms</span>`:''}</td>
+    <td class="col-host">${esc(d.hostname)}<span class="sub">${esc(d.ip)}</span></td>
+    <td>${esc(d.device_type||'-')}<span class="sub">${esc(d.brand_model||'')}</span></td>
+    <td>${esc(d.location||'-')}</td>
+    <td>${esc(d.pic_name||'-')}<span class="sub">${esc(d.pic_phone||'')}</span></td>
+    <td><span class="tag ${(d.asset_status||'aktif').toLowerCase()}">${esc(d.asset_status||'aktif')}</span><span class="sub">${esc(d.asset_no||'')}</span></td>
+    <td style="white-space:nowrap">${d.monitored?`<a class="action-btn" href="/host/${encodeURIComponent(d.ip)}" title="grafik">📈</a>`:`<span class="action-btn" title="belum dimonitor">—</span>`}<button class="action-btn" onclick='edit(${d.id})'>✎</button><button class="action-btn del" onclick="del(${d.id})">🗑</button></td>
+  </tr>`).join('')||`<tr><td colspan="7"><div class="empty-state"><span class="cmd">$ inventory --empty</span>Belum ada data. Klik <b>+ Add Device</b> untuk mulai mencatat perangkat.</div></td></tr>`;
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function openModal(){document.getElementById('mTitle').textContent='$ add_device';['fId','fHostname','fIp','fBrand','fLocation','fAssetNo','fPic','fPhone','fInstall','fNotes'].forEach(id=>document.getElementById(id).value='');document.getElementById('fDeviceType').value='';document.getElementById('fAssetStatus').value='aktif';const sb=document.getElementById('saveBtn');if(sb)sb.disabled=false;document.getElementById('modalOverlay').classList.add('active');setTimeout(()=>{const el=document.getElementById('fHostname');if(el)el.focus();},60);}
+function closeModal(){document.getElementById('modalOverlay').classList.remove('active');const sb=document.getElementById('saveBtn');if(sb)sb.disabled=false;}
+function edit(id){
+  const d=DATA.find(x=>x.id===id);if(!d)return;
+  document.getElementById('mTitle').textContent='$ edit_device';
+  fId.value=d.id;fHostname.value=d.hostname;fIp.value=d.ip;fDeviceType.value=d.device_type||'';
+  fBrand.value=d.brand_model||'';fLocation.value=d.location||'';fAssetNo.value=d.asset_no||'';
+  fPic.value=d.pic_name||'';fPhone.value=d.pic_phone||'';fInstall.value=d.install_date||'';
+  fAssetStatus.value=d.asset_status||'aktif';fNotes.value=d.notes||'';
+  document.getElementById('modalOverlay').classList.add('active');
+}
+function validIP(ip){const m=/^(\d{1,3}\.){3}\d{1,3}$/.exec(ip);if(!m)return false;return ip.split('.').every(p=>Number(p)<=255);}
+async function save(){
+  const hostname=fHostname.value.trim(), ip=fIp.value.trim();
+  if(!hostname||!ip){alert('gagal simpan: Hostname & IP wajib diisi');return;}
+  if(!validIP(ip)){alert('gagal simpan: Format IP tidak valid');return;}
+  const body={hostname,ip,device_type:fDeviceType.value,brand_model:fBrand.value.trim(),location:fLocation.value.trim(),asset_no:fAssetNo.value.trim(),pic_name:fPic.value.trim(),pic_phone:fPhone.value.trim(),install_date:fInstall.value,asset_status:fAssetStatus.value,notes:fNotes.value.trim()};
+  const id=fId.value;
+  const btn=document.getElementById('saveBtn');if(btn)btn.disabled=true;
+  try{
+    const res=await fetch(id?`/api/inventory/${encodeURIComponent(id)}`:'/api/inventory',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(res.status===401)return;
+    let j={};try{j=await res.json();}catch(_){}
+    if(!res.ok)throw new Error(j.error||`HTTP ${res.status}`);
+    closeModal();load();
+  }catch(e){console.error(e);alert('gagal simpan: '+e.message);}
+  finally{if(btn)btn.disabled=false;}
+}
+async function del(id){if(!confirm('hapus data ini?'))return;try{const r=await fetch(`/api/inventory/${encodeURIComponent(id)}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});if(r.status===401)return;if(!r.ok){let m='gagal hapus';try{const j=await r.json();m=j.error||m;}catch(_){}alert(m);return;}load();}catch(e){console.error(e);alert('gagal hapus: '+e.message);}}
+document.getElementById('modalOverlay').addEventListener('click',e=>{if(e.target.id==='modalOverlay')closeModal();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeModal();
+  const tag=(document.activeElement&&document.activeElement.tagName)||'';
+  if(e.key==='/'&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'){e.preventDefault();const s=document.getElementById('q');if(s)s.focus();}
+});
+let searchDeb=null;
+document.getElementById('q').addEventListener('input',()=>{clearTimeout(searchDeb);searchDeb=setTimeout(render,180);});
+window.addEventListener('DOMContentLoaded',()=>{load();setInterval(load,30000);});
+</script>
+<script>
+// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

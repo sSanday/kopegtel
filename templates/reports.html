@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — NMS KOPEGTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14; --surface:#0c1220; --card:rgba(12,18,32,0.8);
+      --border:rgba(0,255,136,0.1); --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff; --accent2:#00ff88;
+      --t1:#e0f0ff; --t2:#6a8aaa; --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444; --success:#00ff88; --warn:#ffaa00; --info:#00a2ff;
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden}
+    body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);pointer-events:none;z-index:9999}
+    body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);pointer-events:none;z-index:0}
+    .topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,0.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+    .tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
+    .tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px}
+    .tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+    .tb-path .crumb.active{color:var(--accent2)}
+    .tb-sep{color:var(--t3)}
+    .back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
+    .back-btn:hover{color:var(--t1)}
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+    .sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
+    .sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
+    .filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px}
+    .range-btns{display:flex;gap:4px}
+    .range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.65rem;font-weight:600;padding:5px 12px;border-radius:4px;cursor:pointer}
+    .range-btn.active{background:rgba(0,162,255,0.12);border-color:rgba(0,162,255,0.45);color:var(--info)}
+    .btn{background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.3);color:var(--accent);padding:7px 14px;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+    .btn:hover{background:rgba(0,162,255,0.2);color:#fff}
+    .btn.green{background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.3);color:var(--accent2)}
+    .btn.green:hover{background:rgba(0,255,136,0.2)}
+    .btn.ghost{background:transparent;border-color:var(--border2);color:var(--t2)}
+    .btn.ghost:hover{color:var(--t1)}
+    .btn:disabled{opacity:.5;cursor:wait}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px}
+    .card{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:14px 16px}
+    .card .k{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+    .card .v{font-family:var(--mono);font-size:1.4rem;font-weight:700}
+    .log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-bottom:16px}
+    .term-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2)}
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    .table-scroll{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:760px}
+    th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.15);white-space:nowrap}
+    td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.68rem;color:var(--t2)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,0.02)}
+    .tag{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap}
+    .tag.resolved{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.ongoing{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--mono);font-size:.7rem}
+    .note{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-top:8px}
+    .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
+    @media print{
+      body::before,body::after,.filter-bar .btn,.back-btn{display:none!important}
+      body{background:#fff;color:#000}
+      .card,.log-card{border-color:#ccc;background:#fff}
+      td,th{color:#000}
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">⬡</div>
+      <div class="tb-path"><span class="crumb">~/noc</span><span class="tb-sep">/</span><span class="crumb">dashboard</span><span class="tb-sep">/</span><span class="crumb active">reports</span></div>
+    </div>
+    <a href="/" class="back-btn">cd ..</a>
+  </div>
+  <div class="wrap">
+    <div class="sec-label">sla_report</div>
+    <div class="filter-bar">
+      <div class="range-btns" id="daysBtns">
+        <button class="range-btn" data-days="1">1D</button>
+        <button class="range-btn" data-days="3">3D</button>
+        <button class="range-btn active" data-days="7">7D</button>
+      </div>
+      <span class="last-updated">generated: <span id="genAt">—</span></span>
+      <span style="flex:1"></span>
+      <a class="btn ghost" id="expSummary" href="#">⬇ summary.csv</a>
+      <a class="btn ghost" id="expOutages" href="#">⬇ outages.csv</a>
+      <button class="btn" onclick="window.print()">🖨 print/pdf</button>
+      <button class="btn green" id="sendBtn" onclick="sendTelegram()">✈ telegram</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="k">hosts</div><div class="v" id="tHosts">—</div></div>
+      <div class="card"><div class="k">avg uptime</div><div class="v" id="tUptime" style="color:var(--accent2)">—</div></div>
+      <div class="card"><div class="k">total outages</div><div class="v" id="tOut">—</div></div>
+      <div class="card"><div class="k">total downtime</div><div class="v" id="tDown">—</div></div>
+    </div>
+    <div class="sec-label">uptime_sla.per_host</div>
+    <div class="log-card">
+      <div class="term-topbar"><div class="term-dots"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div></div><div class="term-title">sla_table.sh</div><span class="last-updated" id="hostCount"></span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Host</th><th>Category</th><th>Uptime</th><th>Checks</th><th>DOWN</th><th>Avg</th><th>Loss</th><th>MTTR</th></tr></thead>
+        <tbody id="slaBody"></tbody>
+      </table></div>
+    </div>
+    <div class="sec-label">outage_recap</div>
+    <div class="log-card">
+      <div class="term-topbar"><div class="term-dots"><div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div></div><div class="term-title">outages.sh</div><span class="last-updated" id="outCount"></span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Host</th><th>Started</th><th>Resolved</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody id="outBody"></tbody>
+      </table></div>
+    </div>
+    <div class="note">* ping_logs retensi 7 hari — periode max 7D agar SLA tidak menyesatkan. Outage dari down_events.</div>
+  </div>
+<script>
+let curDays = 7;
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function upColor(p){ if(p===null||p===undefined) return '#6a8aaa'; return p>=99?'#00ff88':p>=95?'#ffaa00':'#ff4444'; }
+async function fetchReport(){
+  try{
+    const res = await fetch(`/api/reports/summary?days=${curDays}`);
+    if(res.status===401) return;
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const d = await res.json();
+    document.getElementById('genAt').textContent = d.generated_at || '—';
+    document.getElementById('tHosts').textContent = d.totals.hosts;
+    const au = d.totals.avg_uptime;
+    const auEl = document.getElementById('tUptime');
+    auEl.textContent = au===null||au===undefined ? '—' : au+'%';
+    auEl.style.color = upColor(au);
+    document.getElementById('tOut').textContent = d.totals.total_outages;
+    document.getElementById('tDown').textContent = d.totals.total_downtime_str || '—';
+    document.getElementById('expSummary').href = `/api/reports/export?days=${curDays}&table=summary`;
+    document.getElementById('expOutages').href = `/api/reports/export?days=${curDays}&table=outages`;
+    const sb = document.getElementById('slaBody');
+    document.getElementById('hostCount').textContent = `${d.hosts.length} hosts · ${d.period_days}D`;
+    sb.innerHTML = d.hosts.length ? d.hosts.map(h=>{
+      const up = h.uptime_pct===null||h.uptime_pct===undefined ? '—' : h.uptime_pct+'%';
+      return `<tr><td style="color:var(--t1)">${esc(h.alias)}<br><span style="color:var(--t3);font-size:.6rem">${esc(h.ip)}</span></td><td>${esc(h.category)}</td><td style="color:${upColor(h.uptime_pct)};font-weight:700">${up}</td><td>${h.total_checks}</td><td>${h.down_count}x</td><td>${h.avg_ms===null?'—':h.avg_ms+' ms'}</td><td>${h.avg_loss===null?'—':h.avg_loss+'%'}</td><td>${esc(h.mttr_str)}</td></tr>`;
+    }).join('') : `<tr><td colspan="8"><div class="empty">$ no hosts</div></td></tr>`;
+    const ob = document.getElementById('outBody');
+    document.getElementById('outCount').textContent = `${d.outages.length} rows`;
+    ob.innerHTML = d.outages.length ? d.outages.map(o=>`<tr><td style="color:var(--t1)">${esc(o.alias)}<br><span style="color:var(--t3);font-size:.6rem">${esc(o.host)}</span></td><td>${esc(o.started_at)}</td><td>${esc(o.resolved_at)}</td><td>${esc(o.duration_str)}</td><td><span class="tag ${esc(o.status)}">${esc(o.status)}</span></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty">$ status = ALL_CLEAR — tidak ada outage pada periode ini.</div></td></tr>`;
+  }catch(e){ console.error(e); }
+}
+async function sendTelegram(){
+  const btn = document.getElementById('sendBtn');
+  if(!confirm(`Kirim laporan ${curDays} hari ke Telegram?`)) return;
+  btn.disabled = true;
+  try{
+    const r = await fetch('/api/reports/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days:curDays})});
+    if(r.status===401) return;
+    if(!r.ok){ let m='gagal'; try{const j=await r.json(); m=j.error||m;}catch(_){} alert('Error: '+m); return; }
+    alert('Laporan terkirim ke Telegram.');
+  }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
+  finally{ btn.disabled = false; }
+}
+window.addEventListener('DOMContentLoaded', ()=>{
+  document.querySelectorAll('#daysBtns .range-btn').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#daysBtns .range-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    curDays = parseInt(b.getAttribute('data-days'),10) || 7;
+    fetchReport();
+  }));
+  fetchReport();
+});
+</script>
+<script>
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

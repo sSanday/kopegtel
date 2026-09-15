@@ -1,0 +1,14 @@
+[Unit]
+Description=NMS KOPEGTEL Dashboard
+After=network.target
+
+[Service]
+WorkingDirectory=/home/sandayy/nms-dashboard1
+ExecStart=/home/sandayy/nms-dashboard1/env/bin/gunicorn -w 1 --threads 4 -b 127.0.0.1:5000 app:app
+EnvironmentFile=/home/sandayy/nms-dashboard1/.env
+Restart=always
+RestartSec=5
+User=sandayy
+
+[Install]
+WantedBy=multi-user.target

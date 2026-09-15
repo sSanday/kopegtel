@@ -1,0 +1,14 @@
+.env
+.env.bak*
+.env.backup*
+env/
+__pycache__/
+*.pyc
+network.db
+network.db-journal
+network.db-wal
+network.db-shm
+network.db.corrupt-*
+*.bak
+backups/
+.vscode/

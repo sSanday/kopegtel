@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — NMS KOPEGTEL</title>
+<meta name="description" content="Login ke Network Monitoring System KOPEGTEL">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c14;
+  --surface:rgba(12,18,32,0.92);
+  --border:rgba(0,255,136,0.15);
+  --border2:rgba(255,255,255,0.07);
+  --accent:#00a2ff;
+  --accent2:#00ff88;
+  --t1:#e0f0ff;
+  --t2:#6a8aaa;
+  --t3:#2a4060;
+  --err:#ff4444;
+  --err-dim:rgba(255,68,68,0.08);
+}
+::-webkit-scrollbar{width:4px}
+
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--bg);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  color:var(--t1);
+}
+
+/* Scan lines */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* Grid dots bg */
+.grid-bg{
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(0,162,255,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,162,255,0.03) 1px,transparent 1px);
+  background-size:40px 40px;
+  animation:gridDrift 20s linear infinite;
+}
+@keyframes gridDrift{0%{background-position:0 0}100%{background-position:40px 40px}}
+
+/* Glow orbs */
+.orb{position:fixed;border-radius:50%;filter:blur(80px);pointer-events:none;animation:drift 12s ease-in-out infinite}
+.orb-1{width:500px;height:500px;background:rgba(0,162,255,0.06);top:-15%;left:-15%;animation-delay:0s}
+.orb-2{width:350px;height:350px;background:rgba(0,255,136,0.05);bottom:-10%;right:-10%;animation-delay:-6s}
+@keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(25px,-20px)}}
+
+/* Corner decorations */
+.corner{position:fixed;width:80px;height:80px;pointer-events:none;opacity:.3}
+.corner-tl{top:20px;left:20px;border-top:1px solid var(--accent2);border-left:1px solid var(--accent2)}
+.corner-tr{top:20px;right:20px;border-top:1px solid var(--accent);border-right:1px solid var(--accent)}
+.corner-bl{bottom:20px;left:20px;border-bottom:1px solid var(--accent2);border-left:1px solid var(--accent2)}
+.corner-br{bottom:20px;right:20px;border-bottom:1px solid var(--accent);border-right:1px solid var(--accent)}
+
+/* Status bar top */
+.status-bar{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  height:32px;background:rgba(8,12,20,0.95);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--t3);
+}
+.sb-left{display:flex;align-items:center;gap:16px}
+.sb-right{display:flex;align-items:center;gap:6px}
+.sb-pill{
+  display:flex;align-items:center;gap:4px;color:var(--accent2);
+  font-size:.58rem;
+}
+.sb-dot{width:5px;height:5px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Main card */
+.card{
+  position:relative;z-index:10;
+  width:100%;max-width:400px;
+  margin:20px;
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:12px;
+  overflow:hidden;
+  backdrop-filter:blur(24px);
+  box-shadow:0 0 60px rgba(0,162,255,0.08),0 32px 80px rgba(0,0,0,.6);
+  animation:cardIn .5s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* Card top accent line */
+.card::before{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,162,255,0.5),rgba(0,255,136,0.5),transparent);
+}
+
+/* Terminal header */
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;background:rgba(0,0,0,0.3);
+  border-bottom:1px solid var(--border2);
+}
+.ch-dots{display:flex;gap:5px}
+.ch-dot{width:10px;height:10px;border-radius:50%}
+.ch-dot.r{background:#ff5f57}.ch-dot.y{background:#febc2e}.ch-dot.g{background:#28c840}
+.ch-title{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--t3)}
+.ch-status{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--accent2)}
+
+.card-body{padding:28px 28px 24px}
+
+/* Logo */
+.logo-wrap{display:flex;flex-direction:column;align-items:center;margin-bottom:28px}
+.logo-icon{
+  width:60px;height:60px;
+  background:linear-gradient(135deg,rgba(0,162,255,0.2),rgba(0,255,136,0.15));
+  border:1px solid rgba(0,162,255,0.3);
+  border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:14px;
+  position:relative;
+  box-shadow:0 0 30px rgba(0,162,255,0.2),inset 0 0 20px rgba(0,0,0,0.3);
+}
+.logo-icon::after{
+  content:'';position:absolute;inset:-1px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(0,162,255,0.4),transparent,rgba(0,255,136,0.3));
+  padding:1px;-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;
+}
+.logo-sym{font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:700;color:var(--accent2)}
+.logo-name{font-family:'JetBrains Mono',monospace;font-size:.9rem;font-weight:700;letter-spacing:3px;color:var(--t1)}
+.logo-sub{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--t3);margin-top:4px;letter-spacing:1px}
+.sys-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);
+  border-radius:3px;padding:3px 10px;
+  font-family:'JetBrains Mono',monospace;font-size:.58rem;font-weight:600;
+  color:var(--accent2);margin-top:10px;letter-spacing:1.5px;
+}
+
+/* Terminal prompt line */
+.prompt-line{
+  display:flex;align-items:center;gap:6px;
+  font-family:'JetBrains Mono',monospace;font-size:.65rem;
+  color:var(--t3);margin-bottom:18px;
+}
+.prompt-sym{color:var(--accent2)}
+.prompt-cmd{color:var(--t2)}
+.prompt-cursor{
+  width:7px;height:12px;background:var(--accent2);
+  display:inline-block;animation:blink 1s step-end infinite;margin-left:2px;
+}
+
+/* Error box */
+.error-box{
+  display:flex;align-items:flex-start;gap:8px;
+  background:var(--err-dim);border:1px solid rgba(255,68,68,0.25);
+  border-radius:6px;padding:10px 12px;margin-bottom:16px;
+  font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--err);
+  animation:shake .35s ease;
+}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.err-icon{font-size:.8rem;margin-top:1px;flex-shrink:0}
+
+/* Form */
+.form-group{margin-bottom:14px}
+.form-label{
+  display:block;font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  font-weight:600;color:var(--t3);margin-bottom:7px;
+  text-transform:uppercase;letter-spacing:1.5px;
+}
+.input-wrap{position:relative}
+.input-icon{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  color:var(--t3);font-size:.75rem;pointer-events:none;transition:.2s;
+  font-family:'JetBrains Mono',monospace;
+}
+.input-wrap:focus-within .input-icon{color:var(--accent)}
+input[type="text"],input[type="password"]{
+  width:100%;
+  padding:11px 12px 11px 36px;
+  background:rgba(0,0,0,0.4);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  color:var(--t1);
+  font-family:'JetBrains Mono',monospace;
+  font-size:.78rem;
+  transition:.2s;outline:none;
+}
+input[type="text"]:focus,input[type="password"]:focus{
+  border-color:rgba(0,162,255,0.4);
+  background:rgba(0,162,255,0.04);
+  box-shadow:0 0 0 2px rgba(0,162,255,0.08);
+}
+input::placeholder{color:var(--t3);font-size:.72rem}
+
+.toggle-pw{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;
+  color:var(--t3);font-size:.75rem;padding:4px;transition:.15s;
+  font-family:'JetBrains Mono',monospace;
+}
+.toggle-pw:hover{color:var(--t2)}
+
+/* Submit btn */
+.btn-login{
+  width:100%;padding:12px;
+  background:linear-gradient(135deg,rgba(0,162,255,0.8),rgba(0,102,204,0.8));
+  border:1px solid rgba(0,162,255,0.4);
+  border-radius:6px;
+  color:#e0f0ff;font-family:'JetBrains Mono',monospace;
+  font-size:.78rem;font-weight:700;letter-spacing:1px;
+  cursor:pointer;transition:.2s;position:relative;overflow:hidden;
+  margin-top:6px;
+  box-shadow:0 0 20px rgba(0,162,255,0.15);
+}
+.btn-login::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);
+  transform:translateX(-100%);transition:.4s;
+}
+.btn-login:hover{
+  background:linear-gradient(135deg,rgba(0,162,255,0.95),rgba(0,102,204,0.95));
+  box-shadow:0 0 30px rgba(0,162,255,0.3);
+  transform:translateY(-1px);
+}
+.btn-login:hover::before{transform:translateX(100%)}
+.btn-login:active{transform:translateY(0)}
+.btn-login:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* Spinner */
+.spinner{
+  display:none;width:16px;height:16px;
+  border:2px solid rgba(224,240,255,0.2);
+  border-top-color:var(--t1);border-radius:50%;
+  animation:spin .6s linear infinite;margin:0 auto;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Footer */
+.card-foot{
+  padding:12px 16px;border-top:1px solid var(--border2);
+  background:rgba(0,0,0,0.2);
+  text-align:center;
+  font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--t3);
+  line-height:1.6;
+}
+.card-foot b{color:var(--t2)}
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+  <div class="sb-left">
+    <span>nms@kopegtel:~</span>
+    <span style="color:var(--t3)">ssh -p 22 auth.login</span>
+  </div>
+  <div class="sb-right">
+    <div class="sb-pill"><div class="sb-dot"></div>SYSTEM_ONLINE</div>
+  </div>
+</div>
+
+<div class="card" role="main">
+  <div class="card-header">
+    <div class="ch-dots">
+      <div class="ch-dot r"></div>
+      <div class="ch-dot y"></div>
+      <div class="ch-dot g"></div>
+    </div>
+    <div class="ch-title">bash — auth@kopegtel</div>
+    <div class="ch-status"><div class="sb-dot"></div>SECURE</div>
+  </div>
+
+  <div class="card-body">
+    <div class="logo-wrap">
+      <div class="logo-icon"><div class="logo-sym">⬡</div></div>
+      <div class="logo-name">NMS KOPEGTEL</div>
+      <div class="logo-sub">NETWORK_MONITORING_SYSTEM</div>
+      <div class="sys-badge"><div class="sb-dot"></div>SYSTEM ACTIVE</div>
+    </div>
+
+    <div class="prompt-line">
+      <span class="prompt-sym">$</span>
+      <span class="prompt-cmd">sudo</span>
+      <span class="prompt-cmd">nms-auth</span>
+      <span class="prompt-cmd">--login</span>
+      <span class="prompt-cursor"></span>
+    </div>
+
+    {% if error %}
+    <div class="error-box" role="alert" id="errorBox">
+      <span class="err-icon">✗</span>
+      <span>AUTH_FAILED: {{ error }}</span>
+    </div>
+    {% endif %}
+
+    <!-- Tanpa action agar ?next=... ikut ter-POST (HTML submit ke URL dokumen saat ini) -->
+    <form id="loginForm" method="POST" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="username">username</label>
+        <div class="input-wrap">
+          <span class="input-icon">$</span>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            placeholder="enter_username"
+            autocomplete="username"
+            required
+            autofocus
+            value="{{ request.form.get('username', '') }}"
+          >
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">password</label>
+        <div class="input-wrap">
+          <span class="input-icon">*</span>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="••••••••••••"
+            autocomplete="current-password"
+            required
+          >
+          <button type="button" class="toggle-pw" onclick="togglePassword()" id="toggleBtn" aria-label="Toggle password">
+            👁
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="remember" name="remember" value="1" checked style="accent-color:#00ff88;width:15px;height:15px">
+        <label class="form-label" for="remember" style="margin:0;cursor:pointer">ingat saya (7 hari)</label>
+      </div>
+
+      <button type="submit" class="btn-login" id="submitBtn">
+        <span id="btnText">authenticate()</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+    </form>
+  </div>
+
+  <div class="card-foot">
+    <b>AUTHORIZED_ACCESS_ONLY</b><br>
+    Akses tidak sah dapat dikenakan sanksi sesuai kebijakan perusahaan.
+  </div>
+</div>
+
+<script>
+  function togglePassword(){
+    const pw=document.getElementById('password');
+    const btn=document.getElementById('toggleBtn');
+    if(pw.type==='password'){pw.type='text';btn.textContent='🙈';btn.setAttribute('aria-label','Hide password')}
+    else{pw.type='password';btn.textContent='👁';btn.setAttribute('aria-label','Show password')}
+  }
+
+  document.getElementById('loginForm').addEventListener('submit',function(e){
+    const username=document.getElementById('username').value.trim();
+    const password=document.getElementById('password').value.trim();
+    if(!username||!password){e.preventDefault();return}
+    const btn=document.getElementById('submitBtn');
+    const text=document.getElementById('btnText');
+    const spin=document.getElementById('spinner');
+    btn.disabled=true;
+    text.textContent='authenticating...';
+    spin.style.display='block';
+    setTimeout(()=>{text.style.display='none'},100);
+  });
+
+  document.addEventListener('DOMContentLoaded',function(){
+    if(document.getElementById('errorBox'))
+      document.getElementById('password').focus();
+  });
+</script>
+</body>
+</html>
