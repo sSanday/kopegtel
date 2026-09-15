@@ -218,6 +218,9 @@ def api_login_required(f):
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 AGENT_API_KEY      = os.environ.get("AGENT_API_KEY", "")
+if not AGENT_API_KEY:
+    print("[WARN] AGENT_API_KEY kosong — /api/agent/report TERBUKA tanpa auth "
+          "(siapa pun bisa kirim metrik palsu). Set AGENT_API_KEY di .env untuk produksi.")
 try:
     MAX_HOSTS = max(1, int(os.environ.get("MAX_HOSTS", "200")))
 except (ValueError, TypeError):
@@ -245,7 +248,7 @@ last_down_telegram = {}  # host -> datetime Telegram DOWN terakhir
 # Lock untuk mencegah race condition saat tulis ke DB secara paralel
 db_lock = threading.Lock()
 
-# Throttle login: ip -> [jumlah_gagal, waktu_blokir_sampai]
+# Throttle login: ip -> [jumlah_gagal, waktu_blokir_sampai, terakhir_lihat_ts]
 login_failures = {}
 LOGIN_FAIL_TTL_S = 600  # entri gagal login kedaluwarsa 10 menit (anti memory-DoS)
 
@@ -253,13 +256,24 @@ LOGIN_FAIL_TTL_S = 600  # entri gagal login kedaluwarsa 10 menit (anti memory-Do
 def _prune_login_failures(now_ts):
     """Buang entri throttle yang sudah kedaluwarsa + batasi ukuran dict."""
     try:
-        for ip in [ip for ip, (_, blocked) in login_failures.items()
-                   if blocked < now_ts and now_ts - blocked > LOGIN_FAIL_TTL_S]:
-            login_failures.pop(ip, None)
+        for ip, (_, blocked, last) in list(login_failures.items()):
+            if blocked:
+                # Sedang/pernah diblokir: buang TTL setelah blokir berakhir
+                if now_ts > blocked + LOGIN_FAIL_TTL_S:
+                    login_failures.pop(ip, None)
+            else:
+                # Fase hitung gagal: buang jika tidak ada aktivitas selama TTL
+                if now_ts - last > LOGIN_FAIL_TTL_S:
+                    login_failures.pop(ip, None)
         # Batas darurat: jika masih >5000 entri (serangan distribusi),
-        # buang yang paling lama diblokir.
+        # buang yang tidak sedang diblokir dan paling lama tak aktif.
         if len(login_failures) > 5000:
-            for ip in list(login_failures)[:len(login_failures) - 5000]:
+            idle = sorted(
+                ((ip, v[2]) for ip, v in login_failures.items() if not v[1]),
+                key=lambda x: x[1],
+            )
+            drop = len(login_failures) - 5000
+            for ip, _ in idle[:drop]:
                 login_failures.pop(ip, None)
     except Exception:
         pass
@@ -722,31 +736,38 @@ def check_agent_heartbeat():
     finally:
         conn.close()
 
-    # 2. Proses + kirim alert di luar koneksi baca (agar tidak lock DB lama)
+    # 2. Proses di luar koneksi baca (agar tidak lock DB lama).
+    # Flag offline diubah dalam db_lock agar konsisten dengan agent_report;
+    # Telegram + log dikirim SETELAH lock dilepas (log_system_event butuh db_lock,
+    # lock tidak reentrant -> jangan panggil sambil memegangnya).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for host in targets:
-        last_ts = last_map.get(host)
-        if not last_ts:
-            continue
-        try:
-            last_time = datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            continue
-        diff = (datetime.now() - last_time).total_seconds()
+    newly_offline = []
+    with db_lock:
+        for host in targets:
+            last_ts = last_map.get(host)
+            if not last_ts:
+                continue
+            try:
+                last_time = datetime.strptime(last_ts, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+            diff = (datetime.now() - last_time).total_seconds()
 
-        # Jika lebih dari 120 detik (2 menit) tidak lapor
-        if diff > 120 and not agent_offline_memory.get(host, False):
-            # Agent offline alert!
-            agent_offline_memory[host] = True
-            msg = f"⚠️ *AGENT OFFLINE*\nHost: `{host}`\nTidak ada laporan dari Agent selama lebih dari 2 menit.\nWaktu: {now}"
-            try:
-                send_telegram_alert(msg)
-            except Exception as e:
-                print(f"[WARN] telegram offline-alert gagal: {e}")
-            try:
-                log_system_event("AGENT_OFFLINE", host, "Agent berhenti merespon (Heartbeat hilang)")
-            except Exception as e:
-                print(f"[WARN] log AGENT_OFFLINE gagal: {e}")
+            # Jika lebih dari 120 detik (2 menit) tidak lapor
+            if diff > 120 and not agent_offline_memory.get(host, False):
+                # Agent offline alert!
+                agent_offline_memory[host] = True
+                newly_offline.append(host)
+    for host in newly_offline:
+        msg = f"⚠️ *AGENT OFFLINE*\nHost: `{host}`\nTidak ada laporan dari Agent selama lebih dari 2 menit.\nWaktu: {now}"
+        try:
+            send_telegram_alert(msg)
+        except Exception as e:
+            print(f"[WARN] telegram offline-alert gagal: {e}")
+        try:
+            log_system_event("AGENT_OFFLINE", host, "Agent berhenti merespon (Heartbeat hilang)")
+        except Exception as e:
+            print(f"[WARN] log AGENT_OFFLINE gagal: {e}")
 
 # State memori SNMP: host -> {'in_bytes': X, 'out_bytes': Y, 'time': T}
 snmp_state = {}
@@ -1384,7 +1405,7 @@ def login():
         client_ip = get_client_ip()
         now_ts = time.time()
         _prune_login_failures(now_ts)
-        fails, blocked_until = login_failures.get(client_ip, (0, 0))
+        fails, blocked_until, _ = login_failures.get(client_ip, (0, 0, 0))
         if now_ts < blocked_until:
             error = f"Terlalu banyak percobaan gagal. Coba lagi {int(blocked_until - now_ts)} detik."
             return render_template("login.html", error=error)
@@ -1414,10 +1435,10 @@ def login():
             except Exception:
                 pass
             if fails >= 5:
-                login_failures[client_ip] = (0, now_ts + 60)
+                login_failures[client_ip] = (0, now_ts + 60, now_ts)
                 error = "Terlalu banyak percobaan gagal. Diblokir 60 detik."
             else:
-                login_failures[client_ip] = (fails, 0)
+                login_failures[client_ip] = (fails, 0, now_ts)
                 error = "Username atau password salah."
     return render_template("login.html", error=error)
 
@@ -1631,20 +1652,23 @@ def api_add_host():
 @api_login_required
 def api_delete_host(ip):
     ip = (ip or "").strip()
-    conn, c = get_db()
-    c.execute("DELETE FROM hosts WHERE ip=?", (ip,))
-    deleted = c.rowcount
-    conn.commit()
-    conn.close()
-
-    # Hapus dari SEMUA memory agar tidak jadi zombie alarm di /api/triggers
-    global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
-    for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram):
+    with db_lock:
+        conn, c = get_db()
         try:
-            if ip in mem:
-                del mem[ip]
-        except Exception:
-            pass
+            c.execute("DELETE FROM hosts WHERE ip=?", (ip,))
+            deleted = c.rowcount
+            conn.commit()
+        finally:
+            conn.close()
+        # Hapus dari SEMUA memory dalam lock yang sama (anti zombie alarm + race
+        # dengan check_network/agent_report yang memegang db_lock).
+        global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
+        for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram):
+            try:
+                if ip in mem:
+                    del mem[ip]
+            except Exception:
+                pass
 
     if not deleted:
         return jsonify({"error": "Host tidak ditemukan"}), 404
