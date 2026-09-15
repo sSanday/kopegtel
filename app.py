@@ -1734,7 +1734,9 @@ def api_save_settings():
         return jsonify({"error": "Tidak ada pengaturan yang dikirim"}), 400
     conn, c = get_db()
     for key, v in vals.items():
-        c.execute("UPDATE settings SET value=? WHERE key=?", (str(v), key))
+        # REPLACE (bukan UPDATE): jika baris setting terhapus manual dari DB,
+        # UPDATE diam-diam tidak menyimpan apa-apa tapi API tetap balas success.
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(v)))
     conn.commit()
     conn.close()
     try:
@@ -2551,6 +2553,15 @@ def get_triggers():
     return jsonify(alarms)
 
 
+def _like_escape(s):
+    """Escape wildcard LIKE (persen, underscore, backslash) agar pencarian teks literal.
+
+    Tanpa ini, mencari "100%" mencocokkan semua baris berawalan "100"
+    dan "_" menjadi wildcard satu karakter.
+    """
+    return str(s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @app.route("/logs")
 @login_required
 def logs_page():
@@ -2585,8 +2596,8 @@ def get_system_logs():
         query += " AND event_type=?"
         params.append(type_filter)
     if q:
-        query += " AND (message LIKE ? OR host LIKE ? OR event_type LIKE ?)"
-        like = f"%{q}%"
+        query += " AND (message LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR event_type LIKE ? ESCAPE '\\')"
+        like = f"%{_like_escape(q)}%"
         params.extend([like, like, like])
 
     c.execute(f"SELECT COUNT(*) as total FROM ({query})", params)
@@ -2634,8 +2645,8 @@ def export_system_logs():
         query += " AND event_type=?"
         params.append(type_filter)
     if q:
-        query += " AND (message LIKE ? OR host LIKE ? OR event_type LIKE ?)"
-        like = f"%{q}%"
+        query += " AND (message LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR event_type LIKE ? ESCAPE '\\')"
+        like = f"%{_like_escape(q)}%"
         params.extend([like, like, like])
     query += " ORDER BY id DESC LIMIT 5000"
     c.execute(query, params)
