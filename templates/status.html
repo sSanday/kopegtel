@@ -46,9 +46,14 @@
     .hero h1 span{color:var(--accent2)}
     .hero p{font-family:var(--mono);font-size:.68rem;color:var(--t3);margin-top:6px}
     .overall{
+      display:flex;align-items:center;justify-content:center;gap:10px;
       text-align:center;padding:18px;border-radius:10px;margin-bottom:20px;
       font-family:var(--mono);font-size:.85rem;font-weight:700;letter-spacing:1px;
       border:1px solid var(--border2);background:var(--card);
+    }
+    .overall::before{
+      content:'';width:9px;height:9px;border-radius:50%;flex-shrink:0;
+      background:currentColor;box-shadow:0 0 12px currentColor;
     }
     .overall.ok{color:var(--success);border-color:rgba(0,255,136,0.3)}
     .overall.degraded{color:var(--warn);border-color:rgba(255,170,0,0.35)}
@@ -95,12 +100,12 @@
 <body>
   <div class="wrap">
     <div class="hero">
-      <div class="hero-logo">⬡</div>
+      <div class="hero-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>NMS<span>KOPEGTEL</span> — STATUS</h1>
       <p id="genAt">memuat status layanan...</p>
     </div>
 
-    <div class="overall ok" id="overall">● MEMUAT...</div>
+    <div class="overall ok" id="overall">MEMUAT...</div>
 
     <div class="summary-row">
       <div class="sum-card"><div class="sk">nodes up</div><div class="sv" id="sumUp" style="color:var(--success)">—</div></div>
@@ -138,9 +143,9 @@
         document.getElementById('sumUptime').textContent = (s.avg_uptime_24h != null ? s.avg_uptime_24h + '%' : '—');
 
         const ov = document.getElementById('overall');
-        if((s.down || 0) > 0){ ov.className = 'overall outage'; ov.textContent = '● GANGGUAN TERDETEKSI'; }
-        else if((s.maintenance || 0) > 0 || (s.pending || 0) > 0){ ov.className = 'overall degraded'; ov.textContent = '● SEBAGIAN DALAM PEMELIHARAAN'; }
-        else { ov.className = 'overall ok'; ov.textContent = '● SEMUA SISTEM NORMAL'; }
+        if((s.down || 0) > 0){ ov.className = 'overall outage'; ov.textContent = 'GANGGUAN TERDETEKSI'; }
+        else if((s.maintenance || 0) > 0 || (s.pending || 0) > 0){ ov.className = 'overall degraded'; ov.textContent = 'SEBAGIAN DALAM PEMELIHARAAN'; }
+        else { ov.className = 'overall ok'; ov.textContent = 'SEMUA SISTEM NORMAL'; }
 
         const ng = document.getElementById('nodeGrid');
         const nodes = j.nodes || [];
@@ -165,7 +170,7 @@
       } catch(e){
         console.error(e);
         document.getElementById('overall').className = 'overall outage';
-        document.getElementById('overall').textContent = '● GAGAL MEMUAT STATUS';
+        document.getElementById('overall').textContent = 'GAGAL MEMUAT STATUS';
       }
     }
     refresh();
