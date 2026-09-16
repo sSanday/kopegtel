@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Service Monitoring — NMS KOPEGTEL</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -175,6 +176,32 @@
     .tag.online{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
     .tag.offline{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
     .tag.pending{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
+    .tag.ssl-ok{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.ssl-warn{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
+    .tag.ssl-high{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .tag.ssl-exp{background:rgba(255,0,85,0.15);color:#ff5588;border:1px solid rgba(255,0,85,0.4)}
+    .tag.ssl-na{background:transparent;color:var(--t3);border:1px solid var(--border2)}
+
+    .chart-card{
+      margin-top:16px;
+      background:var(--card);border:1px solid var(--border2);border-radius:8px;
+      padding:18px 20px;backdrop-filter:blur(8px);
+    }
+    .chart-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+    .chart-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
+    .chart-sub{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin-top:2px}
+    .chart-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .chart-ctl select{
+      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
+      padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;outline:none;max-width:220px;
+    }
+    .range-btn{
+      background:transparent;border:1px solid var(--border2);
+      color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
+      padding:4px 9px;border-radius:4px;cursor:pointer;
+    }
+    .range-btn.active,.range-btn:hover{background:rgba(0,162,255,0.1);border-color:rgba(0,162,255,0.4);color:var(--accent)}
+    .chart-wrap{position:relative;height:240px}
     
     .action-btn {
       background:transparent;border:none;color:var(--t3);cursor:pointer;
@@ -277,12 +304,13 @@
       <table>
         <thead>
           <tr>
-            <th style="width:250px">Service Name</th>
-            <th style="width:100px">Type</th>
+            <th style="width:220px">Service Name</th>
+            <th style="width:80px">Type</th>
             <th style="width:200px">Target</th>
-            <th style="width:120px">Status</th>
-            <th style="width:100px">Latency</th>
-            <th style="width:150px">Last Checked</th>
+            <th style="width:110px">Status</th>
+            <th style="width:90px">Latency</th>
+            <th style="width:130px">SSL</th>
+            <th style="width:140px">Last Checked</th>
             <th style="width:50px"></th>
           </tr>
         </thead>
@@ -290,6 +318,24 @@
       </table>
       </div>
       <div style="display:flex;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border2)"><span class="last-updated">updated: <span id="lastUpdated">—</span></span></div>
+    </div>
+
+    <div class="sec-label" style="margin-top:20px">service_latency.history</div>
+    <div class="chart-card">
+      <div class="chart-hd">
+        <div>
+          <div class="chart-title" id="histTitle">latency_history.ts</div>
+          <div class="chart-sub">// pilih service untuk melihat riwayat latency (OFFLINE = gap)</div>
+        </div>
+        <div class="chart-ctl">
+          <select id="histSvc" onchange="fetchSvcHistory()"></select>
+          <button class="range-btn active" data-h="1" onclick="setHistRange(this,1)">1H</button>
+          <button class="range-btn" data-h="6" onclick="setHistRange(this,6)">6H</button>
+          <button class="range-btn" data-h="24" onclick="setHistRange(this,24)">24H</button>
+          <button class="range-btn" data-h="168" onclick="setHistRange(this,168)">7D</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="svcChart"></canvas></div>
     </div>
   </div>
 
@@ -338,7 +384,21 @@
     let statusFilter = 'all';
     let typeFilter = 'all';
     let searchQuery = '';
+    let svcChart = null;
+    let histHours = 1;
     function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function sslBadge(s){
+      const isHttps = String(s.type||'').toLowerCase()==='http' && String(s.url||'').toLowerCase().startsWith('https://');
+      if(!isHttps) return `<span class="tag ssl-na">—</span>`;
+      const d = s.ssl_days_left;
+      if(d === null || d === undefined) return `<span class="tag ssl-na" title="Belum dicek (tunggu scheduler 6 jam / tambah ulang)">…</span>`;
+      const n = Number(d);
+      const exp = esc(s.ssl_expires_at || '');
+      if(n < 0) return `<span class="tag ssl-exp" title="Expired ${exp}">EXP</span>`;
+      if(n <= 7) return `<span class="tag ssl-high" title="Expire ${exp}">H-${n}</span>`;
+      if(n <= 30) return `<span class="tag ssl-warn" title="Expire ${exp}">H-${n}</span>`;
+      return `<span class="tag ssl-ok" title="Expire ${exp}">${n}d</span>`;
+    }
     function openModal(){
       document.getElementById('modalOverlay').classList.add('active');
       setTimeout(()=>{ const el=document.getElementById('svcName'); if(el) el.focus(); }, 60);
@@ -386,9 +446,9 @@
       const rows = getFilteredServices();
       let html = '';
       if(!allServices || allServices.length === 0){
-        html = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">No services configured. Click Add Service to start monitoring.</td></tr>`;
+        html = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">No services configured. Click Add Service to start monitoring.</td></tr>`;
       } else if(!rows.length){
-        html = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">$ filter = NO_MATCH — tidak ada service yang cocok.</td></tr>`;
+        html = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">$ filter = NO_MATCH — tidak ada service yang cocok.</td></tr>`;
       } else {
         rows.forEach(s => {
           const target = s.type === 'tcp' ? `${s.ip}:${s.port ?? '-'}` : (s.url || '-');
@@ -397,11 +457,12 @@
           const latStr = (statusRaw.toUpperCase() !== 'ONLINE') ? '-' : (s.latency === null || s.latency === undefined ? '-' : `${Number(s.latency).toFixed(1)} ms`);
 
           html += `<tr>
-            <td class="col-name">${esc(s.name)}</td>
+            <td class="col-name"><a href="#" onclick="selectSvcHistory(${Number(s.id)});return false;" style="color:inherit" title="Lihat riwayat latency">${esc(s.name)}</a></td>
             <td><span class="tag ${esc(String(s.type || ''))}">${esc(String(s.type || '').toUpperCase())}</span></td>
             <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc(target)}</span></td>
             <td><span class="tag ${esc(statusClass)}">${esc(statusRaw)}</span></td>
             <td style="font-family:var(--mono);font-size:0.65rem;color:var(--t1)">${esc(latStr)}</td>
+            <td>${sslBadge(s)}</td>
             <td style="font-size:0.6rem">${esc(s.last_checked || '-')}</td>
             <td>
               <button class="action-btn" onclick="deleteService(${Number(s.id)})" title="Delete Service">
@@ -412,6 +473,51 @@
         });
       }
       tbody.innerHTML = html;
+      syncHistSelect();
+    }
+
+    function syncHistSelect(){
+      const sel = document.getElementById('histSvc');
+      if(!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = (allServices || []).map(s => `<option value="${Number(s.id)}">${esc(s.name)} #${Number(s.id)}</option>`).join('');
+      if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+      if(!sel.value && sel.options.length) fetchSvcHistory();
+    }
+    function selectSvcHistory(id){
+      const sel = document.getElementById('histSvc');
+      if(sel){ sel.value = String(id); fetchSvcHistory(); }
+      document.getElementById('svcChart').scrollIntoView({behavior:'smooth', block:'center'});
+    }
+    function setHistRange(btn, h){
+      histHours = h;
+      document.querySelectorAll('.chart-ctl .range-btn').forEach(b => b.classList.remove('active'));
+      if(btn) btn.classList.add('active');
+      fetchSvcHistory();
+    }
+    async function fetchSvcHistory(){
+      const sel = document.getElementById('histSvc');
+      const sid = sel ? sel.value : null;
+      if(!sid) return;
+      try{
+        const res = await fetch(`/api/services/${encodeURIComponent(sid)}/history?hours=${histHours}`);
+        if(res.status === 401) return;
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const j = await res.json();
+        const title = document.getElementById('histTitle');
+        if(title && j.service) title.textContent = `${j.service.name} — last ${j.hours}h (${j.count} pts)`;
+        drawSvcChart(j.labels || [], j.values || []);
+      } catch(e){ console.error(e); }
+    }
+    function drawSvcChart(labels, values){
+      const ctx = document.getElementById('svcChart');
+      if(!ctx || typeof Chart === 'undefined') return;
+      if(svcChart) svcChart.destroy();
+      svcChart = new Chart(ctx, {
+        type: 'line',
+        data: {labels, datasets: [{label: 'latency ms (gap=OFFLINE)', data: values, borderColor: '#00a2ff', backgroundColor: 'rgba(0,162,255,0.08)', fill: true, tension: 0.25, pointRadius: 0, spanGaps: false}]},
+        options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {x: {ticks: {color: '#2a4060', maxTicksLimit: 10}, grid: {color: 'rgba(255,255,255,0.04)'}}, y: {ticks: {color: '#6a8aaa'}, grid: {color: 'rgba(255,255,255,0.04)'}, beginAtZero: true}}}
+      });
     }
 
     async function fetchServices(){
@@ -425,11 +531,13 @@
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         allServices = await res.json() || [];
         renderServices();
+        const sel = document.getElementById('histSvc');
+        if(sel && sel.value) fetchSvcHistory();
         const lu = document.getElementById('lastUpdated');
         if(lu) lu.textContent = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
       } catch(e){
         console.error(e);
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">Error loading services: ${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--danger)">Error loading services: ${esc(e.message)}</td></tr>`;
       } finally {
         if(btn) setTimeout(() => btn.classList.remove('spin'), 400);
       }

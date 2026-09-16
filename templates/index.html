@@ -1042,6 +1042,8 @@ function renderStatus(pData, aData){
       card.className = `sc ${stateCls}`;
       card.style.animationDelay = `${(cardIndex++) * .04}s`;
       card.dataset.search = (item.displayName + ' ' + item.host + ' ' + item.category).toLowerCase();
+      const isMaint = !!(window.maintMap && window.maintMap[item.host]);
+      const pillTxt = item.pending ? 'PENDING' : (item.up ? (isMaint ? 'UP·MAINT' : 'UP') : (isMaint ? 'MAINT' : 'DOWN'));
 
       const cpu = item.agent ? esc(item.agent.cpu) : null;
 
@@ -1077,10 +1079,10 @@ function renderStatus(pData, aData){
             </div>
             ${ipSubHtml}
           </div>
-          <div class="sc-pill">${item.pending?'PENDING':(item.up?'UP':'DOWN')}</div>
+          <div class="sc-pill"${(!item.pending && !item.up && isMaint) ? ' style="background:rgba(255,170,0,0.12);color:var(--warn);border:1px solid rgba(255,170,0,0.35)"' : ''}>${pillTxt}</div>
         </div>
         <div class="sc-value">${latHtml}</div>
-        <div class="sc-sub">${item.pending?'waiting_first_ping':(item.up?'response_time.latest':'request_timed_out')}</div>
+        <div class="sc-sub">${item.pending?'waiting_first_ping':(item.up?(isMaint?'in_maintenance — alarm disuppress':'response_time.latest'):(isMaint?'in_maintenance — alarm disuppress':'request_timed_out'))}</div>
         ${metricsHtml}
         <div class="sc-link">click to view details →</div>`;
 
@@ -1361,9 +1363,10 @@ async function fetchChart(){
 
 async function refresh(){
   try{
-    const [mRes,sRes,eRes,aRes,hRes]=await Promise.all([
+    const [mRes,sRes,eRes,aRes,hRes,maintRes]=await Promise.all([
       fetch(`/api/history?hours=1`),fetch('/api/stats'),
-      fetch('/api/events'),fetch('/api/agent/metrics'),fetch('/api/hosts')
+      fetch('/api/events'),fetch('/api/agent/metrics'),fetch('/api/hosts'),
+      fetch('/api/maintenance?active=1').catch(()=>null)
     ]);
     // 401 ditangani wrapper global (redirect /login); jangan tampilkan banner untuk itu
     if([mRes,sRes,eRes,aRes,hRes].some(r=>r.status===401)) return;
@@ -1377,6 +1380,13 @@ async function refresh(){
 
     window.aliasMap = {};
     window.categoryMap = {};
+    window.maintMap = {};
+    try{
+      if(maintRes && maintRes.ok){
+        const mList = await maintRes.json();
+        (mList || []).forEach(r => { if(r && r.host) window.maintMap[r.host] = r; });
+      }
+    }catch(_){}
     hosts = [];
     if(hData && hData.forEach){
       hData.forEach(h => {
@@ -1393,8 +1403,10 @@ async function refresh(){
     renderStatus((mData && mData.datasets) || {}, aData || {});
     // Jangan timpa chart user: fetch sesuai metric/range yang dipilih
     fetchChart();
-    // Notif DOWN 1x per host sampai pulih (dedup anti-spam); reset saat UP
+    // Notif DOWN 1x per host sampai pulih (dedup anti-spam); reset saat UP.
+    // Host maintenance disuppress agar tidak spam saat maintenance terjadwal.
     Object.entries(sData || {}).forEach(([host,s])=>{
+      if(window.maintMap && window.maintMap[host]){ notifiedDown.delete(host); return; }
       if(s && s.is_down && !s.is_pending) pushNotifOnce(host,'⚠️ Host DOWN',`${host} tidak dapat dijangkau`);
       else notifiedDown.delete(host);
     });

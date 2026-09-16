@@ -223,6 +223,36 @@
 
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     tbody tr{animation:fadeIn .25s ease both}
+
+    /* Maintenance manager */
+    .maint-card{
+      margin-top:16px;
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
+    }
+    .maint-form{
+      display:flex;gap:8px;flex-wrap:wrap;
+      padding:14px 16px;border-bottom:1px solid var(--border2);
+    }
+    .maint-form input{
+      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
+      padding:7px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;
+      outline:none;min-width:140px;
+    }
+    .maint-form input:focus{border-color:rgba(0,162,255,0.45)}
+    .maint-form button{
+      background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.4);
+      color:var(--info);padding:7px 14px;border-radius:4px;cursor:pointer;
+      font-family:var(--mono);font-size:.65rem;font-weight:700;
+    }
+    .maint-form button:hover{background:rgba(0,162,255,0.2)}
+    .maint-del{
+      background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.25);
+      color:var(--danger);padding:3px 8px;border-radius:3px;cursor:pointer;
+      font-family:var(--mono);font-size:.6rem;
+    }
+    .maint-del:hover{background:rgba(255,68,68,0.18)}
+    .tag.maintenance{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
   </style>
 </head>
 <body>
@@ -262,6 +292,8 @@
         <option value="availability">availability</option>
         <option value="agent">agent</option>
         <option value="resource">resource</option>
+        <option value="service">service</option>
+        <option value="maintenance">maintenance</option>
       </select>
       <input class="filter-search" id="hostSearch" type="text" placeholder="grep host..." autocomplete="off">
       <span class="active-filter-note" id="filterNote"></span>
@@ -308,6 +340,46 @@
       </div>
     </div>
 
+    <!-- Maintenance Window Manager -->
+    <div class="sec-label" style="margin-top:20px">maintenance_windows.config</div>
+    <div class="maint-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        </div>
+        <div class="term-title">maintenance_schedule.sh — DOWN & telegram disuppress saat window aktif</div>
+        <button class="refresh-btn" onclick="fetchMaintenance()" id="maintRefBtn">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
+          refresh
+        </button>
+      </div>
+      <form class="maint-form" onsubmit="createMaintenance(event)">
+        <input id="maintHost" list="maintHostList" placeholder="host / ip" required title="Harus sama dengan IP terdaftar">
+        <datalist id="maintHostList"></datalist>
+        <input id="maintStart" type="datetime-local" required title="Mulai">
+        <input id="maintEnd" type="datetime-local" required title="Selesai">
+        <input id="maintReason" type="text" placeholder="alasan (misal: upgrade firmware)" maxlength="200" style="flex:1;min-width:180px">
+        <button type="submit">+ schedule</button>
+      </form>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Host</th>
+            <th>Mulai</th>
+            <th>Selesai</th>
+            <th>Status</th>
+            <th>Alasan</th>
+            <th style="width:80px">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="maintBody">
+          <tr><td colspan="6" style="text-align:center;padding:20px">loading...</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -326,7 +398,7 @@
         const raw = (p.get('severity') || '').toLowerCase();
         sevSet = new Set(raw.split(',').map(s=>s.trim()).filter(s=>['disaster','high','warning'].includes(s)));
         const cat = (p.get('cat') || p.get('category') || 'all').toLowerCase();
-        catFilter = ['all','availability','agent','resource'].includes(cat) ? cat : 'all';
+        catFilter = ['all','availability','agent','resource','service','maintenance'].includes(cat) ? cat : 'all';
         searchQuery = (p.get('q') || '').toLowerCase().trim();
       }catch(_){ sevSet = new Set(); catFilter = 'all'; searchQuery = ''; }
       syncFilterUI();
@@ -375,6 +447,8 @@
         if(!res.ok) return;
         const data = await res.json();
         data.forEach(h => { aliasMap[h.ip] = (h.alias || '').trim() || h.ip; });
+        const dl = document.getElementById('maintHostList');
+        if(dl) dl.innerHTML = data.map(h => `<option value="${esc(h.ip)}">${esc(aliasMap[h.ip])}</option>`).join('');
       } catch(e) {}
     }
 
@@ -474,6 +548,72 @@
       }
     }
 
+    function apiHeaders(extra){
+      return Object.assign({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, extra || {});
+    }
+
+    async function fetchMaintenance(){
+      const tb = document.getElementById('maintBody');
+      try{
+        const res = await fetch('/api/maintenance');
+        if(res.status === 401) return;
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const rows = await res.json() || [];
+        if(!rows.length){
+          tb.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--t3)">$ no_maintenance_scheduled — semua alarm aktif normal.</td></tr>`;
+          return;
+        }
+        tb.innerHTML = rows.map(r => {
+          const st = r.is_active
+            ? `<span class="tag warning">ACTIVE</span>`
+            : (String(r.start_at) > new Date().toISOString().slice(0,19).replace('T',' ')
+                ? `<span class="tag info">SCHEDULED</span>`
+                : `<span class="tag" style="color:var(--t3);border:1px solid var(--border2)">EXPIRED</span>`);
+          return `<tr>
+            <td class="col-host">${esc(r.host)}</td>
+            <td>${esc(r.start_at)}</td>
+            <td>${esc(r.end_at)}</td>
+            <td>${st}</td>
+            <td class="col-msg">${esc(r.reason || '—')}</td>
+            <td><button class="maint-del" onclick="deleteMaintenance(${r.id})">rm</button></td>
+          </tr>`;
+        }).join('');
+      } catch(e){
+        tb.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger)">Gagal memuat maintenance: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    async function createMaintenance(ev){
+      ev.preventDefault();
+      const host = document.getElementById('maintHost').value.trim();
+      const start = document.getElementById('maintStart').value;
+      const end = document.getElementById('maintEnd').value;
+      const reason = document.getElementById('maintReason').value.trim();
+      if(!host || !start || !end){ alert('Host, mulai, dan selesai wajib diisi'); return; }
+      try{
+        const res = await fetch('/api/maintenance', {
+          method: 'POST',
+          headers: apiHeaders(),
+          body: JSON.stringify({host, start_at: start.replace('T',' ') + ':00', end_at: end.replace('T',' ') + ':00', reason})
+        });
+        const body = await res.json().catch(()=>({}));
+        if(!res.ok){ alert(body.error || ('Gagal (' + res.status + ')')); return; }
+        document.getElementById('maintReason').value = '';
+        fetchMaintenance();
+        fetchTriggers();
+      } catch(e){ alert('Gagal: ' + e.message); }
+    }
+
+    async function deleteMaintenance(id){
+      if(!confirm('Hapus jadwal maintenance #' + id + '? Alarm akan aktif normal kembali.')) return;
+      try{
+        const res = await fetch('/api/maintenance/' + id, {method: 'DELETE', headers: apiHeaders()});
+        if(!res.ok){ const b = await res.json().catch(()=>({})); alert(b.error || ('Gagal (' + res.status + ')')); return; }
+        fetchMaintenance();
+        fetchTriggers();
+      } catch(e){ alert('Gagal: ' + e.message); }
+    }
+
     // Init
     window.addEventListener('DOMContentLoaded', async () => {
       initFilterFromURL();
@@ -508,8 +648,10 @@
       });
       await loadHosts();
       fetchTriggers();
+      fetchMaintenance();
       // Auto refresh every 10 seconds
       setInterval(fetchTriggers, 10000);
+      setInterval(fetchMaintenance, 30000);
     });
   </script>
 <script>

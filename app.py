@@ -445,6 +445,41 @@ def init_db():
     )''')
     c.execute("CREATE INDEX IF NOT EXISTS idx_inventory_ip ON inventory(ip)")
 
+    c.execute('''CREATE TABLE IF NOT EXISTS maintenance_windows(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      created_by TEXT DEFAULT '',
+      created_at TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_maint_host_window ON maintenance_windows(host, start_at, end_at)")
+    try:
+        c.execute("ALTER TABLE down_events ADD COLUMN is_maintenance INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    for _col, _ddl in (
+        ("ssl_expires_at", "ALTER TABLE services ADD COLUMN ssl_expires_at TEXT"),
+        ("ssl_days_left", "ALTER TABLE services ADD COLUMN ssl_days_left INTEGER"),
+        ("ssl_last_alert", "ALTER TABLE services ADD COLUMN ssl_last_alert TEXT DEFAULT ''"),
+        ("ssl_checked_at", "ALTER TABLE services ADD COLUMN ssl_checked_at TEXT"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
+
+    c.execute('''CREATE TABLE IF NOT EXISTS service_history(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      service_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      latency REAL NOT NULL DEFAULT 0,
+      timestamp TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)")
+
 
     c.execute("SELECT COUNT(*) as cnt FROM hosts")
     if c.fetchone()["cnt"] == 0:
@@ -477,6 +512,53 @@ def get_setting(key, default_value, type_cast=float):
             pass
     return default_value
 
+_MAINT_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d")
+
+def _parse_maint_time(s):
+    """Parse waktu maintenance dari input UI/API ke datetime. Return None jika invalid."""
+    s = (s or "").strip()[:19]
+    if not s:
+        return None
+    for fmt in _MAINT_TIME_FORMATS:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+def _fmt_maint_time(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+def get_active_maintenance_map(now=None):
+    """Map {host: row} untuk semua window maintenance yang aktif saat ini.
+
+    Satu query untuk semua host (dipakai check_network & triggers) agar tidak
+    N-query per host. Return dict kosong jika tidak ada / DB error.
+    """
+    try:
+        now_str = _fmt_maint_time(now or datetime.now())
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT host, start_at, end_at, reason FROM maintenance_windows "
+                "WHERE start_at <= ? AND end_at >= ?",
+                (now_str, now_str),
+            )
+            out = {}
+            for r in c.fetchall():
+                out[r["host"]] = dict(r)
+            return out
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+
+def is_host_in_maintenance(host, now=None):
+    """True jika host sedang dalam window maintenance aktif."""
+    if not host:
+        return False
+    return (host or "").strip() in get_active_maintenance_map(now)
+
 def cleanup_old_data():
     """Dijadwalkan tiap tengah malam.
 
@@ -485,6 +567,7 @@ def cleanup_old_data():
       2 host @60s = ~2880 baris/hari).
     - system_logs >90 hari dihapus (audit tidak perlu selamanya).
     - down_events yang resolved >90 hari dihapus (ongoing dipertahankan).
+    - maintenance_windows yang berakhir >90 hari dihapus (riwayat lama).
     """
     with db_lock:
         conn, c = get_db()
@@ -509,6 +592,18 @@ def cleanup_old_data():
             except Exception as e:
                 print(f"[CLEANUP] down_events gagal: {e}")
                 deleted_events = 0
+            try:
+                c.execute("DELETE FROM maintenance_windows WHERE end_at < datetime('now', 'localtime', '-90 days')")
+                deleted_maint = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] maintenance gagal: {e}")
+                deleted_maint = 0
+            try:
+                c.execute("DELETE FROM service_history WHERE timestamp < datetime('now', 'localtime', '-7 days')")
+                deleted_svc_hist = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] service_history gagal: {e}")
+                deleted_svc_hist = 0
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] cleanup gagal: {e}")
@@ -529,7 +624,7 @@ def cleanup_old_data():
             chk.close()
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
-    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} baris lama dihapus.")
+    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} baris lama dihapus.")
 
 def backup_database():
     """Backup SQLite database setiap hari ke folder backups/ (pakai API backup, aman WAL).
@@ -1052,6 +1147,7 @@ def check_network():
 
 
     telegram_queue = []
+    maint_map = get_active_maintenance_map()
     with db_lock:
         conn, c = get_db()
         try:
@@ -1062,33 +1158,41 @@ def check_network():
                     latency, packet_loss = results[host]
                     host_is_down = (latency == -1)
                     was_down = status_memory.get(host, False)
+                    in_maint = host in maint_map
 
                     if host_is_down and not was_down:
 
                         status_memory[host] = True
                         down_since[host]    = datetime.now()
                         c.execute(
-                            "INSERT INTO down_events (host, started_at) VALUES (?, ?)",
-                            (host, timestamp)
+                            "INSERT INTO down_events (host, started_at, is_maintenance) VALUES (?, ?, ?)",
+                            (host, timestamp, 1 if in_maint else 0)
                         )
-                        _insert_system_log(c, "NETWORK_DOWN", host, "Ping timeout/RTO", timestamp)
-
-
-                        now_dt = datetime.now()
-                        last_tg = last_down_telegram.get(host)
-                        if last_tg is None or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S:
-                            last_down_telegram[host] = now_dt
-                            telegram_queue.append(
-                                f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}"
-                            )
+                        if in_maint:
+                            reason = (maint_map[host].get("reason") or "").strip()[:200]
+                            _insert_system_log(c, "MAINTENANCE_DOWN", host,
+                                               f"DOWN dalam maintenance{(' - ' + reason) if reason else ''}", timestamp)
+                            print(f"[MAINT] Telegram DOWN {host} disuppress (maintenance)")
                         else:
-                            print(f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)")
+                            _insert_system_log(c, "NETWORK_DOWN", host, "Ping timeout/RTO", timestamp)
+
+
+                            now_dt = datetime.now()
+                            last_tg = last_down_telegram.get(host)
+                            if last_tg is None or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S:
+                                last_down_telegram[host] = now_dt
+                                telegram_queue.append(
+                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}"
+                                )
+                            else:
+                                print(f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)")
 
                     elif not host_is_down and was_down:
 
                         status_memory[host] = False
                         duration_str = ""
                         duration_s   = None
+                        was_maint_event = False
                         if host in down_since:
                             delta      = datetime.now() - down_since.pop(host)
                             duration_s = int(delta.total_seconds())
@@ -1104,6 +1208,13 @@ def check_network():
                                     duration_s = max(0, int((datetime.now() - started).total_seconds()))
                             except Exception:
                                 pass
+                        try:
+                            c.execute("SELECT is_maintenance FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+                                      (host,))
+                            mrow = c.fetchone()
+                            was_maint_event = bool(mrow and mrow["is_maintenance"])
+                        except Exception:
+                            was_maint_event = False
                         if duration_s is not None:
                             m, s       = divmod(duration_s, 60)
                             duration_str = f"\nDurasi DOWN : {m} menit {s} detik"
@@ -1111,11 +1222,16 @@ def check_network():
                             "UPDATE down_events SET resolved_at=?, duration_s=? WHERE host=? AND resolved_at IS NULL",
                             (timestamp, duration_s, host)
                         )
-                        _insert_system_log(c, "NETWORK_UP", host,
-                                           f"Pulih setelah {duration_str.replace(chr(10), '')}", timestamp)
-                        telegram_queue.append(
-                            f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
-                        )
+                        if in_maint or was_maint_event:
+                            _insert_system_log(c, "MAINTENANCE_UP", host,
+                                               f"Pulih dalam maintenance{ duration_str.replace(chr(10), '')}", timestamp)
+                            print(f"[MAINT] Telegram PULIH {host} disuppress (maintenance)")
+                        else:
+                            _insert_system_log(c, "NETWORK_UP", host,
+                                               f"Pulih setelah {duration_str.replace(chr(10), '')}", timestamp)
+                            telegram_queue.append(
+                                f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
+                            )
 
 
                     c.execute(
@@ -1229,6 +1345,152 @@ def check_single_service(svc):
     if status == "OFFLINE": latency = 0
     return svc_id, status, latency
 
+SSL_WARN_DAYS = 30
+SSL_HIGH_DAYS = 7
+
+def _ssl_level(days_left):
+    """Level alert SSL: expired/disaster, <=7 high, <=30 warning, else None."""
+    if days_left is None:
+        return None
+    try:
+        d = int(days_left)
+    except (ValueError, TypeError):
+        return None
+    if d < 0:
+        return "expired"
+    if d <= SSL_HIGH_DAYS:
+        return "high"
+    if d <= SSL_WARN_DAYS:
+        return "warning"
+    return None
+
+def get_ssl_expiry(url, timeout=5):
+    """Ambil tanggal expire sertifikat HTTPS. Return (expires_at_str, days_left) atau (None, None).
+
+    Hanya untuk URL https:// yang lolos guard SSRF. Parse hostname+port dari URL,
+    handshake TLS langsung (SNI), baca notAfter. Return days_left int (bisa negatif).
+    """
+    from urllib.parse import urlparse
+    import ssl as _ssl
+    try:
+        parsed = urlparse(url or "")
+        if (parsed.scheme or "").lower() != "https":
+            return None, None
+        host = (parsed.hostname or "").strip()
+        if not host:
+            return None, None
+        try:
+            port = parsed.port or 443
+        except ValueError:
+            return None, None
+        if not 1 <= port <= 65535:
+            return None, None
+        ctx = _ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert = ssock.getpeercert()
+        not_after = (cert or {}).get("notAfter")
+        if not not_after:
+            return None, None
+        exp = None
+        for fmt in ("%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z"):
+            try:
+                exp = datetime.strptime(not_after, fmt)
+                break
+            except ValueError:
+                continue
+        if exp is None:
+            return None, None
+        days_left = (exp - datetime.utcnow()).days
+        return exp.strftime("%Y-%m-%d %H:%M:%S"), days_left
+    except Exception as e:
+        print(f"[SSL] {url}: {e}")
+        return None, None
+
+def check_ssl_expiry():
+    """Cek expire SSL semua service https (dijadwalkan tiap 6 jam + saat tambah service).
+
+    Update services.ssl_expires_at/days_left/checked_at. Kirim Telegram HANYA saat
+    level memburuk (warning->high->expired) agar tidak spam tiap 6 jam.
+    Level direset saat sertifikat sehat kembali (renew), sehingga siklus
+    peringatan berikutnya tetap jalan.
+    """
+    try:
+        conn, c = get_db()
+        try:
+            try:
+                c.execute("SELECT id, ip, name, url, ssl_days_left, ssl_last_alert FROM services WHERE type='http' AND url LIKE 'https://%'")
+            except sqlite3.OperationalError:
+                return
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[SSL] load services gagal: {e}")
+        return
+    if not rows:
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for s in rows:
+        sid = s["id"]
+        url = s.get("url") or ""
+        if not _is_url_allowed_for_monitoring(url):
+            continue
+        exp_str, days = get_ssl_expiry(url)
+        if exp_str is None:
+            continue
+        level = _ssl_level(days)
+        prev_level = (s.get("ssl_last_alert") or "") or None
+        order = {"warning": 1, "high": 2, "expired": 3}
+        escalated = bool(level and level != prev_level
+                         and (not prev_level or order.get(level, 0) > order.get(prev_level, 0)))
+        with db_lock:
+            conn, c = get_db()
+            try:
+                try:
+                    c.execute(
+                        "UPDATE services SET ssl_expires_at=?, ssl_days_left=?, ssl_checked_at=?, ssl_last_alert=? WHERE id=?",
+                        (exp_str, days, timestamp, level or "", sid),
+                    )
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] ssl update gagal: {e}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    continue
+                if level:
+                    try:
+                        _insert_system_log(c, "SSL_EXPIRY" if level != "expired" else "SSL_EXPIRED",
+                                           s.get("ip") or "-", f"{s.get('name')} {url} sisa {days} hari (exp {exp_str})", timestamp)
+                    except Exception:
+                        pass
+                _commit_with_retry(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        if escalated:
+            try:
+                if level == "expired":
+                    send_telegram_alert(
+                        f"🚨 *SSL EXPIRED*\nService: `{s.get('name')}`\nURL: {url}\nExpired: {exp_str}\nWaktu: {timestamp}"
+                    )
+                elif level == "high":
+                    send_telegram_alert(
+                        f"⚠️ *SSL SEGERA EXPIRE*\nService: `{s.get('name')}`\nURL: {url}\nSisa: *{days} hari*\nExp: {exp_str}"
+                    )
+                else:
+                    send_telegram_alert(
+                        f"ℹ️ *SSL Expire H-{days}*\nService: `{s.get('name')}`\nURL: {url}\nExp: {exp_str}"
+                    )
+            except Exception as e:
+                print(f"[WARN] telegram ssl gagal: {e}")
+
+def trigger_async_ssl_check():
+    threading.Thread(target=check_ssl_expiry, daemon=True).start()
+
 def check_services():
     try:
 
@@ -1256,6 +1518,13 @@ def check_services():
             try:
                 for svc_id, status, latency in results:
                     c.execute("UPDATE services SET status=?, latency=?, last_checked=? WHERE id=?", (status, latency, timestamp, svc_id))
+                try:
+                    c.executemany(
+                        "INSERT INTO service_history (service_id, status, latency, timestamp) VALUES (?, ?, ?, ?)",
+                        [(sid, st, lat, timestamp) for sid, st, lat in results],
+                    )
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] service_history gagal: {e}")
                 _commit_with_retry(conn)
             except sqlite3.OperationalError as e:
                 print(f"[DB LOCK] check_services gagal: {e}")
@@ -1370,6 +1639,7 @@ if SCHEDULER_ENABLED:
     scheduler.add_job(func=check_services,         trigger="interval", seconds=30, **_job_defaults)
     scheduler.add_job(func=check_agent_heartbeat,  trigger="interval", seconds=60, **_job_defaults)
     scheduler.add_job(func=poll_snmp_bandwidth,    trigger="interval", seconds=30, **_job_defaults)
+    scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
     scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
     scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
     scheduler.add_job(func=backup_database,        trigger="cron",     hour=0, minute=5, **_job_defaults)
@@ -2111,15 +2381,25 @@ def get_stats():
 @app.route("/api/events")
 @api_login_required
 def get_events():
-    """50 DOWN events terbaru."""
+    """50 DOWN events terbaru (termasuk penanda maintenance)."""
     conn, c = get_db()
-    c.execute("""
-        SELECT id, host, started_at, resolved_at, duration_s
-        FROM down_events ORDER BY id DESC LIMIT 50
-    """)
+    try:
+        c.execute("""
+            SELECT id, host, started_at, resolved_at, duration_s, is_maintenance
+            FROM down_events ORDER BY id DESC LIMIT 50
+        """)
+    except sqlite3.OperationalError:
+        c.execute("""
+            SELECT id, host, started_at, resolved_at, duration_s
+            FROM down_events ORDER BY id DESC LIMIT 50
+        """)
     events = []
     for r in c.fetchall():
         m, s = divmod(r["duration_s"] or 0, 60)
+        try:
+            is_maint = bool(r["is_maintenance"])
+        except (KeyError, IndexError, TypeError):
+            is_maint = False
         events.append({
             "id"         : r["id"],
             "host"       : r["host"],
@@ -2127,6 +2407,7 @@ def get_events():
             "resolved_at": r["resolved_at"] or "Ongoing",
             "duration"   : f"{m}m {s}s" if r["duration_s"] else ("Ongoing" if not r["resolved_at"] else "—"),
             "status"     : "resolved" if r["resolved_at"] else "ongoing",
+            "is_maintenance": is_maint,
         })
     conn.close()
     return jsonify(events)
@@ -2183,6 +2464,114 @@ def clear_events():
         down_since.clear()
     try:
         audit(current_user.username, "events.clear", "all")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/maintenance", methods=["GET"])
+@api_login_required
+def api_maintenance_list():
+    """Daftar window maintenance. ?active=1 (hanya aktif), ?host=IP (filter)."""
+    active_only = str(request.args.get("active") or "").strip() == "1"
+    host_filter = (request.args.get("host") or "").strip()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    query = "SELECT id, host, start_at, end_at, reason, created_by, created_at FROM maintenance_windows WHERE 1=1"
+    params = []
+    if host_filter:
+        query += " AND host=?"
+        params.append(host_filter)
+    if active_only:
+        query += " AND start_at <= ? AND end_at >= ?"
+        params.extend([now_str, now_str])
+    query += " ORDER BY start_at ASC"
+    c.execute(query, params)
+    rows = []
+    for r in c.fetchall():
+        is_active = bool(r["start_at"] <= now_str <= r["end_at"])
+        rows.append({**dict(r), "is_active": is_active})
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/maintenance", methods=["POST"])
+@api_login_required
+def api_maintenance_create():
+    """Buat window maintenance. Body JSON {host, start_at, end_at, reason?}.
+
+    Format waktu: 'YYYY-MM-DD HH:MM[:SS]' atau 'YYYY-MM-DDTHH:MM'. Max 30 hari.
+    """
+    data = request.get_json(silent=True) or {}
+    host = str(data.get("host") or "").strip()[:255]
+    reason = str(data.get("reason") or "").strip()[:200]
+    if not host:
+        return jsonify({"error": "Host wajib diisi"}), 400
+    start_dt = _parse_maint_time(str(data.get("start_at") or ""))
+    end_dt = _parse_maint_time(str(data.get("end_at") or ""))
+    if not start_dt or not end_dt:
+        return jsonify({"error": "Format waktu harus YYYY-MM-DD HH:MM"}), 400
+    if end_dt <= start_dt:
+        return jsonify({"error": "Waktu selesai harus setelah mulai"}), 400
+    if (end_dt - start_dt).total_seconds() > 30 * 86400:
+        return jsonify({"error": "Durasi maintenance maksimal 30 hari"}), 400
+    conn, c = get_db()
+    try:
+        c.execute("SELECT 1 FROM hosts WHERE ip=?", (host,))
+        if not c.fetchone():
+            return jsonify({"error": "Host belum terdaftar. Tambahkan dulu di dashboard."}), 404
+        c.execute(
+            "SELECT 1 FROM maintenance_windows WHERE host=? AND start_at <= ? AND end_at >= ? LIMIT 1",
+            (host, _fmt_maint_time(end_dt), _fmt_maint_time(start_dt)),
+        )
+        if c.fetchone():
+            return jsonify({"error": "Window maintenance bertabrakan dengan jadwal aktif host ini"}), 400
+    finally:
+        conn.close()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "INSERT INTO maintenance_windows (host, start_at, end_at, reason, created_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (host, _fmt_maint_time(start_dt), _fmt_maint_time(end_dt),
+                 reason, current_user.username, now_str),
+            )
+            new_id = c.lastrowid
+            _insert_system_log(c, "MAINTENANCE_CREATE", host,
+                               f"{_fmt_maint_time(start_dt)} s/d {_fmt_maint_time(end_dt)}{(' - ' + reason) if reason else ''}",
+                               now_str)
+            _commit_with_retry(conn)
+        finally:
+            conn.close()
+    try:
+        audit(current_user.username, "maintenance.create", f"{host} id={new_id}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "id": new_id}), 201
+
+
+@app.route("/api/maintenance/<int:mid>", methods=["DELETE"])
+@api_login_required
+def api_maintenance_delete(mid):
+    conn, c = get_db()
+    c.execute("SELECT host FROM maintenance_windows WHERE id=?", (mid,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Jadwal maintenance tidak ditemukan"}), 404
+    host = row["host"]
+    conn.close()
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.execute("DELETE FROM maintenance_windows WHERE id=?", (mid,))
+            _commit_with_retry(conn)
+        finally:
+            conn.close()
+    try:
+        audit(current_user.username, "maintenance.delete", f"id={mid} host={host}")
     except Exception:
         pass
     return jsonify({"status": "success"})
@@ -2260,6 +2649,8 @@ def add_service_api():
         pass
 
     trigger_manual_service_check()
+    if svc_type == "http" and (url or "").lower().startswith("https://"):
+        trigger_async_ssl_check()
     return jsonify({"status": "success", "id": new_id}), 201
 
 
@@ -2273,6 +2664,10 @@ def delete_service_api(svc_id):
         conn.close()
         return jsonify({"error": "Service tidak ditemukan"}), 404
     c.execute("DELETE FROM services WHERE id=?", (svc_id,))
+    try:
+        c.execute("DELETE FROM service_history WHERE service_id=?", (svc_id,))
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
     try:
@@ -2280,6 +2675,54 @@ def delete_service_api(svc_id):
     except Exception:
         pass
     return jsonify({"status": "success"})
+
+
+@app.route("/api/services/<int:svc_id>/history")
+@api_login_required
+def api_service_history(svc_id):
+    """Riwayat latency service. ?hours=1|6|24|168 (default 24)."""
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-168"}), 400
+    hours = max(1, min(hours, 168))
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, name, type, ip, port, url, status FROM services WHERE id=?", (svc_id,))
+        svc = c.fetchone()
+        if not svc:
+            return jsonify({"error": "Service tidak ditemukan"}), 404
+        c.execute(
+            "SELECT timestamp, latency, status FROM service_history "
+            "WHERE service_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+            (svc_id, f"-{hours} hours"),
+        )
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    labels = [r["timestamp"].split(" ")[1] if " " in (r["timestamp"] or "") else r["timestamp"] for r in rows]
+    values = [round(r["latency"], 2) if r["status"] == "ONLINE" else None for r in rows]
+    return jsonify({
+        "service": dict(svc),
+        "hours": hours,
+        "labels": labels,
+        "values": values,
+        "count": len(rows),
+    })
+
+
+@app.route("/api/services/<int:svc_id>/ssl-check", methods=["POST"])
+@api_login_required
+def api_service_ssl_check(svc_id):
+    """Trigger cek SSL manual untuk satu service https."""
+    conn, c = get_db()
+    c.execute("SELECT url FROM services WHERE id=?", (svc_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Service tidak ditemukan"}), 404
+    trigger_async_ssl_check()
+    return jsonify({"status": "queued"})
 
 
 
@@ -2496,11 +2939,16 @@ def triggers_page():
 @app.route("/api/triggers")
 @api_login_required
 def get_triggers():
-    """Mengambil semua alarm yang aktif saat ini (hanya untuk host terdaftar)."""
+    """Mengambil semua alarm yang aktif saat ini (hanya untuk host terdaftar).
+
+    Host dalam maintenance window aktif: alarm DOWN/agent-offline disuppress
+    dan diganti satu alarm maintenance (warning) agar NOC tahu sedang maintenance.
+    """
     global status_memory, agent_status_memory, agent_offline_memory
 
 
     valid_hosts = set(get_target_hosts())
+    maint_map = get_active_maintenance_map()
 
     alarms = []
 
@@ -2509,16 +2957,27 @@ def get_triggers():
         if host not in valid_hosts:
             continue
         if is_down:
-            alarms.append({
-                "host": host,
-                "severity": "disaster",
-                "message": "Host is DOWN (Unreachable)",
-                "category": "availability"
-            })
+            if host in maint_map:
+                reason = (maint_map[host].get("reason") or "").strip()[:200]
+                alarms.append({
+                    "host": host,
+                    "severity": "warning",
+                    "message": f"In maintenance (DOWN suppressed){(' - ' + reason) if reason else ''}",
+                    "category": "maintenance"
+                })
+            else:
+                alarms.append({
+                    "host": host,
+                    "severity": "disaster",
+                    "message": "Host is DOWN (Unreachable)",
+                    "category": "availability"
+                })
 
 
     for host, is_offline in list(agent_offline_memory.items()):
         if host not in valid_hosts:
+            continue
+        if host in maint_map:
             continue
         if is_offline and not status_memory.get(host, False):
             alarms.append({
@@ -2539,6 +2998,53 @@ def get_triggers():
                 alarms.append({"host": host, "severity": "warning", "message": "High RAM Usage", "category": "resource"})
             if status.get("disk", False):
                 alarms.append({"host": host, "severity": "warning", "message": "High Disk Usage", "category": "resource"})
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT id, ip, name, type, url, status, ssl_days_left, ssl_expires_at FROM services")
+            for r in c.fetchall():
+                d = dict(r)
+                st = (d.get("status") or "").upper()
+                label = f"{d.get('name')} ({d.get('ip')})"
+                if st == "OFFLINE":
+                    alarms.append({
+                        "host": label,
+                        "severity": "high",
+                        "message": f"Service OFFLINE: {d.get('name')} [{d.get('type')}]",
+                        "category": "service",
+                    })
+                lvl = _ssl_level(d.get("ssl_days_left"))
+                if lvl and (d.get("url") or "").lower().startswith("https://"):
+                    try:
+                        days = int(d.get("ssl_days_left"))
+                    except (ValueError, TypeError):
+                        days = None
+                    if lvl == "expired":
+                        alarms.append({
+                            "host": label,
+                            "severity": "disaster",
+                            "message": f"SSL EXPIRED: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                            "category": "service",
+                        })
+                    elif lvl == "high":
+                        alarms.append({
+                            "host": label,
+                            "severity": "high",
+                            "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                            "category": "service",
+                        })
+                    else:
+                        alarms.append({
+                            "host": label,
+                            "severity": "warning",
+                            "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                            "category": "service",
+                        })
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[TRIGGERS] service/ssl gagal: {e}")
 
     severity_order = {"disaster": 1, "high": 2, "warning": 3}
     alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))
@@ -2737,7 +3243,12 @@ def reports_page():
 @app.route("/api/reports/summary")
 @api_login_required
 def api_reports_summary():
-    """Ringkasan SLA + outage per host. ?days=1|3|7 (default 7)."""
+    """Ringkasan SLA + outage per host. ?days=1|3|7 (default 7).
+
+    Outage dalam maintenance (is_maintenance=1) TIDAK dihitung ke total_outages /
+    total_downtime / down_count / mttr, tapi ditampilkan terpisah sebagai
+    maintenance_count agar SLA tidak jelek saat maintenance terjadwal.
+    """
     days = _report_days()
     conn, c = get_db()
     c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
@@ -2747,6 +3258,8 @@ def api_reports_summary():
     outages = []
     total_downtime = 0
     total_outages = 0
+    total_maint_downtime = 0
+    total_maint_outages = 0
     sum_uptime = 0.0
     counted_uptime = 0
     for h in hosts:
@@ -2765,52 +3278,76 @@ def api_reports_summary():
         total = r["total"] or 0
         up_count = r["up_count"] or 0
 
-        c.execute("""
-            SELECT id, started_at, resolved_at, duration_s FROM down_events
-            WHERE host=? AND started_at > datetime('now','localtime',?)
-            ORDER BY id DESC
-        """, (ip, f"-{days} days"))
+        try:
+            c.execute("""
+                SELECT id, started_at, resolved_at, duration_s, is_maintenance FROM down_events
+                WHERE host=? AND started_at > datetime('now','localtime',?)
+                ORDER BY id DESC
+            """, (ip, f"-{days} days"))
+        except sqlite3.OperationalError:
+            c.execute("""
+                SELECT id, started_at, resolved_at, duration_s FROM down_events
+                WHERE host=? AND started_at > datetime('now','localtime',?)
+                ORDER BY id DESC
+            """, (ip, f"-{days} days"))
         evs = c.fetchall()
-        down_count = len(evs)
+        def _is_maint(e):
+            try:
+                return bool(e["is_maintenance"])
+            except (KeyError, IndexError, TypeError):
+                return False
+        real_evs = [e for e in evs if not _is_maint(e)]
+        maint_evs = [e for e in evs if _is_maint(e)]
+        down_count = len(real_evs)
+        maint_count = len(maint_evs)
         total_outages += down_count
-        durs = [e["duration_s"] for e in evs if e["duration_s"] is not None]
+        total_maint_outages += maint_count
+        durs = [e["duration_s"] for e in real_evs if e["duration_s"] is not None]
         mttr = round(sum(durs) / len(durs)) if durs else None
         h_downtime = sum(durs)
         total_downtime += h_downtime
+        maint_durs = [e["duration_s"] for e in maint_evs if e["duration_s"] is not None]
+        h_maint_downtime = sum(maint_durs)
+        total_maint_downtime += h_maint_downtime
         if total == 0:
             host_rows.append({**h, "uptime_pct": None, "total_checks": 0,
                               "up_count": 0, "down_count": down_count,
+                              "maintenance_count": maint_count,
                               "avg_ms": None, "min_ms": None, "max_ms": None,
                               "avg_loss": None, "mttr_s": mttr,
                               "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                              "downtime_s": h_downtime})
+                              "downtime_s": h_downtime,
+                              "maintenance_downtime_s": h_maint_downtime})
         else:
             uptime = round(up_count / total * 100, 1)
             sum_uptime += uptime
             counted_uptime += 1
             host_rows.append({**h, "uptime_pct": uptime, "total_checks": total,
                               "up_count": up_count, "down_count": down_count,
+                              "maintenance_count": maint_count,
                               "avg_ms": round(r["avg_ms"], 2) if r["avg_ms"] is not None else None,
                               "min_ms": round(r["min_ms"], 2) if r["min_ms"] is not None else None,
                               "max_ms": round(r["max_ms"], 2) if r["max_ms"] is not None else None,
                               "avg_loss": round(r["avg_loss"], 1) if r["avg_loss"] is not None else None,
                               "mttr_s": mttr,
                               "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                              "downtime_s": h_downtime})
+                              "downtime_s": h_downtime,
+                              "maintenance_downtime_s": h_maint_downtime})
         for e in evs[:200]:
             outages.append({"id": e["id"], "host": ip, "alias": h["alias"],
                             "started_at": e["started_at"],
                             "resolved_at": e["resolved_at"] or "Ongoing",
                             "duration_s": e["duration_s"],
                             "duration_str": _fmt_duration(e["duration_s"]),
-                            "status": "resolved" if e["resolved_at"] else "ongoing"})
+                            "status": "resolved" if e["resolved_at"] else "ongoing",
+                            "is_maintenance": _is_maint(e)})
     conn.close()
     outages.sort(key=lambda x: x["started_at"], reverse=True)
     outages = outages[:200]
     return jsonify({
         "period_days": days,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "note": "ping_logs retensi 7 hari",
+        "note": "ping_logs retensi 7 hari; outage maintenance tidak dihitung ke SLA",
         "hosts": host_rows,
         "outages": outages,
         "totals": {
@@ -2819,6 +3356,9 @@ def api_reports_summary():
             "total_outages": total_outages,
             "total_downtime_s": total_downtime,
             "total_downtime_str": _fmt_duration(total_downtime),
+            "maintenance_outages": total_maint_outages,
+            "maintenance_downtime_s": total_maint_downtime,
+            "maintenance_downtime_str": _fmt_duration(total_maint_downtime),
         },
     })
 
@@ -2940,6 +3480,141 @@ def api_reports_send():
     except Exception:
         pass
     return jsonify({"status": "success", "hosts": len(hosts)})
+
+
+def _public_node_name(alias, ip, hid):
+    """Nama tampilan node untuk halaman publik.
+
+    Pakai alias bila admin sudah mengisi (alias != IP). Kalau belum,
+    pakai 'node-<id>' agar IP internal tidak bocor ke publik.
+    """
+    a = (alias or "").strip()
+    if a and a != (ip or ""):
+        return a[:80]
+    try:
+        return f"node-{int(hid)}"
+    except (ValueError, TypeError):
+        return "node-?"
+
+
+@app.route("/status")
+def status_page():
+    """Halaman status publik (tanpa login). Hanya data agregat.
+
+    Sengaja TANPA IP, URL, alias mentah, maupun detail config —
+    mengikuti prinsip /health yang tidak membocorkan infra internal.
+    """
+    return render_template("status.html")
+
+
+@app.route("/api/public/status")
+def api_public_status():
+    """JSON status publik (tanpa login). Hanya status + uptime agregat.
+
+    Tidak ada IP, URL, alias mentah, jumlah baris DB, atau info infra lain.
+    Rate-limit mengikuti zona nginx nms_api untuk /api/.
+    """
+    maint_map = get_active_maintenance_map()
+    nodes = []
+    up_n = down_n = pend_n = maint_n = 0
+    sum_uptime = 0.0
+    counted = 0
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT id, ip, alias FROM hosts ORDER BY id ASC")
+            hosts = [dict(r) for r in c.fetchall()]
+            for h in hosts:
+                ip = h["ip"]
+                name = _public_node_name(h.get("alias"), ip, h["id"])
+                c.execute(
+                    "SELECT latency FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1",
+                    (ip,),
+                )
+                latest = c.fetchone()
+                c.execute("""
+                    SELECT COUNT(*) AS total,
+                           SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
+                           AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms
+                    FROM ping_logs
+                    WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
+                """, (ip,))
+                r = c.fetchone()
+                total = r["total"] or 0
+                up_count = r["up_count"] or 0
+                uptime = round(up_count / total * 100, 1) if total else None
+                if uptime is not None:
+                    sum_uptime += uptime
+                    counted += 1
+                has_latest = latest is not None and latest["latency"] is not None
+                if total == 0 and not has_latest:
+                    st = "pending"
+                    pend_n += 1
+                elif ip in maint_map:
+                    st = "maintenance"
+                    maint_n += 1
+                elif status_memory.get(ip, False) or (has_latest and latest["latency"] == -1):
+                    st = "down"
+                    down_n += 1
+                else:
+                    st = "up"
+                    up_n += 1
+                entry = {
+                    "name": name,
+                    "status": st,
+                    "uptime_24h": uptime,
+                    "avg_ms": round(r["avg_ms"], 1) if r["avg_ms"] is not None else None,
+                }
+                if st == "maintenance":
+                    entry["note"] = ((maint_map[ip].get("reason") or "").strip()[:100]
+                                     or "Scheduled maintenance")
+                nodes.append(entry)
+
+            c.execute("SELECT id, name, type, status FROM services ORDER BY id ASC")
+            services = []
+            for s in c.fetchall():
+                d = dict(s)
+                c.execute("""
+                    SELECT COUNT(*) AS total,
+                           SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS up_count
+                    FROM service_history
+                    WHERE service_id=? AND timestamp > datetime('now','localtime','-24 hours')
+                """, (d["id"],))
+                sr = c.fetchone()
+                stotal = sr["total"] or 0
+                sup = sr["up_count"] or 0
+                st_raw = (d.get("status") or "PENDING").upper()
+                st = st_raw.lower() if st_raw in ("ONLINE", "OFFLINE") else "pending"
+                services.append({
+                    "name": (d.get("name") or "service")[:80],
+                    "type": (d.get("type") or "").lower()[:10],
+                    "status": st,
+                    "uptime_24h": round(sup / stotal * 100, 1) if stotal else None,
+                })
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[PUBLIC STATUS] gagal: {e}")
+        resp = jsonify({"error": "Status tidak tersedia, coba lagi."})
+        resp.headers["Cache-Control"] = "no-store"
+        return resp, 503
+    resp = jsonify({
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "summary": {
+            "total": len(nodes),
+            "up": up_n,
+            "down": down_n,
+            "pending": pend_n,
+            "maintenance": maint_n,
+            "avg_uptime_24h": round(sum_uptime / counted, 1) if counted else None,
+            "services": len(services),
+            "services_online": sum(1 for s in services if s["status"] == "online"),
+        },
+        "nodes": nodes,
+        "services": services,
+    })
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/health")

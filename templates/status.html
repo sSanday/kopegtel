@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Status Layanan — NMS KOPEGTEL</title>
+  <meta name="description" content="Status layanan jaringan publik - uptime dan ketersediaan">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14;
+      --surface:#0c1220;
+      --card:rgba(12,18,32,0.8);
+      --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff;
+      --accent2:#00ff88;
+      --t1:#e0f0ff;
+      --t2:#6a8aaa;
+      --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444;
+      --success:#00ff88;
+      --warn:#ffaa00;
+      --info:#00a2ff;
+    }
+    body{
+      font-family:'Inter',sans-serif;
+      background:var(--bg);color:var(--t1);
+      min-height:100vh;
+    }
+    body::before{
+      content:'';position:fixed;inset:0;
+      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
+      pointer-events:none;z-index:9999;
+    }
+    .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:32px 24px 64px}
+    .hero{text-align:center;margin-bottom:28px}
+    .hero-logo{
+      width:44px;height:44px;margin:0 auto 12px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:10px;display:flex;align-items:center;justify-content:center;
+      font-size:20px;box-shadow:0 0 24px rgba(0,162,255,0.4);
+    }
+    .hero h1{font-family:var(--mono);font-size:1.1rem;font-weight:700;letter-spacing:1px}
+    .hero h1 span{color:var(--accent2)}
+    .hero p{font-family:var(--mono);font-size:.68rem;color:var(--t3);margin-top:6px}
+    .overall{
+      text-align:center;padding:18px;border-radius:10px;margin-bottom:20px;
+      font-family:var(--mono);font-size:.85rem;font-weight:700;letter-spacing:1px;
+      border:1px solid var(--border2);background:var(--card);
+    }
+    .overall.ok{color:var(--success);border-color:rgba(0,255,136,0.3)}
+    .overall.degraded{color:var(--warn);border-color:rgba(255,170,0,0.35)}
+    .overall.outage{color:var(--danger);border-color:rgba(255,68,68,0.35)}
+    .summary-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
+    .sum-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:12px 14px}
+    .sum-card .sk{font-family:var(--mono);font-size:.58rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+    .sum-card .sv{font-family:var(--mono);font-size:1.4rem;font-weight:700}
+    .sec-label{
+      font-family:var(--mono);font-size:.62rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin:22px 0 12px;
+    }
+    .sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
+    .node-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+    .node{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:14px 16px}
+    .node.up{border-color:rgba(0,255,136,0.2)}
+    .node.down{border-color:rgba(255,68,68,0.25)}
+    .node.pending,.node.maintenance{border-color:rgba(255,170,0,0.25)}
+    .node-name{font-family:var(--mono);font-size:.78rem;font-weight:600;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pill{
+      font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:1.5px;
+      border-radius:3px;padding:2px 8px;display:inline-block;margin-bottom:8px;
+    }
+    .pill.up{background:rgba(0,255,136,0.12);color:var(--success);border:1px solid rgba(0,255,136,0.3)}
+    .pill.down{background:rgba(255,68,68,0.12);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .pill.pending,.pill.maintenance{background:rgba(255,170,0,0.12);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
+    .node-meta{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+    .node-meta b{color:var(--t2);font-weight:500}
+    .node-note{font-family:var(--mono);font-size:.62rem;color:var(--warn);margin-top:6px}
+    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+    th{
+      text-align:left;color:var(--t3);font-weight:600;
+      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
+      padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.15);
+    }
+    td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.7rem;color:var(--t2)}
+    tr:last-child td{border-bottom:none}
+    .footer{text-align:center;margin-top:28px;font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    .footer .live{color:var(--accent2)}
+    .err{text-align:center;padding:24px;font-family:var(--mono);font-size:.72rem;color:var(--danger)}
+    @media(max-width:480px){.node-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="hero-logo">⬡</div>
+      <h1>NMS<span>KOPEGTEL</span> — STATUS</h1>
+      <p id="genAt">memuat status layanan...</p>
+    </div>
+
+    <div class="overall ok" id="overall">● MEMUAT...</div>
+
+    <div class="summary-row">
+      <div class="sum-card"><div class="sk">nodes up</div><div class="sv" id="sumUp" style="color:var(--success)">—</div></div>
+      <div class="sum-card"><div class="sk">nodes down</div><div class="sv" id="sumDown" style="color:var(--danger)">—</div></div>
+      <div class="sum-card"><div class="sk">maintenance</div><div class="sv" id="sumMaint" style="color:var(--warn)">—</div></div>
+      <div class="sum-card"><div class="sk">avg uptime 24h</div><div class="sv" id="sumUptime" style="color:var(--accent)">—</div></div>
+    </div>
+
+    <div class="sec-label">nodes</div>
+    <div class="node-grid" id="nodeGrid"></div>
+
+    <div class="sec-label">services</div>
+    <table>
+      <thead><tr><th>Service</th><th>Status</th><th>Uptime 24h</th></tr></thead>
+      <tbody id="svcBody"></tbody>
+    </table>
+
+    <div class="footer"><span class="live">▌</span> auto-refresh 30s · data agregat publik, tanpa detail infrastruktur internal</div>
+  </div>
+
+  <script>
+    function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    const PILL_TXT = {up:'UP', down:'DOWN', pending:'PENDING', maintenance:'MAINTENANCE', online:'ONLINE', offline:'OFFLINE'};
+
+    async function refresh(){
+      try{
+        const res = await fetch('/api/public/status', {cache:'no-store'});
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const j = await res.json();
+        const s = j.summary || {};
+        document.getElementById('genAt').textContent = 'update: ' + (j.generated_at || '—');
+        document.getElementById('sumUp').textContent = s.up ?? '—';
+        document.getElementById('sumDown').textContent = s.down ?? '—';
+        document.getElementById('sumMaint').textContent = s.maintenance ?? '—';
+        document.getElementById('sumUptime').textContent = (s.avg_uptime_24h != null ? s.avg_uptime_24h + '%' : '—');
+
+        const ov = document.getElementById('overall');
+        if((s.down || 0) > 0){ ov.className = 'overall outage'; ov.textContent = '● GANGGUAN TERDETEKSI'; }
+        else if((s.maintenance || 0) > 0 || (s.pending || 0) > 0){ ov.className = 'overall degraded'; ov.textContent = '● SEBAGIAN DALAM PEMELIHARAAN'; }
+        else { ov.className = 'overall ok'; ov.textContent = '● SEMUA SISTEM NORMAL'; }
+
+        const ng = document.getElementById('nodeGrid');
+        const nodes = j.nodes || [];
+        ng.innerHTML = nodes.length ? nodes.map(n => `
+          <div class="node ${esc(n.status)}">
+            <div class="node-name">${esc(n.name)}</div>
+            <span class="pill ${esc(n.status)}">${esc(PILL_TXT[n.status] || n.status)}</span>
+            <div class="node-meta">uptime 24h: <b>${n.uptime_24h != null ? esc(n.uptime_24h) + '%' : '—'}</b>${n.avg_ms != null ? ' · <b>' + esc(n.avg_ms) + ' ms</b>' : ''}</div>
+            ${n.note ? `<div class="node-note">${esc(n.note)}</div>` : ''}
+          </div>`).join('')
+          : '<div class="err">Belum ada node terdaftar.</div>';
+
+        const sb = document.getElementById('svcBody');
+        const svcs = j.services || [];
+        sb.innerHTML = svcs.length ? svcs.map(v => `
+          <tr>
+            <td style="color:var(--t1)">${esc(v.name)}</td>
+            <td><span class="pill ${esc(v.status)}">${esc(PILL_TXT[v.status] || v.status)}</span></td>
+            <td>${v.uptime_24h != null ? esc(v.uptime_24h) + '%' : '—'}</td>
+          </tr>`).join('')
+          : '<tr><td colspan="3" style="text-align:center;padding:20px">Belum ada service terdaftar.</td></tr>';
+      } catch(e){
+        console.error(e);
+        document.getElementById('overall').className = 'overall outage';
+        document.getElementById('overall').textContent = '● GAGAL MEMUAT STATUS';
+      }
+    }
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>
