@@ -21,7 +21,7 @@ import ipaddress
 load_dotenv()
 
 app            = Flask(__name__)
-# Fail-fast: tanpa SECRET_KEY jangan jalan dengan kunci publik (bypass session).
+
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
     raise SystemExit(
@@ -31,14 +31,14 @@ if not SECRET_KEY:
     )
 app.secret_key = SECRET_KEY
 app.config['TEMPLATES_AUTO_RELOAD'] = True
-# Sesi ingat-saya dibatasi 7 hari (bukan default 365 hari) + cookie HttpOnly/SameSite
+
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-# Aktifkan hanya setelah HTTPS/TLS aktif di Nginx (COOKIE_SECURE=1),
-# kalau dipaksa saat masih HTTP, browser menolak cookie -> login loop.
+
+
 _cookie_secure = os.environ.get("COOKIE_SECURE", "0") == "1"
 app.config['SESSION_COOKIE_SECURE'] = _cookie_secure
 app.config['REMEMBER_COOKIE_SECURE'] = _cookie_secure
@@ -68,7 +68,7 @@ def get_client_ip():
             return xff.split(",")[0].strip()[:45]
     return request.remote_addr or "unknown"
 
-# ── Flask-Login ───────────────────────────────────────────────────────────────
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view        = "login"
@@ -111,9 +111,9 @@ def _verify_admin(username, password):
         except Exception:
             return False
     if db_user or db_hash:
-        # Kredensial DB setengah terisi (korup) -> tolak, jangan fallback.
+
         return False
-    # Instalasi baru (belum di-seed): fallback .env sekali saja.
+
     import hmac
     return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(password, DASHBOARD_PASSWORD)
 
@@ -187,7 +187,7 @@ def _get_admin_username():
 @login_manager.user_loader
 def load_user(user_id):
     if user_id == "admin":
-        # Tolak sesi lama yang terbit sebelum ganti password (cookie curian hangus).
+
         try:
             if session.get("admin_v", 0) != _get_session_version():
                 return None
@@ -202,9 +202,9 @@ def api_login_required(f):
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated:
             return jsonify({"error": "Unauthorized. Silakan login."}), 401
-        # Mitigasi CSRF ringan: form HTML biasa tidak bisa mengirim JSON
-        # maupun header custom tanpa preflight CORS (app tidak mengaktifkan CORS).
-        # Maka API yang mengubah state wajib salah satunya.
+
+
+
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             is_json = (request.is_json or
                        (request.content_type or "").startswith("application/json"))
@@ -214,7 +214,7 @@ def api_login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ── Config ────────────────────────────────────────────────────────────────────
+
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
 AGENT_API_KEY      = os.environ.get("AGENT_API_KEY", "")
@@ -227,30 +227,30 @@ except (ValueError, TypeError):
     MAX_HOSTS = 200
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# NMS_DB_PATH memungkinkan tes memakai DB temporer tanpa menyentuh produksi.
+
 DB_PATH  = os.environ.get("NMS_DB_PATH", os.path.join(BASE_DIR, "network.db"))
 
-# status_memory: True = host sedang DOWN
-status_memory = {}
-down_since    = {}   # host -> datetime saat mulai DOWN
-agent_status_memory = {} # host -> {'cpu': False, 'ram': False, 'disk': False} (True jika sedang alarm)
-agent_offline_memory = {} # host -> True jika agent berhenti mengirim data
 
-# Anti alert-fatigue:
-# - Hysteresis resource: alarm saat > threshold, pulih hanya saat <= threshold - HYSTERESIS
-#   (mis. CPU batas 85 -> alarm >85, normal kembali saat <=80). Mencegah on-off tiap detik.
-# - Cooldown DOWN: Telegram DOWN yang berulang untuk host yang sama dibatasi 1x per
-#   DOWN_COOLDOWN_S detik (event + log tetap dicatat, recovery UP selalu dikirim).
+status_memory = {}
+down_since    = {}
+agent_status_memory = {}
+agent_offline_memory = {}
+
+
+
+
+
+
 HYSTERESIS = 5.0
 DOWN_COOLDOWN_S = 600
-last_down_telegram = {}  # host -> datetime Telegram DOWN terakhir
+last_down_telegram = {}
 
-# Lock untuk mencegah race condition saat tulis ke DB secara paralel
+
 db_lock = threading.Lock()
 
-# Throttle login: ip -> [jumlah_gagal, waktu_blokir_sampai, terakhir_lihat_ts]
+
 login_failures = {}
-LOGIN_FAIL_TTL_S = 600  # entri gagal login kedaluwarsa 10 menit (anti memory-DoS)
+LOGIN_FAIL_TTL_S = 600
 
 
 def _prune_login_failures(now_ts):
@@ -258,15 +258,15 @@ def _prune_login_failures(now_ts):
     try:
         for ip, (_, blocked, last) in list(login_failures.items()):
             if blocked:
-                # Sedang/pernah diblokir: buang TTL setelah blokir berakhir
+
                 if now_ts > blocked + LOGIN_FAIL_TTL_S:
                     login_failures.pop(ip, None)
             else:
-                # Fase hitung gagal: buang jika tidak ada aktivitas selama TTL
+
                 if now_ts - last > LOGIN_FAIL_TTL_S:
                     login_failures.pop(ip, None)
-        # Batas darurat: jika masih >5000 entri (serangan distribusi),
-        # buang yang tidak sedang diblokir dan paling lama tak aktif.
+
+
         if len(login_failures) > 5000:
             idle = sorted(
                 ((ip, v[2]) for ip, v in login_failures.items() if not v[1]),
@@ -278,14 +278,14 @@ def _prune_login_failures(now_ts):
     except Exception:
         pass
 
-# ── Database ──────────────────────────────────────────────────────────────────
+
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    # Cegah WAL membengkak (kasus network.db-wal 42MB): checkpoint otomatis
-    # tiap ~1000 halaman + batasi ukuran journal.
+
+
     try:
         conn.execute("PRAGMA wal_autocheckpoint=1000")
         conn.execute("PRAGMA journal_size_limit=33554432")
@@ -319,7 +319,7 @@ def _insert_system_log(c, event_type, host, message, timestamp=None):
 
 def init_db():
     conn, c = get_db()
-    # Tabel utama
+
     c.execute('''CREATE TABLE IF NOT EXISTS ping_logs (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         host        TEXT    NOT NULL,
@@ -327,23 +327,23 @@ def init_db():
         packet_loss REAL    NOT NULL DEFAULT 0,
         timestamp   TEXT    NOT NULL
     )''')
-    # Migrasi: tambah packet_loss jika belum ada
+
     try:
         c.execute("ALTER TABLE ping_logs ADD COLUMN packet_loss REAL NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
     
-    # Tabel settings
+
     c.execute('''CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     )''')
     
-    # Seed default settings
+
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ram_threshold', '90.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('disk_threshold', '90.0')")
-    # Tabel event DOWN
+
     c.execute('''CREATE TABLE IF NOT EXISTS down_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         host        TEXT    NOT NULL,
@@ -351,7 +351,7 @@ def init_db():
         resolved_at TEXT,
         duration_s  INTEGER
     )''')
-    # Tabel hosts (Dynamic Node Management)
+
     c.execute('''CREATE TABLE IF NOT EXISTS hosts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT UNIQUE NOT NULL
@@ -370,7 +370,7 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     
-    # Tabel agent_metrics (CPU/RAM data dari agent; baris SNMP memakai source='snmp')
+
     c.execute('''CREATE TABLE IF NOT EXISTS agent_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         host TEXT NOT NULL,
@@ -383,7 +383,7 @@ def init_db():
         source TEXT DEFAULT 'agent'
     )''')
     
-    # Tabel services (TCP/HTTP monitoring)
+
     c.execute('''CREATE TABLE IF NOT EXISTS services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT NOT NULL,
@@ -396,7 +396,7 @@ def init_db():
         last_checked TEXT
     )''')
     
-    # Migrasi: tambah disk_percent, net_in, net_out jika belum ada
+
     try:
         c.execute("ALTER TABLE agent_metrics ADD COLUMN disk_percent REAL DEFAULT 0.0")
     except sqlite3.OperationalError:
@@ -406,8 +406,8 @@ def init_db():
         c.execute("ALTER TABLE agent_metrics ADD COLUMN net_out REAL DEFAULT 0.0")
     except sqlite3.OperationalError:
         pass
-    # Migrasi: kolom source ('agent' vs 'snmp') agar baris SNMP tidak
-    # mengotori query agent. Backfill: NULL cpu => snmp, selainnya agent.
+
+
     try:
         c.execute("ALTER TABLE agent_metrics ADD COLUMN source TEXT DEFAULT 'agent'")
     except sqlite3.OperationalError:
@@ -418,7 +418,7 @@ def init_db():
     except sqlite3.OperationalError:
         pass
         
-    # Tabel system_logs untuk Audit & Log Viewer
+
     c.execute('''CREATE TABLE IF NOT EXISTS system_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,
@@ -427,13 +427,13 @@ def init_db():
         message TEXT NOT NULL
     )''')
     
-    # Index performa (upgrade): query history & event jauh lebih cepat saat data membesar
+
     c.execute("CREATE INDEX IF NOT EXISTS idx_ping_host_clock ON ping_logs(host, timestamp)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_agent_host_clock ON agent_metrics(host, timestamp)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_down_host ON down_events(host)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_syslog_type_host ON system_logs(event_type, host)")
 
-    # Tabel inventory (Data Perangkat: identitas, lokasi, administrasi)
+
     c.execute('''CREATE TABLE IF NOT EXISTS inventory(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hostname TEXT NOT NULL, ip TEXT UNIQUE NOT NULL,
@@ -445,7 +445,7 @@ def init_db():
     )''')
     c.execute("CREATE INDEX IF NOT EXISTS idx_inventory_ip ON inventory(ip)")
 
-    # Seed default hosts jika kosong
+
     c.execute("SELECT COUNT(*) as cnt FROM hosts")
     if c.fetchone()["cnt"] == 0:
         for h in ["192.168.110.167", "192.168.110.25", "192.168.110.251"]:
@@ -519,9 +519,9 @@ def cleanup_old_data():
             return
         finally:
             conn.close()
-    # Checkpoint TRUNCATE mingguan (Senin 00:10 via cleanup harian): memadatkan
-    # WAL 42MB kemarin menjadi file utama + memangkas ukuran. PASSIVE tiap hari
-    # di backup tidak cukup saat writer sibuk terus.
+
+
+
     if datetime.now().weekday() == 0:
         try:
             chk = sqlite3.connect(DB_PATH, timeout=30)
@@ -543,7 +543,7 @@ def backup_database():
     date_str = datetime.now().strftime("%Y-%m-%d")
     backup_path = os.path.join(backup_dir, f"network_backup_{date_str}.db")
 
-    # Pakai sqlite backup API agar konsisten walau DB sedang ditulis (aman mode WAL)
+
     backup_ok = False
     if os.path.exists(DB_PATH):
         src = dst = None
@@ -566,7 +566,7 @@ def backup_database():
                     src.close()
             except Exception:
                 pass
-            # Checkpoint pasif agar WAL tidak tumbuh liar setelah backup
+
             try:
                 chk = sqlite3.connect(DB_PATH, timeout=10)
                 chk.execute("PRAGMA wal_checkpoint(PASSIVE)")
@@ -574,7 +574,7 @@ def backup_database():
             except Exception:
                 pass
     
-    # Hapus backup yang umurnya lebih dari 30 hari (menyisakan maksimal 30 file backup)
+
     backups = sorted(glob.glob(os.path.join(backup_dir, "network_backup_*.db")))
     if len(backups) > 30:
         for old_backup in backups[:-30]:
@@ -588,7 +588,7 @@ def backup_database():
     else:
         print(f"[BACKUP] GAGAL membackup ke {backup_path}")
 
-# ── Telegram ──────────────────────────────────────────────────────────────────
+
 def send_telegram_alert(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[WARN] Token/Chat ID Telegram belum dikonfigurasi.")
@@ -677,18 +677,18 @@ def send_heartbeat():
         f"{body}"
     )
 
-# ── Network check ─────────────────────────────────────────────────────────────
+
 _PING_TARGET_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
 _PING_RTT_RES = (
-    re.compile(r"rtt min/avg/max/mdev = [\d.]+/([\d.]+)/"),          # iputils Linux
-    re.compile(r"round-trip min/avg/max(?:/stddev)? = [\d.]+/([\d.]+)/"),  # macOS/BusyBox
+    re.compile(r"rtt min/avg/max/mdev = [\d.]+/([\d.]+)/"),
+    re.compile(r"round-trip min/avg/max(?:/stddev)? = [\d.]+/([\d.]+)/"),
 )
 
 def ping_host(host):
     """Ping 3x. Return (avg_latency_ms, packet_loss_pct). latency=-1 jika total DOWN."""
     host = (host or "").strip()
-    # Validasi ketat: tolak string kosong, opsi ("-X"), dan karakter aneh
-    # agar target tidak pernah ditafsir sebagai flag ping (option-injection).
+
+
     if not host or host.startswith("-") or not _PING_TARGET_RE.match(host):
         return -1, 100.0
     try:
@@ -720,13 +720,13 @@ def check_agent_heartbeat():
     """Mengecek apakah agent berhenti mengirim data (lewat 2 menit)."""
     global agent_offline_memory
     targets = get_target_hosts()
-    # 1. Baca saja dulu (tanpa tahan lock, tanpa network I/O)
+
     conn, c = get_db()
     try:
         last_map = {}
         for host in targets:
-            # Hanya baris agent asli (cpu NOT NULL). Baris SNMP (NULL)
-            # tidak boleh menyamarkan agent yang mati.
+
+
             c.execute('''
                 SELECT timestamp FROM agent_metrics 
                 WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1
@@ -736,10 +736,10 @@ def check_agent_heartbeat():
     finally:
         conn.close()
 
-    # 2. Proses di luar koneksi baca (agar tidak lock DB lama).
-    # Flag offline diubah dalam db_lock agar konsisten dengan agent_report;
-    # Telegram + log dikirim SETELAH lock dilepas (log_system_event butuh db_lock,
-    # lock tidak reentrant -> jangan panggil sambil memegangnya).
+
+
+
+
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     newly_offline = []
     with db_lock:
@@ -753,9 +753,9 @@ def check_agent_heartbeat():
                 continue
             diff = (datetime.now() - last_time).total_seconds()
 
-            # Jika lebih dari 120 detik (2 menit) tidak lapor
+
             if diff > 120 and not agent_offline_memory.get(host, False):
-                # Agent offline alert!
+
                 agent_offline_memory[host] = True
                 newly_offline.append(host)
     for host in newly_offline:
@@ -769,7 +769,7 @@ def check_agent_heartbeat():
         except Exception as e:
             print(f"[WARN] log AGENT_OFFLINE gagal: {e}")
 
-# State memori SNMP: host -> {'in_bytes': X, 'out_bytes': Y, 'time': T}
+
 snmp_state = {}
 
 def _encode_snmp_v1_get(community, oid_list):
@@ -817,15 +817,15 @@ def _encode_snmp_v1_get(community, oid_list):
     varbind_list = encode_tlv(0x30, varbinds)
     pdu = encode_tlv(0xa0, req_id + b'\x02\x01\x00\x02\x01\x00' + varbind_list)
     comm_bytes = str(community or "")[:128].encode()
-    # SNMP_VERSION=2c memakai version=1 (protokol identik v1 untuk GET dasar,
-    # kompatibel dengan perangkat yang menolak version 0). Default v1.
+
+
     _ver = 1 if os.environ.get("SNMP_VERSION", "1").strip().lower() in ("2", "2c") else 0
     version = bytes([0x02, 0x01, _ver])
     comm_tlv = encode_tlv(0x04, comm_bytes)
     return encode_tlv(0x30, version + comm_tlv + pdu)
-    # CATATAN: SNMP v3 (auth/priv) belum didukung encoder mentah ini.
-    # Untuk perangkat sensitif, batasi SNMP ke VLAN manajemen + community kuat,
-    # atau migrasi ke library SNMP v3 (pysnmp) di masa depan.
+
+
+
 
 def _ber_read_tlv(data, pos):
     """Baca satu TLV BER pada posisi pos. Return (tag, value_bytes, next_pos) atau None."""
@@ -849,7 +849,7 @@ def _ber_read_tlv(data, pos):
     except Exception:
         return None
 
-_SNMP_VALUE_TAGS = (0x02, 0x41, 0x42, 0x43, 0x46)  # INT, Counter32, Gauge32, TimeTicks, Counter64
+_SNMP_VALUE_TAGS = (0x02, 0x41, 0x42, 0x43, 0x46)
 
 def _extract_snmp_values(resp):
     """Ambil nilai varbind dari respons SNMP dengan walk BER rekursif.
@@ -870,7 +870,7 @@ def _extract_snmp_values(resp):
                 last_was_oid = True
                 continue
             if tag & 0x20:
-                # Constructed (SEQUENCE/PDU/varbind): telusuri isinya
+
                 last_was_oid = False
                 walk(val)
                 continue
@@ -918,7 +918,7 @@ def get_snmp_bandwidth(ip, community, if_index):
         sock.settimeout(2.0)
         sock.sendto(pkt, (ip, 161))
         resp, _ = sock.recvfrom(4096)
-        # Ambil nilai varbind (ifInOctets, ifOutOctets) via walk BER.
+
         vals = _extract_snmp_values(resp)
         if len(vals) >= 2:
             return vals[-2], vals[-1]
@@ -935,7 +935,7 @@ def get_snmp_bandwidth(ip, community, if_index):
 
 def poll_snmp_bandwidth():
     global snmp_state
-    # 1. Ambil daftar host cepat, lalu tutup koneksi (jangan tahan DB saat I/O UDP)
+
     conn, c = get_db()
     try:
         c.execute("SELECT ip, snmp_community, if_index FROM hosts ORDER BY id ASC")
@@ -947,14 +947,14 @@ def poll_snmp_bandwidth():
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     now_time = time.time()
 
-    # 2. Polling SNMP tanpa pegang DB
+
     pending_inserts = []
     for host, community, if_index in hosts:
         community = community or ""
         if_index = if_index or 1
 
         if not community or community.strip() == "":
-            continue # Tidak poll snmp jika tidak ada community
+            continue
 
         in_bytes, out_bytes = get_snmp_bandwidth(host, community, if_index)
         if in_bytes is not None and out_bytes is not None:
@@ -964,11 +964,11 @@ def poll_snmp_bandwidth():
 
                 diff_in = in_bytes - prev['in_bytes']
                 diff_out = out_bytes - prev['out_bytes']
-                # Counter turun = reset/reboot perangkat (kasus umum), BUKAN wrap.
-                # Wrap 32-bit asli tidak bisa dibedakan dari reset kecil, dan
-                # kompensasi 2^32 pada reset justru menciptakan spike Gbps palsu.
-                # Maka: baseline di-resync dan sampel ini dibuang (rugi 1 sampel,
-                # aman dari phantom spike).
+
+
+
+
+
                 if diff_in < 0 or diff_out < 0:
                     snmp_state[host] = {
                         'in_bytes': in_bytes,
@@ -976,8 +976,8 @@ def poll_snmp_bandwidth():
                         'time': now_time
                     }
                     continue
-                # Sanity: >10 Gbps tidak masuk akal untuk counter interface,
-                # kemungkinan reset — buang sampel.
+
+
                 if time_diff > 0:
                     net_in = (diff_in * 8) / (1024 * 1024 * time_diff)
                     net_out = (diff_out * 8) / (1024 * 1024 * time_diff)
@@ -991,8 +991,8 @@ def poll_snmp_bandwidth():
                 else:
                     net_in, net_out = 0.0, 0.0
 
-                # Baris SNMP: cpu/ram/disk = NULL + source='snmp' agar tidak
-                # mengotori grafik/alarm agent.
+
+
                 pending_inserts.append(
                     (host, None, None, None, round(net_in, 2), round(net_out, 2), timestamp, 'snmp')
                 )
@@ -1003,7 +1003,7 @@ def poll_snmp_bandwidth():
                 'time': now_time
             }
 
-    # 3. Tulis batch sekaligus dengan lock + retry
+
     if not pending_inserts:
         return
     with db_lock:
@@ -1031,13 +1031,13 @@ def check_network():
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Initialize state untuk host baru (pakai .get agar tahan KeyError host dinamis)
+
     for t in targets:
         if t not in status_memory:
             status_memory[t] = False
 
-    # ── Ping semua host SECARA PARALEL (di luar lock/DB) ──
-    max_workers = min(len(targets), 20)  # Maksimal 20 thread sekaligus
+
+    max_workers = min(len(targets), 20)
     results = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_map = {executor.submit(check_host, h): h for h in targets}
@@ -1049,8 +1049,8 @@ def check_network():
                 h = future_map.get(future, "?")
                 print(f"[WARN] ping {h} gagal: {e}")
 
-    # ── Tulis ke DB dalam SATU transaksi + SATU koneksi ──
-    # Telegram dikirim SETELAH commit agar tidak menahan db_lock (timeout 5s/host).
+
+
     telegram_queue = []
     with db_lock:
         conn, c = get_db()
@@ -1064,7 +1064,7 @@ def check_network():
                     was_down = status_memory.get(host, False)
 
                     if host_is_down and not was_down:
-                        # Transisi UP → DOWN (event + log SELALU dicatat)
+
                         status_memory[host] = True
                         down_since[host]    = datetime.now()
                         c.execute(
@@ -1072,8 +1072,8 @@ def check_network():
                             (host, timestamp)
                         )
                         _insert_system_log(c, "NETWORK_DOWN", host, "Ping timeout/RTO", timestamp)
-                        # Cooldown Telegram: DOWN berulang (flapping) max 1x per DOWN_COOLDOWN_S.
-                        # Recovery UP selalu dikirim agar status akhir jelas.
+
+
                         now_dt = datetime.now()
                         last_tg = last_down_telegram.get(host)
                         if last_tg is None or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S:
@@ -1085,7 +1085,7 @@ def check_network():
                             print(f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)")
 
                     elif not host_is_down and was_down:
-                        # Transisi DOWN → UP
+
                         status_memory[host] = False
                         duration_str = ""
                         duration_s   = None
@@ -1093,8 +1093,8 @@ def check_network():
                             delta      = datetime.now() - down_since.pop(host)
                             duration_s = int(delta.total_seconds())
                         else:
-                            # down_since hilang (mis. restart tepat saat DOWN):
-                            # hitung dari event terbuka di DB agar duration_s tidak NULL.
+
+
                             try:
                                 c.execute("SELECT started_at FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
                                           (host,))
@@ -1117,7 +1117,7 @@ def check_network():
                             f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
                         )
 
-                    # ping_logs SELALU ditulis walau logic event di atas gagal
+
                     c.execute(
                         "INSERT INTO ping_logs (host, latency, packet_loss, timestamp) VALUES (?, ?, ?, ?)",
                         (host, latency, packet_loss, timestamp),
@@ -1138,7 +1138,7 @@ def check_network():
         finally:
             conn.close()
 
-    # ── Kirim Telegram di luar lock ──
+
     for msg in telegram_queue:
         try:
             send_telegram_alert(msg)
@@ -1177,7 +1177,7 @@ def _is_url_allowed_for_monitoring(url):
         port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
         infos = socket.getaddrinfo(host_part, port, type=socket.SOCK_STREAM)
     except Exception:
-        return False  # fail-closed: DNS gagal -> jangan probe
+        return False
     if not infos:
         return False
     try:
@@ -1212,9 +1212,9 @@ def check_single_service(svc):
             else:
                 import urllib3
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                # verify=False dipertahankan untuk perangkat internal self-signed
-                # (NMS memang memonitor IP privat). Kompensasi: guard SSRF di atas,
-                # timeout ketat, dan service hanya bisa ditambah oleh admin login.
+
+
+
                 r = requests.get(url, timeout=5, verify=False,
                                  headers={"User-Agent": "NMS-KOPEGTEL/1.0"})
                 if r.status_code < 400:
@@ -1222,7 +1222,7 @@ def check_single_service(svc):
         except Exception:
             pass
     else:
-        # Tipe tidak dikenal = misconfig, jangan dilaporkan OFFLINE
+
         status = "PENDING"
 
     latency = (time.time() - start_time) * 1000
@@ -1231,7 +1231,7 @@ def check_single_service(svc):
 
 def check_services():
     try:
-        # Baca daftar service cepat, tutup koneksi sebelum I/O jaringan
+
         conn, c = get_db()
         try:
             c.execute("SELECT id, ip, name, type, port, url FROM services")
@@ -1268,7 +1268,7 @@ def check_services():
     except Exception as e:
         print(f"Error checking services: {e}")
 
-# ── Init ──────────────────────────────────────────────────────────────────────
+
 init_db()
 _seed_admin_from_env()
 
@@ -1285,7 +1285,7 @@ def rebuild_alarm_memory():
             c.execute("SELECT ip FROM hosts ORDER BY id ASC")
             valid = [r["ip"] for r in c.fetchall()]
             valid_set = set(valid)
-            # 1. DOWN ongoing dari down_events
+
             try:
                 c.execute("SELECT host, started_at FROM down_events WHERE resolved_at IS NULL")
                 for r in c.fetchall():
@@ -1299,11 +1299,11 @@ def rebuild_alarm_memory():
                         down_since[h] = datetime.now()
             except Exception as e:
                 print(f"[REBUILD] down_events gagal: {e}")
-            # Pastikan host tanpa event ongoing = UP
+
             for h in valid:
                 if h not in status_memory:
                     status_memory[h] = False
-            # 2. Threshold state dari agent_metrics terakhir
+
             try:
                 c.execute("SELECT value FROM settings WHERE key='cpu_threshold'")
                 row = c.fetchone()
@@ -1325,8 +1325,8 @@ def rebuild_alarm_memory():
             now = datetime.now()
             for h in valid:
                 try:
-                    # Hanya baris agent asli — baris SNMP (cpu NULL) diabaikan
-                    # agar tidak menghapus alarm / menyamarkan offline.
+
+
                     c.execute("SELECT cpu_percent, ram_percent, disk_percent, timestamp FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1", (h,))
                     last = c.fetchone()
                     if not last:
@@ -1336,7 +1336,7 @@ def rebuild_alarm_memory():
                         "ram": bool(last["ram_percent"] is not None and last["ram_percent"] > ram_thresh),
                         "disk": bool(last["disk_percent"] is not None and last["disk_percent"] > disk_thresh),
                     }
-                    # 3. Offline jika laporan terakhir >120 detik
+
                     try:
                         last_time = datetime.strptime(last["timestamp"], "%Y-%m-%d %H:%M:%S")
                         if (now - last_time).total_seconds() > 120:
@@ -1353,15 +1353,15 @@ def rebuild_alarm_memory():
 
 rebuild_alarm_memory()
 
-# Scheduler hanya jalan di proses server nyata (gunicorn tanpa reloader).
-# Dinonaktifkan saat: testing (NMS_DISABLE_SCHEDULER=1, dipakai unit test)
-# atau autoreload development. Mencegah polling ganda + alert Telegram ganda
-# saat multi-worker / reloader / import oleh test.
+
+
+
+
 SCHEDULER_ENABLED = os.environ.get("NMS_DISABLE_SCHEDULER", "0") != "1"
 try:
     LOCAL_TZ = ZoneInfo("Asia/Jakarta")
 except Exception:
-    LOCAL_TZ = None  # fallback: cron pakai timezone default scheduler
+    LOCAL_TZ = None
 
 scheduler = BackgroundScheduler(timezone=LOCAL_TZ)
 if SCHEDULER_ENABLED:
@@ -1378,12 +1378,12 @@ if SCHEDULER_ENABLED:
     except Exception as e:
         print(f"[WARN] scheduler gagal start: {e}")
 
-# Kirim notif startup (hanya jika scheduler aktif -> bukan import test)
+
 if SCHEDULER_ENABLED:
     send_startup_alert()
 
-# Debounce trigger manual check_services (tambah service): cegah ledakan thread
-# jika banyak service ditambahkan beruntun. Maks 1x per 60 detik.
+
+
 _manual_svc_lock = threading.Lock()
 _last_manual_svc = 0.0
 
@@ -1395,7 +1395,7 @@ def trigger_manual_service_check():
         _last_manual_svc = time.time()
     threading.Thread(target=check_services, daemon=True).start()
 
-# ── Auth Routes ───────────────────────────────────────────────────────────────
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -1422,8 +1422,8 @@ def login():
             except Exception:
                 pass
             next_page = request.args.get("next")
-            # Cegah open-redirect: hanya path relatif "/..." yang valid.
-            # "//evil.com" juga startswith("/") tapi dianggap protocol-relative oleh browser.
+
+
             if not next_page or not next_page.startswith("/") or next_page.startswith("//") or "\\" in next_page:
                 next_page = None
             return redirect(next_page or url_for("index"))
@@ -1453,7 +1453,7 @@ def logout():
     session.pop("admin_v", None)
     return redirect(url_for("login"))
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+
 @app.route("/")
 @login_required
 def index():
@@ -1482,7 +1482,7 @@ def api_host_history(ip):
     except (ValueError, TypeError):
         return jsonify({"error": "hours harus angka 1-168"}), 400
     hours = max(1, min(hours, 168))
-    metric = request.args.get("metric", "latency")  # latency, cpu, ram, disk, net_in, net_out
+    metric = request.args.get("metric", "latency")
 
     conn, c = get_db()
 
@@ -1499,7 +1499,7 @@ def api_host_history(ip):
         valid_metrics = {"cpu": "cpu_percent", "ram": "ram_percent", "disk": "disk_percent",
                          "net_in": "net_in", "net_out": "net_out"}
         col = valid_metrics.get(metric, "cpu_percent")
-        # cpu/ram/disk: hanya baris agent asli. net_*: SNMP juga valid.
+
         extra = " AND cpu_percent IS NOT NULL" if col in ("cpu_percent", "ram_percent", "disk_percent") else ""
         c.execute(
             f"SELECT timestamp, {col} as val FROM agent_metrics "
@@ -1520,7 +1520,7 @@ def api_host_stats(ip):
     """Statistik summary per host."""
     conn, c = get_db()
 
-    # Ping stats (24h)
+
     c.execute("""
         SELECT
             COUNT(*) AS total,
@@ -1534,17 +1534,17 @@ def api_host_stats(ip):
     """, (ip,))
     pr = c.fetchone()
 
-    # Latest latency
+
     c.execute("SELECT latency FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
     latest = c.fetchone()
 
-    # Latest agent metrics (hanya baris agent asli, bukan SNMP)
+
     c.execute("""
         SELECT cpu_percent, ram_percent, disk_percent, net_in, net_out, timestamp
         FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1
     """, (ip,))
     ag = c.fetchone()
-    # Net terbaru boleh dari SNMP jika agent belum pernah lapor
+
     net_row = None
     if ag is None:
         c.execute("""
@@ -1618,7 +1618,7 @@ def api_add_host():
 
     if not ip:
         return jsonify({"error": "IP required"}), 400
-    # Validasi IP/hostname agar tidak tersimpan data sampah
+
     ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
     hostname_re = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
     if ipv4_re.match(ip):
@@ -1660,8 +1660,8 @@ def api_delete_host(ip):
             conn.commit()
         finally:
             conn.close()
-        # Hapus dari SEMUA memory dalam lock yang sama (anti zombie alarm + race
-        # dengan check_network/agent_report yang memegang db_lock).
+
+
         global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
         for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram):
             try:
@@ -1734,8 +1734,8 @@ def api_save_settings():
         return jsonify({"error": "Tidak ada pengaturan yang dikirim"}), 400
     conn, c = get_db()
     for key, v in vals.items():
-        # REPLACE (bukan UPDATE): jika baris setting terhapus manual dari DB,
-        # UPDATE diam-diam tidak menyimpan apa-apa tapi API tetap balas success.
+
+
         c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(v)))
     conn.commit()
     conn.close()
@@ -1771,7 +1771,7 @@ def api_change_password():
               (generate_password_hash(new_pass),))
     conn.commit()
     conn.close()
-    # Hanguskan SEMUA sesi lain (termasuk cookie curian); sesi peminta dipertahankan.
+
     _bump_session_version()
     try:
         session["admin_v"] = _get_session_version()
@@ -1784,13 +1784,13 @@ def api_change_password():
     return jsonify({"status": "success"})
 
 
-# ── Agent API ─────────────────────────────────────────────────────────────────
+
 @app.route("/api/agent/report", methods=["POST"])
 def agent_report():
     """Agent melapor penggunaan CPU dan RAM ke server ini."""
     global agent_status_memory, agent_offline_memory
 
-    # ── Auth agent: wajib jika AGENT_API_KEY dikonfigurasi (header only) ──
+
     if AGENT_API_KEY:
         import hmac
         provided = request.headers.get("X-API-Key") or ""
@@ -1811,7 +1811,7 @@ def agent_report():
     raw_host = str(data.get("host") or "").strip()[:255]
     if not raw_host:
         return jsonify({"error": "Host required"}), 400
-    # Validasi host sama ketatnya dengan tambah host (cegah polusi DB)
+
     _ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
     _hn_re = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
     if _ipv4_re.match(raw_host):
@@ -1823,15 +1823,15 @@ def agent_report():
     elif not _hn_re.match(raw_host):
         return jsonify({"error": "Format host tidak valid"}), 400
     host = raw_host
-    # Tolak host yang belum terdaftar (cegah polusi DB oleh pelapor liar).
-    # Daftarkan dulu via API hosts / dashboard.
+
+
     try:
         _hc, _cc = get_db()
         _cc.execute("SELECT 1 FROM hosts WHERE ip=?", (host,))
         _known = _cc.fetchone() is not None
         _hc.close()
     except Exception:
-        # Fail-closed: jangan terima laporan liar saat DB tidak bisa dibaca.
+
         return jsonify({"error": "Database sibuk, coba lagi"}), 503
     if not _known:
         return jsonify({"error": "Host belum terdaftar. Tambahkan dulu di dashboard."}), 404
@@ -1846,21 +1846,21 @@ def agent_report():
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Ambil nilai threshold terbaru dari DB (di luar lock; staleness sesaat OK)
+
     cpu_thresh = get_setting("cpu_threshold", 85.0)
     ram_thresh = get_setting("ram_threshold", 90.0)
     disk_thresh = get_setting("disk_threshold", 90.0)
-    # Hysteresis: pulih hanya jika turun HYSTERESIS di bawah batas (anti flapping)
+
     cpu_clear = max(cpu_thresh - HYSTERESIS, 0)
     ram_clear = max(ram_thresh - HYSTERESIS, 0)
     disk_clear = max(disk_thresh - HYSTERESIS, 0)
 
-    # ── State memory + tulis metrics dalam SATU critical section (db_lock) ──
-    # db_lock melindungi memory alarm DAN transaksi DB sekaligus agar tidak race
-    # dengan delete/clear events. Telegram tetap dikirim SETELAH commit agar
-    # request agent tidak timeout 8s saat Telegram lambat.
+
+
+
+
     telegram_queue = []
-    log_queue = []  # (event_type, message)
+    log_queue = []
     with db_lock:
         if agent_offline_memory.get(host, False):
             agent_offline_memory[host] = False
@@ -1869,11 +1869,11 @@ def agent_report():
             )
             log_queue.append(("AGENT_ONLINE", "Agent kembali terhubung"))
 
-        # ── LOGIC TRIGGER & THRESHOLD ALARM ──
+
         if host not in agent_status_memory:
             agent_status_memory[host] = {'cpu': False, 'ram': False, 'disk': False}
 
-        # Cek Alarm CPU
+
         if cpu > cpu_thresh and not agent_status_memory[host]['cpu']:
             agent_status_memory[host]['cpu'] = True
             telegram_queue.append(f"⚠️ *HIGH CPU ALERT*\nHost: `{host}`\nCPU: *{cpu}%* (Batas: {cpu_thresh}%)\nWaktu: {timestamp}")
@@ -1883,7 +1883,7 @@ def agent_report():
             telegram_queue.append(f"✅ *CPU NORMAL*\nHost: `{host}`\nCPU: {cpu}%\nWaktu: {timestamp}")
             log_queue.append(("CPU_NORMAL", f"Kembali normal: {cpu}%"))
 
-        # Cek Alarm RAM
+
         if ram > ram_thresh and not agent_status_memory[host]['ram']:
             agent_status_memory[host]['ram'] = True
             telegram_queue.append(f"⚠️ *HIGH RAM ALERT*\nHost: `{host}`\nRAM: *{ram}%* (Batas: {ram_thresh}%)\nWaktu: {timestamp}")
@@ -1893,7 +1893,7 @@ def agent_report():
             telegram_queue.append(f"✅ *RAM NORMAL*\nHost: `{host}`\nRAM: {ram}%\nWaktu: {timestamp}")
             log_queue.append(("RAM_NORMAL", f"Kembali normal: {ram}%"))
 
-        # Cek Alarm DISK
+
         if disk > disk_thresh and not agent_status_memory[host].get('disk'):
             agent_status_memory[host]['disk'] = True
             telegram_queue.append(f"⚠️ *HIGH DISK ALERT*\nHost: `{host}`\nDISK Penuh: *{disk}%* (Batas: {disk_thresh}%)\nWaktu: {timestamp}")
@@ -1902,7 +1902,7 @@ def agent_report():
             agent_status_memory[host]['disk'] = False
             telegram_queue.append(f"✅ *DISK NORMAL*\nHost: `{host}`\nKapasitas terpakai: {disk}%\nWaktu: {timestamp}")
             log_queue.append(("DISK_NORMAL", f"Kembali normal: {disk}%"))
-        # ─────────────────────────────────────
+
         conn, c = get_db()
         try:
             c.execute(
@@ -1986,7 +1986,7 @@ def get_agent_history():
     except (ValueError, TypeError):
         return jsonify({"error": "hours harus angka 1-168"}), 400
     hours = max(1, min(hours, 168))
-    metric = request.args.get("metric", "cpu")  # cpu, ram, disk, net_in, net_out
+    metric = request.args.get("metric", "cpu")
 
     valid_metrics = {"cpu": "cpu_percent", "ram": "ram_percent", "disk": "disk_percent",
                      "net_in": "net_in", "net_out": "net_out"}
@@ -1994,7 +1994,7 @@ def get_agent_history():
 
     conn, c = get_db()
     try:
-        # cpu/ram/disk: hanya agent asli. net_*: SNMP juga valid.
+
         extra = " AND cpu_percent IS NOT NULL" if col in ("cpu_percent", "ram_percent", "disk_percent") else ""
         per_host = {}
         for host in get_target_hosts():
@@ -2009,7 +2009,7 @@ def get_agent_history():
                 per_host[host] = [(r["timestamp"], round(r["val"] or 0, 2)) for r in rows]
     finally:
         conn.close()
-    # Samakan sumbu-X ke union timestamp semua host (gap = None, dirender spanGaps)
+
     labels, datasets = _align_series(per_host, label_fmt=lambda t: t.split(" ")[1])
     return jsonify({"labels": labels, "datasets": datasets, "metric": metric})
 
@@ -2084,7 +2084,7 @@ def get_stats():
         total    = r["total"]    or 0
         up_count = r["up_count"] or 0
         if total == 0:
-            # Belum ada data 24h -> PENDING, bukan 0% DOWN
+
             stats[host] = {
                 "uptime_pct": None,
                 "avg_ms"    : None,
@@ -2148,9 +2148,9 @@ def delete_event(event_id):
             c.execute("DELETE FROM down_events WHERE id=?", (event_id,))
             conn.commit()
             if was_ongoing:
-                # Event ongoing ikut terhapus: sinkronkan memory dalam lock yang sama
-                # agar tidak race dengan check_network. Host yang memang masih DOWN
-                # terdeteksi ulang di siklus check berikutnya.
+
+
+
                 c.execute("SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1", (host,))
                 still_ongoing = c.fetchone() is not None
                 if not still_ongoing:
@@ -2176,8 +2176,8 @@ def clear_events():
             conn.commit()
         finally:
             conn.close()
-        # Event ongoing ikut terhapus: reset memory DOWN dalam lock yang sama.
-        # Host yang memang masih DOWN terdeteksi ulang di siklus check berikutnya.
+
+
         for h in list(status_memory.keys()):
             status_memory[h] = False
         down_since.clear()
@@ -2238,7 +2238,7 @@ def add_service_api():
         port = None
 
     conn, c = get_db()
-    # Cegah duplikat monitor yang sama
+
     if svc_type == "tcp":
         c.execute("SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?", (ip, port))
     else:
@@ -2258,7 +2258,7 @@ def add_service_api():
         audit(current_user.username, "service.create", f"{name} {svc_type} {ip}")
     except Exception:
         pass
-    # Trigger pengecekan langsung di background (debounce 60 dtk, anti ledakan thread)
+
     trigger_manual_service_check()
     return jsonify({"status": "success", "id": new_id}), 201
 
@@ -2282,7 +2282,7 @@ def delete_service_api(svc_id):
     return jsonify({"status": "success"})
 
 
-# ── Inventory (Data Perangkat) ──────────────────────────────────────────────
+
 @app.route("/inventory")
 @login_required
 def inventory_page():
@@ -2298,7 +2298,7 @@ def api_inventory_list():
     rows = [dict(r) for r in c.fetchall()]
     c.execute("SELECT ip FROM hosts")
     monitored = {r["ip"] for r in c.fetchall()}
-    # Satu query untuk ping terakhir semua IP (hindari N+1)
+
     last_map = {}
     try:
         c.execute("""
@@ -2319,7 +2319,7 @@ def api_inventory_list():
             last_latency = round(lat, 2) if lat != -1 else None
             last_seen = ts
         else:
-            # Konsisten dengan dashboard: termonitor tapi belum ada ping = pending
+
             live = "pending" if is_monitored else "unmonitored"
             last_latency = None
             last_seen = None
@@ -2499,12 +2499,12 @@ def get_triggers():
     """Mengambil semua alarm yang aktif saat ini (hanya untuk host terdaftar)."""
     global status_memory, agent_status_memory, agent_offline_memory
 
-    # Filter zombie: hanya host yang masih ada di DB
+
     valid_hosts = set(get_target_hosts())
 
     alarms = []
 
-    # 1. Host DOWN alarms (Highest Severity)
+
     for host, is_down in list(status_memory.items()):
         if host not in valid_hosts:
             continue
@@ -2516,7 +2516,7 @@ def get_triggers():
                 "category": "availability"
             })
 
-    # 2. Agent Offline alarms (High Severity)
+
     for host, is_offline in list(agent_offline_memory.items()):
         if host not in valid_hosts:
             continue
@@ -2528,7 +2528,7 @@ def get_triggers():
                 "category": "agent"
             })
 
-    # 3. Resource alarms (Warning Severity)
+
     for host, status in list(agent_status_memory.items()):
         if host not in valid_hosts:
             continue
@@ -2543,7 +2543,7 @@ def get_triggers():
     severity_order = {"disaster": 1, "high": 2, "warning": 3}
     alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))
 
-    # Filter server-side: ?severity=disaster,high (dipakai halaman Alerts)
+
     raw_sev = (request.args.get("severity") or "").lower()
     if raw_sev:
         wanted = {s.strip() for s in raw_sev.split(",") if s.strip()} & set(severity_order)
@@ -2579,7 +2579,7 @@ def get_system_logs():
     except (ValueError, TypeError):
         limit = 50
     page = max(page, 1)
-    limit = min(max(limit, 1), 200)  # batasi agar query berat tidak DoS
+    limit = min(max(limit, 1), 200)
     offset = (page - 1) * limit
     host_filter = (request.args.get("host") or "").strip()
     type_filter = (request.args.get("type") or "").strip()
@@ -2676,7 +2676,7 @@ def export_csv():
         hours = int(request.args.get("hours", 24))
     except (ValueError, TypeError):
         return jsonify({"error": "hours harus angka 1-168"}), 400
-    hours = max(1, min(hours, 168))  # max 7 hari
+    hours = max(1, min(hours, 168))
     conn, c = get_db()
     c.execute(
         "SELECT timestamp, latency, packet_loss FROM ping_logs "
@@ -2701,7 +2701,7 @@ def export_csv():
     )
 
 
-# ── Reports (SLA + Outage + Export + Telegram) ──────────────────────────────
+
 REPORT_DAYS_CHOICES = (1, 3, 7)
 
 def _report_days():
@@ -2710,7 +2710,7 @@ def _report_days():
     except (ValueError, TypeError):
         d = 7
     if d not in REPORT_DAYS_CHOICES:
-        d = 7  # ping_logs hanya retensi 7 hari (cleanup_old_data)
+        d = 7
     return d
 
 def _fmt_duration(s):
@@ -2764,7 +2764,7 @@ def api_reports_summary():
         r = c.fetchone()
         total = r["total"] or 0
         up_count = r["up_count"] or 0
-        # Outage dari down_events pada periode yang sama
+
         c.execute("""
             SELECT id, started_at, resolved_at, duration_s FROM down_events
             WHERE host=? AND started_at > datetime('now','localtime',?)
@@ -2829,7 +2829,7 @@ def api_reports_export():
     """Export CSV. ?days=7&table=summary|outages"""
     days = _report_days()
     table = (request.args.get("table") or "summary").lower()
-    # Reuse logika summary agar konsisten (tanpa duplikasi query besar? cukup panggil fungsi via test_request_context tidak; query ulang ringkas)
+
     conn, c = get_db()
     c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
     hosts = [{"ip": r["ip"], "alias": (r["alias"] or "").strip() or r["ip"],

@@ -15,10 +15,10 @@ os.environ["DASHBOARD_PASSWORD"] = "admin12345"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
 os.environ["AGENT_API_KEY"] = "test-agent-key"
-# Matikan scheduler + startup alert selama test (lebih cepat, tanpa efek samping)
+
 os.environ["NMS_DISABLE_SCHEDULER"] = "1"
 
-import app as m  # noqa: E402
+import app as m
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -30,16 +30,16 @@ class NmsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        # Daftarkan satu host untuk uji agent_report
+
         conn, c = m.get_db()
         c.execute("INSERT OR IGNORE INTO hosts (ip) VALUES (?)", ("10.99.99.99",))
         conn.commit()
         conn.close()
         r = cls.client.post("/login",
                             data={"username": "admin", "password": "admin12345"})
-        # Login sukses HARUS redirect 302 ke / (gagal = render ulang 200).
-        # Assert lama `in (302, 200)` lolos di kedua kasus sehingga auth rusak
-        # tidak tertangkap di sini.
+
+
+
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         r2 = cls.client.get(r.headers.get("Location", "/"))
         assert r2.status_code == 200, f"sesudah login gagal, status={r2.status_code}"
@@ -88,7 +88,7 @@ class NmsTest(unittest.TestCase):
         self.assertEqual(row[0], "agent")
 
     def test_csrf_ditolak_tanpa_json_atau_xrw(self):
-        # POST form-encoded tanpa header custom wajib 403
+
         r = self.client.post("/api/events/clear", data={})
         self.assertEqual(r.status_code, 403)
 
@@ -98,7 +98,7 @@ class NmsTest(unittest.TestCase):
                                    "new_password": "baru12345"})
         self.assertEqual(r.status_code, 400)
 
-    # --- Regresi bugfix (Sep 2026) ---
+
     def test_agent_metrics_null_disk_tidak_500(self):
         conn, c = m.get_db()
         c.execute("INSERT INTO agent_metrics (host,cpu_percent,ram_percent,disk_percent,"

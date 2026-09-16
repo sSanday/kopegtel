@@ -5,23 +5,23 @@ import requests
 import psutil
 import socket
 
-# ==========================================
-# KONFIGURASI AGENT (bisa via argumen/ENV)
-# ==========================================
-# URL dari Dashboard NMS
+
+
+
+
 DEFAULT_URL = os.environ.get("NMS_URL", "http://127.0.0.1:5000/api/agent/report")
-# Kunci auth agent — WAJIB sama dengan AGENT_API_KEY di .env server (jika diaktifkan)
+
 API_KEY = os.environ.get("AGENT_API_KEY", "")
-# IP identitas agent. Kosongkan ("") = deteksi otomatis.
+
 AGENT_IP = os.environ.get("AGENT_IP", "")
-# Interval pengiriman data (detik). Default 60 (dulu 5 — terlalu sering, membanjiri DB)
+
 def _get_interval():
     try:
         return max(5, int(os.environ.get("AGENT_INTERVAL", "60")))
     except (ValueError, TypeError):
         return 60
 INTERVAL = _get_interval()
-# ==========================================
+
 
 
 def get_ip_address():
@@ -41,7 +41,7 @@ def get_ip_address():
             ip = s.getsockname()[0]
         finally:
             s.close()
-        # Validasi: harus IPv4 valid, bukan 127.x
+
         parts = ip.split(".")
         if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts) \
                 and not ip.startswith("127."):
@@ -65,8 +65,8 @@ def main():
                     help="Identitas IP pelapor (lebih diutamakan dari AGENT_IP). "
                          "Wajib sama dengan IP yang terdaftar di dashboard.")
     a = ap.parse_args()
-    # Samakan batas bawah dengan jalur ENV (max 5): cegah busy-loop POST/detik
-    # yang membanjiri agent_metrics saat --interval 0/negatif.
+
+
     if a.interval is None or a.interval < 5:
         print(f"[WARN] --interval {a.interval} tidak valid, dipakai 5 detik (minimal).")
         a.interval = 5
@@ -84,14 +84,14 @@ def main():
 
     while True:
         try:
-            # Ambil data sistem
-            cpu = psutil.cpu_percent(interval=1)  # memberi jeda ~1 detik
+
+            cpu = psutil.cpu_percent(interval=1)
 
             now_net = psutil.net_io_counters()
             now_time = time.time()
             time_diff = now_time - last_time
 
-            # Hitung Mbps (Megabit per detik) = bytes * 8 / 1.048.576 / detik
+
             if time_diff > 0:
                 net_in = ((now_net.bytes_recv - last_net.bytes_recv) * 8) / (1024 * 1024 * time_diff)
                 net_out = ((now_net.bytes_sent - last_net.bytes_sent) * 8) / (1024 * 1024 * time_diff)
@@ -114,7 +114,7 @@ def main():
                 "net_out": round(net_out, 2)
             }
 
-            # Kirim ke NMS Dashboard
+
             res = requests.post(a.server, json=payload, headers=headers, timeout=8)
 
             if res.status_code == 200:
@@ -123,8 +123,8 @@ def main():
                 print("[ERR] API key ditolak server. Samakan AGENT_API_KEY dengan server!")
                 time.sleep(min(a.interval, 60))
             else:
-                # Tampilkan body diagnosa server (bedakan 404 belum-registrasi
-                # vs error lain) maksimal 200 karakter.
+
+
                 try:
                     detail = (res.text or "").strip()[:200]
                 except Exception:
