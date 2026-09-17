@@ -1,10 +1,9 @@
-from flask import Flask, jsonify, render_template, Response, request, redirect, url_for, flash, session
+from flask import Flask, jsonify, render_template, Response, request, redirect, url_for, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from apscheduler.schedulers.background import BackgroundScheduler
 import subprocess, re, csv, io
 import sqlite3
 import os
-import shutil
 import glob
 import time
 from datetime import datetime, timedelta
@@ -14,7 +13,6 @@ from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from functools import wraps
-from contextlib import contextmanager
 import socket
 import ipaddress
 
@@ -517,11 +515,6 @@ def get_active_maintenance_map(now=None):
     except Exception:
         return {}
 
-def is_host_in_maintenance(host, now=None):
-    if not host:
-        return False
-    return (host or "").strip() in get_active_maintenance_map(now)
-
 def cleanup_old_data():
     with db_lock:
         conn, c = get_db()
@@ -902,18 +895,6 @@ def _extract_snmp_values(resp):
     except Exception:
         pass
     return found
-
-def _parse_snmp_int(data, idx):
-    try:
-        t = _ber_read_tlv(bytes(data), idx)
-        if t is None:
-            return None
-        tag, val, _ = t
-        if tag not in _SNMP_VALUE_TAGS or not (1 <= len(val) <= 9):
-            return None
-        return int.from_bytes(val, "big", signed=(tag == 0x02))
-    except Exception:
-        return None
 
 def get_snmp_bandwidth(ip, community, if_index):
     oid_in  = f'1.3.6.1.2.1.2.2.1.10.{if_index}'

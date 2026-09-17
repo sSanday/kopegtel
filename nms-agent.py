@@ -62,7 +62,7 @@ def main():
 
     my_ip = a.host_ip or get_ip_address()
     headers = {"X-API-Key": a.api_key} if a.api_key else {}
-    print(f"NMS Agent mulai berjalan...")
+    print("NMS Agent mulai berjalan...")
     print(f"Melapor sebagai Host: {my_ip}")
     print(f"Target URL: {a.server} tiap {a.interval}s")
     print(f"Auth API key: {'aktif' if a.api_key else 'NONAKTIF (aktifkan AGENT_API_KEY di server!)'}")
