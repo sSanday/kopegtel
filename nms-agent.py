@@ -6,9 +6,6 @@ import psutil
 import socket
 
 
-
-
-
 DEFAULT_URL = os.environ.get("NMS_URL", "http://127.0.0.1:5000/api/agent/report")
 
 API_KEY = os.environ.get("AGENT_API_KEY", "")
@@ -23,15 +20,7 @@ def _get_interval():
 INTERVAL = _get_interval()
 
 
-
 def get_ip_address():
-    """Deteksi IP lokal secara otomatis, atau pakai AGENT_IP jika diisi manual.
-
-    Urutan: AGENT_IP (eksplisit, disarankan untuk host NAT/multi-homed) ->
-    IP interface keluar -> hostname yang ter-resolve ke IP -> hostname mentah.
-    Jika hasil akhir bukan IP, server akan menolak 404 "Host belum terdaftar":
-    daftarkan IP yang TERCETAK di log "[OK]/[ERR]" ke dashboard, atau set AGENT_IP.
-    """
     if AGENT_IP:
         return AGENT_IP
     try:

@@ -45,12 +45,6 @@ app.config['REMEMBER_COOKIE_SECURE'] = _cookie_secure
 app_start_time = datetime.now()
 
 def _is_trusted_proxy():
-    """True jika request datang dari proxy lokal (nginx di 127.0.0.1).
-
-    Header X-Real-IP/X-Forwarded-For hanya dipercaya dari proxy lokal.
-    Klien yang menembak langsung ke 5000/tcp bisa memalsukan header,
-    jadi untuk koneksi non-lokal header diabaikan (pakai remote_addr).
-    """
     try:
         return ipaddress.ip_address(request.remote_addr or "").is_loopback
     except ValueError:
@@ -58,7 +52,6 @@ def _is_trusted_proxy():
 
 
 def get_client_ip():
-    """IP klien asli di belakang Nginx (lihat nginx-nms.conf)."""
     if _is_trusted_proxy():
         real = (request.headers.get("X-Real-IP") or "").strip()
         if real:
@@ -79,13 +72,6 @@ DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")
 
 def _verify_admin(username, password):
-    """Verifikasi kredensial admin.
-
-    Urutan: (1) hash di tabel settings (bisa diganti via API tanpa edit .env),
-    (2) fallback plaintext .env HANYA jika DB belum punya kredensial
-    (instalasi baru). Jika DB tidak bisa dibaca -> fail-closed (tolak),
-    agar password lama .env tidak hidup lagi saat DB lock/korup.
-    """
     username = (username or "")[:50]
     password = (password or "")[:200]
     try:
@@ -118,7 +104,6 @@ def _verify_admin(username, password):
     return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(password, DASHBOARD_PASSWORD)
 
 def _seed_admin_from_env():
-    """Simpan hash password .env ke DB saat pertama kali (agar bisa diganti via UI)."""
     try:
         from werkzeug.security import generate_password_hash
         conn, c = get_db()
@@ -141,7 +126,6 @@ class AdminUser(UserMixin):
         self.username = username or DASHBOARD_USERNAME
 
 def _get_session_version():
-    """Versi sesi admin (naik tiap ganti password -> sesi lama hangus)."""
     try:
         conn, c = get_db()
         try:
@@ -154,7 +138,6 @@ def _get_session_version():
         return 0
 
 def _bump_session_version():
-    """Naikkan versi sesi (panggil setelah ganti password/username)."""
     try:
         conn, c = get_db()
         try:
@@ -197,12 +180,10 @@ def load_user(user_id):
     return None
 
 def api_login_required(f):
-    """Decorator untuk API endpoint: kembalikan JSON 401 jika belum login."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated:
             return jsonify({"error": "Unauthorized. Silakan login."}), 401
-
 
 
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
@@ -237,10 +218,6 @@ agent_status_memory = {}
 agent_offline_memory = {}
 
 
-
-
-
-
 HYSTERESIS = 5.0
 DOWN_COOLDOWN_S = 600
 last_down_telegram = {}
@@ -254,7 +231,6 @@ LOGIN_FAIL_TTL_S = 600
 
 
 def _prune_login_failures(now_ts):
-    """Buang entri throttle yang sudah kedaluwarsa + batasi ukuran dict."""
     try:
         for ip, (_, blocked, last) in list(login_failures.items()):
             if blocked:
@@ -295,7 +271,6 @@ def get_db():
     return conn, conn.cursor()
 
 def _commit_with_retry(conn, retries=5):
-    """Commit dengan retry jika database terkunci (multi-thread + scheduler)."""
     for attempt in range(retries):
         try:
             conn.commit()
@@ -308,11 +283,6 @@ def _commit_with_retry(conn, retries=5):
     return False
 
 def _insert_system_log(c, event_type, host, message, timestamp=None):
-    """Insert system log memakai cursor yang sudah ada (tanpa commit/con baru).
-
-    WAJIB dipakai dari dalam transaksi yang sudah pegang koneksi,
-    agar tidak terjadi nested-connection -> 'database is locked'.
-    """
     ts = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     c.execute("INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?, ?, ?, ?)",
               (ts, event_type, host, message))
@@ -332,13 +302,13 @@ def init_db():
         c.execute("ALTER TABLE ping_logs ADD COLUMN packet_loss REAL NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
-    
+
 
     c.execute('''CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     )''')
-    
+
 
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ram_threshold', '90.0')")
@@ -369,7 +339,7 @@ def init_db():
         c.execute("ALTER TABLE hosts ADD COLUMN category TEXT DEFAULT 'Uncategorized'")
     except sqlite3.OperationalError:
         pass
-    
+
 
     c.execute('''CREATE TABLE IF NOT EXISTS agent_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,7 +352,7 @@ def init_db():
         timestamp TEXT NOT NULL,
         source TEXT DEFAULT 'agent'
     )''')
-    
+
 
     c.execute('''CREATE TABLE IF NOT EXISTS services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -395,7 +365,7 @@ def init_db():
         latency REAL,
         last_checked TEXT
     )''')
-    
+
 
     try:
         c.execute("ALTER TABLE agent_metrics ADD COLUMN disk_percent REAL DEFAULT 0.0")
@@ -417,7 +387,7 @@ def init_db():
         c.execute("UPDATE agent_metrics SET source='agent' WHERE source IS NULL")
     except sqlite3.OperationalError:
         pass
-        
+
 
     c.execute('''CREATE TABLE IF NOT EXISTS system_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -426,7 +396,7 @@ def init_db():
         host TEXT NOT NULL,
         message TEXT NOT NULL
     )''')
-    
+
 
     c.execute("CREATE INDEX IF NOT EXISTS idx_ping_host_clock ON ping_logs(host, timestamp)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_agent_host_clock ON agent_metrics(host, timestamp)")
@@ -485,7 +455,7 @@ def init_db():
     if c.fetchone()["cnt"] == 0:
         for h in ["192.168.110.167", "192.168.110.25", "192.168.110.251"]:
             c.execute("INSERT OR IGNORE INTO hosts (ip) VALUES (?)", (h,))
-            
+
     conn.commit()
     conn.close()
 
@@ -515,7 +485,6 @@ def get_setting(key, default_value, type_cast=float):
 _MAINT_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d")
 
 def _parse_maint_time(s):
-    """Parse waktu maintenance dari input UI/API ke datetime. Return None jika invalid."""
     s = (s or "").strip()[:19]
     if not s:
         return None
@@ -530,11 +499,6 @@ def _fmt_maint_time(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 def get_active_maintenance_map(now=None):
-    """Map {host: row} untuk semua window maintenance yang aktif saat ini.
-
-    Satu query untuk semua host (dipakai check_network & triggers) agar tidak
-    N-query per host. Return dict kosong jika tidak ada / DB error.
-    """
     try:
         now_str = _fmt_maint_time(now or datetime.now())
         conn, c = get_db()
@@ -554,21 +518,11 @@ def get_active_maintenance_map(now=None):
         return {}
 
 def is_host_in_maintenance(host, now=None):
-    """True jika host sedang dalam window maintenance aktif."""
     if not host:
         return False
     return (host or "").strip() in get_active_maintenance_map(now)
 
 def cleanup_old_data():
-    """Dijadwalkan tiap tengah malam.
-
-    - ping_logs >7 hari dihapus (retensi pendek, dipakai grafik/SLA).
-    - agent_metrics >30 hari dihapus (tanpa ini tabel membengkak tanpa batas;
-      2 host @60s = ~2880 baris/hari).
-    - system_logs >90 hari dihapus (audit tidak perlu selamanya).
-    - down_events yang resolved >90 hari dihapus (ongoing dipertahankan).
-    - maintenance_windows yang berakhir >90 hari dihapus (riwayat lama).
-    """
     with db_lock:
         conn, c = get_db()
         try:
@@ -616,7 +570,6 @@ def cleanup_old_data():
             conn.close()
 
 
-
     if datetime.now().weekday() == 0:
         try:
             chk = sqlite3.connect(DB_PATH, timeout=30)
@@ -627,12 +580,6 @@ def cleanup_old_data():
     print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} baris lama dihapus.")
 
 def backup_database():
-    """Backup SQLite database setiap hari ke folder backups/ (pakai API backup, aman WAL).
-
-    TIDAK menahan db_lock selama backup: API sqlite3 backup konsisten walau DB
-    sedang ditulis (mengunci per-halaman, bukan seluruh DB), sehingga writer
-    ping/agent tidak antre lama tiap tengah malam.
-    """
     backup_dir = os.path.join(BASE_DIR, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d")
@@ -668,7 +615,7 @@ def backup_database():
                 chk.close()
             except Exception:
                 pass
-    
+
 
     backups = sorted(glob.glob(os.path.join(backup_dir, "network_backup_*.db")))
     if len(backups) > 30:
@@ -677,7 +624,7 @@ def backup_database():
                 os.remove(old_backup)
             except Exception:
                 pass
-            
+
     if backup_ok:
         print(f"[BACKUP] Database berhasil dibackup ke {backup_path}")
     else:
@@ -697,11 +644,6 @@ def send_telegram_alert(message):
         print(f"[ERROR] Gagal kirim Telegram: {e}")
 
 def log_system_event(event_type, host, message):
-    """Menyimpan event ke dalam database system_logs (thread-safe + retry).
-
-    JANGAN dipanggil dari dalam transaksi yang sudah pegang koneksi
-    (mis. di dalam check_network) — pakai _insert_system_log() untuk itu.
-    """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db_lock:
         conn, c = get_db()
@@ -719,14 +661,12 @@ def log_system_event(event_type, host, message):
             conn.close()
 
 def audit(username, action, detail=""):
-    """Catat aktivitas user ke system_logs (upgrade: dipakai API host/inventory/settings)."""
     try:
         log_system_event("AUDIT", username, f"{action} {detail}".strip())
     except Exception:
         pass
 
 def send_startup_alert():
-    """Kirim notif ke Telegram saat app pertama kali dijalankan."""
     targets = get_target_hosts()
     now   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     hosts = "\n".join([f"  • `{h}`" for h in targets])
@@ -737,11 +677,10 @@ def send_startup_alert():
     )
 
 def send_heartbeat():
-    """Kirim ringkasan status semua host ke Telegram (Laporan Harian)."""
     targets = get_target_hosts()
     now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = []
-    
+
     conn, c = get_db()
     try:
         for host in targets:
@@ -780,7 +719,6 @@ _PING_RTT_RES = (
 )
 
 def ping_host(host):
-    """Ping 3x. Return (avg_latency_ms, packet_loss_pct). latency=-1 jika total DOWN."""
     host = (host or "").strip()
 
 
@@ -808,11 +746,9 @@ def ping_host(host):
         return -1, 100.0
 
 def check_host(host):
-    """Ping satu host dan kembalikan hasilnya. Dijalankan paralel di thread terpisah."""
     latency, packet_loss = ping_host(host)
     return host, latency, packet_loss
 def check_agent_heartbeat():
-    """Mengecek apakah agent berhenti mengirim data (lewat 2 menit)."""
     global agent_offline_memory
     targets = get_target_hosts()
 
@@ -830,9 +766,6 @@ def check_agent_heartbeat():
             last_map[host] = row["timestamp"] if row else None
     finally:
         conn.close()
-
-
-
 
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -868,7 +801,6 @@ def check_agent_heartbeat():
 snmp_state = {}
 
 def _encode_snmp_v1_get(community, oid_list):
-    """Buat raw SNMP v1 GET packet sederhana (dengan validasi + length long-form)."""
     def encode_oid(oid):
         try:
             parts = [int(x) for x in str(oid).split('.') if x != ""]
@@ -920,10 +852,7 @@ def _encode_snmp_v1_get(community, oid_list):
     return encode_tlv(0x30, version + comm_tlv + pdu)
 
 
-
-
 def _ber_read_tlv(data, pos):
-    """Baca satu TLV BER pada posisi pos. Return (tag, value_bytes, next_pos) atau None."""
     try:
         if pos + 2 > len(data):
             return None
@@ -947,11 +876,6 @@ def _ber_read_tlv(data, pos):
 _SNMP_VALUE_TAGS = (0x02, 0x41, 0x42, 0x43, 0x46)
 
 def _extract_snmp_values(resp):
-    """Ambil nilai varbind dari respons SNMP dengan walk BER rekursif.
-
-    Hanya TLV nilai yang tepat mengikuti TLV OID (0x06) yang dikumpulkan,
-    sehingga request-id / error-status tidak ikut terambil (bug scan mentah).
-    """
     found = []
 
     def walk(buf):
@@ -980,7 +904,6 @@ def _extract_snmp_values(resp):
     return found
 
 def _parse_snmp_int(data, idx):
-    """Parse satu integer dari TLV di posisi idx (kompat lama; kini via BER reader)."""
     try:
         t = _ber_read_tlv(bytes(data), idx)
         if t is None:
@@ -993,11 +916,6 @@ def _parse_snmp_int(data, idx):
         return None
 
 def get_snmp_bandwidth(ip, community, if_index):
-    """Ambil ifInOctets dan ifOutOctets via raw UDP SNMP v1.
-
-    Mendukung INTEGER (0x02), Counter32 (0x41), Gauge32 (0x42),
-    TimeTicks (0x43) dan Counter64 (0x46) — perangkat modern pakai 64-bit.
-    """
     oid_in  = f'1.3.6.1.2.1.2.2.1.10.{if_index}'
     oid_out = f'1.3.6.1.2.1.2.2.1.16.{if_index}'
     sock = None
@@ -1061,9 +979,6 @@ def poll_snmp_bandwidth():
                 diff_out = out_bytes - prev['out_bytes']
 
 
-
-
-
                 if diff_in < 0 or diff_out < 0:
                     snmp_state[host] = {
                         'in_bytes': in_bytes,
@@ -1085,7 +1000,6 @@ def poll_snmp_bandwidth():
                         continue
                 else:
                     net_in, net_out = 0.0, 0.0
-
 
 
                 pending_inserts.append(
@@ -1143,7 +1057,6 @@ def check_network():
             except Exception as e:
                 h = future_map.get(future, "?")
                 print(f"[WARN] ping {h} gagal: {e}")
-
 
 
     telegram_queue = []
@@ -1262,15 +1175,6 @@ def check_network():
             print(f"[WARN] telegram gagal: {e}")
 
 def _is_url_allowed_for_monitoring(url):
-    """Guard SSRF untuk service check HTTP (admin-only, tapi tetap dibatasi).
-
-    Ditolak: skema selain http/https, userinfo, host kosong, cloud metadata,
-    serta target yang resolve ke loopback/link-local/multicast/reserved/
-    unspecified (127.x, ::1, 169.254.x, ...). IP privat (10/8, 192.168/16,
-    ...) SENGAJA diizinkan karena NMS memang memonitor perangkat internal.
-    Catatan: ada jeda TOCTOU antara resolve dan connect (DNS rebinding);
-    untuk lingkungan hostile gunakan allowlist DNS internal.
-    """
     from urllib.parse import urlparse
     try:
         parsed = urlparse(url or "")
@@ -1330,7 +1234,6 @@ def check_single_service(svc):
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-
                 r = requests.get(url, timeout=5, verify=False,
                                  headers={"User-Agent": "NMS-KOPEGTEL/1.0"})
                 if r.status_code < 400:
@@ -1349,7 +1252,6 @@ SSL_WARN_DAYS = 30
 SSL_HIGH_DAYS = 7
 
 def _ssl_level(days_left):
-    """Level alert SSL: expired/disaster, <=7 high, <=30 warning, else None."""
     if days_left is None:
         return None
     try:
@@ -1365,11 +1267,6 @@ def _ssl_level(days_left):
     return None
 
 def get_ssl_expiry(url, timeout=5):
-    """Ambil tanggal expire sertifikat HTTPS. Return (expires_at_str, days_left) atau (None, None).
-
-    Hanya untuk URL https:// yang lolos guard SSRF. Parse hostname+port dari URL,
-    handshake TLS langsung (SNI), baca notAfter. Return days_left int (bisa negatif).
-    """
     from urllib.parse import urlparse
     import ssl as _ssl
     try:
@@ -1408,13 +1305,6 @@ def get_ssl_expiry(url, timeout=5):
         return None, None
 
 def check_ssl_expiry():
-    """Cek expire SSL semua service https (dijadwalkan tiap 6 jam + saat tambah service).
-
-    Update services.ssl_expires_at/days_left/checked_at. Kirim Telegram HANYA saat
-    level memburuk (warning->high->expired) agar tidak spam tiap 6 jam.
-    Level direset saat sertifikat sehat kembali (renew), sehingga siklus
-    peringatan berikutnya tetap jalan.
-    """
     try:
         conn, c = get_db()
         try:
@@ -1542,11 +1432,6 @@ init_db()
 _seed_admin_from_env()
 
 def rebuild_alarm_memory():
-    """Bangun ulang memory alarm dari DB agar /api/triggers tidak kosong setelah restart.
-
-    Tanpa ini, status_memory & agent_* kosong sampai siklus scheduler berikutnya
-    (30-60 detik), sehingga Monitoring terlihat ALL_CLEAR padahal ada host DOWN.
-    """
     global status_memory, down_since, agent_status_memory, agent_offline_memory
     try:
         conn, c = get_db()
@@ -1623,9 +1508,6 @@ def rebuild_alarm_memory():
 rebuild_alarm_memory()
 
 
-
-
-
 SCHEDULER_ENABLED = os.environ.get("NMS_DISABLE_SCHEDULER", "0") != "1"
 try:
     LOCAL_TZ = ZoneInfo("Asia/Jakarta")
@@ -1651,7 +1533,6 @@ if SCHEDULER_ENABLED:
 
 if SCHEDULER_ENABLED:
     send_startup_alert()
-
 
 
 _manual_svc_lock = threading.Lock()
@@ -1733,7 +1614,6 @@ def index():
 @app.route("/host/<path:ip>")
 @login_required
 def host_detail(ip):
-    """Halaman detail per host."""
     conn, c = get_db()
     c.execute("SELECT ip, alias FROM hosts WHERE ip=?", (ip,))
     row = c.fetchone()
@@ -1746,7 +1626,6 @@ def host_detail(ip):
 @app.route("/api/host/<path:ip>/history")
 @login_required
 def api_host_history(ip):
-    """Data historis per host dengan berbagai time range."""
     try:
         hours = int(request.args.get("hours", 24))
     except (ValueError, TypeError):
@@ -1787,7 +1666,6 @@ def api_host_history(ip):
 @app.route("/api/host/<path:ip>/stats")
 @login_required
 def api_host_stats(ip):
-    """Statistik summary per host."""
     conn, c = get_db()
 
 
@@ -2020,10 +1898,6 @@ def api_save_settings():
 @app.route("/api/settings/password", methods=["POST"])
 @api_login_required
 def api_change_password():
-    """Ganti kredensial admin (tersimpan sebagai hash di DB, bukan .env).
-
-    Body JSON: {current_password, new_username?, new_password}.
-    """
     from werkzeug.security import generate_password_hash
     data = request.get_json(silent=True) or {}
     cur = str(data.get("current_password") or "")[:200]
@@ -2054,10 +1928,8 @@ def api_change_password():
     return jsonify({"status": "success"})
 
 
-
 @app.route("/api/agent/report", methods=["POST"])
 def agent_report():
-    """Agent melapor penggunaan CPU dan RAM ke server ini."""
     global agent_status_memory, agent_offline_memory
 
 
@@ -2124,9 +1996,6 @@ def agent_report():
     cpu_clear = max(cpu_thresh - HYSTERESIS, 0)
     ram_clear = max(ram_thresh - HYSTERESIS, 0)
     disk_clear = max(disk_thresh - HYSTERESIS, 0)
-
-
-
 
 
     telegram_queue = []
@@ -2199,13 +2068,6 @@ def agent_report():
     return jsonify({"status": "success"})
 
 def _align_series(per_host, label_fmt):
-    """Samakan deret multi-host ke satu sumbu-X (union timestamp, terurut).
-
-    per_host: {host: [(timestamp, value), ...]}. Return (labels, datasets)
-    dengan datasets[host] sejajar labels (None untuk titik yang hilang).
-    Tanpa ini label diambil dari host pertama yang ada datanya sehingga
-    dataset host lain (panjang/rate beda) tampil pada waktu yang salah.
-    """
     try:
         stamps = sorted({ts for pts in per_host.values() for ts, _ in pts})
     except Exception:
@@ -2224,7 +2086,6 @@ def _align_series(per_host, label_fmt):
 @app.route("/api/agent/metrics")
 @api_login_required
 def get_agent_metrics():
-    """Mengembalikan metrik agen terbaru untuk tiap host (max usia data 5 menit)."""
     conn, c = get_db()
     metrics = {}
     for host in get_target_hosts():
@@ -2250,7 +2111,6 @@ def get_agent_metrics():
 @app.route("/api/agent/history")
 @api_login_required
 def get_agent_history():
-    """Mengembalikan data historis agent metrics (CPU/RAM/Disk/Bandwidth) per host."""
     try:
         hours = int(request.args.get("hours", 1))
     except (ValueError, TypeError):
@@ -2287,7 +2147,6 @@ def get_agent_history():
 @app.route("/api/metrics")
 @api_login_required
 def get_metrics():
-    """10 data point terbaru per host (sumbu-X disamakan antar host)."""
     conn, c  = get_db()
     try:
         per_host = {}
@@ -2308,7 +2167,6 @@ def get_metrics():
 @app.route("/api/history")
 @api_login_required
 def get_history():
-    """Data historis. ?hours=1|6|24 (default 1). Sumbu-X disamakan antar host."""
     try:
         hours = int(request.args.get("hours", 1))
     except (ValueError, TypeError):
@@ -2335,7 +2193,6 @@ def get_history():
 @app.route("/api/stats")
 @api_login_required
 def get_stats():
-    """Statistik 24 jam per host: uptime%, avg/min/max ms, avg packet loss."""
     conn, c = get_db()
     stats   = {}
     for host in get_target_hosts():
@@ -2381,7 +2238,6 @@ def get_stats():
 @app.route("/api/events")
 @api_login_required
 def get_events():
-    """50 DOWN events terbaru (termasuk penanda maintenance)."""
     conn, c = get_db()
     try:
         c.execute("""
@@ -2416,7 +2272,6 @@ def get_events():
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 @api_login_required
 def delete_event(event_id):
-    """Hapus satu event berdasarkan ID."""
     with db_lock:
         conn, c = get_db()
         try:
@@ -2429,7 +2284,6 @@ def delete_event(event_id):
             c.execute("DELETE FROM down_events WHERE id=?", (event_id,))
             conn.commit()
             if was_ongoing:
-
 
 
                 c.execute("SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1", (host,))
@@ -2449,7 +2303,6 @@ def delete_event(event_id):
 @app.route("/api/events/clear", methods=["POST"])
 @api_login_required
 def clear_events():
-    """Hapus semua log events."""
     with db_lock:
         conn, c = get_db()
         try:
@@ -2472,7 +2325,6 @@ def clear_events():
 @app.route("/api/maintenance", methods=["GET"])
 @api_login_required
 def api_maintenance_list():
-    """Daftar window maintenance. ?active=1 (hanya aktif), ?host=IP (filter)."""
     active_only = str(request.args.get("active") or "").strip() == "1"
     host_filter = (request.args.get("host") or "").strip()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2498,10 +2350,6 @@ def api_maintenance_list():
 @app.route("/api/maintenance", methods=["POST"])
 @api_login_required
 def api_maintenance_create():
-    """Buat window maintenance. Body JSON {host, start_at, end_at, reason?}.
-
-    Format waktu: 'YYYY-MM-DD HH:MM[:SS]' atau 'YYYY-MM-DDTHH:MM'. Max 30 hari.
-    """
     data = request.get_json(silent=True) or {}
     host = str(data.get("host") or "").strip()[:255]
     reason = str(data.get("reason") or "").strip()[:200]
@@ -2680,7 +2528,6 @@ def delete_service_api(svc_id):
 @app.route("/api/services/<int:svc_id>/history")
 @api_login_required
 def api_service_history(svc_id):
-    """Riwayat latency service. ?hours=1|6|24|168 (default 24)."""
     try:
         hours = int(request.args.get("hours", 24))
     except (ValueError, TypeError):
@@ -2714,7 +2561,6 @@ def api_service_history(svc_id):
 @app.route("/api/services/<int:svc_id>/ssl-check", methods=["POST"])
 @api_login_required
 def api_service_ssl_check(svc_id):
-    """Trigger cek SSL manual untuk satu service https."""
     conn, c = get_db()
     c.execute("SELECT url FROM services WHERE id=?", (svc_id,))
     row = c.fetchone()
@@ -2723,7 +2569,6 @@ def api_service_ssl_check(svc_id):
         return jsonify({"error": "Service tidak ditemukan"}), 404
     trigger_async_ssl_check()
     return jsonify({"status": "queued"})
-
 
 
 @app.route("/inventory")
@@ -2735,7 +2580,6 @@ def inventory_page():
 @app.route("/api/inventory", methods=["GET"])
 @api_login_required
 def api_inventory_list():
-    """Daftar inventory + status live dari ping terakhir + penanda termonitor."""
     conn, c = get_db()
     c.execute("SELECT * FROM inventory ORDER BY hostname ASC")
     rows = [dict(r) for r in c.fetchall()]
@@ -2896,12 +2740,6 @@ def api_inventory_delete(iid):
 
 
 def _csv_safe(v):
-    """Netralkan formula injection CSV: sel string yang diawali = + - @ | %
-    (atau berisi CR/LF/tab) diberi prefix `'`, dan CR/LF dibuang.
-
-    Angka (int/float) dikembalikan apa adanya — Excel memperlakukannya
-    sebagai angka, bukan formula.
-    """
     if v is None or isinstance(v, (int, float)):
         return v
     s = str(v).replace("\r", " ").replace("\n", " ")
@@ -2939,11 +2777,6 @@ def triggers_page():
 @app.route("/api/triggers")
 @api_login_required
 def get_triggers():
-    """Mengambil semua alarm yang aktif saat ini (hanya untuk host terdaftar).
-
-    Host dalam maintenance window aktif: alarm DOWN/agent-offline disuppress
-    dan diganti satu alarm maintenance (warning) agar NOC tahu sedang maintenance.
-    """
     global status_memory, agent_status_memory, agent_offline_memory
 
 
@@ -3060,11 +2893,6 @@ def get_triggers():
 
 
 def _like_escape(s):
-    """Escape wildcard LIKE (persen, underscore, backslash) agar pencarian teks literal.
-
-    Tanpa ini, mencari "100%" mencocokkan semua baris berawalan "100"
-    dan "_" menjadi wildcard satu karakter.
-    """
     return str(s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
@@ -3137,7 +2965,6 @@ def get_system_logs():
 @app.route("/api/system_logs/export")
 @api_login_required
 def export_system_logs():
-    """Export CSV log dengan filter yang sama. ?host=&type=&q= (max 5000 baris)."""
     host_filter = (request.args.get("host") or "").strip()
     type_filter = (request.args.get("type") or "").strip()
     q = (request.args.get("q") or "").strip()
@@ -3175,7 +3002,6 @@ def export_system_logs():
 @app.route("/api/export")
 @api_login_required
 def export_csv():
-    """Export CSV. ?host=8.8.8.8&hours=24"""
     targets = get_target_hosts()
     host  = request.args.get("host", targets[0] if targets else "unknown")
     try:
@@ -3205,7 +3031,6 @@ def export_csv():
         out.getvalue(), mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename={fname}"}
     )
-
 
 
 REPORT_DAYS_CHOICES = (1, 3, 7)
@@ -3243,12 +3068,6 @@ def reports_page():
 @app.route("/api/reports/summary")
 @api_login_required
 def api_reports_summary():
-    """Ringkasan SLA + outage per host. ?days=1|3|7 (default 7).
-
-    Outage dalam maintenance (is_maintenance=1) TIDAK dihitung ke total_outages /
-    total_downtime / down_count / mttr, tapi ditampilkan terpisah sebagai
-    maintenance_count agar SLA tidak jelek saat maintenance terjadwal.
-    """
     days = _report_days()
     conn, c = get_db()
     c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
@@ -3366,7 +3185,6 @@ def api_reports_summary():
 @app.route("/api/reports/export")
 @api_login_required
 def api_reports_export():
-    """Export CSV. ?days=7&table=summary|outages"""
     days = _report_days()
     table = (request.args.get("table") or "summary").lower()
 
@@ -3431,7 +3249,6 @@ def api_reports_export():
 @app.route("/api/reports/send", methods=["POST"])
 @api_login_required
 def api_reports_send():
-    """Kirim ringkasan laporan ke Telegram. Body JSON {days:7}."""
     data = request.get_json(silent=True) or {}
     try:
         days = int(data.get("days", request.args.get("days", 7)))
@@ -3483,11 +3300,6 @@ def api_reports_send():
 
 
 def _public_node_name(alias, ip, hid):
-    """Nama tampilan node untuk halaman publik.
-
-    Pakai alias bila admin sudah mengisi (alias != IP). Kalau belum,
-    pakai 'node-<id>' agar IP internal tidak bocor ke publik.
-    """
     a = (alias or "").strip()
     if a and a != (ip or ""):
         return a[:80]
@@ -3499,21 +3311,11 @@ def _public_node_name(alias, ip, hid):
 
 @app.route("/status")
 def status_page():
-    """Halaman status publik (tanpa login). Hanya data agregat.
-
-    Sengaja TANPA IP, URL, alias mentah, maupun detail config —
-    mengikuti prinsip /health yang tidak membocorkan infra internal.
-    """
     return render_template("status.html")
 
 
 @app.route("/api/public/status")
 def api_public_status():
-    """JSON status publik (tanpa login). Hanya status + uptime agregat.
-
-    Tidak ada IP, URL, alias mentah, jumlah baris DB, atau info infra lain.
-    Rate-limit mengikuti zona nginx nms_api untuk /api/.
-    """
     maint_map = get_active_maintenance_map()
     nodes = []
     up_n = down_n = pend_n = maint_n = 0
@@ -3619,8 +3421,6 @@ def api_public_status():
 
 @app.route("/health")
 def health():
-    """Liveness probe untuk LB/Docker. Sengaja TANPA daftar host & jumlah baris
-    agar tidak membocorkan IP internal ke publik."""
     try:
         conn, c = get_db()
         try:

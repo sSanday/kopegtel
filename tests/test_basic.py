@@ -1,7 +1,3 @@
-"""Smoke test dasar NMS (stdlib unittest, DB temporer via NMS_DB_PATH).
-
-Jalankan:  python3 -m unittest discover -s tests -v
-"""
 import os
 import sqlite3
 import tempfile
@@ -37,7 +33,6 @@ class NmsTest(unittest.TestCase):
         conn.close()
         r = cls.client.post("/login",
                             data={"username": "admin", "password": "admin12345"})
-
 
 
         assert r.status_code == 302, f"login gagal, status={r.status_code}"

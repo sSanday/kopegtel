@@ -1,9 +1,3 @@
-"""Test fitur maintenance window, SSL service, dan status publik.
-
-Mengikuti pola test_basic.py: memakai DB temporer via NMS_DB_PATH yang sudah
-diset di test_basic (discover mengimpor test_basic lebih dulu), scheduler mati.
-Jalankan:  python3 -m unittest discover -s tests -v
-"""
 import unittest
 from datetime import datetime, timedelta
 
