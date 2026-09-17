@@ -94,6 +94,31 @@ class NmsTest(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+    def test_down_row_tidak_dobel_saat_memori_reset(self):
+        conn, c = m.get_db()
+        c.execute("DELETE FROM down_events WHERE host='10.99.99.99'")
+        c.execute("INSERT INTO down_events (host,started_at) VALUES "
+                  "('10.99.99.99',datetime('now','localtime'))")
+        conn.commit()
+        conn.close()
+        m.status_memory["10.99.99.99"] = False
+        m.down_since.pop("10.99.99.99", None)
+        orig = m.ping_host
+        m.ping_host = lambda h: (-1, 100.0) if h == "10.99.99.99" else (0.5, 0.0)
+        try:
+            m.check_network()
+        finally:
+            m.ping_host = orig
+        conn, c = m.get_db()
+        n = c.execute("SELECT COUNT(*) FROM down_events WHERE host='10.99.99.99' "
+                      "AND resolved_at IS NULL").fetchone()[0]
+        c.execute("DELETE FROM down_events WHERE host='10.99.99.99'")
+        conn.commit()
+        conn.close()
+        m.status_memory.pop("10.99.99.99", None)
+        m.down_since.pop("10.99.99.99", None)
+        self.assertEqual(n, 1)
+
     def test_agent_metrics_null_disk_tidak_500(self):
         conn, c = m.get_db()
         c.execute("INSERT INTO agent_metrics (host,cpu_percent,ram_percent,disk_percent,"

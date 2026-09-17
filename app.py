@@ -1059,9 +1059,14 @@ def check_network():
                         status_memory[host] = True
                         down_since[host]    = datetime.now()
                         c.execute(
-                            "INSERT INTO down_events (host, started_at, is_maintenance) VALUES (?, ?, ?)",
-                            (host, timestamp, 1 if in_maint else 0)
+                            "SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1",
+                            (host,),
                         )
+                        if c.fetchone() is None:
+                            c.execute(
+                                "INSERT INTO down_events (host, started_at, is_maintenance) VALUES (?, ?, ?)",
+                                (host, timestamp, 1 if in_maint else 0)
+                            )
                         if in_maint:
                             reason = (maint_map[host].get("reason") or "").strip()[:200]
                             _insert_system_log(c, "MAINTENANCE_DOWN", host,
