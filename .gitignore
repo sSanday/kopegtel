@@ -12,3 +12,4 @@ network.db.corrupt-*
 *.bak
 backups/
 .vscode/
+agent-cron.log
