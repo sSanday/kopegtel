@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fiber Redaman — NMS KOPEGTEL</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080c14;--surface:#0c1220;--card:rgba(12,18,32,.8);--border:rgba(0,255,136,.1);--border2:rgba(255,255,255,.06);--accent:#00a2ff;--accent2:#00ff88;--t1:#e0f0ff;--t2:#6a8aaa;--t3:#2a4060;--mono:'JetBrains Mono',monospace;--danger:#ff4444;--success:#00ff88;--warn:#ffaa00}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
+.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
+.tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center}
+.tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+.tb-path .crumb.active{color:var(--accent2)}
+.back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
+.back-btn:hover{color:var(--t1)}
+.wrap{padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+.sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
+.sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
+.info{background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.68rem;color:var(--t2);margin-bottom:16px;line-height:1.7}
+.info b{color:var(--t1)}
+.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px}
+.filter-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;padding:4px 10px;border-radius:4px;cursor:pointer}
+.filter-btn.active,.filter-btn:hover{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.45);color:var(--success)}
+.filter-search{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:6px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;min-width:160px;outline:none}
+.filter-select{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:6px 8px;border-radius:4px;font-family:var(--mono);font-size:.62rem;outline:none;max-width:170px}
+.odp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.odp-card{background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:8px;padding:12px 14px}
+.odp-card.bad{border-color:rgba(255,68,68,.4)}
+.odp-card.warn{border-color:rgba(255,170,0,.4)}
+.odp-name{font-family:var(--mono);font-size:.75rem;font-weight:700;color:var(--t1)}
+.odp-sub{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin:2px 0 6px}
+.fillbar{height:4px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin:6px 0 8px}
+.fillbar>div{height:100%;background:var(--accent)}
+.odp-counts{display:flex;gap:10px;font-family:var(--mono);font-size:.62rem;color:var(--t2);flex-wrap:wrap}
+.add-btn{background:rgba(0,162,255,.1);border:1px solid rgba(0,162,255,.3);color:var(--accent);padding:8px 16px;border-radius:5px;font-family:var(--mono);font-size:.7rem;cursor:pointer;margin-left:auto}
+.add-btn:hover{background:rgba(0,162,255,.2);color:#fff}
+.log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,.15);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:top}
+tr:hover td{background:rgba(255,255,255,.02)}
+.tag{font-family:var(--mono);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap;display:inline-block}
+.tag.normal{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.25)}
+.tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
+.tag.critical{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
+.tag.overload{background:rgba(255,0,200,.12);color:#ff66dd;border:1px solid rgba(255,0,200,.35)}
+.tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
+.advice{font-size:.62rem;color:var(--t3);margin-top:4px;max-width:340px;line-height:1.5}
+.act{background:transparent;border:none;color:var(--t3);cursor:pointer;padding:4px;font-family:var(--mono);font-size:.65rem}
+.act:hover{color:var(--danger)}
+.act.edit:hover{color:var(--accent)}
+.chart-card{margin-top:16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:18px 20px}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.chart-title{font-family:var(--mono);font-size:.8rem;font-weight:600}
+.chart-sub{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+.chart-ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chart-ctl select{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;max-width:240px}
+.range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;padding:4px 9px;border-radius:4px;cursor:pointer}
+.range-btn.active{color:var(--accent);border-color:rgba(0,162,255,.4)}
+.chart-wrap{position:relative;height:240px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:.3s}
+.modal-overlay.active{opacity:1;pointer-events:auto}
+.modal{background:var(--surface);width:420px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:8px;border:1px solid var(--border2)}
+.modal-header{padding:14px 18px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:.8rem;display:flex;justify-content:space-between;align-items:center}
+.modal-body{padding:18px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:.65rem;color:var(--t2);margin-bottom:5px;font-family:var(--mono)}
+.form-group input,.form-group select{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:9px 10px;border-radius:5px;font-family:var(--mono);font-size:.72rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.btn{padding:8px 16px;border-radius:5px;font-size:.72rem;font-family:var(--mono);cursor:pointer;border:none}
+.btn-cancel{background:transparent;color:var(--t2);border:1px solid var(--border2)}
+.btn-submit{background:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="tb-brand"><div class="tb-logo">◈</div>
+    <div class="tb-path"><span>~/noc</span><span>/</span><span>dashboard</span><span>/</span><span class="crumb active">fiber</span></div>
+  </div>
+  <a href="/" class="back-btn">← cd ..</a>
+</div>
+<div class="wrap">
+  <div class="sec-label">fiber_redaman.list — Rx/Tx ONT (dBm)</div>
+  <div class="info" id="thInfo">
+    memuat threshold...
+  </div>
+  <div class="sec-label">odp_summary <button class="act edit" onclick="openOdpModal()" style="margin-left:auto">+ kelola ODP</button></div>
+  <div class="odp-grid" id="odpGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="filter-bar">
+    <button class="filter-btn active" data-f="all">all</button>
+    <button class="filter-btn" data-f="normal">normal</button>
+    <button class="filter-btn" data-f="warning">warning</button>
+    <button class="filter-btn" data-f="critical">critical</button>
+    <button class="filter-btn" data-f="overload">overload ⚠ peredam</button>
+    <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="render()">
+    <select class="filter-select" id="fOlt" onchange="render()" title="Filter OLT"><option value="">olt: all</option></select>
+    <select class="filter-select" id="fOdp" onchange="render()" title="Filter ODP"><option value="">odp: all</option></select>
+    <a class="add-btn" href="/api/fiber/export" style="text-decoration:none">⇩ export.csv</a>
+    <button class="add-btn" onclick="openModal()" style="margin-left:0">+ Add ONT</button>
+  </div>
+  <div class="log-card"><div style="overflow-x:auto"><table>
+    <thead><tr><th>ONT SN / Pelanggan</th><th>OLT / PON / ODP</th><th>Rx (dBm)</th><th>Tx (dBm)</th><th>Status</th><th>Last check</th><th></th></tr></thead>
+    <tbody id="rows"><tr><td colspan="7" style="text-align:center;color:var(--t3)">loading...</td></tr></tbody>
+  </table></div></div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub">// garis merah = batas warning -25 dBm · ungu = critical -27 dBm</div></div>
+      <div class="chart-ctl">
+        <select id="ontSel" onchange="loadHist()"></select>
+        <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
+        <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
+        <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="ch"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <div><div class="chart-title">link_budget.calc</div><div class="chart-sub">// Rx teoritis = Tx OLT − splitter − serat − konektor − splice · bandingkan dengan Rx aktual ONT</div></div>
+    </div>
+    <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="form-group"><label>Bandingkan ONT (opsional)</label><select id="b_ont"><option value="">— tanpa pembanding —</option></select></div>
+      <div class="form-group"><label>Tx OLT (dBm)</label><input id="b_tx" type="number" step="0.1" value="3.0"></div>
+      <div class="form-group"><label>Splitter ODC</label><select id="b_sp1"><option>1:2</option><option selected>1:4</option><option>1:8</option><option>1:16</option><option>1:32</option></select></div>
+      <div class="form-group"><label>Splitter ODP</label><select id="b_sp2"><option value="">—</option><option>1:2</option><option>1:4</option><option selected>1:8</option><option>1:16</option><option>1:32</option></select></div>
+      <div class="form-group"><label>Serat (km)</label><input id="b_km" type="number" step="0.1" value="2.0"></div>
+      <div class="form-group"><label>Konektor</label><input id="b_conn" type="number" value="4"></div>
+      <div class="form-group"><label>Splice</label><input id="b_spl" type="number" value="2"></div>
+    </div>
+    <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-submit" onclick="calcBudget()">hitung()</button></div>
+    <div id="b_result" style="display:none;margin-top:14px;font-family:var(--mono);font-size:.7rem;line-height:1.8;background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:6px;padding:12px 16px"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="odpModal"><div class="modal">
+  <div class="modal-header"><span>// odp.manage</span><button class="act" onclick="closeOdpModal()">✕</button></div>
+  <div class="modal-body">
+    <div id="odpList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:240px;overflow-y:auto"></div>
+    <div class="form-group"><label>Nama ODP *</label><input id="o_name" placeholder="ODP-KTG-12"></div>
+    <div class="form-row">
+      <div class="form-group"><label>OLT</label><input id="o_olt" placeholder="OLT-KOPEGTEL-01"></div>
+      <div class="form-group"><label>Kapasitas (port)</label><input id="o_cap" type="number" value="8" min="1" max="128"></div>
+    </div>
+    <div class="form-group"><label>Lokasi</label><input id="o_loc" placeholder="Jl. Mawar rt 05"></div>
+    <input type="hidden" id="o_id" value="">
+    <div class="btn-row"><button class="btn btn-cancel" onclick="closeOdpModal()">tutup</button><button class="btn btn-submit" onclick="saveOdp()">save()</button></div>
+  </div>
+</div></div>
+<div class="modal-overlay" id="modal"><div class="modal">
+  <div class="modal-header"><span id="mtitle">// ont.create</span><button class="act" onclick="closeModal()">✕</button></div>
+  <div class="modal-body">
+    <div class="form-group"><label>ONT SN *</label><input id="f_sn" placeholder="ZTEG12345678"></div>
+    <div class="form-group"><label>Pelanggan / Lokasi</label><input id="f_cust" placeholder="Bpk Andi - Jl. Mawar 10"></div>
+    <div class="form-row">
+      <div class="form-group"><label>OLT</label><input id="f_olt" placeholder="OLT-KOPEGTEL-01"></div>
+      <div class="form-group"><label>PON Port</label><input id="f_pon" placeholder="1/2/3"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>ODP</label><input id="f_odp" list="odpList" placeholder="ODP-KTG-12" autocomplete="off"><datalist id="odpList"></datalist></div>
+      <div class="form-group"><label>Source</label><select id="f_src"><option value="manual">manual (OPM)</option><option value="simulator">simulator (demo)</option><option value="snmp">snmp (OLT)</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Rx Power (dBm)</label><input id="f_rx" type="number" step="0.1" placeholder="-19.5"></div>
+      <div class="form-group"><label>Tx Power (dBm)</label><input id="f_tx" type="number" step="0.1" placeholder="2.1"></div>
+    </div>
+    <div class="btn-row"><button class="btn btn-cancel" onclick="closeModal()">cancel</button><button class="btn btn-submit" onclick="save()">save()</button></div>
+  </div>
+</div></div>
+<script>
+let DATA=[], ODPDATA=[], curF='all', editId=null, chart=null, histH=6;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
+function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
+async function loadTh(){
+  try{
+    const r=await fetch('/api/settings',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(!r.ok)return;const s=await r.json();
+    document.getElementById('thInfo').innerHTML=
+      `Threshold aktif — Rx normal <b>${esc(s.fiber_rx_overload)} s/d ${esc(s.fiber_rx_warn)} dBm</b> · warning <b>${esc(s.fiber_rx_warn)} s/d ${esc(s.fiber_rx_crit)}</b> · critical <b>&lt; ${esc(s.fiber_rx_crit)} dBm</b> (redaman tinggi: cek bending/konektor/splicing/ODP) · `+
+      `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
+      `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=siap integrasi OLT (ZTE/Huawei).`;
+  }catch(e){}
+}
+async function load(){
+  loadTh();
+  const r=await fetch('/api/fiber',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(r.status===401){location.href='/login';return;}
+  DATA=await r.json();
+  try{
+    const ro=await fetch('/api/odps',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(ro.ok)ODPDATA=await ro.json();
+  }catch(e){}
+  renderOdp(); fillOdpFilters();
+  const sel=document.getElementById('ontSel');
+  sel.innerHTML=DATA.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} — ${esc(o.customer||'-')}</option>`).join('')||'<option value="">(kosong)</option>';
+  const bsel=document.getElementById('b_ont');
+  const prevB=bsel.value;
+  bsel.innerHTML='<option value="">— tanpa pembanding —</option>'+DATA.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} (${o.rx_power==null?'—':esc(o.rx_power)+' dBm'})</option>`).join('');
+  if(prevB)bsel.value=prevB;
+  render(); loadHist();
+}
+function fillOdpFilters(){
+  const olts=[...new Set(DATA.map(o=>(o.olt_name||'').trim()).filter(Boolean))].sort();
+  const fOlt=document.getElementById('fOlt'), prevO=fOlt.value;
+  fOlt.innerHTML='<option value="">olt: all</option>'+olts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(olts.includes(prevO))fOlt.value=prevO;
+  const odps=[...new Set(DATA.map(o=>(o.odp_name||'').trim()).filter(Boolean))].sort();
+  const fOdp=document.getElementById('fOdp'), prevD=fOdp.value;
+  fOdp.innerHTML='<option value="">odp: all</option>'+odps.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(odps.includes(prevD))fOdp.value=prevD;
+  document.getElementById('odpList').innerHTML=ODPDATA.filter(o=>o.id).map(o=>`<option value="${esc(o.name)}">`).join('');
+}
+function renderOdp(){
+  const g=document.getElementById('odpGrid');
+  if(!ODPDATA.length){g.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ no ODP — kelola via tombol di atas.</div>';return;}
+  g.innerHTML=ODPDATA.map(o=>{
+    const bad=(o.critical||0)+(o.overload||0), warn=o.warning||0;
+    const cls=o.id===0?'':(bad?'bad':(warn?'warn':''));
+    const cap=o.capacity?` · ${o.total}/${o.capacity} port (${o.fill_pct}%)`:'';
+    return `<div class="odp-card ${cls}">
+      <div class="odp-name">${esc(o.name)}</div>
+      <div class="odp-sub">${esc(o.olt_name||'-')}${o.location?' · '+esc(o.location):''}${cap}</div>
+      ${o.capacity?`<div class="fillbar"><div style="width:${Math.min(100,o.fill_pct)}%"></div></div>`:''}
+      <div class="odp-counts"><span style="color:var(--success)">●${o.normal||0}</span><span style="color:var(--warn)">●${warn}</span><span style="color:var(--danger)">●${o.critical||0}</span><span style="color:#ff66dd">●${o.overload||0}</span><span class="tag ${esc(o.worst)}" style="margin-left:auto">${esc(o.worst)}</span></div>
+    </div>`;}).join('');
+}
+function render(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const fO=document.getElementById('fOlt').value, fD=document.getElementById('fOdp').value;
+  const tb=document.getElementById('rows');
+  const rows=DATA.filter(o=>(curF==='all'||o.calc_status===curF)&&(!fO||(o.olt_name||'')===fO)&&(!fD||(o.odp_name||'')===fD)&&(!q||(o.ont_sn+' '+(o.customer||'')+' '+(o.odp_name||'')+' '+(o.olt_name||'')).toLowerCase().includes(q)));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no data — tambah ONT dulu.</td></tr>';return;}
+  tb.innerHTML=rows.map(o=>`<tr>
+    <td style="color:var(--t1)">${esc(o.ont_sn)}<div style="font-size:.62rem;color:var(--t3)">${esc(o.customer||'-')}</div></td>
+    <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}</div></td>
+    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}</td>
+    <td>${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
+    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span><div class="advice">${esc(o.advice||'')}</div></td>
+    <td style="font-size:.62rem">${esc(o.last_checked||'—')}</td>
+    <td style="white-space:nowrap"><button class="act edit" onclick="openModal(${o.id})">edit</button><button class="act" onclick="del(${o.id})">del</button></td>
+  </tr>`).join('');
+}
+function openModal(id){
+  editId=id||null;
+  document.getElementById('mtitle').textContent=id?'// ont.update':'// ont.create';
+  if(id){const o=DATA.find(x=>x.id===id);if(!o)return;
+    f_sn.value=o.ont_sn||'';f_cust.value=o.customer||'';f_olt.value=o.olt_name||'';f_pon.value=o.pon_port||'';f_odp.value=o.odp_name||'';f_src.value=o.source||'manual';f_rx.value=o.rx_power??'';f_tx.value=o.tx_power??'';
+  } else {['f_sn','f_cust','f_olt','f_pon','f_odp','f_rx','f_tx'].forEach(i=>document.getElementById(i).value='');f_src.value='manual';}
+  document.getElementById('modal').classList.add('active');
+}
+function closeModal(){document.getElementById('modal').classList.remove('active');}
+async function save(){
+  const body={ont_sn:f_sn.value.trim(),customer:f_cust.value.trim(),olt_name:f_olt.value.trim(),pon_port:f_pon.value.trim(),odp_name:f_odp.value.trim(),source:f_src.value,rx_power:f_rx.value===''?null:parseFloat(f_rx.value),tx_power:f_tx.value===''?null:parseFloat(f_tx.value)};
+  const url=editId?`/api/fiber/${editId}`:'/api/fiber';
+  const r=await fetch(url,{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||'gagal simpan');return;}
+  closeModal();load();
+}
+async function del(id){if(!confirm('hapus ONT ini?'))return;const r=await fetch(`/api/fiber/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});if(r.ok)load();}
+async function loadHist(){
+  const id=document.getElementById('ontSel').value;if(!id)return;
+  const r=await fetch(`/api/fiber/${id}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!r.ok)return;const j=await r.json();
+  document.getElementById('ctitle').textContent=(j.ont?.ont_sn||'rx')+' — rx_history.ts';
+  const ctx=document.getElementById('ch').getContext('2d');
+  if(chart)chart.destroy();
+  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[
+    {label:'Rx dBm',data:j.rx,borderColor:'#00a2ff',backgroundColor:'rgba(0,162,255,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5},
+    {label:'Tx dBm',data:j.tx,borderColor:'#00ff88',borderDash:[3,3],tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.2},
+    {label:'warn -25',data:j.labels.map(()=>-25),borderColor:'#ffaa00',borderDash:[6,4],pointRadius:0,borderWidth:1},
+    {label:'crit -27',data:j.labels.map(()=>-27),borderColor:'#ff4444',borderDash:[6,4],pointRadius:0,borderWidth:1}
+  ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#2a4060',maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},y:{ticks:{color:'#6a8aaa'},grid:{color:'rgba(255,255,255,.04)'},reverse:true}},plugins:{legend:{labels:{color:'#6a8aaa',boxWidth:12,font:{size:10}}}}}});
+}
+async function calcBudget(){
+  const box=document.getElementById('b_result');
+  const splitters=[document.getElementById('b_sp1').value,document.getElementById('b_sp2').value].filter(Boolean);
+  const body={tx_dbm:parseFloat(document.getElementById('b_tx').value),splitters,fiber_km:parseFloat(document.getElementById('b_km').value),connectors:parseInt(document.getElementById('b_conn').value),splices:parseInt(document.getElementById('b_spl').value)};
+  const oid=document.getElementById('b_ont').value;
+  if(oid)body.ont_id=parseInt(oid);
+  box.style.display='block';box.textContent='$ computing...';
+  try{
+    const r=await fetch('/api/fiber/link-budget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok){box.innerHTML=`<span style="color:var(--danger)">Error: ${esc(j.error||'gagal')}</span>`;return;}
+    const L=j.losses;
+    const vcolor=j.verdict==='ok'?'var(--success)':(j.severity==='high'||j.severity==='disaster'?'var(--danger)':'var(--warn)');
+    box.innerHTML=
+      `Tx OLT <b style="color:var(--t1)">${esc(j.tx_dbm)} dBm</b> − splitter ${esc(L.splitter_db)} − serat ${esc(L.fiber_db)} − konektor ${esc(L.connector_db)} − splice ${esc(L.splice_db)} = rugi total <b style="color:var(--t1)">${esc(L.total_db)} dB</b><br>`+
+      `Rx teoritis: <b style="color:var(--accent)">${esc(j.expected_rx)} dBm</b>`+
+      (j.actual_rx!=null?` · Rx aktual ONT ${esc(j.ont?.ont_sn)}: <b style="color:var(--t1)">${esc(j.actual_rx)} dBm</b> · selisih <b style="color:${vcolor}">${esc(j.delta_db)} dB</b>`:` (tanpa pembanding ONT)`)+`<br>`+
+      `<span style="color:${vcolor}">■ ${esc(j.verdict.toUpperCase())}</span> — ${esc(j.advice)}`;
+  }catch(e){box.innerHTML=`<span style="color:var(--danger)">Error: ${esc(e.message)}</span>`;}
+}
+function openOdpModal(){
+  document.getElementById('o_id').value='';document.getElementById('o_name').value='';
+  document.getElementById('o_olt').value='';document.getElementById('o_cap').value='8';document.getElementById('o_loc').value='';
+  const L=document.getElementById('odpList');
+  L.innerHTML=ODPDATA.filter(o=>o.id).map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;border:1px solid var(--border2);font-family:var(--mono);font-size:.7rem"><span>${esc(o.name)} <span style="color:var(--t3)">(${o.total}/${o.capacity||'?'})</span></span><span style="white-space:nowrap"><button class="act edit" onclick="editOdp(${o.id})">edit</button><button class="act" onclick="delOdp(${o.id})">del</button></span></div>`).join('')||'<div style="color:var(--t3);font-size:.7rem">belum ada ODP.</div>';
+  document.getElementById('odpModal').classList.add('active');
+}
+function closeOdpModal(){document.getElementById('odpModal').classList.remove('active');}
+function editOdp(id){const o=ODPDATA.find(x=>x.id===id);if(!o)return;document.getElementById('o_id').value=o.id;document.getElementById('o_name').value=o.name;document.getElementById('o_olt').value=o.olt_name||'';document.getElementById('o_cap').value=o.capacity||8;document.getElementById('o_loc').value=o.location||'';}
+async function saveOdp(){
+  const id=document.getElementById('o_id').value;
+  const body={name:document.getElementById('o_name').value.trim(),olt_name:document.getElementById('o_olt').value.trim(),capacity:parseInt(document.getElementById('o_cap').value),location:document.getElementById('o_loc').value.trim()};
+  const r=await fetch(id?`/api/odps/${id}`:'/api/odps',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||'gagal simpan ODP');return;}
+  closeOdpModal();load();
+}
+async function delOdp(id){if(!confirm('hapus ODP ini? (ONT tidak ikut terhapus)'))return;const r=await fetch(`/api/odps/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});if(r.ok){closeOdpModal();load();}}
+load();setInterval(load,60000);
+</script>
+</body>
+</html>

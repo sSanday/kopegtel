@@ -311,6 +311,19 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ram_threshold', '90.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('disk_threshold', '90.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_overload', '-8.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_warn', '-25.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_crit', '-27.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_target', '-18.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_crit', '75.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_cpu_oid', '1.3.6.1.4.1.14988.1.1.3.11.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_mem_oid', '1.3.6.1.4.1.14988.1.1.3.12.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.4.1.14988.1.1.3.13.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_div', '10')")
 
     c.execute('''CREATE TABLE IF NOT EXISTS down_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -337,6 +350,15 @@ def init_db():
         c.execute("ALTER TABLE hosts ADD COLUMN category TEXT DEFAULT 'Uncategorized'")
     except sqlite3.OperationalError:
         pass
+    try:
+        c.execute("ALTER TABLE hosts ADD COLUMN snmp_profile TEXT DEFAULT 'auto'")
+    except sqlite3.OperationalError:
+        pass
+    for _col in ("cpu_oid", "mem_oid", "storage_oid", "temp_oid"):
+        try:
+            c.execute(f"ALTER TABLE hosts ADD COLUMN {_col} TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
 
     c.execute('''CREATE TABLE IF NOT EXISTS agent_metrics (
@@ -449,6 +471,82 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)")
 
 
+    # --- Fiber / Redaman (GPON ONT Rx/Tx power) ---
+    c.execute('''CREATE TABLE IF NOT EXISTS fiber_onts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ont_sn TEXT UNIQUE NOT NULL,
+      customer TEXT DEFAULT '',
+      olt_name TEXT DEFAULT '',
+      pon_port TEXT DEFAULT '',
+      odp_name TEXT DEFAULT '',
+      rx_power REAL,
+      tx_power REAL,
+      status TEXT DEFAULT 'unknown',
+      last_checked TEXT,
+      source TEXT DEFAULT 'manual',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS fiber_history(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ont_id INTEGER NOT NULL,
+      rx_power REAL,
+      tx_power REAL,
+      timestamp TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_hist ON fiber_history(ont_id, timestamp)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_sn ON fiber_onts(ont_sn)")
+
+    # --- MikroTik / SNMP device health (CPU/RAM/storage/suhu) ---
+    c.execute('''CREATE TABLE IF NOT EXISTS device_health(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host TEXT NOT NULL,
+      cpu REAL,
+      mem_used REAL,
+      storage_used REAL,
+      temp_c REAL,
+      timestamp TEXT NOT NULL,
+      source TEXT DEFAULT 'snmp-mikrotik'
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_devhealth_host_clock ON device_health(host, timestamp)")
+    try:
+        c.execute("ALTER TABLE device_health ADD COLUMN uptime_s REAL")
+    except sqlite3.OperationalError:
+        pass
+
+    c.execute('''CREATE TABLE IF NOT EXISTS snmp_interfaces(
+      host TEXT NOT NULL,
+      if_index INTEGER NOT NULL,
+      name TEXT DEFAULT '',
+      oper INTEGER,
+      monitor INTEGER NOT NULL DEFAULT 1,
+      last_changed TEXT,
+      PRIMARY KEY (host, if_index)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS iface_traffic(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host TEXT NOT NULL,
+      if_index INTEGER NOT NULL,
+      net_in REAL DEFAULT 0.0,
+      net_out REAL DEFAULT 0.0,
+      timestamp TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_iface_host_idx_clock ON iface_traffic(host, if_index, timestamp)")
+    c.execute('''CREATE TABLE IF NOT EXISTS odps(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      olt_name TEXT DEFAULT '',
+      capacity INTEGER DEFAULT 8,
+      location TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_odp_name ON odps(name)")
+    try:
+        c.execute("ALTER TABLE fiber_onts ADD COLUMN source TEXT DEFAULT 'manual'")
+    except sqlite3.OperationalError:
+        pass
+
     c.execute("SELECT COUNT(*) as cnt FROM hosts")
     if c.fetchone()["cnt"] == 0:
         for h in ["192.168.110.167", "192.168.110.25", "192.168.110.251"]:
@@ -551,6 +649,24 @@ def cleanup_old_data():
             except Exception as e:
                 print(f"[CLEANUP] service_history gagal: {e}")
                 deleted_svc_hist = 0
+            try:
+                c.execute("DELETE FROM fiber_history WHERE timestamp < datetime('now', 'localtime', '-30 days')")
+                deleted_fiber = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] fiber_history gagal: {e}")
+                deleted_fiber = 0
+            try:
+                c.execute("DELETE FROM device_health WHERE timestamp < datetime('now', 'localtime', '-14 days')")
+                deleted_mt = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] device_health gagal: {e}")
+                deleted_mt = 0
+            try:
+                c.execute("DELETE FROM iface_traffic WHERE timestamp < datetime('now', 'localtime', '-14 days')")
+                deleted_iface = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] iface_traffic gagal: {e}")
+                deleted_iface = 0
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] cleanup gagal: {e}")
@@ -570,7 +686,7 @@ def cleanup_old_data():
             chk.close()
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
-    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} baris lama dihapus.")
+    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus.")
 
 def backup_database():
     backup_dir = os.path.join(BASE_DIR, "backups")
@@ -793,7 +909,7 @@ def check_agent_heartbeat():
 
 snmp_state = {}
 
-def _encode_snmp_v1_get(community, oid_list):
+def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xa0):
     def encode_oid(oid):
         try:
             parts = [int(x) for x in str(oid).split('.') if x != ""]
@@ -835,7 +951,7 @@ def _encode_snmp_v1_get(community, oid_list):
         oid_enc = encode_oid(oid)
         varbinds += encode_tlv(0x30, oid_enc + b'\x05\x00')
     varbind_list = encode_tlv(0x30, varbinds)
-    pdu = encode_tlv(0xa0, req_id + b'\x02\x01\x00\x02\x01\x00' + varbind_list)
+    pdu = encode_tlv(_pdu_tag, req_id + b'\x02\x01\x00\x02\x01\x00' + varbind_list)
     comm_bytes = str(community or "")[:128].encode()
 
 
@@ -896,36 +1012,289 @@ def _extract_snmp_values(resp):
         pass
     return found
 
-def get_snmp_bandwidth(ip, community, if_index):
-    oid_in  = f'1.3.6.1.2.1.2.2.1.10.{if_index}'
-    oid_out = f'1.3.6.1.2.1.2.2.1.16.{if_index}'
+
+def _decode_oid(raw):
+    """Bytes OID -> '1.3.6...'. None bila truncated/invalid."""
+    try:
+        raw = bytes(raw)
+        if not raw:
+            return None
+        arcs = [raw[0] // 40, raw[0] % 40]
+        val, complete = 0, True
+        for byte in raw[1:]:
+            val = (val << 7) | (byte & 0x7f)
+            if byte & 0x80:
+                complete = False
+            else:
+                arcs.append(val)
+                val, complete = 0, True
+        if not complete:
+            return None
+        return ".".join(str(a) for a in arcs)
+    except Exception:
+        return None
+
+
+def _tlv_children(buf):
+    pos, out = 0, []
+    buf = bytes(buf)
+    while pos < len(buf):
+        t = _ber_read_tlv(buf, pos)
+        if t is None:
+            break
+        out.append(t)
+        pos = t[2]
+    return out
+
+
+def _extract_snmp_varbinds(resp):
+    """Urai respons -> list (oid_str, tag, ival, sval) berurutan.
+
+    ival untuk INTEGER/Counter/Gauge/TimeTicks (<=8 byte), sval untuk
+    OCTET STRING. Tag error (noSuchObject/Instance/endOfMibView) -> nilai None.
+    """
+    out = []
+    try:
+        top = _tlv_children(resp)
+        if len(top) != 1 or top[0][0] != 0x30:
+            return out
+        msg = _tlv_children(top[0][1])
+        if len(msg) < 3:
+            return out
+        pdu = _tlv_children(msg[2][1])
+        if len(pdu) < 4:
+            return out
+        for vb in _tlv_children(pdu[3][1]):
+            if vb[0] != 0x30:
+                continue
+            parts = _tlv_children(vb[1])
+            if len(parts) < 2 or parts[0][0] != 0x06:
+                continue
+            oid = _decode_oid(parts[0][1])
+            if not oid:
+                continue
+            tag, raw = parts[1][0], bytes(parts[1][1])
+            ival, sval = None, None
+            if tag in (0x02, 0x41, 0x42, 0x43, 0x46) and 1 <= len(raw) <= 8:
+                try:
+                    ival = int.from_bytes(raw, "big", signed=(tag == 0x02))
+                except Exception:
+                    ival = None
+            elif tag == 0x04 and len(raw) <= 256:
+                try:
+                    sval = raw.decode("utf-8", errors="replace").strip()
+                except Exception:
+                    sval = None
+            out.append((oid, tag, ival, sval))
+    except Exception:
+        pass
+    return out
+
+
+def _oid_under(oid, base):
+    base = base.strip().strip(".")
+    oid = (oid or "").strip().strip(".")
+    return oid == base or oid.startswith(base + ".")
+
+
+def _snmp_getnext(ip, community, oid, timeout=2.5):
+    """Satu GETNEXT. Kembalikan (oid_str, tag, ival, sval) atau (None, None, None, None)."""
     sock = None
     try:
-        try:
-            if_index = int(if_index)
-        except (ValueError, TypeError):
-            return None, None
-        if if_index < 1:
-            return None, None
-        pkt = _encode_snmp_v1_get(community, [oid_in, oid_out])
+        pkt = _encode_snmp_v1_get(community, [oid], _pdu_tag=0xa1)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0)
+        sock.settimeout(timeout)
         sock.sendto(pkt, (ip, 161))
-        resp, _ = sock.recvfrom(4096)
-
-        vals = _extract_snmp_values(resp)
-        if len(vals) >= 2:
-            return vals[-2], vals[-1]
-        return None, None
+        resp, _ = sock.recvfrom(8192)
+        vbs = _extract_snmp_varbinds(resp)
+        if vbs:
+            return vbs[0]
+        return None, None, None, None
     except Exception as e:
-        print(f"[SNMP ERROR] {ip}: {e}")
-        return None, None
+        print(f"[SNMP ERROR] {ip} getnext: {e}")
+        return None, None, None, None
     finally:
         if sock is not None:
             try:
                 sock.close()
             except Exception:
                 pass
+
+
+def snmp_walk(ip, community, base, max_rows=64):
+    """Walk satu kolom tabel. Kembalikan list (oid, tag, ival, sval)."""
+    base = _valid_oid(base)
+    if not base:
+        return []
+    out, cur = [], base
+    seen = set()
+    for _ in range(max(1, min(max_rows, 256))):
+        oid, tag, ival, sval = _snmp_getnext(ip, community, cur)
+        if not oid or not _oid_under(oid, base) or oid in seen:
+            break
+        seen.add(oid)
+        if tag in (0x80, 0x81, 0x82):  # noSuch / endOfMibView
+            break
+        out.append((oid, tag, ival, sval))
+        cur = oid
+    return out
+
+
+IF_DESCR_BASE = "1.3.6.1.2.1.2.2.1.2"
+IF_OPER_BASE = "1.3.6.1.2.1.2.2.1.8"
+
+
+def discover_interfaces(ip, community, max_if=48):
+    """Walk ifDescr + ifOperStatus. Kembalikan list {if_index, name, oper}."""
+    try:
+        descrs = snmp_walk(ip, community, IF_DESCR_BASE, max_rows=max_if + 8)
+        opers = snmp_walk(ip, community, IF_OPER_BASE, max_rows=max_if + 8)
+    except Exception as e:
+        print(f"[SNMP] discover {ip} gagal: {e}")
+        return []
+
+    def _idx(oid, base):
+        try:
+            suffix = oid.strip().strip(".")[len(base.strip().strip(".")) + 1:]
+            i = int(suffix)
+            return i if i >= 1 else None
+        except (ValueError, TypeError, IndexError):
+            return None
+
+    names, opermap = {}, {}
+    for oid, _tag, _iv, sv in descrs:
+        i = _idx(oid, IF_DESCR_BASE)
+        if i is None:
+            continue
+        name = re.sub(r"[^\x20-\x7e]", "", sv or "")[:64] or f"if{i}"
+        names[i] = name
+    for oid, _tag, iv, _sv in opers:
+        i = _idx(oid, IF_OPER_BASE)
+        if i is None:
+            continue
+        opermap[i] = iv
+    out = []
+    for i in sorted(set(names) | set(opermap))[:max_if]:
+        out.append({"if_index": i, "name": names.get(i, f"if{i}"),
+                    "oper": opermap.get(i)})
+    return out
+
+_OID_RE = re.compile(r"^\.?([0-9]+\.)+[0-9]+$")
+
+
+def _valid_oid(s):
+    s = str(s or "").strip()
+    if not s or len(s) > 128 or not _OID_RE.match(s):
+        return None
+    try:
+        if any(int(p) > 2**32 - 1 for p in s.strip(".").split(".")):
+            return None
+    except ValueError:
+        return None
+    return s
+
+
+def _snmp_get(ip, community, oids, timeout=2.0):
+    """Satu request SNMP GET untuk banyak OID. Kembalikan list int/None.
+
+    Posisi dipertahankan:(vals[i] untuk oids[i], None bila tak terjawab).
+    Heuristik: bila jumlah nilai == jumlah OID, mapping posisional;
+    bila kurang (error varbind), semua dianggap tak terjawab parsial -> None.
+    """
+    oids = [o for o in (oids or [])]
+    if not oids:
+        return []
+    sock = None
+    try:
+        pkt = _encode_snmp_v1_get(community, oids)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.sendto(pkt, (ip, 161))
+        resp, _ = sock.recvfrom(8192)
+        vals = _extract_snmp_values(resp)
+        # hanya mapping posisional bila jumlah pas (respons error/varbind
+        # parsial jumlahnya tak cocok -> anggap tak terjawab semua)
+        if len(vals) == len(oids):
+            return list(vals)
+        return [None] * len(oids)
+    except Exception as e:
+        print(f"[SNMP ERROR] {ip}: {e}")
+        return [None] * len(oids)
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def get_snmp_bandwidth(ip, community, if_index):
+    try:
+        if_index = int(if_index)
+    except (ValueError, TypeError):
+        return None, None
+    if if_index < 1:
+        return None, None
+    # 64-bit dulu (IF-MIB HC, anti-wrap di link cepat), fallback 32-bit
+    vals = _snmp_get(ip, community,
+                     [f'1.3.6.1.2.1.31.1.1.1.6.{if_index}',
+                      f'1.3.6.1.2.1.31.1.1.1.10.{if_index}'])
+    if len(vals) == 2 and vals[0] is not None and vals[1] is not None:
+        return vals[0], vals[1]
+    vals = _snmp_get(ip, community,
+                     [f'1.3.6.1.2.1.2.2.1.10.{if_index}',
+                      f'1.3.6.1.2.1.2.2.1.16.{if_index}'])
+    if len(vals) == 2 and vals[0] is not None and vals[1] is not None:
+        return vals[0], vals[1]
+    return None, None
+
+
+MT_DEFAULT_OIDS = {
+    "cpu": '1.3.6.1.4.1.14988.1.1.3.11.0',
+    "mem": '1.3.6.1.4.1.14988.1.1.3.12.0',
+    "storage": '1.3.6.1.4.1.14988.1.1.3.13.0',
+    "temp": '1.3.6.1.4.1.14988.1.1.3.10.0',
+}
+
+
+def resolve_mt_oids(host_row):
+    """OID per host (override) atau default global. Kembalikan dict key->oid/None."""
+    out = {}
+    for key, setting_key in (("cpu", "mt_cpu_oid"), ("mem", "mt_mem_oid"),
+                             ("storage", "mt_storage_oid"), ("temp", "mt_temp_oid")):
+        try:
+            custom = (host_row[key + "_oid"] or "").strip()
+        except (KeyError, IndexError, TypeError, AttributeError):
+            custom = ""
+        out[key] = _valid_oid(custom) or _valid_oid(
+            get_setting(setting_key, MT_DEFAULT_OIDS[key], type_cast=str)) or MT_DEFAULT_OIDS[key]
+    return out
+
+
+def get_mikrotik_health(ip, community, oids):
+    """Ambil CPU/mem/storage (%) + suhu mentah via SNMP.
+
+    Kembalikan dict {cpu, mem, storage, temp_raw} (None bila tak terjawab).
+    """
+    keys = [k for k in ("cpu", "mem", "storage", "temp") if oids.get(k)]
+    if not keys:
+        return {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
+    vals = _snmp_get(ip, community, [oids[k] for k in keys])
+    if len(vals) != len(keys):
+        vals = [None] * len(keys)
+    res = {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
+    for k, v in zip(keys, vals):
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (ValueError, TypeError):
+            continue
+        if k == "temp":
+            res["temp_raw"] = f
+        elif 0 <= f <= 100:
+            res[k] = f
+    return res
 
 def poll_snmp_bandwidth():
     global snmp_state
@@ -1012,6 +1381,329 @@ def poll_snmp_bandwidth():
                 pass
         finally:
             conn.close()
+
+# ============================================================
+# MIKROTIK HEALTH via SNMP (CPU/RAM/storage/suhu, tanpa agent)
+# OID default = penomoran baru; unit lama -> override per host
+# (isi dari /system/health/print oid) atau ubah default global.
+# ============================================================
+MT_TEMP_HYST = 2.0
+
+mt_alarm_memory = {}
+mt_is_mikrotik = {}
+mt_sysup = {}
+mt_iface_oper = {}
+iface_state = {}
+
+
+SYSUP_OID = "1.3.6.1.2.1.1.3.0"
+IF_OPER_OID = "1.3.6.1.2.1.2.2.1.8"
+IF_HC_IN_OID = "1.3.6.1.2.1.31.1.1.1.6"
+IF_HC_OUT_OID = "1.3.6.1.2.1.31.1.1.1.10"
+REBOOT_ALARM_WINDOW_S = 900  # reboot <15 mnt lalu masih tampil di triggers
+
+
+def _mt_check_one(args):
+    host, community, oids = args
+    try:
+        res = get_mikrotik_health(host, community, oids)
+    except Exception as e:
+        print(f"[MT] {host}: {e}")
+        res = {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
+    sysup = None
+    try:
+        vals = _snmp_get(host, community, [SYSUP_OID], timeout=2.0)
+        if vals and vals[0] is not None and vals[0] >= 0:
+            sysup = round(vals[0] / 100.0, 1)
+    except Exception as e:
+        print(f"[MT] {host} sysup: {e}")
+    return host, res, sysup
+
+
+def poll_mikrotik_health():
+    global mt_alarm_memory, mt_is_mikrotik
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT ip, snmp_community, snmp_profile, cpu_oid, mem_oid,"
+                      " storage_oid, temp_oid FROM hosts ORDER BY id ASC")
+            hosts = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[MT] load hosts gagal: {e}")
+        return
+    cands = []
+    for h in hosts:
+        if not (h.get("snmp_community") or "").strip():
+            continue
+        if (h.get("snmp_profile") or "auto") == "generic":
+            mt_is_mikrotik.pop(h["ip"], None)
+            continue
+        cands.append((h["ip"], h["snmp_community"], resolve_mt_oids(h)))
+    if not cands:
+        return
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(len(cands), 10)) as ex:
+        for host, res, sysup in ex.map(_mt_check_one, cands):
+            results[host] = (res, sysup)
+
+    try:
+        temp_warn = get_setting("temp_threshold", 60.0)
+        temp_crit = get_setting("temp_crit", 75.0)
+        cpu_thresh = get_setting("cpu_threshold", 85.0)
+        mem_thresh = get_setting("ram_threshold", 90.0)
+        st_thresh = get_setting("disk_threshold", 90.0)
+        temp_div = get_setting("mt_temp_div", 10, type_cast=float) or 10
+    except Exception:
+        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh, temp_div = \
+            60.0, 75.0, 85.0, 90.0, 90.0, 10
+    cpu_clear = max(cpu_thresh - HYSTERESIS, 0)
+    mem_clear = max(mem_thresh - HYSTERESIS, 0)
+    st_clear = max(st_thresh - HYSTERESIS, 0)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tg_queue = []
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for host, (res, sysup) in results.items():
+                cpu, mem, sto = res.get("cpu"), res.get("mem"), res.get("storage")
+                temp = (res["temp_raw"] / temp_div
+                        if res.get("temp_raw") is not None and temp_div else None)
+                if temp is not None:
+                    temp = round(temp, 1)
+                if cpu is None and mem is None and sto is None and temp is None:
+                    mt_is_mikrotik.pop(host, None)
+                    continue
+                mt_is_mikrotik[host] = True
+                # deteksi reboot: sysUpTime turun dari poll sebelumnya
+                prev_up = mt_sysup.get(host)
+                if sysup is not None:
+                    if prev_up is not None and sysup < prev_up:
+                        tg_queue.append(
+                            f"🔄 *MIKROTIK REBOOT TERDETEKSI*\nHost: `{host}`\n"
+                            f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
+                            f"Waktu: {timestamp}")
+                        try:
+                            _insert_system_log(c, "MT_REBOOT", host,
+                                               f"reboot (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
+                        except Exception:
+                            pass
+                    mt_sysup[host] = sysup
+                try:
+                    c.execute("INSERT INTO device_health (host, cpu, mem_used, storage_used,"
+                              " temp_c, uptime_s, timestamp, source) VALUES (?,?,?,?,?,?,?,'snmp-mikrotik')",
+                              (host, cpu, mem, sto, temp, sysup, timestamp))
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] device_health {host} gagal: {e}")
+                    continue
+
+                prev = mt_alarm_memory.get(host) or {}
+                cur = dict(prev)
+
+                def _flip(key, is_bad, is_clear, name, unit, val, thresh, sev):
+                    if val is None:
+                        return
+                    if is_bad and not prev.get(key):
+                        cur[key] = True
+                        tg_queue.append(
+                            f"⚠️ *MIKROTIK {name} TINGGI*\nHost: `{host}`\n"
+                            f"{name}: *{val}{unit}* (batas: {thresh}{unit})\nWaktu: {timestamp}")
+                        log_queue.append((f"MT_{key.upper()}", f"{val}{unit} (batas {thresh}{unit})"))
+                    elif is_clear and prev.get(key):
+                        cur[key] = False
+                        tg_queue.append(
+                            f"✅ *MIKROTIK {name} NORMAL*\nHost: `{host}`\n"
+                            f"{name}: {val}{unit}\nWaktu: {timestamp}")
+                        log_queue.append((f"MT_{key.upper()}_OK", f"pulih: {val}{unit}"))
+
+                log_queue = []
+                _flip("cpu", cpu is not None and cpu > cpu_thresh,
+                      cpu is not None and cpu <= cpu_clear,
+                      "CPU", "%", cpu, cpu_thresh, "warning")
+                _flip("mem", mem is not None and mem > mem_thresh,
+                      mem is not None and mem <= mem_clear,
+                      "Memory", "%", mem, mem_thresh, "warning")
+                _flip("storage", sto is not None and sto > st_thresh,
+                      sto is not None and sto <= st_clear,
+                      "Storage", "%", sto, st_thresh, "warning")
+                _flip("temp_warn", temp is not None and temp >= temp_warn,
+                      temp is not None and temp <= temp_warn - MT_TEMP_HYST,
+                      "Suhu", "°C", temp, temp_warn, "warning")
+                _flip("temp_crit", temp is not None and temp >= temp_crit,
+                      temp is not None and temp <= temp_crit - MT_TEMP_HYST,
+                      "Suhu KRITIS", "°C", temp, temp_crit, "high")
+                mt_alarm_memory[host] = cur
+                for ev, msg in log_queue:
+                    try:
+                        _insert_system_log(c, ev, host, msg, timestamp)
+                    except Exception:
+                        pass
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] poll_mikrotik gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    for msg in tg_queue:
+        try:
+            send_telegram_alert(msg)
+        except Exception as e:
+            print(f"[WARN] telegram mikrotik gagal: {e}")
+
+
+def _mt_iface_check_one(args):
+    """Poll satu host: oper-status + HC counters semua interface termonitor."""
+    host, community, indices = args
+    out = {"opers": {}, "counters": {}}
+    try:
+        if indices:
+            vals = _snmp_get(host, community,
+                             [f"{IF_OPER_OID}.{i}" for i in indices], timeout=3.0)
+            for i, v in zip(indices, vals):
+                out["opers"][i] = v
+            oids, order = [], []
+            for i in indices:
+                oids += [f"{IF_HC_IN_OID}.{i}", f"{IF_HC_OUT_OID}.{i}"]
+                order += [(i, "in"), (i, "out")]
+            vals = _snmp_get(host, community, oids, timeout=3.0)
+            if len(vals) == len(order):
+                for (i, direction), v in zip(order, vals):
+                    out["counters"].setdefault(i, {})[direction] = v
+    except Exception as e:
+        print(f"[MT-IFACE] {host}: {e}")
+    return host, out
+
+
+def poll_mikrotik_ifaces():
+    """Traffic + oper-status per interface termonitor (tiap 60 dtk)."""
+    global mt_iface_oper, iface_state
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT h.ip, h.snmp_community, h.snmp_profile,"
+                      " i.if_index, i.name FROM snmp_interfaces i"
+                      " JOIN hosts h ON h.ip = i.host"
+                      " WHERE i.monitor=1 ORDER BY h.ip ASC, i.if_index ASC")
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[MT-IFACE] load gagal: {e}")
+        return
+    by_host = {}
+    for r in rows:
+        if not (r.get("snmp_community") or "").strip():
+            continue
+        if (r.get("snmp_profile") or "auto") == "generic":
+            continue
+        try:
+            idx = int(r["if_index"])
+        except (ValueError, TypeError):
+            continue
+        by_host.setdefault(r["ip"], {"community": r["snmp_community"],
+                                     "indices": [], "names": {}})
+        by_host[r["ip"]]["indices"].append(idx)
+        by_host[r["ip"]]["names"][idx] = r["name"] or f"if{idx}"
+    if not by_host:
+        return
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(len(by_host), 10)) as ex:
+        futs = {ex.submit(_mt_iface_check_one,
+                          (h, v["community"], v["indices"])): h for h, v in by_host.items()}
+        for fut in as_completed(futs):
+            try:
+                host, out = fut.result()
+                results[host] = out
+            except Exception as e:
+                print(f"[MT-IFACE] {futs.get(fut)} gagal: {e}")
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_time = time.time()
+    tg_queue, traffic_rows = [], []
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for host, out in results.items():
+                names = by_host[host]["names"]
+                for idx in by_host[host]["indices"]:
+                    name = names.get(idx, f"if{idx}")
+                    oper = out["opers"].get(idx)
+                    key = (host, idx)
+                    prev_oper = mt_iface_oper.get(key)
+                    if oper in (1, 2):
+                        if prev_oper is None:
+                            mt_iface_oper[key] = oper
+                        elif oper != prev_oper:
+                            mt_iface_oper[key] = oper
+                            try:
+                                c.execute("UPDATE snmp_interfaces SET oper=?, last_changed=?"
+                                          " WHERE host=? AND if_index=?",
+                                          (oper, timestamp, host, idx))
+                            except sqlite3.OperationalError:
+                                pass
+                            if oper == 2:
+                                tg_queue.append(
+                                    f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"
+                                    f"Port: *{name}* (ifIndex {idx})\nWaktu: {timestamp}")
+                                try:
+                                    _insert_system_log(c, "MT_PORT_DOWN", host,
+                                                       f"{name} (ifIndex {idx}) down", timestamp)
+                                except Exception:
+                                    pass
+                            else:
+                                tg_queue.append(
+                                    f"✅ *MIKROTIK PORT UP*\nHost: `{host}`\n"
+                                    f"Port: *{name}* (ifIndex {idx})\nWaktu: {timestamp}")
+                                try:
+                                    _insert_system_log(c, "MT_PORT_UP", host,
+                                                       f"{name} (ifIndex {idx}) up", timestamp)
+                                except Exception:
+                                    pass
+                    cnt = out["counters"].get(idx, {})
+                    in_b, out_b = cnt.get("in"), cnt.get("out")
+                    if in_b is not None and out_b is not None:
+                        st = iface_state.get(key)
+                        if st is None:
+                            iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+                        else:
+                            dt = now_time - st["time"]
+                            di, do = in_b - st["in"], out_b - st["out"]
+                            if di < 0 or do < 0 or dt <= 0:
+                                iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+                            else:
+                                net_in = round((di * 8) / (1024 * 1024 * dt), 2)
+                                net_out = round((do * 8) / (1024 * 1024 * dt), 2)
+                                if net_in <= 100000 and net_out <= 100000:
+                                    traffic_rows.append((host, idx, net_in, net_out, timestamp))
+                                iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+            if traffic_rows:
+                try:
+                    c.executemany("INSERT INTO iface_traffic (host, if_index, net_in, net_out, timestamp)"
+                                  " VALUES (?,?,?,?,?)", traffic_rows)
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] iface_traffic gagal: {e}")
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] poll_mikrotik_ifaces gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    for msg in tg_queue:
+        try:
+            send_telegram_alert(msg)
+        except Exception as e:
+            print(f"[WARN] telegram mikrotik-iface gagal: {e}")
+
 
 def check_network():
     global status_memory, down_since
@@ -1414,6 +2106,286 @@ def check_services():
         print(f"Error checking services: {e}")
 
 
+# ============================================================
+# FIBER / REDAMAN (GPON ONT Rx/Tx power, satuan dBm)
+# Standar acuan ITU-T G.984.2 Class B+:
+#   Rx overload  : > -8 dBm  (terlalu kuat -> perlu PEREDAM/attenuator)
+#   Rx normal    : -8 .. -25 dBm
+#   Rx warning   : -25 .. -27 dBm (redaman mulai tinggi)
+#   Rx critical  : < -27 dBm (redaman tinggi / fiber bermasalah)
+# ============================================================
+# Default bila settings belum ada (nilai sama dengan seed di init_db)
+FIBER_RX_OVERLOAD = -8.0
+FIBER_RX_WARN = -25.0
+FIBER_RX_CRIT = -27.0
+FIBER_RX_TARGET = -18.0  # target ideal untuk hitung kebutuhan peredam
+FIBER_TX_MIN = 0.0
+FIBER_TX_MAX = 5.0
+
+fiber_alarm_memory = {}
+
+
+def _fiber_thresholds():
+    """Baca threshold fiber dari settings (bisa diubah via UI)."""
+    return {
+        "overload": get_setting("fiber_rx_overload", FIBER_RX_OVERLOAD),
+        "warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
+        "crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
+        "target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
+        "tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
+        "tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
+    }
+
+
+def fiber_status_for_rx(rx, th=None):
+    """Kembalikan (status, severity, saran, butuh_peredam_db).
+
+    status: normal|warning|critical|overload|unknown
+    severity: None|warning|high|disaster (mapping ke triggers)
+    """
+    th = th or _fiber_thresholds()
+    if rx is None:
+        return "unknown", None, "Belum ada data pengukuran.", 0
+    try:
+        rx = float(rx)
+    except (ValueError, TypeError):
+        return "unknown", None, "Data Rx tidak valid.", 0
+    if rx > th["overload"]:
+        need = round(rx - th["target"], 1)
+        # bulatkan ke pilihan attenuator pasaran 5/10/15 dB
+        if need <= 5:
+            rec = "5dB"
+        elif need <= 10:
+            rec = "10dB"
+        else:
+            rec = "15dB"
+        return ("overload", "high",
+                f"Rx overload ({rx} dBm). Pasang PEREDAM/attenuator {rec} "
+                f"(kebutuhan hitung ±{need} dB agar ke ~{th['target']} dBm).", need)
+    if rx < th["crit"]:
+        return ("critical", "disaster",
+                f"Redaman tinggi! Rx {rx} dBm (< {th['crit']} dBm). "
+                "Cek bending, konektor kotor, splicing, ODP/ODC.", 0)
+    if rx < th["warn"]:
+        return ("warning", "warning",
+                f"Rx {rx} dBm mendekati batas ({th['warn']} dBm). "
+                "Jadwalkan cek jalur fiber.", 0)
+    return ("normal", None, f"Rx {rx} dBm normal.", 0)
+
+
+def fiber_status_for_tx(tx, th=None):
+    """Kembalikan (status, severity, saran). status: tx_ok|tx_abnormal|tx_unknown."""
+    th = th or _fiber_thresholds()
+    if tx is None:
+        return "tx_unknown", None, ""
+    try:
+        tx = float(tx)
+    except (ValueError, TypeError):
+        return "tx_unknown", None, ""
+    if tx < th["tx_min"] or tx > th["tx_max"]:
+        if tx <= -5:
+            return ("tx_abnormal", "high",
+                    f"Tx {tx} dBm di luar batas ({th['tx_min']}..{th['tx_max']} dBm). "
+                    "Laser ONT kemungkinan mati/hang — cek ONT.")
+        return ("tx_abnormal", "warning",
+                f"Tx {tx} dBm di luar batas normal ({th['tx_min']}..{th['tx_max']} dBm). "
+                "Cek ONT/SFP.")
+    return "tx_ok", None, ""
+
+
+_SEV_RANK = {"warning": 1, "high": 2, "disaster": 3}
+
+
+def fiber_eval(rx, tx=None, th=None):
+    """Gabungan Rx+Tx: kembalikan (status, severity, advice, need_peredam_db).
+
+    status terburuk yang menang (critical > overload > warning > normal > unknown).
+    """
+    th = th or _fiber_thresholds()
+    r_status, r_sev, r_adv, need = fiber_status_for_rx(rx, th)
+    t_status, t_sev, t_adv = fiber_status_for_tx(tx, th)
+    if r_status == "unknown":
+        if t_sev:
+            # status mengikuti severity agar label & badge konsisten
+            st = "warning" if t_sev == "warning" else "critical"
+            return st, t_sev, t_adv, 0
+        return "unknown", None, r_adv, 0
+    if not t_sev:
+        return r_status, r_sev, r_adv, need
+    # kedua sisi alarm: gabung saran, severity tertinggi menang
+    advice = r_adv + (" " + t_adv if r_sev else t_adv)
+    if _SEV_RANK.get(t_sev, 0) > _SEV_RANK.get(r_sev or "", 0):
+        return "warning", t_sev, advice, need
+    return r_status, r_sev, advice, need
+
+
+# Rugi-rugi tipikal jalur FTTH (dB) untuk kalkulator link budget
+FIBER_SPLITTER_LOSS = {"1:2": 3.5, "1:4": 7.2, "1:8": 10.5, "1:16": 13.8, "1:32": 17.1}
+FIBER_PER_KM_DB = 0.35      # serat G.652 @1310nm
+FIBER_CONNECTOR_DB = 0.5    # per konektor
+FIBER_SPLICE_DB = 0.1       # per fusion splice
+FIBER_BUDGET_TOLERANCE_DB = 3.0  # selisih wajar aktual vs teori
+
+
+def fiber_link_budget(tx_dbm, splitters, fiber_km, connectors, splices, margin_db=0.0):
+    """Hitung Rx teoritis. Kembalikan dict rincian (stateless, tanpa DB).
+
+    splitters: list seperti ["1:4", "1:8"] (ODC lalu ODP).
+    """
+    splitter_db = round(sum(FIBER_SPLITTER_LOSS[s] for s in splitters), 2)
+    fiber_db = round(fiber_km * FIBER_PER_KM_DB, 2)
+    conn_db = round(connectors * FIBER_CONNECTOR_DB, 2)
+    splice_db = round(splices * FIBER_SPLICE_DB, 2)
+    total = round(splitter_db + fiber_db + conn_db + splice_db + margin_db, 2)
+    return {
+        "tx_dbm": round(tx_dbm, 2),
+        "losses": {"splitter_db": splitter_db, "fiber_db": fiber_db,
+                   "connector_db": conn_db, "splice_db": splice_db,
+                   "margin_db": round(margin_db, 2), "total_db": total},
+        "expected_rx": round(tx_dbm - total, 2),
+    }
+
+
+def fiber_budget_verdict(expected_rx, actual_rx):
+    """Bandingkan Rx teori vs aktual. Kembalikan (verdict, severity, saran)."""
+    if actual_rx is None:
+        return "no_data", None, "Pilih ONT yang sudah ada pengukuran Rx untuk pembanding."
+    delta = round(actual_rx - expected_rx, 2)  # negatif = redaman berlebih
+    if delta <= -FIBER_BUDGET_TOLERANCE_DB:
+        return ("over_budget", "high",
+                f"Redaman berlebih {abs(delta)} dB dari budget! "
+                "Cek bending, konektor kotor, splice ulang, atau ODP basah/rusak.")
+    if delta >= FIBER_BUDGET_TOLERANCE_DB:
+        return ("under_budget", "warning",
+                f"Rx aktual {abs(delta)} dB lebih bagus dari teori. "
+                "Cek ulang input budget (mungkin splitter/jarak salah catat).")
+    return ("ok", None, f"Selisih {delta} dB masih dalam toleransi ±{FIBER_BUDGET_TOLERANCE_DB} dB. Jalur sehat.")
+
+
+def get_ont_optical_power_snmp(olt_ip, community, ont_index, vendor="zte"):
+    """Hook integrasi OLT via SNMP (belum aktif, return None).
+
+    vendor 'zte'    : ONT Rx/Tx umumnya di enterprise MIB 1.3.6.1.4.1.3902
+                      (beda tipe OLT beda tabel, sesuaikan lewat uji snmpwalk).
+    vendor 'huawei' : hwGpon MIB 1.3.6.1.4.1.2011.6.128.1.x (rx/tx optical power).
+    Cara pakai: isi OLT IP + community di env / form, lalu ganti fungsi ini
+    dengan snmpwalk asli memakai pola get_snmp_bandwidth() di atas.
+    """
+    _ = (olt_ip, community, ont_index, vendor)
+    return None, None
+
+
+def poll_fiber_monitor():
+    """Job scheduler: snapshot history semua ONT + cek threshold.
+
+    ONT source=simulator nilainya digerakkan (random walk) agar grafik demo hidup.
+    ONT source=manual/snmp nilainya tidak diubah, tapi tetap dicatat ke history
+    agar grafik tidak kosong.
+    """
+    import random
+    try:
+        conn, c = get_db()
+        try:
+            try:
+                c.execute("SELECT id, ont_sn, customer, rx_power, tx_power, source FROM fiber_onts ORDER BY id ASC")
+            except sqlite3.OperationalError:
+                return
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[FIBER] load gagal: {e}")
+        return
+    if not rows:
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    th = _fiber_thresholds()
+    tg_queue = []
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for o in rows:
+                oid = o["id"]
+                rx = o["rx_power"]
+                tx = o.get("tx_power")
+                # simulator: gerakkan Rx pelan agar grafik hidup untuk demo
+                if (o.get("source") or "manual") == "simulator":
+                    base = rx if rx is not None else -19.0
+                    try:
+                        base = float(base)
+                    except (ValueError, TypeError):
+                        base = -19.0
+                    # clamp agar tetap realistis -30..-3
+                    rx = max(-30.0, min(-3.0, round(base + random.uniform(-0.6, 0.6), 2)))
+                    c.execute("UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=? WHERE id=?",
+                              (rx, timestamp, timestamp, oid))
+                # snapshot history tiap poll untuk SEMUA ont agar grafik terisi
+                # (720 titik/hari/ONT @120s, dibersihkan retensi 30 hari)
+                try:
+                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?, ?, ?, ?)",
+                              (oid, rx, tx, timestamp))
+                except sqlite3.OperationalError:
+                    pass
+                status, severity, advice, need_db = fiber_eval(rx, tx, th)
+                prev = fiber_alarm_memory.get(oid)
+                # kirim telegram hanya saat status berubah ke non-normal (anti spam)
+                if status in ("critical", "overload", "warning") and prev != status:
+                    fiber_alarm_memory[oid] = status
+                    label = o.get("customer") or o["ont_sn"]
+                    tx_txt = f"Tx: {tx} dBm" if tx is not None else "Tx: —"
+                    if status == "overload":
+                        tg_queue.append(
+                            f"🔊 *FIBER OVERLOAD — PERLU PEREDAM*\nONT: `{o['ont_sn']}` ({label})\n"
+                            f"Rx: *{rx} dBm* (> {th['overload']} dBm) · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+                        )
+                    elif status == "critical":
+                        tg_queue.append(
+                            f"🚨 *FIBER REDAMAN TINGGI*\nONT: `{o['ont_sn']}` ({label})\n"
+                            f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+                        )
+                    else:
+                        tg_queue.append(
+                            f"⚠️ *FIBER WARNING*\nONT: `{o['ont_sn']}` ({label})\n"
+                            f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+                        )
+                    try:
+                        _insert_system_log(c, "FIBER_" + status.upper(), o["ont_sn"],
+                                           f"Rx {rx} dBm Tx {tx} — {advice}", timestamp)
+                    except Exception:
+                        pass
+                    c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
+                              (status, timestamp, oid))
+                elif status == "normal":
+                    if prev not in (None, "normal"):
+                        try:
+                            _insert_system_log(c, "FIBER_NORMAL", o["ont_sn"],
+                                               f"Rx kembali normal ({rx} dBm)", timestamp)
+                        except Exception:
+                            pass
+                        tg_queue.append(
+                            f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\nRx: {rx} dBm\nWaktu: {timestamp}"
+                        )
+                    fiber_alarm_memory[oid] = "normal"
+                    c.execute("UPDATE fiber_onts SET status='normal', last_checked=? WHERE id=?",
+                              (timestamp, oid))
+                elif status == "unknown":
+                    c.execute("UPDATE fiber_onts SET status='unknown' WHERE id=?", (oid,))
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] poll_fiber gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    for msg in tg_queue:
+        try:
+            send_telegram_alert(msg)
+        except Exception as e:
+            print(f"[WARN] telegram fiber gagal: {e}")
+
+
 init_db()
 _seed_admin_from_env()
 
@@ -1507,6 +2479,9 @@ if SCHEDULER_ENABLED:
     scheduler.add_job(func=check_services,         trigger="interval", seconds=30, **_job_defaults)
     scheduler.add_job(func=check_agent_heartbeat,  trigger="interval", seconds=60, **_job_defaults)
     scheduler.add_job(func=poll_snmp_bandwidth,    trigger="interval", seconds=30, **_job_defaults)
+    scheduler.add_job(func=poll_mikrotik_health,   trigger="interval", seconds=60, **_job_defaults)
+    scheduler.add_job(func=poll_mikrotik_ifaces,    trigger="interval", seconds=60, **_job_defaults)
+    scheduler.add_job(func=poll_fiber_monitor,     trigger="interval", seconds=120, **_job_defaults)
     scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
     scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
     scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
@@ -1720,18 +2695,41 @@ def api_host_stats(ip):
     })
 
 
+SNMP_PROFILES = ("auto", "mikrotik", "generic")
+
+
+def _parse_snmp_fields(data):
+    """Validasi profil + OID override SNMP. Kembalikan (dict, err)."""
+    profile = str(data.get("snmp_profile") or "auto").strip().lower()[:16]
+    if profile not in SNMP_PROFILES:
+        return None, "snmp_profile harus auto/mikrotik/generic"
+    oids = {}
+    for key in ("cpu_oid", "mem_oid", "storage_oid", "temp_oid"):
+        raw = str(data.get(key) or "").strip()
+        if raw and not _valid_oid(raw):
+            return None, f"{key} bukan OID valid (contoh: 1.3.6.1.4.1.14988.1.1.3.11.0)"
+        oids[key] = raw[:128]
+    return {"snmp_profile": profile, **oids}, None
+
+
 @app.route("/api/hosts", methods=["GET"])
 @api_login_required
 def api_get_hosts():
     conn, c = get_db()
-    c.execute("SELECT id, ip, snmp_community, if_index, alias, category FROM hosts ORDER BY id ASC")
+    c.execute("SELECT id, ip, snmp_community, if_index, alias, category,"
+              " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid"
+              " FROM hosts ORDER BY id ASC")
     hosts = []
     for r in c.fetchall():
         hosts.append({"id": r["id"], "ip": r["ip"],
                       "snmp_community": r["snmp_community"] or "",
                       "if_index": r["if_index"] or 1,
                       "alias": r["alias"] or "",
-                      "category": r["category"] or "Uncategorized"})
+                      "category": r["category"] or "Uncategorized",
+                      "snmp_profile": (r["snmp_profile"] or "auto")
+                      if (r["snmp_profile"] or "auto") in SNMP_PROFILES else "auto",
+                      "cpu_oid": r["cpu_oid"] or "", "mem_oid": r["mem_oid"] or "",
+                      "storage_oid": r["storage_oid"] or "", "temp_oid": r["temp_oid"] or ""})
     conn.close()
     return jsonify(hosts)
 
@@ -1743,6 +2741,9 @@ def api_add_host():
     alias = str(data.get("alias") or "").strip()
     category = str(data.get("category") or "").strip() or "Uncategorized"
     snmp_community = str(data.get("snmp_community") or "").strip()
+    snmp_vals, err = _parse_snmp_fields(data)
+    if err:
+        return jsonify({"error": err}), 400
     try:
         if_index = int(data.get("if_index", 1))
     except (ValueError, TypeError):
@@ -1769,7 +2770,12 @@ def api_add_host():
         if (c.fetchone()["cnt"] or 0) >= MAX_HOSTS:
             conn.close()
             return jsonify({"error": f"Batas maksimum {MAX_HOSTS} host tercapai"}), 400
-        c.execute("INSERT INTO hosts (ip, snmp_community, if_index, alias, category) VALUES (?, ?, ?, ?, ?)", (ip, snmp_community, if_index, alias, category))
+        c.execute("INSERT INTO hosts (ip, snmp_community, if_index, alias, category,"
+                  " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid)"
+                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  (ip, snmp_community, if_index, alias, category,
+                   snmp_vals["snmp_profile"], snmp_vals["cpu_oid"], snmp_vals["mem_oid"],
+                   snmp_vals["storage_oid"], snmp_vals["temp_oid"]))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.rollback()
@@ -1797,12 +2803,30 @@ def api_delete_host(ip):
 
 
         global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
-        for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram):
+        for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory,
+                    last_down_telegram, mt_alarm_memory, mt_is_mikrotik, mt_sysup):
             try:
                 if ip in mem:
                     del mem[ip]
             except Exception:
                 pass
+        for key in [k for k in list(mt_iface_oper) if k[0] == ip]:
+            mt_iface_oper.pop(key, None)
+        for key in [k for k in list(iface_state) if k[0] == ip]:
+            iface_state.pop(key, None)
+        # lock sudah dipegang blok luar -> jangan lock ulang (deadlock)
+        try:
+            conn2, c2 = get_db()
+            try:
+                c2.execute("DELETE FROM snmp_interfaces WHERE host=?", (ip,))
+                conn2.commit()
+            finally:
+                try:
+                    conn2.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     if not deleted:
         return jsonify({"error": "Host tidak ditemukan"}), 404
@@ -1838,14 +2862,81 @@ def api_update_host_alias(ip):
     return jsonify({"status": "success", "alias": alias, "category": category})
 
 
+@app.route("/api/hosts/<path:ip>/snmp", methods=["PATCH"])
+@api_login_required
+def api_update_host_snmp(ip):
+    ip = (ip or "").strip()
+    data = request.get_json(silent=True) or {}
+    snmp_vals, err = _parse_snmp_fields(data)
+    if err:
+        return jsonify({"error": err}), 400
+    sets, params = [], []
+    if "snmp_community" in data:
+        sets.append("snmp_community=?")
+        params.append(str(data.get("snmp_community") or "").strip()[:128])
+    if "if_index" in data:
+        try:
+            idx = int(data.get("if_index", 1))
+        except (ValueError, TypeError):
+            return jsonify({"error": "if_index harus angka >= 1"}), 400
+        if idx < 1:
+            return jsonify({"error": "if_index harus angka >= 1"}), 400
+        sets.append("if_index=?")
+        params.append(idx)
+    for key in ("snmp_profile", "cpu_oid", "mem_oid", "storage_oid", "temp_oid"):
+        if key in data:
+            sets.append(f"{key}=?")
+            params.append(snmp_vals[key])
+    if not sets:
+        return jsonify({"error": "Tidak ada field SNMP yang dikirim"}), 400
+    conn, c = get_db()
+    c.execute(f"UPDATE hosts SET {', '.join(sets)} WHERE ip=?", (*params, ip))
+    updated = c.rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        return jsonify({"error": "Host tidak ditemukan"}), 404
+    try:
+        mt_alarm_memory.pop(ip, None)
+    except Exception:
+        pass
+    try:
+        audit(current_user.username, "host.snmp", f"{ip} {','.join(k for k in snmp_vals if k in data)}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
 @app.route("/api/settings", methods=["GET"])
 @api_login_required
 def api_get_settings():
     return jsonify({
         "cpu_threshold": get_setting("cpu_threshold", 85.0),
         "ram_threshold": get_setting("ram_threshold", 90.0),
-        "disk_threshold": get_setting("disk_threshold", 90.0)
+        "disk_threshold": get_setting("disk_threshold", 90.0),
+        "fiber_rx_overload": get_setting("fiber_rx_overload", FIBER_RX_OVERLOAD),
+        "fiber_rx_warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
+        "fiber_rx_crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
+        "fiber_rx_target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
+        "fiber_tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
+        "fiber_tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
+        "temp_threshold": get_setting("temp_threshold", 60.0),
+        "temp_crit": get_setting("temp_crit", 75.0),
+        "mt_cpu_oid": get_setting("mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str),
+        "mt_mem_oid": get_setting("mt_mem_oid", MT_DEFAULT_OIDS["mem"], type_cast=str),
+        "mt_storage_oid": get_setting("mt_storage_oid", MT_DEFAULT_OIDS["storage"], type_cast=str),
+        "mt_temp_oid": get_setting("mt_temp_oid", MT_DEFAULT_OIDS["temp"], type_cast=str),
+        "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
     })
+
+FIBER_SETTING_RANGES = {
+    "fiber_rx_overload": (-40.0, 10.0),
+    "fiber_rx_warn": (-40.0, 10.0),
+    "fiber_rx_crit": (-40.0, 10.0),
+    "fiber_rx_target": (-40.0, 10.0),
+    "fiber_tx_min": (-10.0, 10.0),
+    "fiber_tx_max": (-10.0, 10.0),
+}
 
 @app.route("/api/settings", methods=["POST"])
 @api_login_required
@@ -1863,6 +2954,58 @@ def api_save_settings():
         if not 1 <= v <= 100:
             return jsonify({"error": f"{key} harus 1-100"}), 400
         vals[key] = v
+    for key, (lo, hi) in FIBER_SETTING_RANGES.items():
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            v = float(v)
+        except (ValueError, TypeError):
+            return jsonify({"error": f"{key} harus angka {lo}..{hi} dBm"}), 400
+        if not lo <= v <= hi:
+            return jsonify({"error": f"{key} harus {lo}..{hi} dBm"}), 400
+        vals[key] = v
+    for key in ("temp_threshold", "temp_crit"):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            v = float(v)
+        except (ValueError, TypeError):
+            return jsonify({"error": f"{key} harus angka 0-150 °C"}), 400
+        if not 0 <= v <= 150:
+            return jsonify({"error": f"{key} harus 0-150 °C"}), 400
+        vals[key] = v
+    for key in ("mt_cpu_oid", "mt_mem_oid", "mt_storage_oid", "mt_temp_oid"):
+        v = data.get(key)
+        if v is None:
+            continue
+        v = _valid_oid(v)
+        if not v:
+            return jsonify({"error": f"{key} bukan OID valid"}), 400
+        vals[key] = v
+    v = data.get("mt_temp_div")
+    if v is not None:
+        try:
+            v = float(v)
+        except (ValueError, TypeError):
+            return jsonify({"error": "mt_temp_div harus angka 1-1000"}), 400
+        if not 1 <= v <= 1000:
+            return jsonify({"error": "mt_temp_div harus 1-1000"}), 400
+        vals["mt_temp_div"] = v
+    # konsistensi: crit < warn <= overload, tx_min <= tx_max, temp warn < crit
+    merged = {k: get_setting(k, d) for k, d in
+              [("fiber_rx_overload", FIBER_RX_OVERLOAD), ("fiber_rx_warn", FIBER_RX_WARN),
+               ("fiber_rx_crit", FIBER_RX_CRIT), ("fiber_tx_min", FIBER_TX_MIN),
+               ("fiber_tx_max", FIBER_TX_MAX), ("temp_threshold", 60.0),
+               ("temp_crit", 75.0)]}
+    merged.update({k: v for k, v in vals.items() if k in merged})
+    if not (merged["fiber_rx_crit"] < merged["fiber_rx_warn"] <= merged["fiber_rx_overload"]):
+        return jsonify({"error": "Harus: crit < warn <= overload (mis. -27 < -25 <= -8)"}), 400
+    if not (merged["fiber_tx_min"] <= merged["fiber_tx_max"]):
+        return jsonify({"error": "fiber_tx_min harus <= fiber_tx_max"}), 400
+    if not (merged["temp_threshold"] < merged["temp_crit"]):
+        return jsonify({"error": "temp_threshold harus < temp_crit"}), 400
 
     if not vals:
         return jsonify({"error": "Tidak ada pengaturan yang dikirim"}), 400
@@ -2557,6 +3700,745 @@ def api_service_ssl_check(svc_id):
     return jsonify({"status": "queued"})
 
 
+# ---------------- FIBER / REDAMAN ----------------
+@app.route("/fiber")
+@login_required
+def fiber_page():
+    return render_template("fiber.html")
+
+
+def _validate_fiber(d):
+    ont_sn = (d.get("ont_sn") or "").strip()[:64]
+    if not ont_sn or not re.match(r"^[A-Za-z0-9_.:\-]{3,64}$", ont_sn):
+        return None, "ONT SN 3-64 karakter (huruf/angka/_-.:)"
+    try:
+        rx = d.get("rx_power", None)
+        rx = None if rx in (None, "") else float(rx)
+        if rx is not None and not -40 <= rx <= 10:
+            return None, "Rx power harus -40..10 dBm"
+    except (ValueError, TypeError):
+        return None, "Rx power harus angka dBm"
+    try:
+        tx = d.get("tx_power", None)
+        tx = None if tx in (None, "") else float(tx)
+        if tx is not None and not -10 <= tx <= 10:
+            return None, "Tx power harus -10..10 dBm"
+    except (ValueError, TypeError):
+        return None, "Tx power harus angka dBm"
+    source = str(d.get("source") or "manual").strip().lower()[:16]
+    if source not in ("manual", "simulator", "snmp"):
+        source = "manual"
+    return {"ont_sn": ont_sn,
+            "customer": str(d.get("customer") or "").strip()[:100],
+            "olt_name": str(d.get("olt_name") or "").strip()[:100],
+            "pon_port": str(d.get("pon_port") or "").strip()[:50],
+            "odp_name": str(d.get("odp_name") or "").strip()[:100],
+            "rx_power": rx, "tx_power": tx, "source": source}, None
+
+
+@app.route("/api/fiber", methods=["GET"])
+@api_login_required
+def api_fiber_list():
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM fiber_onts ORDER BY olt_name ASC, id ASC")
+        rows = [dict(r) for r in c.fetchall()]
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    out = []
+    for o in rows:
+        status, severity, advice, need_db = fiber_eval(o.get("rx_power"), o.get("tx_power"))
+        out.append({**o, "calc_status": status, "severity": severity,
+                    "advice": advice, "need_attenuator_db": need_db})
+    return jsonify(out)
+
+
+@app.route("/api/fiber", methods=["POST"])
+@api_login_required
+def api_fiber_create():
+    vals, err = _validate_fiber(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"])
+    conn, c = get_db()
+    try:
+        c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                   rx_power,tx_power,status,last_checked,source,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
+                   vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
+                   now if vals["rx_power"] is not None else None,
+                   vals["source"], now, now))
+        fid = c.lastrowid
+        if vals["rx_power"] is not None:
+            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                      (fid, vals["rx_power"], vals["tx_power"], now))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"error": "ONT SN sudah terdaftar"}), 400
+    conn.close()
+    try:
+        audit(current_user.username, "fiber.create", f"{vals['ont_sn']} rx={vals['rx_power']}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "id": fid}), 201
+
+
+@app.route("/api/fiber/<int:fid>", methods=["PUT"])
+@api_login_required
+def api_fiber_update(fid):
+    vals, err = _validate_fiber(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"])
+    conn, c = get_db()
+    c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
+    if not c.fetchone():
+        conn.close()
+        return jsonify({"error": "ONT tidak ditemukan"}), 404
+    try:
+        c.execute("""UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
+                     rx_power=?, tx_power=?, status=?, last_checked=?, source=?, updated_at=?
+                     WHERE id=?""",
+                  (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
+                   vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
+                   now if vals["rx_power"] is not None else None,
+                   vals["source"], now, fid))
+        if vals["rx_power"] is not None:
+            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                      (fid, vals["rx_power"], vals["tx_power"], now))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"error": "ONT SN dipakai data lain"}), 400
+    conn.close()
+    try:
+        audit(current_user.username, "fiber.update", f"id={fid} rx={vals['rx_power']}")
+    except Exception:
+        pass
+    # langsung evaluasi threshold agar alert Telegram cepat keluar
+    try:
+        threading.Thread(target=poll_fiber_monitor, daemon=True).start()
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/fiber/<int:fid>", methods=["DELETE"])
+@api_login_required
+def api_fiber_delete(fid):
+    conn, c = get_db()
+    c.execute("DELETE FROM fiber_onts WHERE id=?", (fid,))
+    deleted = c.rowcount
+    try:
+        c.execute("DELETE FROM fiber_history WHERE ont_id=?", (fid,))
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
+    conn.close()
+    try:
+        fiber_alarm_memory.pop(fid, None)
+    except Exception:
+        pass
+    if not deleted:
+        return jsonify({"error": "ONT tidak ditemukan"}), 404
+    try:
+        audit(current_user.username, "fiber.delete", f"id={fid}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/fiber/<int:fid>/history")
+@api_login_required
+def api_fiber_history(fid):
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-168"}), 400
+    hours = max(1, min(hours, 168))
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, ont_sn, customer FROM fiber_onts WHERE id=?", (fid,))
+        ont = c.fetchone()
+        if not ont:
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
+        c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
+                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+                  (fid, f"-{hours} hours"))
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"] for r in rows]
+    return jsonify({"ont": dict(ont), "hours": hours, "labels": labels,
+                    "rx": [r["rx_power"] for r in rows],
+                    "tx": [r["tx_power"] for r in rows], "count": len(rows)})
+
+
+@app.route("/api/fiber/export")
+@api_login_required
+def api_fiber_export():
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM fiber_onts ORDER BY olt_name ASC, id ASC")
+        rows = [dict(r) for r in c.fetchall()]
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["ont_sn", "customer", "olt", "pon_port", "odp", "rx_dbm", "tx_dbm",
+                "status", "saran", "last_checked"])
+    for o in rows:
+        status, _, advice, _need = fiber_eval(o.get("rx_power"), o.get("tx_power"))
+        w.writerow([_csv_safe(o.get("ont_sn")), _csv_safe(o.get("customer")),
+                    _csv_safe(o.get("olt_name")), _csv_safe(o.get("pon_port")),
+                    _csv_safe(o.get("odp_name")), o.get("rx_power"), o.get("tx_power"),
+                    status, _csv_safe(advice), _csv_safe(o.get("last_checked"))])
+    try:
+        audit(current_user.username, "fiber.export", f"rows={len(rows)}")
+    except Exception:
+        pass
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=fiber_redaman.csv"})
+
+
+# ---------------- ODP (agregasi ONT per ODP) ----------------
+def _validate_odp(d):
+    name = (d.get("name") or "").strip()[:100]
+    if len(name) < 2 or not re.match(r"^[A-Za-z0-9 _.\-/]{2,100}$", name):
+        return None, "Nama ODP 2-100 karakter (huruf/angka/spasi/_-./)"
+    try:
+        capacity = int(d.get("capacity", 8))
+    except (ValueError, TypeError):
+        return None, "Kapasitas harus angka 1-128"
+    if not 1 <= capacity <= 128:
+        return None, "Kapasitas harus 1-128 port"
+    return {"name": name,
+            "olt_name": str(d.get("olt_name") or "").strip()[:100],
+            "capacity": capacity,
+            "location": str(d.get("location") or "").strip()[:100]}, None
+
+
+def _odp_aggregation():
+    """Kembalikan list ODP + hitungan ONT per status (link by odp_name)."""
+    conn, c = get_db()
+    try:
+        try:
+            c.execute("SELECT * FROM odps ORDER BY name ASC")
+            odps = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            return []
+        try:
+            c.execute("SELECT odp_name, rx_power, tx_power FROM fiber_onts")
+            onts = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            onts = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    known = {o["name"].lower(): o["name"] for o in odps}
+    buckets = {o["name"]: {"total": 0, "normal": 0, "warning": 0,
+                           "critical": 0, "overload": 0, "unknown": 0} for o in odps}
+    buckets[""] = {"total": 0, "normal": 0, "warning": 0,
+                   "critical": 0, "overload": 0, "unknown": 0}
+    for t in onts:
+        # cocokkan ODP tanpa peduli kapital agar salah ketik tidak yatim
+        key = known.get((t.get("odp_name") or "").strip().lower(), "")
+        status, _, _, _ = fiber_eval(t.get("rx_power"), t.get("tx_power"))
+        b = buckets[key]
+        b["total"] += 1
+        b[status if status in b else "unknown"] += 1
+    rank = {"critical": 4, "overload": 3, "warning": 2, "unknown": 1, "normal": 0}
+    out = []
+    for o in odps:
+        b = buckets[o["name"]]
+        worst = max((k for k in b if k != "total" and b[k] > 0),
+                    key=lambda k: rank.get(k, 0), default="normal")
+        fill = round(b["total"] / o["capacity"] * 100, 1) if o["capacity"] else 0
+        out.append({**o, **b, "worst": worst, "fill_pct": fill})
+    unb = buckets[""]
+    if unb["total"]:
+        worst = max((k for k in unb if k != "total" and unb[k] > 0),
+                    key=lambda k: rank.get(k, 0), default="normal")
+        out.append({"id": 0, "name": "(tanpa ODP)", "olt_name": "", "capacity": 0,
+                    "location": "", **unb, "worst": worst, "fill_pct": 0})
+    return out
+
+
+@app.route("/api/odps", methods=["GET"])
+@api_login_required
+def api_odp_list():
+    return jsonify(_odp_aggregation())
+
+
+@app.route("/api/odps", methods=["POST"])
+@api_login_required
+def api_odp_create():
+    vals, err = _validate_odp(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute("INSERT INTO odps (name, olt_name, capacity, location, created_at, updated_at)"
+                  " VALUES (?,?,?,?,?,?)",
+                  (vals["name"], vals["olt_name"], vals["capacity"],
+                   vals["location"], now, now))
+        nid = c.lastrowid
+        conn.commit()
+    except sqlite3.IntegrityError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"error": "Nama ODP sudah terdaftar"}), 400
+    conn.close()
+    try:
+        audit(current_user.username, "odp.create", vals["name"])
+    except Exception:
+        pass
+    return jsonify({"status": "success", "id": nid}), 201
+
+
+@app.route("/api/odps/<int:oid>", methods=["PUT"])
+@api_login_required
+def api_odp_update(oid):
+    vals, err = _validate_odp(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    c.execute("SELECT name FROM odps WHERE id=?", (oid,))
+    old = c.fetchone()
+    if not old:
+        conn.close()
+        return jsonify({"error": "ODP tidak ditemukan"}), 404
+    try:
+        c.execute("UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, updated_at=? WHERE id=?",
+                  (vals["name"], vals["olt_name"], vals["capacity"],
+                   vals["location"], now, oid))
+        # ONT yang menunjuk nama lama ikut pindah
+        if old["name"] != vals["name"]:
+            c.execute("UPDATE fiber_onts SET odp_name=? WHERE odp_name=?",
+                      (vals["name"], old["name"]))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"error": "Nama ODP dipakai data lain"}), 400
+    conn.close()
+    try:
+        audit(current_user.username, "odp.update", f"id={oid} {vals['name']}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/odps/<int:oid>", methods=["DELETE"])
+@api_login_required
+def api_odp_delete(oid):
+    conn, c = get_db()
+    c.execute("SELECT name FROM odps WHERE id=?", (oid,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "ODP tidak ditemukan"}), 404
+    c.execute("DELETE FROM odps WHERE id=?", (oid,))
+    # ONT yatim: kosongkan referensi (data ONT tetap aman)
+    c.execute("UPDATE fiber_onts SET odp_name='' WHERE odp_name=?", (row["name"],))
+    conn.commit()
+    conn.close()
+    try:
+        audit(current_user.username, "odp.delete", f"id={oid} {row['name']}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/fiber/link-budget", methods=["POST"])
+@api_login_required
+def api_fiber_link_budget():
+    data = request.get_json(silent=True) or {}
+
+    def _num(v, name, lo, hi):
+        try:
+            f = float(v)
+        except (ValueError, TypeError):
+            raise ValueError(f"{name} harus angka")
+        if not lo <= f <= hi:
+            raise ValueError(f"{name} harus {lo}..{hi}")
+        return f
+
+    try:
+        tx = _num(data.get("tx_dbm"), "tx_dbm", -10, 10)
+        fiber_km = _num(data.get("fiber_km", 0), "fiber_km", 0, 100)
+        connectors = int(_num(data.get("connectors", 4), "connectors", 0, 50))
+        splices = int(_num(data.get("splices", 0), "splices", 0, 100))
+        margin = _num(data.get("margin_db", 0), "margin_db", 0, 10)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    splitters = data.get("splitters") or []
+    if not isinstance(splitters, list) or not 1 <= len(splitters) <= 3:
+        return jsonify({"error": "splitters harus list 1-3 tingkat (mis. [\"1:4\",\"1:8\"])"}), 400
+    if any(s not in FIBER_SPLITTER_LOSS for s in splitters):
+        return jsonify({"error": f"splitter harus salah satu {sorted(FIBER_SPLITTER_LOSS)}"}), 400
+
+    result = fiber_link_budget(tx, splitters, fiber_km, connectors, splices, margin)
+    actual_rx = None
+    ont = None
+    ont_id = data.get("ont_id")
+    if ont_id is not None:
+        try:
+            ont_id = int(ont_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "ont_id harus angka"}), 400
+        conn, c = get_db()
+        try:
+            c.execute("SELECT id, ont_sn, customer, rx_power FROM fiber_onts WHERE id=?", (ont_id,))
+            row = c.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
+        ont = {"id": row["id"], "ont_sn": row["ont_sn"], "customer": row["customer"]}
+        actual_rx = row["rx_power"]
+    verdict, severity, advice = fiber_budget_verdict(result["expected_rx"], actual_rx)
+    return jsonify({**result, "splitters": splitters,
+                    "fiber_km": fiber_km, "connectors": connectors,
+                    "splices": splices, "ont": ont, "actual_rx": actual_rx,
+                    "delta_db": round(actual_rx - result["expected_rx"], 2) if actual_rx is not None else None,
+                    "verdict": verdict, "severity": severity, "advice": advice})
+
+
+# ---------------- MIKROTIK ----------------
+@app.route("/mikrotik")
+@login_required
+def mikrotik_page():
+    return render_template("mikrotik.html")
+
+
+def _mt_evaluate(host, cpu, mem, sto, temp):
+    """Status gabungan device. Kembalikan (status, severity, advice)."""
+    try:
+        temp_warn = get_setting("temp_threshold", 60.0)
+        temp_crit = get_setting("temp_crit", 75.0)
+        cpu_thresh = get_setting("cpu_threshold", 85.0)
+        mem_thresh = get_setting("ram_threshold", 90.0)
+        st_thresh = get_setting("disk_threshold", 90.0)
+    except Exception:
+        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh = 60.0, 75.0, 85.0, 90.0, 90.0
+    notes = []
+    sev = None
+
+    def _worse(s):
+        nonlocal sev
+        if _SEV_RANK.get(s, 0) > _SEV_RANK.get(sev or "", 0):
+            sev = s
+
+    if temp is not None:
+        if temp >= temp_crit:
+            notes.append(f"suhu kritis {temp}°C")
+            _worse("high")
+        elif temp >= temp_warn:
+            notes.append(f"suhu tinggi {temp}°C")
+            _worse("warning")
+    if cpu is not None and cpu > cpu_thresh:
+        notes.append(f"CPU {cpu}%")
+        _worse("warning")
+    if mem is not None and mem > mem_thresh:
+        notes.append(f"memory {mem}%")
+        _worse("warning")
+    if sto is not None and sto > st_thresh:
+        notes.append(f"storage {sto}%")
+        _worse("warning")
+    if cpu is None and mem is None and sto is None and temp is None:
+        return "unknown", None, "Belum ada data SNMP."
+    if not notes:
+        return "normal", None, "CPU/RAM/storage/suhu normal."
+    status = "critical" if sev == "high" else "warning"
+    return status, sev, ", ".join(notes) + " melebihi batas."
+
+
+@app.route("/api/mikrotik", methods=["GET"])
+@api_login_required
+def api_mikrotik_list():
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip, alias, category, snmp_community, snmp_profile FROM hosts ORDER BY id ASC")
+        hosts = [dict(r) for r in c.fetchall()]
+        out = []
+        for h in hosts:
+            ip = h["ip"]
+            if not (h.get("snmp_community") or "").strip():
+                continue
+            if (h.get("snmp_profile") or "auto") == "generic":
+                continue
+            c.execute("SELECT cpu, mem_used, storage_used, temp_c, uptime_s, timestamp"
+                      " FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
+            r = c.fetchone()
+            if r:
+                try:
+                    uptime_s = None if r["uptime_s"] is None else float(r["uptime_s"])
+                except (ValueError, TypeError, KeyError, IndexError):
+                    uptime_s = None
+                status, severity, advice = _mt_evaluate(
+                    ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
+                            "category": (h.get("category") or "").strip() or "Uncategorized",
+                            "cpu": r["cpu"], "mem": r["mem_used"], "storage": r["storage_used"],
+                            "temp_c": r["temp_c"], "uptime_s": uptime_s,
+                            "uptime": _fmt_uptime(uptime_s), "last_seen": r["timestamp"],
+                            "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
+                            "status": status, "severity": severity, "advice": advice})
+            else:
+                out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
+                            "category": (h.get("category") or "").strip() or "Uncategorized",
+                            "cpu": None, "mem": None, "storage": None, "temp_c": None,
+                            "last_seen": None, "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
+                            "status": "unknown", "severity": None,
+                            "advice": "Menunggu poll SNMP berikutnya."})
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return jsonify(out)
+
+
+@app.route("/api/mikrotik/<path:host>/history")
+@api_login_required
+def api_mikrotik_history(host):
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-336"}), 400
+    hours = max(1, min(hours, 336))
+    metric = request.args.get("metric", "cpu")
+    cols = {"cpu": "cpu", "mem": "mem_used", "storage": "storage_used", "temp": "temp_c"}
+    col = cols.get(metric, "cpu")
+    conn, c = get_db()
+    try:
+        c.execute(f"SELECT timestamp, {col} AS val FROM device_health"
+                  " WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+                  (host, f"-{hours} hours"))
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"]
+              for r in rows]
+    return jsonify({"host": host, "metric": metric, "hours": hours,
+                    "labels": labels, "values": [r["val"] for r in rows],
+                    "count": len(rows)})
+
+
+def _fmt_uptime(s):
+    if s is None:
+        return None
+    try:
+        s = int(s)
+    except (ValueError, TypeError):
+        return None
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m, _s = divmod(s, 60)
+    if d:
+        return f"{d}h {h}j"
+    if h:
+        return f"{h}j {m}m"
+    return f"{m}m"
+
+
+@app.route("/api/mikrotik/<path:host>/interfaces", methods=["GET"])
+@api_login_required
+def api_mt_iface_list(host):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip FROM hosts WHERE ip=?", (host,))
+        if not c.fetchone():
+            return jsonify({"error": "Host tidak ditemukan"}), 404
+        c.execute("SELECT if_index, name, oper, monitor, last_changed FROM snmp_interfaces"
+                  " WHERE host=? ORDER BY if_index ASC", (host,))
+        out = []
+        for r in c.fetchall():
+            d = dict(r)
+            c.execute("SELECT net_in, net_out, timestamp FROM iface_traffic"
+                      " WHERE host=? AND if_index=? ORDER BY id DESC LIMIT 1",
+                      (host, d["if_index"]))
+            last = c.fetchone()
+            d["last_in"] = last["net_in"] if last else None
+            d["last_out"] = last["net_out"] if last else None
+            d["last_seen"] = last["timestamp"] if last else None
+            out.append(d)
+    finally:
+        conn.close()
+    return jsonify(out)
+
+
+@app.route("/api/mikrotik/<path:host>/interfaces/discover", methods=["POST"])
+@api_login_required
+def api_mt_iface_discover(host):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT snmp_community, snmp_profile FROM hosts WHERE ip=?", (host,))
+        h = c.fetchone()
+    finally:
+        conn.close()
+    if not h:
+        return jsonify({"error": "Host tidak ditemukan"}), 404
+    community = (h["snmp_community"] or "").strip()
+    if not community:
+        return jsonify({"error": "Host belum punya SNMP community"}), 400
+    if (h["snmp_profile"] or "auto") == "generic":
+        return jsonify({"error": "Profil host generic (SNMP health nonaktif)"}), 400
+    found = discover_interfaces(host, community)
+    if not found:
+        return jsonify({"error": "Tidak ada interface terjawab (cek community/firewall/UDP 161)"}), 502
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for f in found:
+                c.execute("INSERT INTO snmp_interfaces (host, if_index, name, oper, monitor, last_changed)"
+                          " VALUES (?,?,?,?,1,?)"
+                          " ON CONFLICT(host, if_index) DO UPDATE SET name=excluded.name,"
+                          " oper=excluded.oper, last_changed=excluded.last_changed",
+                          (host, f["if_index"], f["name"][:64], f["oper"], now))
+            conn.commit()
+        finally:
+            conn.close()
+    try:
+        audit(current_user.username, "mt.discover", f"{host} {len(found)} iface")
+    except Exception:
+        pass
+    # langsung poll sekali agar trafik langsung terisi
+    try:
+        threading.Thread(target=poll_mikrotik_ifaces, daemon=True).start()
+    except Exception:
+        pass
+    return jsonify({"status": "success", "count": len(found), "interfaces": found})
+
+
+@app.route("/api/mikrotik/<path:host>/interfaces", methods=["PATCH"])
+@api_login_required
+def api_mt_iface_update(host):
+    data = request.get_json(silent=True) or {}
+    try:
+        idx = int(data.get("if_index", 0))
+    except (ValueError, TypeError):
+        return jsonify({"error": "if_index harus angka"}), 400
+    if idx < 1:
+        return jsonify({"error": "if_index harus >= 1"}), 400
+    sets, params = [], []
+    if "monitor" in data:
+        sets.append("monitor=?")
+        params.append(1 if data.get("monitor") else 0)
+    if "name" in data:
+        name = str(data.get("name") or "").strip()[:64]
+        if not name:
+            return jsonify({"error": "Nama tidak boleh kosong"}), 400
+        sets.append("name=?")
+        params.append(name)
+    if not sets:
+        return jsonify({"error": "Tidak ada field yang dikirim"}), 400
+    conn, c = get_db()
+    c.execute("SELECT 1 FROM snmp_interfaces WHERE host=? AND if_index=?", (host, idx))
+    if not c.fetchone():
+        conn.close()
+        return jsonify({"error": "Interface tidak ditemukan (discover dulu)"}), 404
+    c.execute(f"UPDATE snmp_interfaces SET {', '.join(sets)} WHERE host=? AND if_index=?",
+              (*params, host, idx))
+    conn.commit()
+    conn.close()
+    try:
+        audit(current_user.username, "mt.iface", f"{host} if{idx} {sets}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/mikrotik/<path:host>/interfaces/<int:idx>", methods=["DELETE"])
+@api_login_required
+def api_mt_iface_delete(host, idx):
+    conn, c = get_db()
+    c.execute("DELETE FROM snmp_interfaces WHERE host=? AND if_index=?", (host, idx))
+    deleted = c.rowcount
+    try:
+        c.execute("DELETE FROM iface_traffic WHERE host=? AND if_index=?", (host, idx))
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
+    conn.close()
+    try:
+        mt_iface_oper.pop((host, idx), None)
+        iface_state.pop((host, idx), None)
+    except Exception:
+        pass
+    if not deleted:
+        return jsonify({"error": "Interface tidak ditemukan"}), 404
+    try:
+        audit(current_user.username, "mt.iface_delete", f"{host} if{idx}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/mikrotik/<path:host>/iface/<int:idx>/history")
+@api_login_required
+def api_mt_iface_history(host, idx):
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-336"}), 400
+    hours = max(1, min(hours, 336))
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name FROM snmp_interfaces WHERE host=? AND if_index=?", (host, idx))
+        iface = c.fetchone()
+        if not iface:
+            return jsonify({"error": "Interface tidak ditemukan"}), 404
+        c.execute("SELECT timestamp, net_in, net_out FROM iface_traffic"
+                  " WHERE host=? AND if_index=? AND timestamp > datetime('now','localtime',?)"
+                  " ORDER BY id ASC", (host, idx, f"-{hours} hours"))
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"]
+              for r in rows]
+    return jsonify({"host": host, "if_index": idx, "name": iface["name"], "hours": hours,
+                    "labels": labels, "rx": [r["net_in"] for r in rows],
+                    "tx": [r["net_out"] for r in rows], "count": len(rows)})
+
+
 @app.route("/inventory")
 @login_required
 def inventory_page():
@@ -2864,6 +4746,91 @@ def get_triggers():
             conn.close()
     except Exception as e:
         print(f"[TRIGGERS] service/ssl gagal: {e}")
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT id, ont_sn, customer, olt_name, odp_name, rx_power, tx_power FROM fiber_onts")
+            for r in c.fetchall():
+                d = dict(r)
+                try:
+                    rx = None if d.get("rx_power") is None else float(d.get("rx_power"))
+                except (ValueError, TypeError):
+                    continue
+                try:
+                    tx = None if d.get("tx_power") is None else float(d.get("tx_power"))
+                except (ValueError, TypeError):
+                    tx = None
+                if rx is None and tx is None:
+                    continue
+                status, severity, advice, _need = fiber_eval(rx, tx)
+                if severity:
+                    label = d.get("customer") or d.get("ont_sn")
+                    loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
+                    alarms.append({
+                        "host": f"{d.get('ont_sn')} ({label})",
+                        "severity": severity,
+                        "message": f"Fiber {status.upper()}: Rx {rx} dBm Tx {tx} {('[' + loc + ']') if loc else ''} — {advice}",
+                        "category": "fiber",
+                    })
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[TRIGGERS] fiber gagal: {e}")
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT ip, alias FROM hosts WHERE snmp_community IS NOT NULL"
+                      " AND snmp_community != '' AND (snmp_profile IS NULL OR snmp_profile != 'generic')"
+                      " ORDER BY id ASC")
+            for h in c.fetchall():
+                ip = h["ip"]
+                label = (h["alias"] or "").strip() or ip
+                c2 = conn.execute("SELECT cpu, mem_used, storage_used, temp_c FROM device_health"
+                                  " WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
+                r = c2.fetchone()
+                if not r:
+                    continue
+                status, severity, advice = _mt_evaluate(
+                    ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                if severity:
+                    alarms.append({
+                        "host": f"{label} ({ip})",
+                        "severity": severity,
+                        "message": f"MikroTik {status.upper()}: {advice}",
+                        "category": "mikrotik",
+                    })
+            # port down + reboot baru
+            try:
+                c.execute("SELECT if_index, name FROM snmp_interfaces"
+                          " WHERE host=? AND monitor=1 AND oper=2", (ip,))
+                for prow in c.fetchall():
+                    alarms.append({
+                        "host": f"{label} ({ip})",
+                        "severity": "high",
+                        "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
+                        "category": "mikrotik",
+                    })
+            except sqlite3.OperationalError:
+                pass
+            try:
+                c.execute("SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
+                          (ip,))
+                urow = c.fetchone()
+                if urow and urow["uptime_s"] is not None and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S:
+                    alarms.append({
+                        "host": f"{label} ({ip})",
+                        "severity": "warning",
+                        "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
+                        "category": "mikrotik",
+                    })
+            except sqlite3.OperationalError:
+                pass
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[TRIGGERS] mikrotik gagal: {e}")
 
     severity_order = {"disaster": 1, "high": 2, "warning": 3}
     alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))

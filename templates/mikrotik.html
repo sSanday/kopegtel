@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MikroTik Health — NMS KOPEGTEL</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080c14;--surface:#0c1220;--card:rgba(12,18,32,.8);--border:rgba(0,255,136,.1);--border2:rgba(255,255,255,.06);--accent:#00a2ff;--accent2:#00ff88;--t1:#e0f0ff;--t2:#6a8aaa;--t3:#2a4060;--mono:'JetBrains Mono',monospace;--danger:#ff4444;--success:#00ff88;--warn:#ffaa00}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
+.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
+.tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center}
+.tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
+.tb-path .crumb.active{color:var(--accent2)}
+.back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
+.back-btn:hover{color:var(--t1)}
+.wrap{padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+.sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
+.sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
+.info{background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.68rem;color:var(--t2);margin-bottom:16px;line-height:1.7}
+.info b{color:var(--t1)}
+.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px}
+.filter-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;padding:4px 10px;border-radius:4px;cursor:pointer}
+.filter-btn.active,.filter-btn:hover{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.45);color:var(--success)}
+.filter-search{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:6px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;min-width:160px;outline:none}
+.log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,.15);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:top}
+tr:hover td{background:rgba(255,255,255,.02)}
+.tag{font-family:var(--mono);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap;display:inline-block}
+.tag.normal{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.25)}
+.tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
+.tag.critical{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
+.tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
+.advice{font-size:.62rem;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
+.bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin-top:4px;min-width:70px}
+.bar>div{height:100%}
+.chart-card{margin-top:16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:18px 20px}
+.chart-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.chart-title{font-family:var(--mono);font-size:.8rem;font-weight:600}
+.chart-sub{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+.chart-ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chart-ctl select{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;max-width:240px}
+.range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;padding:4px 9px;border-radius:4px;cursor:pointer}
+.range-btn.active{color:var(--accent);border-color:rgba(0,162,255,.4)}
+.chart-wrap{position:relative;height:240px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="tb-brand"><div class="tb-logo">◈</div>
+    <div class="tb-path"><span>~/noc</span><span>/</span><span>dashboard</span><span>/</span><span class="crumb active">mikrotik</span></div>
+  </div>
+  <a href="/" class="back-btn">← cd ..</a>
+</div>
+<div class="wrap">
+  <div class="sec-label">mikrotik_health — CPU / RAM / storage / suhu via SNMP</div>
+  <div class="info" id="thInfo">memuat threshold...</div>
+  <div class="filter-bar">
+    <button class="filter-btn active" data-f="all">all</button>
+    <button class="filter-btn" data-f="normal">normal</button>
+    <button class="filter-btn" data-f="warning">warning</button>
+    <button class="filter-btn" data-f="critical">critical</button>
+    <input class="filter-search" id="q" placeholder="grep host / alias..." oninput="render()">
+  </div>
+  <div class="log-card"><div style="overflow-x:auto"><table>
+    <thead><tr><th>Host</th><th>CPU</th><th>Memory</th><th>Storage</th><th>Suhu</th><th>Uptime</th><th>Status</th><th>Last poll</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="8" style="text-align:center;color:var(--t3)">loading...</td></tr></tbody>
+  </table></div></div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <div><div class="chart-title">interfaces</div><div class="chart-sub">// discovery via SNMP walk ifDescr · toggle monitor per port</div></div>
+      <div class="chart-ctl"><button class="range-btn" onclick="discover()">⟳ discover</button></div>
+    </div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Port</th><th>ifIndex</th><th>Oper</th><th>↓ Mbps</th><th>↑ Mbps</th><th>Monitor</th><th></th></tr></thead>
+      <tbody id="ifaceRows"><tr><td colspan="7" style="text-align:center;color:var(--t3)">pilih host di grafik / tunggu data...</td></tr></tbody>
+    </table></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <div><div class="chart-title" id="ctitle">device_history.ts</div><div class="chart-sub">// poll tiap 60 detik via SNMP</div></div>
+      <div class="chart-ctl">
+        <select id="hostSel" onchange="onHostChange()"></select>
+        <select id="metricSel" onchange="loadHist()">
+          <option value="cpu">cpu %</option><option value="mem">memory %</option>
+          <option value="storage">storage %</option><option value="temp">suhu °C</option>
+          <option value="traffic">trafik/port</option>
+        </select>
+        <select id="ifaceSel" onchange="loadHist()" style="display:none"></select>
+        <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
+        <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
+        <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="ch"></canvas></div>
+  </div>
+</div>
+<script>
+let DATA=[], curF='all', chart=null, histH=24;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
+function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
+function bar(v,warn,crit){if(v==null)return '—';const c=v>=crit?'var(--danger)':(v>=warn?'var(--warn)':'var(--success)');return `${esc(v)}<div class="bar"><div style="width:${Math.min(100,v)}%;background:${c}"></div></div>`;}
+async function load(){
+  try{
+    const r=await fetch('/api/settings',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(r.ok){const s=await r.json();
+      document.getElementById('thInfo').innerHTML=
+      `Threshold aktif — CPU &gt; <b>${esc(s.cpu_threshold)}%</b> · memory &gt; <b>${esc(s.ram_threshold)}%</b> · storage &gt; <b>${esc(s.disk_threshold)}%</b> · suhu ≥ <b>${esc(s.temp_threshold)}°C</b> warning / ≥ <b>${esc(s.temp_crit)}°C</b> kritis · ubah via menu settings.<br>`+
+      `Syarat MikroTik: <b>/snmp set enabled=yes</b> + community sama + firewall buka UDP 161 dari server NMS. Unit lama yang OID-nya beda → override per host di menu hosts.`;
+      window._th=s;}
+  }catch(e){}
+  const r=await fetch('/api/mikrotik',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(r.status===401){location.href='/login';return;}
+  DATA=await r.json();
+  document.getElementById('hostSel').innerHTML=DATA.map(o=>`<option value="${esc(o.host)}">${esc(o.alias||o.host)}</option>`).join('')||'<option value="">(kosong)</option>';
+  render(); loadIfaces(); loadHist();
+}
+function render(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const th=window._th||{cpu_threshold:85,ram_threshold:90,disk_threshold:90,temp_threshold:60,temp_crit:75};
+  const tb=document.getElementById('rows');
+  const rows=DATA.filter(o=>(curF==='all'||o.status===curF)&&(!q||(o.host+' '+(o.alias||'')).toLowerCase().includes(q)));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--t3)">$ no data — tambah host dengan SNMP community dulu.</td></tr>';return;}
+  tb.innerHTML=rows.map(o=>`<tr>
+    <td style="color:var(--t1)">${esc(o.alias||o.host)}${o.alias&&o.alias!==o.host?`<div style="font-size:.62rem;color:var(--t3)">${esc(o.host)}</div>`:''}${o.is_mikrotik?'':'<div style="font-size:.6rem;color:var(--t3)">belum terdeteksi mikrotik</div>'}</td>
+    <td>${bar(o.cpu,th.cpu_threshold,th.cpu_threshold+10)}%</td>
+    <td>${bar(o.mem,th.ram_threshold,th.ram_threshold+5)}%</td>
+    <td>${bar(o.storage,th.disk_threshold,100)}%</td>
+    <td style="color:var(--t1);font-weight:700">${o.temp_c==null?'—':esc(o.temp_c)+'°C'}</td>
+    <td>${esc(o.uptime||'—')}</td>
+    <td><span class="tag ${esc(o.status)}">${esc(o.status)}</span><div class="advice">${esc(o.advice||'')}</div></td>
+    <td style="font-size:.62rem">${esc(o.last_seen||'—')}</td>
+  </tr>`).join('');
+}
+let IFACES=[];
+async function curHost(){return document.getElementById('hostSel').value;}
+async function loadIfaces(){
+  const host=await curHost();
+  const tb=document.getElementById('ifaceRows');
+  const isel=document.getElementById('ifaceSel');
+  if(!host){tb.innerHTML='<tr><td colspan="7" style="text-align:center">—</td></tr>';isel.style.display='none';return;}
+  const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!r.ok){tb.innerHTML='<tr><td colspan="7" style="text-align:center">gagal memuat</td></tr>';return;}
+  IFACES=await r.json();
+  const mon=IFACES.filter(i=>i.monitor);
+  isel.style.display=(document.getElementById('metricSel').value==='traffic'&&mon.length)?'':'none';
+  const prevI=isel.value;
+  isel.innerHTML=mon.map(i=>`<option value="${i.if_index}">${esc(i.name)} (if${i.if_index})</option>`).join('');
+  if([...isel.options].some(o=>o.value===prevI))isel.value=prevI;
+  if(!IFACES.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no interfaces — klik discover.</td></tr>';return;}
+  const operTxt=o=>o===1?'<span class="tag normal">up</span>':(o===2?'<span class="tag critical">down</span>':'<span class="tag unknown">?</span>');
+  tb.innerHTML=IFACES.map(i=>`<tr>
+    <td style="color:var(--t1)">${esc(i.name)}</td><td>if${i.if_index}</td><td>${operTxt(i.oper)}</td>
+    <td>${i.last_in==null?'—':esc(i.last_in)}</td><td>${i.last_out==null?'—':esc(i.last_out)}</td>
+    <td><input type="checkbox" ${i.monitor?'checked':''} onchange="toggleMon(${i.if_index},this.checked)" title="monitor trafik port ini"></td>
+    <td><button class="range-btn" onclick="delIface(${i.if_index})">del</button></td>
+  </tr>`).join('');
+}
+async function discover(){
+  const host=await curHost();if(!host)return;
+  if(!confirm(`discover interfaces ${host} via SNMP walk?`))return;
+  const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces/discover`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.error||'discover gagal');return;}
+  alert(`ditemukan ${j.count} interface`);loadIfaces();
+}
+async function toggleMon(idx,on){
+  const host=await curHost();
+  await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({if_index:idx,monitor:on})});
+  loadIfaces();
+}
+async function delIface(idx){
+  const host=await curHost();
+  if(!confirm(`hapus if${idx} dari monitoring?`))return;
+  await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces/${idx}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
+  loadIfaces();
+}
+function onHostChange(){loadIfaces();loadHist();}
+async function loadHist(){
+  const host=document.getElementById('hostSel').value;if(!host)return;
+  const metric=document.getElementById('metricSel').value;
+  const isel=document.getElementById('ifaceSel');
+  isel.style.display=(metric==='traffic')?'':'none';
+  const ctx=document.getElementById('ch').getContext('2d');
+  if(chart)chart.destroy();
+  const baseOpts={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#2a4060',maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},y:{ticks:{color:'#6a8aaa'},grid:{color:'rgba(255,255,255,.04)'}}},plugins:{legend:{labels:{color:'#6a8aaa',boxWidth:12,font:{size:10}}}}};
+  if(metric==='traffic'){
+    if(!IFACES.length)await loadIfaces();
+    const idx=isel.value||((IFACES.find(i=>i.monitor)||{}).if_index);
+    if(!idx){return;}
+    isel.value=idx;
+    const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/iface/${idx}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(!r.ok)return;const j=await r.json();
+    document.getElementById('ctitle').textContent=`${host} ${j.name||('if'+idx)} — traffic.ts (Mbps)`;
+    chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[
+      {label:'↓ in',data:j.rx,borderColor:'#00a2ff',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5},
+      {label:'↑ out',data:j.tx,borderColor:'#00ff88',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
+    return;
+  }
+  const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/history?hours=${histH}&metric=${metric}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!r.ok)return;const j=await r.json();
+  document.getElementById('ctitle').textContent=`${host} — ${metric}_history.ts`;
+  const colors={cpu:'#00a2ff',mem:'#ffaa00',storage:'#a855f7',temp:'#ff4444'};
+  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[{label:metric,data:j.values,borderColor:colors[metric]||'#00a2ff',backgroundColor:'rgba(0,162,255,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
+}
+load();setInterval(load,60000);
+</script>
+</body>
+</html>

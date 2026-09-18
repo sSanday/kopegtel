@@ -468,10 +468,12 @@ body::after{
 .modal-overlay.open{display:flex}
 .modal{
   background:var(--surface);border:1px solid var(--border);
-  border-radius:10px;padding:0;width:100%;max-width:440px;
+  border-radius:10px;padding:0;width:100%;max-width:440px;max-height:88vh;
+  display:flex;flex-direction:column;
   animation:fadeUp .3s ease;overflow:hidden;
   box-shadow:0 0 60px rgba(0,162,255,0.1),0 32px 80px rgba(0,0,0,.6);
 }
+.modal-body{padding:18px;overflow-y:auto}
 .modal-header{
   display:flex;justify-content:space-between;align-items:center;
   padding:14px 18px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
@@ -479,7 +481,6 @@ body::after{
 .modal-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
 .close-btn{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s}
 .close-btn:hover{color:var(--t1)}
-.modal-body{padding:18px}
 .host-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:260px;overflow-y:auto}
 .host-item{
   display:flex;justify-content:space-between;align-items:flex-start;
@@ -647,6 +648,14 @@ body::after{
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 7h12"/></svg>
         Inventory
       </a>
+      <a href="/fiber" class="sb-item" data-nav="fiber" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c3-1 4-6 6-6s3 5 6 4"/><circle cx="2" cy="12" r="1.2"/><circle cx="14" cy="10" r="1.2"/></svg>
+        Fiber
+      </a>
+      <a href="/mikrotik" class="sb-item" data-nav="mikrotik" style="text-decoration:none;color:inherit">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 12v2M11 12v2M8 9v5M4 5.5h8"/></svg>
+        MikroTik
+      </a>
       <a href="/reports" class="sb-item" data-nav="reports" style="text-decoration:none;color:inherit">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4h8v8M4 16h8M6 8h4"/></svg>
         Reports
@@ -727,6 +736,8 @@ body::after{
       <div class="sum-card up"><div class="sk">up</div><div class="sv" id="sumUp">—</div></div>
       <div class="sum-card down"><div class="sk">down</div><div class="sv" id="sumDown">—</div></div>
       <div class="sum-card avg"><div class="sk">avg uptime 24h</div><div class="sv" id="sumUptime">—</div></div>
+      <a href="/fiber" class="sum-card" id="fiberCard" title="Lihat monitoring fiber" style="text-decoration:none"><div class="sk">fiber alarm</div><div class="sv" id="sumFiber">—</div></a>
+      <a href="/mikrotik" class="sum-card" id="mtCard" title="Lihat health MikroTik" style="text-decoration:none"><div class="sk">mikrotik alarm</div><div class="sv" id="sumMt">—</div></a>
     </div>
     <div id="statusGrid" class="status-grid">
       <div class="skeleton" style="height:130px"></div>
@@ -850,8 +861,23 @@ body::after{
         <input type="text" id="newHostCategory" placeholder="kategori" title="Kategori Perangkat">
         <input type="text" id="newHostSnmp" placeholder="snmp (opt)" title="SNMP Community">
         <input type="number" id="newHostIfIndex" placeholder="ifIdx" value="1" style="width:65px;" title="SNMP Interface Index">
+        <select id="newHostProfile" title="Profil SNMP" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
+          <option value="auto">snmp: auto</option>
+          <option value="mikrotik">mikrotik</option>
+          <option value="generic">generic</option>
+        </select>
         <button type="submit">+ add</button>
       </form>
+      <details style="margin-top:8px;font-family:var(--mono);font-size:.68rem;color:var(--t3)">
+        <summary style="cursor:pointer">oid override (unit lama — isi dari /system/health/print oid)</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+          <input type="text" id="newHostCpuOid" placeholder="oid cpu" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
+          <input type="text" id="newHostMemOid" placeholder="oid memory" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
+          <input type="text" id="newHostStoOid" placeholder="oid storage" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
+          <input type="text" id="newHostTempOid" placeholder="oid suhu" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
+        </div>
+        <div style="margin-top:6px">Untuk host yang sudah ada, edit via API: <span style="color:var(--accent)">PATCH /api/hosts/&lt;ip&gt;/snmp</span></div>
+      </details>
     </div>
   </div>
 </div>
@@ -877,8 +903,29 @@ body::after{
           <label class="form-label">disk_threshold (%)</label>
           <input type="number" id="diskThreshold" class="form-input" step="0.1" min="1" max="100" required>
         </div>
+        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">fiber_redaman (dBm)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-field"><label class="form-label">rx overload &gt;</label><input type="number" id="fiberOverload" class="form-input" step="0.1" required></div>
+          <div class="form-field"><label class="form-label">rx target</label><input type="number" id="fiberTarget" class="form-input" step="0.1" required></div>
+          <div class="form-field"><label class="form-label">rx warning &lt;</label><input type="number" id="fiberWarn" class="form-input" step="0.1" required></div>
+          <div class="form-field"><label class="form-label">rx critical &lt;</label><input type="number" id="fiberCrit" class="form-input" step="0.1" required></div>
+          <div class="form-field"><label class="form-label">tx min</label><input type="number" id="fiberTxMin" class="form-input" step="0.1" required></div>
+          <div class="form-field"><label class="form-label">tx max</label><input type="number" id="fiberTxMax" class="form-input" step="0.1" required></div>
+        </div>
+        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">mikrotik_snmp</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-field"><label class="form-label">suhu warning (°C)</label><input type="number" id="tempWarn" class="form-input" step="0.5" required></div>
+          <div class="form-field"><label class="form-label">suhu critical (°C)</label><input type="number" id="tempCrit" class="form-input" step="0.5" required></div>
+        </div>
+        <div class="form-field"><label class="form-label">oid cpu</label><input type="text" id="mtCpuOid" class="form-input" style="font-size:.65rem"></div>
+        <div class="form-field"><label class="form-label">oid memory</label><input type="text" id="mtMemOid" class="form-input" style="font-size:.65rem"></div>
+        <div class="form-field"><label class="form-label">oid storage</label><input type="text" id="mtStoOid" class="form-input" style="font-size:.65rem"></div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-field"><label class="form-label">oid suhu</label><input type="text" id="mtTempOid" class="form-input" style="font-size:.65rem"></div>
+          <div class="form-field"><label class="form-label">pembagi suhu</label><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required></div>
+        </div>
         <div class="form-field">
-          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.</div>
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.</div>
         </div>
         <button type="submit" class="btn-primary">save_settings()</button>
       </form>
@@ -917,7 +964,7 @@ function toggleUserMenu(){
 function setActiveNav(){
   // Dashboard index selalu aktif sebagai Dashboards; dukung juga pola path lain jika sidebar dipakai ulang
   const path = window.location.pathname || '/';
-  const map = {'/':'dashboard','/triggers':'monitoring','/services':'services','/inventory':'inventory','/logs':'logs','/reports':'reports'};
+  const map = {'/':'dashboard','/triggers':'monitoring','/services':'services','/inventory':'inventory','/logs':'logs','/reports':'reports','/fiber':'fiber','/mikrotik':'mikrotik'};
   let key = map[path] || 'dashboard';
   const params = new URLSearchParams(window.location.search || '');
   const sev = (params.get('severity') || '').toLowerCase();
@@ -1366,10 +1413,12 @@ async function fetchChart(){
 
 async function refresh(){
   try{
-    const [mRes,sRes,eRes,aRes,hRes,maintRes]=await Promise.all([
+    const [mRes,sRes,eRes,aRes,hRes,maintRes,fRes,mtRes]=await Promise.all([
       fetch(`/api/history?hours=1`),fetch('/api/stats'),
       fetch('/api/events'),fetch('/api/agent/metrics'),fetch('/api/hosts'),
-      fetch('/api/maintenance?active=1').catch(()=>null)
+      fetch('/api/maintenance?active=1').catch(()=>null),
+      fetch('/api/fiber').catch(()=>null),
+      fetch('/api/mikrotik').catch(()=>null)
     ]);
     // 401 ditangani wrapper global (redirect /login); jangan tampilkan banner untuk itu
     if([mRes,sRes,eRes,aRes,hRes].some(r=>r.status===401)) return;
@@ -1416,6 +1465,20 @@ async function refresh(){
 
     renderStats(sData || {});
     renderEvents(Array.isArray(eData) ? eData : []);
+    try{
+      if(fRes && fRes.ok){
+        const fData=await fRes.json();
+        const n=(Array.isArray(fData)?fData:[]).filter(o=>o && o.severity).length;
+        const fEl=document.getElementById('sumFiber');
+        if(fEl){fEl.textContent=n;fEl.style.color=n>0?'var(--down)':'var(--up)';}
+      }
+      if(mtRes && mtRes.ok){
+        const mtData=await mtRes.json();
+        const n=(Array.isArray(mtData)?mtData:[]).filter(o=>o && o.severity).length;
+        const mEl=document.getElementById('sumMt');
+        if(mEl){mEl.textContent=n;mEl.style.color=n>0?'var(--down)':'var(--up)';}
+      }
+    }catch(_){}
     document.getElementById('last-updated').textContent=
       new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   }catch(err){
@@ -1629,7 +1692,7 @@ async function loadHosts(){
           sub.appendChild(document.createTextNode(' '));
           sub.appendChild(peek);
         }
-        sub.appendChild(document.createTextNode(` | ifIndex: ${h.if_index} | Cat: ${h.category || 'Uncategorized'}`));
+        sub.appendChild(document.createTextNode(` | ifIndex: ${h.if_index} | Cat: ${h.category || 'Uncategorized'} | Prof: ${h.snmp_profile || 'auto'}`));
         info.appendChild(title);
         info.appendChild(sub);
         const delBtn = document.createElement('button');
@@ -1653,6 +1716,16 @@ async function addHost(event){
   const snmp = document.getElementById('newHostSnmp').value.trim();
   let idx = parseInt(document.getElementById('newHostIfIndex').value, 10);
   if(!Number.isFinite(idx) || idx < 1) idx = 1;
+  const profile = document.getElementById('newHostProfile').value;
+  const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
+  const oids={};
+  for(const [id,key] of [['newHostCpuOid','cpu_oid'],['newHostMemOid','mem_oid'],['newHostStoOid','storage_oid'],['newHostTempOid','temp_oid']]){
+    const v=document.getElementById(id).value.trim();
+    if(v){
+      if(!oidRe.test(v)||v.length>128){ alert(`Error: ${key} bukan OID valid`); return; }
+      oids[key]=v;
+    }
+  }
   if(!ip) return;
   // Validasi IP/hostname sederhana agar tidak tersimpan data sampah
   const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -1667,7 +1740,7 @@ async function addHost(event){
   try{
     res = await fetch('/api/hosts', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx})
+      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx, snmp_profile:profile, ...oids})
     });
   }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); return; }
   if(res.ok){
@@ -1676,6 +1749,8 @@ async function addHost(event){
     document.getElementById('newHostCategory').value='';
     document.getElementById('newHostSnmp').value='';
     document.getElementById('newHostIfIndex').value='1';
+    document.getElementById('newHostProfile').value='auto';
+    ['newHostCpuOid','newHostMemOid','newHostStoOid','newHostTempOid'].forEach(id=>document.getElementById(id).value='');
     await loadHosts();
     await refresh();
   } else {
@@ -1700,6 +1775,19 @@ async function openSettingsModal(){
     document.getElementById('cpuThreshold').value=data.cpu_threshold;
     document.getElementById('ramThreshold').value=data.ram_threshold;
     document.getElementById('diskThreshold').value=data.disk_threshold||90.0;
+    document.getElementById('fiberOverload').value=data.fiber_rx_overload??-8;
+    document.getElementById('fiberTarget').value=data.fiber_rx_target??-18;
+    document.getElementById('fiberWarn').value=data.fiber_rx_warn??-25;
+    document.getElementById('fiberCrit').value=data.fiber_rx_crit??-27;
+    document.getElementById('fiberTxMin').value=data.fiber_tx_min??0;
+    document.getElementById('fiberTxMax').value=data.fiber_tx_max??5;
+    document.getElementById('tempWarn').value=data.temp_threshold??60;
+    document.getElementById('tempCrit').value=data.temp_crit??75;
+    document.getElementById('mtCpuOid').value=data.mt_cpu_oid||'';
+    document.getElementById('mtMemOid').value=data.mt_mem_oid||'';
+    document.getElementById('mtStoOid').value=data.mt_storage_oid||'';
+    document.getElementById('mtTempOid').value=data.mt_temp_oid||'';
+    document.getElementById('mtTempDiv').value=data.mt_temp_div??10;
   }catch(e){console.error(e)}
 }
 function closeSettingsModal(){document.getElementById('settingsModal').classList.remove('open')}
@@ -1711,8 +1799,34 @@ async function saveSettings(e){
   for(const [label,v] of [['CPU',cpu],['RAM',ram],['Disk',disk]]){
     if(!Number.isFinite(v) || v < 1 || v > 100){ alert(`Error: threshold ${label} harus angka 1-100`); return; }
   }
+  const fOver=parseFloat(document.getElementById('fiberOverload').value);
+  const fTgt=parseFloat(document.getElementById('fiberTarget').value);
+  const fWarn=parseFloat(document.getElementById('fiberWarn').value);
+  const fCrit=parseFloat(document.getElementById('fiberCrit').value);
+  const fTxMin=parseFloat(document.getElementById('fiberTxMin').value);
+  const fTxMax=parseFloat(document.getElementById('fiberTxMax').value);
+  for(const [label,v] of [['fiber overload',fOver],['fiber target',fTgt],['fiber warn',fWarn],['fiber crit',fCrit]]){
+    if(!Number.isFinite(v) || v < -40 || v > 10){ alert(`Error: ${label} harus angka -40..10 dBm`); return; }
+  }
+  if(!(fCrit < fWarn && fWarn <= fOver)){ alert('Error: harus crit < warn <= overload (mis. -27 < -25 <= -8)'); return; }
+  if(!Number.isFinite(fTxMin) || !Number.isFinite(fTxMax) || fTxMin > fTxMax){ alert('Error: fiber tx_min harus <= tx_max'); return; }
+  const tW=parseFloat(document.getElementById('tempWarn').value);
+  const tC=parseFloat(document.getElementById('tempCrit').value);
+  const tDiv=parseFloat(document.getElementById('mtTempDiv').value);
+  if(!Number.isFinite(tW) || tW < 0 || tW > 150 || !Number.isFinite(tC) || tC < 0 || tC > 150){ alert('Error: suhu warning/critical harus 0-150 °C'); return; }
+  if(!(tW < tC)){ alert('Error: suhu warning harus < critical'); return; }
+  if(!Number.isFinite(tDiv) || tDiv < 1 || tDiv > 1000){ alert('Error: pembagi suhu harus 1-1000'); return; }
+  const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
+  const mtOids={};
+  for(const [id,key] of [['mtCpuOid','mt_cpu_oid'],['mtMemOid','mt_mem_oid'],['mtStoOid','mt_storage_oid'],['mtTempOid','mt_temp_oid']]){
+    const v=document.getElementById(id).value.trim();
+    if(v){
+      if(!oidRe.test(v)||v.length>128){ alert(`Error: ${key} bukan OID valid`); return; }
+      mtOids[key]=v;
+    }
+  }
   try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk})});
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,...mtOids})});
     if(!res.ok){
       let m='Gagal menyimpan pengaturan';
       try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}
