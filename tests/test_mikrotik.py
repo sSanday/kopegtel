@@ -1,4 +1,18 @@
+import os
+import tempfile
 import unittest
+
+# bootstrap agar aman dijalankan standalone (sebelum import app):
+# pakai DB sementara, jangan pernah menyentuh network.db produksi.
+_tmp = tempfile.mkdtemp(prefix="nms_test_mikrotik_")
+os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("DASHBOARD_USERNAME", "admin")
+os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "")
+os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
+os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
 

@@ -1,4 +1,18 @@
+import os
+import tempfile
 import unittest
+
+# bootstrap agar aman dijalankan standalone (sebelum import app):
+# pakai DB sementara, jangan pernah menyentuh network.db produksi.
+_tmp = tempfile.mkdtemp(prefix="nms_test_fiber_")
+os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("DASHBOARD_USERNAME", "admin")
+os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
+os.environ.setdefault("TELEGRAM_CHAT_ID", "")
+os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
+os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
 
@@ -450,6 +464,284 @@ class OdpApiTest(unittest.TestCase):
             self.assertTrue(bucket and bucket[0]["total"] >= 1)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+
+SN_MUTE = "TEST-FIBER-MUTE-01"
+SN_OVERRIDE = "TEST-FIBER-OVR-01"
+SN_MAINT = "TEST-FIBER-MAINT-01"
+SN_SINGLE = "TEST-FIBER-SINGLE-01"
+SN_IMPORT_A = "TEST-FIBER-IMP-A"
+SN_IMPORT_B = "TEST-FIBER-IMP-B"
+OLT_TEST = "TEST-OLT-01"
+SN_SNMP = "TEST-FIBER-SNMP-01"
+
+
+def _cleanup_extra(client):
+    for sn in (SN_MUTE, SN_OVERRIDE, SN_MAINT, SN_SINGLE, SN_IMPORT_A, SN_IMPORT_B, SN_SNMP):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                c.execute("DELETE FROM maintenance_windows WHERE host=?", (sn,))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    try:
+        conn, c = m.get_db()
+        try:
+            c.execute("DELETE FROM olts WHERE name=?", (OLT_TEST,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+class FiberMuteOverrideTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_extra(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_extra(cls.client)
+
+    def test_mute_disembunyikan_dari_triggers(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_MUTE, "rx_power": -29.0,
+                                   "tx_power": 2.0, "mute_alarm": 1},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            fib = [a for a in r.get_json()
+                   if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")]
+            self.assertEqual(fib, [])
+            # unmute -> muncul lagi
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_MUTE, "rx_power": -29.0,
+                                      "tx_power": 2.0, "mute_alarm": 0},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            fib = [a for a in r.get_json()
+                   if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")]
+            self.assertTrue(fib)
+            self.assertEqual(fib[0]["severity"], "disaster")
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_override_threshold_per_ont(self):
+        # rx -21 globalnya normal (< -25 warn), tapi override warn -20 -> warning
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_OVERRIDE, "rx_power": -21.0,
+                                   "tx_power": 2.0, "rx_warn": -20.0, "rx_crit": -27.0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_OVERRIDE)
+            self.assertEqual(item["calc_status"], "warning")
+            # validasi: crit >= warn ditolak
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_OVERRIDE, "rx_power": -21.0,
+                                      "rx_warn": -20.0, "rx_crit": -19.0},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_single_check_langsung_set_memory(self):
+        # tanpa menunggu scheduler, memory langsung terisi setelah create
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_SINGLE, "rx_power": -29.0,
+                                   "tx_power": 2.0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            self.assertEqual(m.fiber_alarm_memory.get(fid), "critical")
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+
+class FiberMaintenanceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_extra(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_extra(cls.client)
+
+    def test_maintenance_suppress_fiber(self):
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        start = (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
+        end = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_MAINT, "rx_power": -29.0,
+                                   "tx_power": 2.0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.post("/api/maintenance",
+                                 json={"host": SN_MAINT, "start_at": start,
+                                       "end_at": end, "reason": "perbaikan jalur"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            alarms = r.get_json()
+            fib = [a for a in alarms
+                   if a.get("category") == "fiber" and SN_MAINT in a.get("host", "")]
+            self.assertEqual(fib, [])
+            maint = [a for a in alarms
+                     if a.get("category") == "maintenance" and SN_MAINT in a.get("host", "")]
+            self.assertTrue(maint)
+            # poll tak mengirim telegram: memory tetap terset, tak ada ledakan
+            before = dict(m.fiber_alarm_memory)
+            m.poll_fiber_monitor()
+            self.assertEqual(m.fiber_alarm_memory.get(fid), "critical")
+            self.assertIn(fid, before)
+        finally:
+            conn, c = m.get_db()
+            c.execute("DELETE FROM maintenance_windows WHERE host=?", (SN_MAINT,))
+            conn.commit()
+            conn.close()
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+
+class FiberImportOltTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_extra(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_extra(cls.client)
+
+    def test_import_csv_duplikat_diskip(self):
+        import io as _io
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_IMPORT_A, "rx_power": -19.0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid_a = r.get_json()["id"]
+        try:
+            csv_text = ("ont_sn,customer,olt_name,rx_power,tx_power,source\n"
+                        f"{SN_IMPORT_A},duplikat,, -19.0,2.0,manual\n"
+                        f"{SN_IMPORT_B},baru,, -26.0,2.0,manual\n")
+            r = self.client.post("/api/fiber/import",
+                                 data={"file": (_io.BytesIO(csv_text.encode()),
+                                                "ont.csv")},
+                                 headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            j = r.get_json()
+            self.assertEqual(j["created"], 1)
+            self.assertEqual(j["skipped"], 1)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_IMPORT_B)
+            self.assertEqual(item["calc_status"], "warning")
+            conn, c = m.get_db()
+            c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (SN_IMPORT_B,))
+            fid_b = c.fetchone()["id"]
+            conn.close()
+            self.client.delete(f"/api/fiber/{fid_b}", headers=XRW_HDR)
+        finally:
+            self.client.delete(f"/api/fiber/{fid_a}", headers=XRW_HDR)
+
+    def test_settings_target_divalidasi(self):
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        try:
+            r = self.client.post("/api/settings", json={"fiber_rx_target": 0.0},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+        finally:
+            self.client.post("/api/settings",
+                             json={"fiber_rx_target": orig["fiber_rx_target"]},
+                             headers=JSON_HDR)
+
+    def test_olt_crud_dan_poll_snmp(self):
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_TEST, "ip": "bukan-ip"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_TEST, "ip": "10.99.99.250",
+                                   "community": "public", "vendor": "zte",
+                                   "rx_base": "1.3.6.1.4.1.3902.1.1",
+                                   "tx_base": "1.3.6.1.4.1.3902.1.2",
+                                   "div": 100},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        oid = r.get_json()["id"]
+        try:
+            r = self.client.post("/api/olts", json={"name": OLT_TEST},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/fiber",
+                                 json={"ont_sn": SN_SNMP, "olt_name": OLT_TEST,
+                                       "ont_index": "7", "source": "snmp"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201)
+            fid = r.get_json()["id"]
+            try:
+                real = m._snmp_get
+                m._snmp_get = lambda ip, comm, oids, timeout=2.0: [-1995, 210]
+                try:
+                    m.poll_fiber_snmp()
+                finally:
+                    m._snmp_get = real
+                conn, c = m.get_db()
+                c.execute("SELECT rx_power, tx_power FROM fiber_onts WHERE id=?", (fid,))
+                row = c.fetchone()
+                conn.close()
+                self.assertAlmostEqual(row["rx_power"], -19.95)
+                self.assertAlmostEqual(row["tx_power"], 2.10)
+            finally:
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+        finally:
+            self.client.delete(f"/api/olts/{oid}", headers=XRW_HDR)
+
+
+class SchedulerRefTest(unittest.TestCase):
+    def test_semua_job_scheduler_terdefinisi(self):
+        # Regresi: scheduler aktif saat produksi (NMS_DISABLE_SCHEDULER=0),
+        # tapi test mematikannya -> NameError saat deploy tak terdeteksi.
+        # Pastikan tiap func=... di blok scheduler ada sebagai callable,
+        # dan didefinisikan SEBELUM blok scheduler (aman saat import).
+        import re
+        src = open(m.__file__).read()
+        names = re.findall(r"scheduler\.add_job\(func=([A-Za-z_][A-Za-z0-9_]*)", src)
+        self.assertTrue(names)
+        sched_pos = src.index("SCHEDULER_ENABLED = ")
+        for n in names:
+            self.assertTrue(callable(getattr(m, n, None)), f"job {n} tidak terdefinisi")
+            self.assertLess(src.index(f"def {n}("), sched_pos,
+                            f"job {n} didefinisikan setelah blok scheduler -> NameError produksi")
 
 
 if __name__ == "__main__":

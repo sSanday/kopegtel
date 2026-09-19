@@ -354,7 +354,7 @@
         </button>
       </div>
       <form class="maint-form" onsubmit="createMaintenance(event)">
-        <input id="maintHost" list="maintHostList" placeholder="host / ip" required title="Harus sama dengan IP terdaftar">
+        <input id="maintHost" list="maintHostList" placeholder="host / ip / ONT SN" required title="IP terdaftar atau ONT SN fiber">
         <datalist id="maintHostList"></datalist>
         <input id="maintStart" type="datetime-local" required title="Mulai">
         <input id="maintEnd" type="datetime-local" required title="Selesai">
@@ -448,7 +448,15 @@
         const data = await res.json();
         data.forEach(h => { aliasMap[h.ip] = (h.alias || '').trim() || h.ip; });
         const dl = document.getElementById('maintHostList');
-        if(dl) dl.innerHTML = data.map(h => `<option value="${esc(h.ip)}">${esc(aliasMap[h.ip])}</option>`).join('');
+        let opts = data.map(h => `<option value="${esc(h.ip)}">${esc(aliasMap[h.ip])}</option>`).join('');
+        try {
+          const rf = await fetch('/api/fiber');
+          if(rf.ok){
+            const onts = await rf.json();
+            opts += (Array.isArray(onts)?onts:[]).map(o=>`<option value="${esc(o.ont_sn)}">ONT ${esc(o.customer||'')}</option>`).join('');
+          }
+        } catch(_){}
+        if(dl) dl.innerHTML = opts;
       } catch(e) {}
     }
 

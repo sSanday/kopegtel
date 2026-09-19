@@ -546,6 +546,30 @@ def init_db():
         c.execute("ALTER TABLE fiber_onts ADD COLUMN source TEXT DEFAULT 'manual'")
     except sqlite3.OperationalError:
         pass
+    for _col, _ddl in (
+        ("mute_alarm", "ALTER TABLE fiber_onts ADD COLUMN mute_alarm INTEGER NOT NULL DEFAULT 0"),
+        ("rx_warn", "ALTER TABLE fiber_onts ADD COLUMN rx_warn REAL"),
+        ("rx_crit", "ALTER TABLE fiber_onts ADD COLUMN rx_crit REAL"),
+        ("ont_index", "ALTER TABLE fiber_onts ADD COLUMN ont_index TEXT DEFAULT ''"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
+
+    c.execute('''CREATE TABLE IF NOT EXISTS olts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      ip TEXT NOT NULL DEFAULT '',
+      community TEXT NOT NULL DEFAULT '',
+      vendor TEXT NOT NULL DEFAULT 'generic',
+      rx_base TEXT DEFAULT '',
+      tx_base TEXT DEFAULT '',
+      div REAL NOT NULL DEFAULT 100.0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_olt_name ON olts(name)")
 
     c.execute("SELECT COUNT(*) as cnt FROM hosts")
     if c.fetchone()["cnt"] == 0:
@@ -2137,6 +2161,31 @@ def _fiber_thresholds():
     }
 
 
+def _th_for_ont(o):
+    """Threshold untuk satu ONT: global, dioverride rx_warn/rx_crit bila diisi.
+
+    o: dict baris fiber_onts (boleh hanya berisi rx_warn/rx_crit).
+    """
+    th = _fiber_thresholds()
+    try:
+        w = o.get("rx_warn")
+        w = None if w in (None, "") else float(w)
+    except (ValueError, TypeError):
+        w = None
+    try:
+        cr = o.get("rx_crit")
+        cr = None if cr in (None, "") else float(cr)
+    except (ValueError, TypeError):
+        cr = None
+    if w is not None:
+        th["warn"] = w
+    if cr is not None:
+        th["crit"] = cr
+    if not (th["crit"] < th["warn"] <= th["overload"]):
+        return _fiber_thresholds()
+    return th
+
+
 def fiber_status_for_rx(rx, th=None):
     """Kembalikan (status, severity, saran, butuh_peredam_db).
 
@@ -2151,7 +2200,7 @@ def fiber_status_for_rx(rx, th=None):
     except (ValueError, TypeError):
         return "unknown", None, "Data Rx tidak valid.", 0
     if rx > th["overload"]:
-        need = round(rx - th["target"], 1)
+        need = round(max(rx - th["target"], 0.0), 1)
         # bulatkan ke pilihan attenuator pasaran 5/10/15 dB
         if need <= 5:
             rec = "5dB"
@@ -2213,9 +2262,11 @@ def fiber_eval(rx, tx=None, th=None):
     if not t_sev:
         return r_status, r_sev, r_adv, need
     # kedua sisi alarm: gabung saran, severity tertinggi menang
-    advice = r_adv + (" " + t_adv if r_sev else t_adv)
+    advice = (r_adv + " " + t_adv).strip() if t_adv else r_adv
     if _SEV_RANK.get(t_sev, 0) > _SEV_RANK.get(r_sev or "", 0):
-        return "warning", t_sev, advice, need
+        # status mengikuti severity agar label & badge konsisten
+        st = "warning" if t_sev == "warning" else "critical"
+        return st, t_sev, advice, need
     return r_status, r_sev, advice, need
 
 
@@ -2275,19 +2326,124 @@ def get_ont_optical_power_snmp(olt_ip, community, ont_index, vendor="zte"):
     return None, None
 
 
+def _fiber_decide(o, th, prev, maint_map, timestamp):
+    """Satu keputusan evaluasi ONT. Kembalikan dict:
+    {status, severity, advice, need, muted, in_maint, tg_msg, log, mem}.
+    tg_msg None bila tak perlu kirim (belum berubah / mute / maintenance).
+    log = (event_type, host, message) atau None. mem = nilai memory baru.
+    """
+    status, severity, advice, need = fiber_eval(o.get("rx_power"), o.get("tx_power"), th)
+    muted = bool(o.get("mute_alarm"))
+    in_maint = (o.get("ont_sn") or "") in (maint_map or {})
+    rx, tx = o.get("rx_power"), o.get("tx_power")
+    label = o.get("customer") or o.get("ont_sn")
+    tx_txt = f"Tx: {tx} dBm" if tx is not None else "Tx: —"
+    tg_msg, log, mem = None, None, prev
+    if status in ("critical", "overload", "warning") and prev != status:
+        mem = status
+        if status == "overload":
+            tg_msg = (
+                f"🔊 *FIBER OVERLOAD — PERLU PEREDAM*\nONT: `{o['ont_sn']}` ({label})\n"
+                f"Rx: *{rx} dBm* (> {th['overload']} dBm) · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+            )
+        elif status == "critical":
+            tg_msg = (
+                f"🚨 *FIBER REDAMAN TINGGI*\nONT: `{o['ont_sn']}` ({label})\n"
+                f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+            )
+        else:
+            tg_msg = (
+                f"⚠️ *FIBER WARNING*\nONT: `{o['ont_sn']}` ({label})\n"
+                f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
+            )
+        if in_maint:
+            log = ("FIBER_MAINT", o["ont_sn"],
+                   f"Rx {rx} dBm Tx {tx} dalam maintenance — telegram disuppress")
+            tg_msg = None
+        elif muted:
+            log = ("FIBER_MUTED", o["ont_sn"], f"Rx {rx} dBm Tx {tx} — alarm dimute")
+            tg_msg = None
+        else:
+            log = ("FIBER_" + status.upper(), o["ont_sn"],
+                   f"Rx {rx} dBm Tx {tx} — {advice}")
+    elif status == "normal":
+        if prev not in (None, "normal"):
+            log = ("FIBER_NORMAL", o["ont_sn"], f"Rx kembali normal ({rx} dBm)")
+            if not muted and not in_maint:
+                tg_msg = (f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\n"
+                          f"Rx: {rx} dBm\nWaktu: {timestamp}")
+        mem = "normal"
+    elif status == "unknown":
+        mem = "unknown"
+    return {"status": status, "severity": severity, "advice": advice, "need": need,
+            "muted": muted, "in_maint": in_maint, "tg_msg": tg_msg, "log": log, "mem": mem}
+
+
+def _fiber_single_check(fid):
+    """Evaluasi 1 ONT secara sinkron (dipakai create/update agar alert cepat).
+
+    Update status/memory/log + kirim telegram langsung tanpa menunggu
+    scheduler, tanpa thread seluruh tabel (anti duplikat: memory di-set di sini
+    sehingga poll 120s berikutnya tidak mengirim ulang).
+    """
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,))
+            row = c.fetchone()
+            if not row:
+                return
+            o = dict(row)
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[FIBER] single check load gagal: {e}")
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(fid),
+                        get_active_maintenance_map(), timestamp)
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
+                      (dec["status"], timestamp, fid))
+            if dec["log"]:
+                try:
+                    _insert_system_log(c, dec["log"][0], dec["log"][1], dec["log"][2],
+                                       timestamp)
+                except Exception:
+                    pass
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] fiber single check gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    fiber_alarm_memory[fid] = dec["mem"]
+    if dec["tg_msg"]:
+        try:
+            send_telegram_alert(dec["tg_msg"])
+        except Exception as e:
+            print(f"[WARN] telegram fiber gagal: {e}")
 def poll_fiber_monitor():
     """Job scheduler: snapshot history semua ONT + cek threshold.
 
     ONT source=simulator nilainya digerakkan (random walk) agar grafik demo hidup.
     ONT source=manual/snmp nilainya tidak diubah, tapi tetap dicatat ke history
-    agar grafik tidak kosong.
+    agar grafik tidak kosong. ONT tanpa Rx & Tx dilewati (tak ada yang dicatat).
+    Telegram hanya saat status berubah (anti spam); disuppress saat mute /
+    maintenance (tetap dicatat di system_logs, memory di-set agar tak ada
+    ledakan notifikasi setelah maintenance selesai).
     """
     import random
     try:
         conn, c = get_db()
         try:
             try:
-                c.execute("SELECT id, ont_sn, customer, rx_power, tx_power, source FROM fiber_onts ORDER BY id ASC")
+                c.execute("SELECT * FROM fiber_onts ORDER BY id ASC")
             except sqlite3.OperationalError:
                 return
             rows = [dict(r) for r in c.fetchall()]
@@ -2299,7 +2455,7 @@ def poll_fiber_monitor():
     if not rows:
         return
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    th = _fiber_thresholds()
+    maint_map = get_active_maintenance_map()
     tg_queue = []
     with db_lock:
         conn, c = get_db()
@@ -2309,67 +2465,42 @@ def poll_fiber_monitor():
                 rx = o["rx_power"]
                 tx = o.get("tx_power")
                 # simulator: gerakkan Rx pelan agar grafik hidup untuk demo
+                # dibatasi zona normal agar data demo tidak memicu alarm palsu
                 if (o.get("source") or "manual") == "simulator":
                     base = rx if rx is not None else -19.0
                     try:
                         base = float(base)
                     except (ValueError, TypeError):
                         base = -19.0
-                    # clamp agar tetap realistis -30..-3
-                    rx = max(-30.0, min(-3.0, round(base + random.uniform(-0.6, 0.6), 2)))
+                    # clamp zona normal -22..-16 (di dalam -25..-8)
+                    rx = max(-22.0, min(-16.0, round(base + random.uniform(-0.6, 0.6), 2)))
                     c.execute("UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=? WHERE id=?",
                               (rx, timestamp, timestamp, oid))
-                # snapshot history tiap poll untuk SEMUA ont agar grafik terisi
+                    o["rx_power"] = rx
+                # lewati ONT tanpa data sama sekali (hemat DB, grafik tetap kosong wajar)
+                if rx is None and tx is None:
+                    continue
+                # snapshot history tiap poll agar grafik terisi
                 # (720 titik/hari/ONT @120s, dibersihkan retensi 30 hari)
                 try:
                     c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?, ?, ?, ?)",
                               (oid, rx, tx, timestamp))
                 except sqlite3.OperationalError:
                     pass
-                status, severity, advice, need_db = fiber_eval(rx, tx, th)
-                prev = fiber_alarm_memory.get(oid)
-                # kirim telegram hanya saat status berubah ke non-normal (anti spam)
-                if status in ("critical", "overload", "warning") and prev != status:
-                    fiber_alarm_memory[oid] = status
-                    label = o.get("customer") or o["ont_sn"]
-                    tx_txt = f"Tx: {tx} dBm" if tx is not None else "Tx: —"
-                    if status == "overload":
-                        tg_queue.append(
-                            f"🔊 *FIBER OVERLOAD — PERLU PEREDAM*\nONT: `{o['ont_sn']}` ({label})\n"
-                            f"Rx: *{rx} dBm* (> {th['overload']} dBm) · {tx_txt}\n{advice}\nWaktu: {timestamp}"
-                        )
-                    elif status == "critical":
-                        tg_queue.append(
-                            f"🚨 *FIBER REDAMAN TINGGI*\nONT: `{o['ont_sn']}` ({label})\n"
-                            f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
-                        )
-                    else:
-                        tg_queue.append(
-                            f"⚠️ *FIBER WARNING*\nONT: `{o['ont_sn']}` ({label})\n"
-                            f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
-                        )
+                o["rx_power"], o["tx_power"] = rx, tx
+                dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(oid),
+                                    maint_map, timestamp)
+                fiber_alarm_memory[oid] = dec["mem"]
+                if dec["log"]:
                     try:
-                        _insert_system_log(c, "FIBER_" + status.upper(), o["ont_sn"],
-                                           f"Rx {rx} dBm Tx {tx} — {advice}", timestamp)
+                        _insert_system_log(c, dec["log"][0], dec["log"][1], dec["log"][2],
+                                           timestamp)
                     except Exception:
                         pass
-                    c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
-                              (status, timestamp, oid))
-                elif status == "normal":
-                    if prev not in (None, "normal"):
-                        try:
-                            _insert_system_log(c, "FIBER_NORMAL", o["ont_sn"],
-                                               f"Rx kembali normal ({rx} dBm)", timestamp)
-                        except Exception:
-                            pass
-                        tg_queue.append(
-                            f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\nRx: {rx} dBm\nWaktu: {timestamp}"
-                        )
-                    fiber_alarm_memory[oid] = "normal"
-                    c.execute("UPDATE fiber_onts SET status='normal', last_checked=? WHERE id=?",
-                              (timestamp, oid))
-                elif status == "unknown":
-                    c.execute("UPDATE fiber_onts SET status='unknown' WHERE id=?", (oid,))
+                if dec["tg_msg"]:
+                    tg_queue.append(dec["tg_msg"])
+                c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
+                          (dec["status"], timestamp, oid))
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] poll_fiber gagal: {e}")
@@ -2386,11 +2517,101 @@ def poll_fiber_monitor():
             print(f"[WARN] telegram fiber gagal: {e}")
 
 
+def poll_fiber_snmp():
+    """Tarik Rx/Tx ONT dari OLT via SNMP (source=snmp).
+
+    Tiap ONT butuh olt_name (cocok ke tabel olts) + ont_index (sufiks OID).
+    Nilai mentah dibagi `div` OLT (umumnya 100 = satuan 0.01 dBm).
+    Status/alarm/history ditangani poll_fiber_monitor berikutnya.
+
+    Catatan: didefinisikan di sini (sebelum blok scheduler) agar referensi
+    scheduler.add_job saat import tak NameError.
+    """
+    try:
+        conn, c = get_db()
+        try:
+            try:
+                c.execute("SELECT * FROM olts ORDER BY id ASC")
+                olts = [dict(r) for r in c.fetchall()]
+            except sqlite3.OperationalError:
+                return
+            try:
+                c.execute("SELECT id, ont_sn, olt_name, ont_index, rx_power, tx_power"
+                          " FROM fiber_onts WHERE source='snmp'")
+                onts = [dict(r) for r in c.fetchall()]
+            except sqlite3.OperationalError:
+                return
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[FIBER-SNMP] load gagal: {e}")
+        return
+    if not olts or not onts:
+        return
+    by_name = {(o.get("name") or ""): o for o in olts}
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    updates = []
+    for t in onts:
+        idx = (t.get("ont_index") or "").strip()
+        olt = by_name.get((t.get("olt_name") or "").strip())
+        if not idx or not olt or not (olt.get("community") or "").strip() or not olt.get("ip"):
+            continue
+        oids, kinds = [], []
+        if _valid_oid(olt.get("rx_base") or ""):
+            oids.append(olt["rx_base"].strip().strip(".") + "." + idx)
+            kinds.append("rx")
+        if _valid_oid(olt.get("tx_base") or ""):
+            oids.append(olt["tx_base"].strip().strip(".") + "." + idx)
+            kinds.append("tx")
+        if not oids:
+            continue
+        try:
+            vals = _snmp_get(olt["ip"], olt["community"], oids, timeout=3.0)
+        except Exception as e:
+            print(f"[FIBER-SNMP] {t.get('ont_sn')}: {e}")
+            continue
+        try:
+            div = float(olt.get("div") or 100.0) or 100.0
+        except (ValueError, TypeError):
+            div = 100.0
+        new_rx, new_tx = t.get("rx_power"), t.get("tx_power")
+        for kind, v in zip(kinds, vals or []):
+            if v is None:
+                continue
+            try:
+                f = round(float(v) / div, 2)
+            except (ValueError, TypeError):
+                continue
+            if kind == "rx" and -40 <= f <= 10:
+                new_rx = f
+            elif kind == "tx" and -10 <= f <= 10:
+                new_tx = f
+        if new_rx != t.get("rx_power") or new_tx != t.get("tx_power"):
+            updates.append((new_rx, new_tx, timestamp, timestamp, t["id"]))
+    if not updates:
+        return
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.executemany("UPDATE fiber_onts SET rx_power=?, tx_power=?,"
+                          " last_checked=?, updated_at=? WHERE id=?", updates)
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] poll_fiber_snmp gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    print(f"[FIBER-SNMP] {len(updates)} ONT diperbarui dari OLT")
+
+
 init_db()
 _seed_admin_from_env()
 
 def rebuild_alarm_memory():
-    global status_memory, down_since, agent_status_memory, agent_offline_memory
+    global status_memory, down_since, agent_status_memory, agent_offline_memory, fiber_alarm_memory
     try:
         conn, c = get_db()
         try:
@@ -2458,6 +2679,15 @@ def rebuild_alarm_memory():
                 except Exception as e:
                     print(f"[REBUILD] agent {h} gagal: {e}")
                     continue
+
+            try:
+                c.execute("SELECT id, status FROM fiber_onts")
+                for r in c.fetchall():
+                    st = (r["status"] or "").strip().lower()
+                    if st in ("normal", "warning", "critical", "overload", "unknown"):
+                        fiber_alarm_memory[r["id"]] = st
+            except Exception as e:
+                print(f"[REBUILD] fiber gagal: {e}")
         finally:
             conn.close()
     except Exception as e:
@@ -2482,6 +2712,7 @@ if SCHEDULER_ENABLED:
     scheduler.add_job(func=poll_mikrotik_health,   trigger="interval", seconds=60, **_job_defaults)
     scheduler.add_job(func=poll_mikrotik_ifaces,    trigger="interval", seconds=60, **_job_defaults)
     scheduler.add_job(func=poll_fiber_monitor,     trigger="interval", seconds=120, **_job_defaults)
+    scheduler.add_job(func=poll_fiber_snmp,        trigger="interval", seconds=300, **_job_defaults)
     scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
     scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
     scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
@@ -2996,12 +3227,15 @@ def api_save_settings():
     # konsistensi: crit < warn <= overload, tx_min <= tx_max, temp warn < crit
     merged = {k: get_setting(k, d) for k, d in
               [("fiber_rx_overload", FIBER_RX_OVERLOAD), ("fiber_rx_warn", FIBER_RX_WARN),
-               ("fiber_rx_crit", FIBER_RX_CRIT), ("fiber_tx_min", FIBER_TX_MIN),
+               ("fiber_rx_crit", FIBER_RX_CRIT), ("fiber_rx_target", FIBER_RX_TARGET),
+               ("fiber_tx_min", FIBER_TX_MIN),
                ("fiber_tx_max", FIBER_TX_MAX), ("temp_threshold", 60.0),
                ("temp_crit", 75.0)]}
     merged.update({k: v for k, v in vals.items() if k in merged})
     if not (merged["fiber_rx_crit"] < merged["fiber_rx_warn"] <= merged["fiber_rx_overload"]):
         return jsonify({"error": "Harus: crit < warn <= overload (mis. -27 < -25 <= -8)"}), 400
+    if not (merged["fiber_rx_crit"] <= merged["fiber_rx_target"] <= merged["fiber_rx_overload"]):
+        return jsonify({"error": "fiber_rx_target harus di antara crit..overload (mis. -27..-8)"}), 400
     if not (merged["fiber_tx_min"] <= merged["fiber_tx_max"]):
         return jsonify({"error": "fiber_tx_min harus <= fiber_tx_max"}), 400
     if not (merged["temp_threshold"] < merged["temp_crit"]):
@@ -3495,8 +3729,16 @@ def api_maintenance_create():
     conn, c = get_db()
     try:
         c.execute("SELECT 1 FROM hosts WHERE ip=?", (host,))
-        if not c.fetchone():
-            return jsonify({"error": "Host belum terdaftar. Tambahkan dulu di dashboard."}), 404
+        is_host = bool(c.fetchone())
+        is_ont = False
+        if not is_host:
+            try:
+                c.execute("SELECT 1 FROM fiber_onts WHERE ont_sn=?", (host,))
+                is_ont = bool(c.fetchone())
+            except sqlite3.OperationalError:
+                pass
+        if not is_host and not is_ont:
+            return jsonify({"error": "Host/ONT SN belum terdaftar. Tambahkan dulu di dashboard."}), 404
         c.execute(
             "SELECT 1 FROM maintenance_windows WHERE host=? AND start_at <= ? AND end_at >= ? LIMIT 1",
             (host, _fmt_maint_time(end_dt), _fmt_maint_time(start_dt)),
@@ -3725,6 +3967,32 @@ def _validate_fiber(d):
             return None, "Tx power harus -10..10 dBm"
     except (ValueError, TypeError):
         return None, "Tx power harus angka dBm"
+    try:
+        rw = d.get("rx_warn", None)
+        rw = None if rw in (None, "") else float(rw)
+        if rw is not None and not -40 <= rw <= 10:
+            return None, "Override warn harus -40..10 dBm"
+    except (ValueError, TypeError):
+        return None, "Override warn harus angka dBm"
+    try:
+        rc = d.get("rx_crit", None)
+        rc = None if rc in (None, "") else float(rc)
+        if rc is not None and not -40 <= rc <= 10:
+            return None, "Override crit harus -40..10 dBm"
+    except (ValueError, TypeError):
+        return None, "Override crit harus angka dBm"
+    if rw is not None and rc is not None and not rc < rw:
+        return None, "Override harus: crit < warn"
+    mute = d.get("mute_alarm", 0)
+    if isinstance(mute, str):
+        mute = 1 if mute.strip().lower() in ("1", "true", "ya", "yes", "on") else 0
+    try:
+        mute = 1 if int(mute) else 0
+    except (ValueError, TypeError):
+        mute = 0
+    ont_index = str(d.get("ont_index") or "").strip()[:64]
+    if ont_index and not re.match(r"^[A-Za-z0-9_.\-:]{1,64}$", ont_index):
+        return None, "ONT index 1-64 karakter (huruf/angka/_-.:)"
     source = str(d.get("source") or "manual").strip().lower()[:16]
     if source not in ("manual", "simulator", "snmp"):
         source = "manual"
@@ -3733,7 +4001,9 @@ def _validate_fiber(d):
             "olt_name": str(d.get("olt_name") or "").strip()[:100],
             "pon_port": str(d.get("pon_port") or "").strip()[:50],
             "odp_name": str(d.get("odp_name") or "").strip()[:100],
-            "rx_power": rx, "tx_power": tx, "source": source}, None
+            "rx_power": rx, "tx_power": tx, "source": source,
+            "mute_alarm": mute, "rx_warn": rw, "rx_crit": rc,
+            "ont_index": ont_index}, None
 
 
 @app.route("/api/fiber", methods=["GET"])
@@ -3750,9 +4020,11 @@ def api_fiber_list():
             conn.close()
         except Exception:
             pass
+    th = _fiber_thresholds()
     out = []
     for o in rows:
-        status, severity, advice, need_db = fiber_eval(o.get("rx_power"), o.get("tx_power"))
+        status, severity, advice, need_db = fiber_eval(o.get("rx_power"), o.get("tx_power"),
+                                                       _th_for_ont(o))
         out.append({**o, "calc_status": status, "severity": severity,
                     "advice": advice, "need_attenuator_db": need_db})
     return jsonify(out)
@@ -3765,36 +4037,45 @@ def api_fiber_create():
     if err:
         return jsonify({"error": err}), 400
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"])
+    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"], _th_for_ont(vals))
+    has_measurement = vals["rx_power"] is not None or vals["tx_power"] is not None
     conn, c = get_db()
     try:
-        c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
-                   rx_power,tx_power,status,last_checked,source,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
-                   vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                   now if vals["rx_power"] is not None else None,
-                   vals["source"], now, now))
-        fid = c.lastrowid
-        if vals["rx_power"] is not None:
-            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                      (fid, vals["rx_power"], vals["tx_power"], now))
-        conn.commit()
-    except sqlite3.IntegrityError:
         try:
-            conn.rollback()
-        except Exception:
-            pass
+            c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                       rx_power,tx_power,status,last_checked,source,created_at,updated_at,
+                       mute_alarm,rx_warn,rx_crit,ont_index)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?)""",
+                      (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
+                       vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
+                       now if has_measurement else None,
+                       vals["source"], now, now,
+                       vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"]))
+            fid = c.lastrowid
+            if has_measurement:
+                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                          (fid, vals["rx_power"], vals["tx_power"], now))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": "ONT SN sudah terdaftar"}), 400
+    finally:
         try:
             conn.close()
         except Exception:
             pass
-        return jsonify({"error": "ONT SN sudah terdaftar"}), 400
-    conn.close()
     try:
         audit(current_user.username, "fiber.create", f"{vals['ont_sn']} rx={vals['rx_power']}")
     except Exception:
         pass
+    # evaluasi langsung 1 ONT: alert cepat + memory di-set (poll tak duplikat)
+    try:
+        _fiber_single_check(fid)
+    except Exception as e:
+        print(f"[FIBER] single check create gagal: {e}")
     return jsonify({"status": "success", "id": fid}), 201
 
 
@@ -3805,41 +4086,50 @@ def api_fiber_update(fid):
     if err:
         return jsonify({"error": err}), 400
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"])
+    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"], _th_for_ont(vals))
+    has_measurement = vals["rx_power"] is not None or vals["tx_power"] is not None
     conn, c = get_db()
-    c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
-    if not c.fetchone():
-        conn.close()
-        return jsonify({"error": "ONT tidak ditemukan"}), 404
     try:
-        c.execute("""UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
-                     rx_power=?, tx_power=?, status=?, last_checked=?, source=?, updated_at=?
-                     WHERE id=?""",
-                  (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
-                   vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                   now if vals["rx_power"] is not None else None,
-                   vals["source"], now, fid))
-        if vals["rx_power"] is not None:
-            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                      (fid, vals["rx_power"], vals["tx_power"], now))
-        conn.commit()
-    except sqlite3.IntegrityError:
+        c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
+        if not c.fetchone():
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
         try:
-            conn.rollback()
+            c.execute("""UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
+                         rx_power=?, tx_power=?, status=?, last_checked=?, source=?, updated_at=?,
+                         mute_alarm=?, rx_warn=?, rx_crit=?, ont_index=?
+                         WHERE id=?""",
+                      (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
+                       vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
+                       now if has_measurement else None,
+                       vals["source"], now,
+                       vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
+                       fid))
+            if has_measurement:
+                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                          (fid, vals["rx_power"], vals["tx_power"], now))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": "ONT SN dipakai data lain"}), 400
+    finally:
+        try:
+            conn.close()
         except Exception:
             pass
-        conn.close()
-        return jsonify({"error": "ONT SN dipakai data lain"}), 400
-    conn.close()
     try:
         audit(current_user.username, "fiber.update", f"id={fid} rx={vals['rx_power']}")
     except Exception:
         pass
-    # langsung evaluasi threshold agar alert Telegram cepat keluar
+    # evaluasi langsung 1 ONT: alert cepat + memory di-set (poll tak duplikat).
+    # (Jangan seed memory mentah di sini — transisi harus terdeteksi agar
+    # telegram perubahan status tetap terkirim.)
     try:
-        threading.Thread(target=poll_fiber_monitor, daemon=True).start()
-    except Exception:
-        pass
+        _fiber_single_check(fid)
+    except Exception as e:
+        print(f"[FIBER] single check update gagal: {e}")
     return jsonify({"status": "success"})
 
 
@@ -3883,12 +4173,20 @@ def api_fiber_history(fid):
         if not ont:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
         c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
-                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 2000",
                   (fid, f"-{hours} hours"))
         rows = c.fetchall()
     finally:
         conn.close()
-    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"] for r in rows]
+    # downsample agar chart tetap ringan (maks 500 titik)
+    if len(rows) > 500:
+        step = (len(rows) + 499) // 500
+        rows = rows[::step]
+    if hours <= 24:
+        labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"] for r in rows]
+    else:
+        # rentang >24 jam: sertakan tanggal agar titik beda hari tak bertabrakan
+        labels = [r["timestamp"][5:16] if r["timestamp"] and len(r["timestamp"]) >= 16 else r["timestamp"] for r in rows]
     return jsonify({"ont": dict(ont), "hours": hours, "labels": labels,
                     "rx": [r["rx_power"] for r in rows],
                     "tx": [r["tx_power"] for r in rows], "count": len(rows)})
@@ -3913,7 +4211,7 @@ def api_fiber_export():
     w.writerow(["ont_sn", "customer", "olt", "pon_port", "odp", "rx_dbm", "tx_dbm",
                 "status", "saran", "last_checked"])
     for o in rows:
-        status, _, advice, _need = fiber_eval(o.get("rx_power"), o.get("tx_power"))
+        status, _, advice, _need = fiber_eval(o.get("rx_power"), o.get("tx_power"), _th_for_ont(o))
         w.writerow([_csv_safe(o.get("ont_sn")), _csv_safe(o.get("customer")),
                     _csv_safe(o.get("olt_name")), _csv_safe(o.get("pon_port")),
                     _csv_safe(o.get("odp_name")), o.get("rx_power"), o.get("tx_power"),
@@ -3924,6 +4222,84 @@ def api_fiber_export():
         pass
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=fiber_redaman.csv"})
+
+
+@app.route("/api/fiber/import", methods=["POST"])
+@api_login_required
+def api_fiber_import():
+    """Import massal ONT dari CSV (hindari input satu-satu).
+
+    Kolom: ont_sn*,customer,olt_name,pon_port,odp_name,rx_power,tx_power,
+    source,mute_alarm,rx_warn,rx_crit,ont_index (*wajib).
+    Duplikat SN dilewati (skipped). Memory alarm di-seed diam-diam agar
+    import massal tak membanjiri Telegram; alarm tetap tampil di triggers
+    dan telegram dikirim saat ada perubahan berikutnya.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "File CSV wajib diunggah (field 'file')"}), 400
+    try:
+        raw = request.files["file"].read(1000000 + 1)
+    except Exception:
+        return jsonify({"error": "Gagal membaca file"}), 400
+    if not raw or len(raw) > 1000000:
+        return jsonify({"error": "File kosong atau melebihi 1 MB"}), 400
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return jsonify({"error": "File harus CSV UTF-8"}), 400
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        if not reader.fieldnames or "ont_sn" not in [h.strip() for h in reader.fieldnames]:
+            return jsonify({"error": "Header CSV harus memuat kolom 'ont_sn'"}), 400
+        rows = [r for _, r in zip(range(501), reader)]
+    except Exception:
+        return jsonify({"error": "Format CSV tidak valid"}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    created, skipped, errors = 0, 0, []
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for i, r in enumerate(rows, start=2):
+                vals, err = _validate_fiber({k.strip(): (v.strip() if isinstance(v, str) else v)
+                                             for k, v in (r or {}).items() if k})
+                if err:
+                    errors.append(f"baris {i}: {err}")
+                    continue
+                try:
+                    c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (vals["ont_sn"],))
+                    if c.fetchone():
+                        skipped += 1
+                        continue
+                    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"],
+                                                 _th_for_ont(vals))
+                    c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                               rx_power,tx_power,status,last_checked,source,created_at,updated_at,
+                               mute_alarm,rx_warn,rx_crit,ont_index)
+                               VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?)""",
+                              (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
+                               vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
+                               now if (vals["rx_power"] is not None or vals["tx_power"] is not None) else None,
+                               vals["source"], now, now,
+                               vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"]))
+                    fid = c.lastrowid
+                    if vals["rx_power"] is not None or vals["tx_power"] is not None:
+                        c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                                  (fid, vals["rx_power"], vals["tx_power"], now))
+                    fiber_alarm_memory[fid] = status
+                    created += 1
+                except sqlite3.IntegrityError:
+                    skipped += 1
+                except Exception as e:
+                    errors.append(f"baris {i}: {e}")
+            _commit_with_retry(conn)
+        finally:
+            conn.close()
+    try:
+        audit(current_user.username, "fiber.import", f"created={created} skipped={skipped}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "created": created, "skipped": skipped,
+                    "errors": errors[:20]})
 
 
 # ---------------- ODP (agregasi ONT per ODP) ----------------
@@ -3953,7 +4329,7 @@ def _odp_aggregation():
         except sqlite3.OperationalError:
             return []
         try:
-            c.execute("SELECT odp_name, rx_power, tx_power FROM fiber_onts")
+            c.execute("SELECT odp_name, rx_power, tx_power, rx_warn, rx_crit FROM fiber_onts")
             onts = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
             onts = []
@@ -3970,7 +4346,7 @@ def _odp_aggregation():
     for t in onts:
         # cocokkan ODP tanpa peduli kapital agar salah ketik tidak yatim
         key = known.get((t.get("odp_name") or "").strip().lower(), "")
-        status, _, _, _ = fiber_eval(t.get("rx_power"), t.get("tx_power"))
+        status, _, _, _ = fiber_eval(t.get("rx_power"), t.get("tx_power"), _th_for_ont(t))
         b = buckets[key]
         b["total"] += 1
         b[status if status in b else "unknown"] += 1
@@ -4005,6 +4381,10 @@ def api_odp_create():
         return jsonify({"error": err}), 400
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn, c = get_db()
+    c.execute("SELECT id FROM odps WHERE name COLLATE NOCASE = ?", (vals["name"],))
+    if c.fetchone():
+        conn.close()
+        return jsonify({"error": "Nama ODP sudah terdaftar"}), 400
     try:
         c.execute("INSERT INTO odps (name, olt_name, capacity, location, created_at, updated_at)"
                   " VALUES (?,?,?,?,?,?)",
@@ -4040,13 +4420,19 @@ def api_odp_update(oid):
     if not old:
         conn.close()
         return jsonify({"error": "ODP tidak ditemukan"}), 404
+    c.execute("SELECT id FROM odps WHERE name COLLATE NOCASE = ? AND id != ?",
+              (vals["name"], oid))
+    if c.fetchone():
+        conn.close()
+        return jsonify({"error": "Nama ODP dipakai data lain"}), 400
     try:
         c.execute("UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, updated_at=? WHERE id=?",
                   (vals["name"], vals["olt_name"], vals["capacity"],
                    vals["location"], now, oid))
-        # ONT yang menunjuk nama lama ikut pindah
-        if old["name"] != vals["name"]:
-            c.execute("UPDATE fiber_onts SET odp_name=? WHERE odp_name=?",
+        # ONT yang menunjuk nama lama ikut pindah (case-insensitive,
+        # selaras dengan agregasi yang mencocokkan tanpa peduli kapital)
+        if old["name"].lower() != vals["name"].lower():
+            c.execute("UPDATE fiber_onts SET odp_name=? WHERE odp_name COLLATE NOCASE = ?",
                       (vals["name"], old["name"]))
         conn.commit()
     except sqlite3.IntegrityError:
@@ -4074,12 +4460,167 @@ def api_odp_delete(oid):
         conn.close()
         return jsonify({"error": "ODP tidak ditemukan"}), 404
     c.execute("DELETE FROM odps WHERE id=?", (oid,))
-    # ONT yatim: kosongkan referensi (data ONT tetap aman)
-    c.execute("UPDATE fiber_onts SET odp_name='' WHERE odp_name=?", (row["name"],))
+    # ONT yatim: kosongkan referensi (data ONT tetap aman, case-insensitive)
+    c.execute("UPDATE fiber_onts SET odp_name='' WHERE odp_name COLLATE NOCASE = ?", (row["name"],))
     conn.commit()
     conn.close()
     try:
         audit(current_user.username, "odp.delete", f"id={oid} {row['name']}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+# ---------------- OLT (sumber SNMP untuk Rx/Tx ONT) ----------------
+def _validate_olt(d):
+    name = (d.get("name") or "").strip()[:100]
+    if len(name) < 2 or not re.match(r"^[A-Za-z0-9 _.\-/]{2,100}$", name):
+        return None, "Nama OLT 2-100 karakter (huruf/angka/spasi/_-./)"
+    ip = str(d.get("ip") or "").strip()[:64]
+    if ip:
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return None, "IP OLT tidak valid"
+    community = str(d.get("community") or "").strip()[:128]
+    vendor = str(d.get("vendor") or "generic").strip().lower()[:16]
+    if vendor not in ("zte", "huawei", "generic"):
+        vendor = "generic"
+    rx_base = str(d.get("rx_base") or "").strip().strip(".")[:128]
+    tx_base = str(d.get("tx_base") or "").strip().strip(".")[:128]
+    if rx_base and not _valid_oid(rx_base):
+        return None, "rx_base bukan OID valid"
+    if tx_base and not _valid_oid(tx_base):
+        return None, "tx_base bukan OID valid"
+    try:
+        div = float(d.get("div", 100))
+    except (ValueError, TypeError):
+        return None, "div harus angka 1-10000"
+    if not 1 <= div <= 10000:
+        return None, "div harus 1-10000"
+    return {"name": name, "ip": ip, "community": community, "vendor": vendor,
+            "rx_base": rx_base, "tx_base": tx_base, "div": div}, None
+
+
+@app.route("/api/olts", methods=["GET"])
+@api_login_required
+def api_olt_list():
+    conn, c = get_db()
+    try:
+        try:
+            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div FROM olts ORDER BY name ASC")
+            rows = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            rows = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return jsonify(rows)
+
+
+@app.route("/api/olts", methods=["POST"])
+@api_login_required
+def api_olt_create():
+    vals, err = _validate_olt(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM olts WHERE name COLLATE NOCASE = ?", (vals["name"],))
+        if c.fetchone():
+            return jsonify({"error": "Nama OLT sudah terdaftar"}), 400
+        try:
+            c.execute("INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div, created_at, updated_at)"
+                      " VALUES (?,?,?,?,?,?,?,?,?)",
+                      (vals["name"], vals["ip"], vals["community"], vals["vendor"],
+                       vals["rx_base"], vals["tx_base"], vals["div"], now, now))
+            nid = c.lastrowid
+            conn.commit()
+        except sqlite3.IntegrityError:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": "Nama OLT sudah terdaftar"}), 400
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
+        audit(current_user.username, "olt.create", vals["name"])
+    except Exception:
+        pass
+    return jsonify({"status": "success", "id": nid}), 201
+
+
+@app.route("/api/olts/<int:oid>", methods=["PUT"])
+@api_login_required
+def api_olt_update(oid):
+    vals, err = _validate_olt(request.get_json(silent=True) or {})
+    if err:
+        return jsonify({"error": err}), 400
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name, community FROM olts WHERE id=?", (oid,))
+        old = c.fetchone()
+        if not old:
+            return jsonify({"error": "OLT tidak ditemukan"}), 404
+        # community tak pernah dikirim balik ke UI; kosong = pertahankan lama
+        if not vals["community"] and old["community"]:
+            vals["community"] = old["community"]
+        c.execute("SELECT id FROM olts WHERE name COLLATE NOCASE = ? AND id != ?",
+                  (vals["name"], oid))
+        if c.fetchone():
+            return jsonify({"error": "Nama OLT dipakai data lain"}), 400
+        try:
+            c.execute("UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?, div=?, updated_at=? WHERE id=?",
+                      (vals["name"], vals["ip"], vals["community"], vals["vendor"],
+                       vals["rx_base"], vals["tx_base"], vals["div"], now, oid))
+            if old["name"].lower() != vals["name"].lower():
+                c.execute("UPDATE fiber_onts SET olt_name=? WHERE olt_name COLLATE NOCASE = ?",
+                          (vals["name"], old["name"]))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": "Nama OLT dipakai data lain"}), 400
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
+        audit(current_user.username, "olt.update", f"id={oid} {vals['name']}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/olts/<int:oid>", methods=["DELETE"])
+@api_login_required
+def api_olt_delete(oid):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name FROM olts WHERE id=?", (oid,))
+        row = c.fetchone()
+        if not row:
+            return jsonify({"error": "OLT tidak ditemukan"}), 404
+        c.execute("DELETE FROM olts WHERE id=?", (oid,))
+        conn.commit()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
+        audit(current_user.username, "olt.delete", f"id={oid} {row['name']}")
     except Exception:
         pass
     return jsonify({"status": "success"})
@@ -4750,31 +5291,44 @@ def get_triggers():
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT id, ont_sn, customer, olt_name, odp_name, rx_power, tx_power FROM fiber_onts")
-            for r in c.fetchall():
-                d = dict(r)
-                try:
-                    rx = None if d.get("rx_power") is None else float(d.get("rx_power"))
-                except (ValueError, TypeError):
-                    continue
-                try:
-                    tx = None if d.get("tx_power") is None else float(d.get("tx_power"))
-                except (ValueError, TypeError):
-                    tx = None
-                if rx is None and tx is None:
-                    continue
-                status, severity, advice, _need = fiber_eval(rx, tx)
-                if severity:
-                    label = d.get("customer") or d.get("ont_sn")
-                    loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
-                    alarms.append({
-                        "host": f"{d.get('ont_sn')} ({label})",
-                        "severity": severity,
-                        "message": f"Fiber {status.upper()}: Rx {rx} dBm Tx {tx} {('[' + loc + ']') if loc else ''} — {advice}",
-                        "category": "fiber",
-                    })
+            c.execute("SELECT * FROM fiber_onts")
+            rows = [dict(r) for r in c.fetchall()]
         finally:
             conn.close()
+        maint_map = get_active_maintenance_map()
+        for d in rows:
+            try:
+                rx = None if d.get("rx_power") is None else float(d.get("rx_power"))
+            except (ValueError, TypeError):
+                continue
+            try:
+                tx = None if d.get("tx_power") is None else float(d.get("tx_power"))
+            except (ValueError, TypeError):
+                tx = None
+            if rx is None and tx is None:
+                continue
+            if d.get("ont_sn") in maint_map:
+                alarms.append({
+                    "host": f"{d.get('ont_sn')}",
+                    "severity": "warning",
+                    "message": f"Fiber dalam maintenance — alarm disuppress{(' - ' + (maint_map[d['ont_sn']].get('reason') or '')) if maint_map[d['ont_sn']].get('reason') else ''}",
+                    "category": "maintenance",
+                })
+                continue
+            if d.get("mute_alarm"):
+                continue
+            status, severity, advice, _need = fiber_eval(rx, tx, _th_for_ont(d))
+            if severity:
+                label = d.get("customer") or d.get("ont_sn")
+                loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
+                rx_txt = f"{rx} dBm" if rx is not None else "—"
+                tx_txt = f"{tx} dBm" if tx is not None else "—"
+                alarms.append({
+                    "host": f"{d.get('ont_sn')} ({label})",
+                    "severity": severity,
+                    "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
+                    "category": "fiber",
+                })
     except Exception as e:
         print(f"[TRIGGERS] fiber gagal: {e}")
 
@@ -4790,43 +5344,42 @@ def get_triggers():
                 c2 = conn.execute("SELECT cpu, mem_used, storage_used, temp_c FROM device_health"
                                   " WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
                 r = c2.fetchone()
-                if not r:
-                    continue
-                status, severity, advice = _mt_evaluate(
-                    ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
-                if severity:
-                    alarms.append({
-                        "host": f"{label} ({ip})",
-                        "severity": severity,
-                        "message": f"MikroTik {status.upper()}: {advice}",
-                        "category": "mikrotik",
-                    })
-            # port down + reboot baru
-            try:
-                c.execute("SELECT if_index, name FROM snmp_interfaces"
-                          " WHERE host=? AND monitor=1 AND oper=2", (ip,))
-                for prow in c.fetchall():
-                    alarms.append({
-                        "host": f"{label} ({ip})",
-                        "severity": "high",
-                        "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
-                        "category": "mikrotik",
-                    })
-            except sqlite3.OperationalError:
-                pass
-            try:
-                c.execute("SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
-                          (ip,))
-                urow = c.fetchone()
-                if urow and urow["uptime_s"] is not None and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S:
-                    alarms.append({
-                        "host": f"{label} ({ip})",
-                        "severity": "warning",
-                        "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
-                        "category": "mikrotik",
-                    })
-            except sqlite3.OperationalError:
-                pass
+                if r:
+                    status, severity, advice = _mt_evaluate(
+                        ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                    if severity:
+                        alarms.append({
+                            "host": f"{label} ({ip})",
+                            "severity": severity,
+                            "message": f"MikroTik {status.upper()}: {advice}",
+                            "category": "mikrotik",
+                        })
+                # port down + reboot baru (per host, tak tergantung device_health)
+                try:
+                    c.execute("SELECT if_index, name FROM snmp_interfaces"
+                              " WHERE host=? AND monitor=1 AND oper=2", (ip,))
+                    for prow in c.fetchall():
+                        alarms.append({
+                            "host": f"{label} ({ip})",
+                            "severity": "high",
+                            "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
+                            "category": "mikrotik",
+                        })
+                except sqlite3.OperationalError:
+                    pass
+                try:
+                    c.execute("SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
+                              (ip,))
+                    urow = c.fetchone()
+                    if urow and urow["uptime_s"] is not None and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S:
+                        alarms.append({
+                            "host": f"{label} ({ip})",
+                            "severity": "warning",
+                            "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
+                            "category": "mikrotik",
+                        })
+                except sqlite3.OperationalError:
+                    pass
         finally:
             conn.close()
     except Exception as e:
