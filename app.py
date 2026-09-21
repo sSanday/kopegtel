@@ -4919,10 +4919,12 @@ def api_fiber_delete(fid):
         pass
     conn.commit()
     conn.close()
-    try:
-        fiber_alarm_memory.pop(fid, None)
-    except Exception:
-        pass
+    for _mem in (fiber_alarm_memory, fiber_degrade_memory,
+                 fiber_flap_memory, fiber_degrade_tg):
+        try:
+            _mem.pop(fid, None)
+        except Exception:
+            pass
     if not deleted:
         return jsonify({"error": "ONT tidak ditemukan"}), 404
     try:
@@ -5810,11 +5812,16 @@ def api_olt_test(oid):
 
 
 def _discover_sn(olt_name, suffix):
-    """SN otomatis hasil discover: sanitasi + batasi 64 karakter."""
+    """SN otomatis hasil discover: sanitasi + batasi 64 karakter.
+
+    Ekor (sufiks index, bagian yang unik) dipertahankan; bila masih
+    kepanjangan, pangkas dari kiri.
+    """
     base = re.sub(r"[^A-Za-z0-9_.:\-]", "-", (olt_name or "OLT").strip()) or "OLT"
     suffix = re.sub(r"[^A-Za-z0-9_.:\-]", "-", (suffix or "").strip()) or "0"
     room = 64 - len(suffix) - 1
-    return f"{base[:max(1, room)]}-{suffix}"
+    sn = f"{base[:max(1, room)]}-{suffix}"
+    return sn if len(sn) <= 64 else sn[-64:]
 
 
 @app.route("/api/olts/<int:oid>/discover", methods=["POST"])
