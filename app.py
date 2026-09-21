@@ -555,10 +555,22 @@ def init_db():
       olt_name TEXT DEFAULT '',
       capacity INTEGER DEFAULT 8,
       location TEXT DEFAULT '',
+      lat REAL,
+      lon REAL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )''')
     c.execute("CREATE INDEX IF NOT EXISTS idx_odp_name ON odps(name)")
+    for _col, _ddl in (
+        ("odp_lat", "ALTER TABLE odps ADD COLUMN lat REAL"),
+        ("odp_lon", "ALTER TABLE odps ADD COLUMN lon REAL"),
+        ("olt_lat", "ALTER TABLE olts ADD COLUMN lat REAL"),
+        ("olt_lon", "ALTER TABLE olts ADD COLUMN lon REAL"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
     try:
         c.execute("ALTER TABLE fiber_onts ADD COLUMN source TEXT DEFAULT 'manual'")
     except sqlite3.OperationalError:
@@ -596,6 +608,8 @@ def init_db():
       div REAL NOT NULL DEFAULT 100.0,
       scale REAL NOT NULL DEFAULT 1.0,
       offset REAL NOT NULL DEFAULT 0.0,
+      lat REAL,
+      lon REAL,
       last_tested TEXT DEFAULT '',
       last_test_ok INTEGER NOT NULL DEFAULT 0,
       last_test_msg TEXT DEFAULT '',
@@ -4653,6 +4667,12 @@ def fiber_page():
     return render_template("fiber.html")
 
 
+@app.route("/topo")
+@login_required
+def topo_page():
+    return render_template("topo.html")
+
+
 def _validate_fiber(d):
     ont_sn = (d.get("ont_sn") or "").strip()[:64]
     if not ont_sn or not re.match(r"^[A-Za-z0-9_.:\-]{3,64}$", ont_sn):
@@ -5374,6 +5394,24 @@ def api_fiber_import():
 
 
 # ---------------- ODP (agregasi ONT per ODP) ----------------
+def _parse_latlon(d):
+    """Koordinat opsional: (lat, lon) atau (None, None). Kembalikan
+    (lat, lon, err); pasangan tak lengkap / di luar rentang = err."""
+    lat_raw, lon_raw = d.get("lat", None), d.get("lon", None)
+    if lat_raw in (None, "") and lon_raw in (None, ""):
+        return None, None, None
+    try:
+        lat = float(lat_raw)
+        lon = float(lon_raw)
+    except (ValueError, TypeError):
+        return None, None, "lat/lon harus angka desimal"
+    if not -90 <= lat <= 90:
+        return None, None, "lat harus -90..90"
+    if not -180 <= lon <= 180:
+        return None, None, "lon harus -180..180"
+    return round(lat, 6), round(lon, 6), None
+
+
 def _validate_odp(d):
     name = (d.get("name") or "").strip()[:100]
     if len(name) < 2 or not re.match(r"^[A-Za-z0-9 _.\-/]{2,100}$", name):
@@ -5384,10 +5422,14 @@ def _validate_odp(d):
         return None, "Kapasitas harus angka 1-128"
     if not 1 <= capacity <= 128:
         return None, "Kapasitas harus 1-128 port"
+    lat, lon, err = _parse_latlon(d)
+    if err:
+        return None, err
     return {"name": name,
             "olt_name": str(d.get("olt_name") or "").strip()[:100],
             "capacity": capacity,
-            "location": str(d.get("location") or "").strip()[:100]}, None
+            "location": str(d.get("location") or "").strip()[:100],
+            "lat": lat, "lon": lon}, None
 
 
 def _odp_aggregation():
@@ -5459,10 +5501,10 @@ def api_odp_create():
         conn.close()
         return jsonify({"error": "Nama ODP sudah terdaftar"}), 400
     try:
-        c.execute("INSERT INTO odps (name, olt_name, capacity, location, created_at, updated_at)"
-                  " VALUES (?,?,?,?,?,?)",
+        c.execute("INSERT INTO odps (name, olt_name, capacity, location, lat, lon, created_at, updated_at)"
+                  " VALUES (?,?,?,?,?,?,?,?)",
                   (vals["name"], vals["olt_name"], vals["capacity"],
-                   vals["location"], now, now))
+                   vals["location"], vals["lat"], vals["lon"], now, now))
         nid = c.lastrowid
         conn.commit()
     except sqlite3.IntegrityError:
@@ -5499,9 +5541,9 @@ def api_odp_update(oid):
         conn.close()
         return jsonify({"error": "Nama ODP dipakai data lain"}), 400
     try:
-        c.execute("UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, updated_at=? WHERE id=?",
+        c.execute("UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, lat=?, lon=?, updated_at=? WHERE id=?",
                   (vals["name"], vals["olt_name"], vals["capacity"],
-                   vals["location"], now, oid))
+                   vals["location"], vals["lat"], vals["lon"], now, oid))
         # ONT yang menunjuk nama lama ikut pindah (case-insensitive,
         # selaras dengan agregasi yang mencocokkan tanpa peduli kapital)
         if old["name"].lower() != vals["name"].lower():
@@ -5642,9 +5684,12 @@ def _validate_olt(d):
         return None, "offset harus angka -10000..10000"
     if not -10000 <= offset <= 10000:
         return None, "offset harus -10000..10000 dB"
+    lat, lon, err = _parse_latlon(d)
+    if err:
+        return None, err
     return {"name": name, "ip": ip, "community": community, "vendor": vendor,
             "rx_base": rx_base, "tx_base": tx_base, "div": div,
-            "scale": scale, "offset": offset}, None
+            "scale": scale, "offset": offset, "lat": lat, "lon": lon}, None
 
 
 def _apply_olt_preset(vals, raw_data):
@@ -5677,7 +5722,7 @@ def api_olt_list():
     conn, c = get_db()
     try:
         try:
-            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div, scale, offset,"
+            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div, scale, offset, lat, lon,"
                       " last_tested, last_test_ok, last_test_msg FROM olts ORDER BY name ASC")
             rows = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
@@ -5706,11 +5751,11 @@ def api_olt_create():
             return jsonify({"error": "Nama OLT sudah terdaftar"}), 400
         try:
             c.execute("INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div,"
-                      " scale, offset, created_at, updated_at)"
-                      " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                      " scale, offset, lat, lon, created_at, updated_at)"
+                      " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                       (vals["name"], vals["ip"], vals["community"], vals["vendor"],
                        vals["rx_base"], vals["tx_base"], vals["div"],
-                       vals["scale"], vals["offset"], now, now))
+                       vals["scale"], vals["offset"], vals["lat"], vals["lon"], now, now))
             nid = c.lastrowid
             conn.commit()
         except sqlite3.IntegrityError:
@@ -5753,10 +5798,10 @@ def api_olt_update(oid):
             return jsonify({"error": "Nama OLT dipakai data lain"}), 400
         try:
             c.execute("UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?,"
-                      " div=?, scale=?, offset=?, updated_at=? WHERE id=?",
+                      " div=?, scale=?, offset=?, lat=?, lon=?, updated_at=? WHERE id=?",
                       (vals["name"], vals["ip"], vals["community"], vals["vendor"],
                        vals["rx_base"], vals["tx_base"], vals["div"],
-                       vals["scale"], vals["offset"], now, oid))
+                       vals["scale"], vals["offset"], vals["lat"], vals["lon"], now, oid))
             if old["name"].lower() != vals["name"].lower():
                 c.execute("UPDATE fiber_onts SET olt_name=? WHERE olt_name COLLATE NOCASE = ?",
                           (vals["name"], old["name"]))
@@ -6059,6 +6104,141 @@ def api_olt_discover(oid):
     return jsonify({"status": "success", "olt": olt["name"], "walked": len(suffixes),
                     "created": created, "updated": updated,
                     "skipped_manual": skipped_manual, "skipped": skipped})
+
+
+_TOPO_RANK = {"critical": 5, "overload": 4, "warning": 3, "stale": 2,
+              "unknown": 1, "normal": 0}
+
+
+def _topo_counts(members):
+    """(counts, worst) untuk sekelompok ONT yang sudah punya _status."""
+    counts = {"total": len(members), "normal": 0, "warning": 0, "critical": 0,
+              "overload": 0, "stale": 0, "unknown": 0}
+    worst, rank = "normal", -1
+    for m in members:
+        st = m.get("_status", "unknown")
+        if st in counts:
+            counts[st] += 1
+        if _TOPO_RANK.get(st, 0) > rank:
+            worst, rank = st, _TOPO_RANK.get(st, 0)
+    return counts, (worst if members else "normal")
+
+
+@app.route("/api/fiber/topology", methods=["GET"])
+@api_login_required
+def api_fiber_topology():
+    """Pohon OLT -> ODP -> ONT + koordinat untuk peta.
+
+    Pengelompokan case-insensitive mengikuti agregasi ODP; nama liar
+    (tak terdaftar) dan bucket tanpa ODP/OLT tetap ditampilkan.
+    Field sensitif OLT (community) tak pernah dikirim.
+    """
+    conn, c = get_db()
+    try:
+        try:
+            c.execute("SELECT * FROM olts ORDER BY name ASC")
+            olts = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            olts = []
+        try:
+            c.execute("SELECT * FROM odps ORDER BY name ASC")
+            odps = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            odps = []
+        try:
+            c.execute("SELECT * FROM fiber_onts ORDER BY id ASC")
+            onts = [dict(r) for r in c.fetchall()]
+        except sqlite3.OperationalError:
+            onts = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    for o in onts:
+        try:
+            o["_status"] = _fiber_row_status(o)[0]
+        except Exception:
+            o["_status"] = "unknown"
+    olt_by_key = {(o.get("name") or "").strip().lower(): o for o in olts}
+    odp_groups = {}
+    for d in odps:
+        raw_olt = (d.get("olt_name") or "").strip()
+        canon = olt_by_key.get(raw_olt.lower())
+        name = (canon.get("name") if canon else raw_olt) or ""
+        odp_groups.setdefault(name.strip().lower(), {"display": name, "items": []})["items"].append(d)
+    ont_groups = {}
+    for o in onts:
+        raw_olt = (o.get("olt_name") or "").strip()
+        canon = olt_by_key.get(raw_olt.lower())
+        dkey = ((canon.get("name") if canon else raw_olt) or "").strip().lower()
+        pkey = (o.get("odp_name") or "").strip().lower()
+        ont_groups.setdefault((dkey, pkey), []).append(o)
+
+    def _ont_node(o):
+        return {"id": o["id"], "ont_sn": o.get("ont_sn"), "customer": o.get("customer"),
+                "pon_port": o.get("pon_port"), "rx_power": o.get("rx_power"),
+                "tx_power": o.get("tx_power"), "status": o.get("_status", "unknown")}
+
+    def _sorted_onts(items):
+        return sorted((_ont_node(o) for o in items),
+                      key=lambda x: (-_TOPO_RANK.get(x["status"], 0),
+                                     x["rx_power"] if x["rx_power"] is not None else 99,
+                                     x["id"]))
+
+    out = []
+    reg_keys = [(o.get("name") or "").strip().lower() for o in olts]
+    wild_keys = sorted({k for k in list(odp_groups) + [dk for dk, _ in ont_groups]
+                        if k not in reg_keys})
+    for dkey in reg_keys + wild_keys:
+        canon = olt_by_key.get(dkey)
+        display = (canon.get("name") if canon
+                   else odp_groups.get(dkey, {}).get("display") or "")
+        if not display:
+            display = "(tanpa OLT)"
+        olt_info = ({"id": canon["id"], "name": canon.get("name"), "ip": canon.get("ip"),
+                     "vendor": canon.get("vendor"), "lat": canon.get("lat"),
+                     "lon": canon.get("lon")} if canon else None)
+        node_odps, all_onts = [], []
+        for d in sorted(odp_groups.get(dkey, {}).get("items", []),
+                        key=lambda x: (x.get("name") or "").lower()):
+            members = ont_groups.pop((dkey, (d.get("name") or "").strip().lower()), [])
+            all_onts.extend(members)
+            counts, worst = _topo_counts(members)
+            cap = d.get("capacity") or 0
+            node_odps.append({
+                "name": d.get("name"), "registered": True,
+                "odp": {"id": d["id"], "name": d.get("name"), "olt_name": d.get("olt_name"),
+                        "capacity": cap, "location": d.get("location"),
+                        "lat": d.get("lat"), "lon": d.get("lon")},
+                "counts": counts, "worst": worst,
+                "fill_pct": round(len(members) / cap * 100, 1) if cap else 0,
+                "onts": _sorted_onts(members),
+            })
+        leftovers = sorted(
+            [(pk, ont_groups.pop((dkey, pk))) for (dk, pk) in
+             [k for k in list(ont_groups) if k[0] == dkey]],
+            key=lambda t: (t[0] != "", t[0]),
+        )
+        for pkey, members in leftovers:
+            all_onts.extend(members)
+            label = next((o.get("odp_name") or "" for o in members
+                          if (o.get("odp_name") or "").strip()), "")
+            counts, worst = _topo_counts(members)
+            node_odps.append({
+                "name": label.strip() or "(tanpa ODP)", "registered": False,
+                "odp": {"id": 0, "name": label.strip(),
+                        "olt_name": display if display != "(tanpa OLT)" else "",
+                        "capacity": 0, "location": "", "lat": None, "lon": None},
+                "counts": counts, "worst": worst, "fill_pct": 0,
+                "onts": _sorted_onts(members),
+            })
+        if not node_odps and not canon:
+            continue
+        counts, worst = _topo_counts(all_onts)
+        out.append({"name": display, "registered": bool(canon), "olt": olt_info,
+                    "counts": counts, "worst": worst, "odps": node_odps})
+    return jsonify({"olts": out})
 
 
 @app.route("/api/fiber/link-budget", methods=["POST"])

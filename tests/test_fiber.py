@@ -1992,5 +1992,116 @@ class FiberDegradeNotifyTest(unittest.TestCase):
             m.fiber_degrade_tg.pop(fid, None)
 
 
+ODP_T = "TEST-ODP-TOPO"
+OLT_T = "TEST-OLT-TOPO"
+SN_T1 = "TEST-FIBER-TOPO-1"
+SN_T2 = "TEST-FIBER-TOPO-2"
+SN_T3 = "TEST-FIBER-TOPO-3"
+
+
+def _cleanup_topo(client):
+    for sn in (SN_T1, SN_T2, SN_T3):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                    m.fiber_degrade_memory.pop(row["id"], None)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    try:
+        conn, c = m.get_db()
+        try:
+            c.execute("DELETE FROM odps WHERE name=?", (ODP_T,))
+            c.execute("DELETE FROM olts WHERE name=?", (OLT_T,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+class FiberTopoTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_topo(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_topo(cls.client)
+
+    def _ensure_odp_olt(self):
+        r = self.client.post("/api/odps",
+                             json={"name": ODP_T, "olt_name": OLT_T,
+                                   "lat": -6.234567, "lon": 106.789012},
+                             headers=JSON_HDR)
+        self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_T, "vendor": "generic",
+                                   "lat": -6.2, "lon": 106.8},
+                             headers=JSON_HDR)
+        self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
+
+    def test_koordinat_divalidasi(self):
+        r = self.client.post("/api/odps", json={"name": ODP_T, "lat": 999},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/odps", json={"name": ODP_T, "lon": 107.0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        self._ensure_odp_olt()
+
+    def test_topology_tree(self):
+        self._ensure_odp_olt()
+        for sn, rx, odp in ((SN_T1, -29.0, ODP_T),
+                            (SN_T2, -19.0, ""),
+                            (SN_T3, -19.0, "")):
+            body = {"ont_sn": sn, "rx_power": rx, "source": "manual",
+                    "olt_name": OLT_T if sn != SN_T3 else "",
+                    "odp_name": odp}
+            r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        try:
+            r = self.client.get("/api/fiber/topology", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            j = r.get_json()
+            # community tak boleh bocor
+            self.assertNotIn("community", r.get_data(as_text=True))
+            olt = next(o for o in j["olts"] if o["name"] == OLT_T)
+            self.assertTrue(olt["registered"])
+            self.assertAlmostEqual(olt["olt"]["lat"], -6.2)
+            odp = next(d for d in olt["odps"] if d["name"] == ODP_T)
+            self.assertTrue(odp["registered"])
+            self.assertEqual(odp["worst"], "critical")
+            self.assertAlmostEqual(odp["odp"]["lat"], -6.234567)
+            self.assertEqual([t["ont_sn"] for t in odp["onts"]], [SN_T1])
+            bucket = next(d for d in olt["odps"] if d["name"] == "(tanpa ODP)")
+            self.assertFalse(bucket["registered"])
+            self.assertEqual([t["ont_sn"] for t in bucket["onts"]], [SN_T2])
+            no_olt = next(o for o in j["olts"] if o["name"] == "(tanpa OLT)")
+            self.assertFalse(no_olt["registered"])
+            flat = [t["ont_sn"] for d in no_olt["odps"] for t in d["onts"]]
+            self.assertIn(SN_T3, flat)
+        finally:
+            _cleanup_topo(self.client)
+
+    def test_halaman_topo(self):
+        r = self.client.get("/topo")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("leaflet", r.get_data(as_text=True).lower())
+
+
 if __name__ == "__main__":
     unittest.main()

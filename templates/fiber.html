@@ -83,7 +83,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="tb-brand"><div class="tb-logo">◈</div>
     <div class="tb-path"><span>~/noc</span><span>/</span><span>dashboard</span><span>/</span><span class="crumb active">fiber</span></div>
   </div>
-  <a href="/" class="back-btn">← cd ..</a>
+  <div style="display:flex;gap:8px"><a href="/topo" class="back-btn">🗺 topo</a><a href="/" class="back-btn">← cd ..</a></div>
 </div>
 <div class="wrap">
   <div class="sec-label">fiber_redaman.list — Rx/Tx ONT (dBm)</div>
@@ -165,6 +165,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="form-group"><label>Kapasitas (port)</label><input id="o_cap" type="number" value="8" min="1" max="128"></div>
     </div>
     <div class="form-group"><label>Lokasi</label><input id="o_loc" placeholder="Jl. Mawar rt 05"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Lat (-90..90, opsional)</label><input id="o_lat" type="number" step="any" placeholder="-6.234567"></div>
+      <div class="form-group"><label>Lon (-180..180, opsional)</label><input id="o_lon" type="number" step="any" placeholder="106.789012"></div>
+    </div>
     <input type="hidden" id="o_id" value="">
     <div class="btn-row"><button class="btn btn-cancel" onclick="closeOdpModal()">tutup</button><button class="btn btn-submit" onclick="saveOdp()">save()</button></div>
   </div>
@@ -189,6 +193,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div id="oltPresetNote" style="display:none;margin-bottom:12px;font-family:var(--mono);font-size:.62rem;line-height:1.6;background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:6px;padding:8px 12px;color:var(--t2)"></div>
     <div class="form-group"><label>Rx OID base (kosong=preset vendor)</label><input id="l_rx" placeholder="cth: 1.3.6.1.4.1.3902.x"></div>
     <div class="form-group"><label>Tx OID base (kosong=preset/tanpa Tx)</label><input id="l_tx" placeholder="cth: 1.3.6.1.4.1.3902.y"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Lat OLT (opsional)</label><input id="l_lat" type="number" step="any" placeholder="-6.234567"></div>
+      <div class="form-group"><label>Lon OLT (opsional)</label><input id="l_lon" type="number" step="any" placeholder="106.789012"></div>
+    </div>
     <input type="hidden" id="l_id" value="">
     <div class="btn-row"><button class="btn btn-cancel" onclick="closeOltModal()">tutup</button><button class="btn btn-submit" onclick="saveOlt()">save()</button></div>
   </div>
@@ -489,15 +497,18 @@ async function calcBudget(){
 function openOdpModal(){
   document.getElementById('o_id').value='';document.getElementById('o_name').value='';
   document.getElementById('o_olt').value='';document.getElementById('o_cap').value='8';document.getElementById('o_loc').value='';
+  document.getElementById('o_lat').value='';document.getElementById('o_lon').value='';
   const L=document.getElementById('odpList');
   L.innerHTML=ODPDATA.filter(o=>o.id).map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;border:1px solid var(--border2);font-family:var(--mono);font-size:.7rem"><span>${esc(o.name)} <span style="color:var(--t3)">(${o.total}/${o.capacity||'?'})</span></span><span style="white-space:nowrap"><button class="act edit" onclick="editOdp(${o.id})">edit</button><button class="act" onclick="delOdp(${o.id})">del</button></span></div>`).join('')||'<div style="color:var(--t3);font-size:.7rem">belum ada ODP.</div>';
   document.getElementById('odpModal').classList.add('active');
 }
 function closeOdpModal(){document.getElementById('odpModal').classList.remove('active');}
-function editOdp(id){const o=ODPDATA.find(x=>x.id===id);if(!o)return;document.getElementById('o_id').value=o.id;document.getElementById('o_name').value=o.name;document.getElementById('o_olt').value=o.olt_name||'';document.getElementById('o_cap').value=o.capacity||8;document.getElementById('o_loc').value=o.location||'';}
+function editOdp(id){const o=ODPDATA.find(x=>x.id===id);if(!o)return;document.getElementById('o_id').value=o.id;document.getElementById('o_name').value=o.name;document.getElementById('o_olt').value=o.olt_name||'';document.getElementById('o_cap').value=o.capacity||8;document.getElementById('o_loc').value=o.location||'';document.getElementById('o_lat').value=o.lat??'';document.getElementById('o_lon').value=o.lon??'';}
 async function saveOdp(){
   const id=document.getElementById('o_id').value;
+  const latV=document.getElementById('o_lat').value.trim(), lonV=document.getElementById('o_lon').value.trim();
   const body={name:document.getElementById('o_name').value.trim(),olt_name:document.getElementById('o_olt').value.trim(),capacity:parseInt(document.getElementById('o_cap').value),location:document.getElementById('o_loc').value.trim()};
+  if(latV!==''||lonV!==''){body.lat=parseFloat(latV);body.lon=parseFloat(lonV);}
   const r=await fetch(id?`/api/odps/${id}`:'/api/odps',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||'gagal simpan ODP');return;}
   closeOdpModal();load();
@@ -522,17 +533,20 @@ function openOltModal(){
   document.getElementById('l_vendor').value='generic';document.getElementById('l_div').value='100';
   document.getElementById('l_scale').value='1';document.getElementById('l_offset').value='0';
   document.getElementById('l_rx').value='';document.getElementById('l_tx').value='';
+  document.getElementById('l_lat').value='';document.getElementById('l_lon').value='';
   document.getElementById('oltPresetNote').style.display='none';
   const L=document.getElementById('oltList');
   L.innerHTML=OLTDATA.map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;border:1px solid var(--border2);font-family:var(--mono);font-size:.7rem"><span>${esc(o.name)} <span style="color:var(--t3)">(${esc(o.vendor||'generic')} · ${esc(o.ip||'tanpa IP')})</span></span><span style="white-space:nowrap"><button class="act edit" onclick="editOlt(${o.id})">edit</button><button class="act" onclick="delOlt(${o.id})">del</button></span></div>`).join('')||'<div style="color:var(--t3);font-size:.7rem">belum ada OLT.</div>';
   document.getElementById('oltModal').classList.add('active');
 }
 function closeOltModal(){document.getElementById('oltModal').classList.remove('active');}
-function editOlt(id){const o=OLTDATA.find(x=>x.id===id);if(!o)return;document.getElementById('l_id').value=o.id;document.getElementById('l_name').value=o.name;document.getElementById('l_ip').value=o.ip||'';document.getElementById('l_comm').value='';document.getElementById('l_vendor').value=o.vendor||'generic';document.getElementById('l_div').value=o.div??100;document.getElementById('l_scale').value=o.scale??1;document.getElementById('l_offset').value=o.offset??0;document.getElementById('l_rx').value=o.rx_base||'';document.getElementById('l_tx').value=o.tx_base||'';document.getElementById('oltPresetNote').style.display='none';}
+function editOlt(id){const o=OLTDATA.find(x=>x.id===id);if(!o)return;document.getElementById('l_id').value=o.id;document.getElementById('l_name').value=o.name;document.getElementById('l_ip').value=o.ip||'';document.getElementById('l_comm').value='';document.getElementById('l_vendor').value=o.vendor||'generic';document.getElementById('l_div').value=o.div??100;document.getElementById('l_scale').value=o.scale??1;document.getElementById('l_offset').value=o.offset??0;document.getElementById('l_rx').value=o.rx_base||'';document.getElementById('l_tx').value=o.tx_base||'';document.getElementById('l_lat').value=o.lat??'';document.getElementById('l_lon').value=o.lon??'';document.getElementById('oltPresetNote').style.display='none';}
 async function saveOlt(){
   const id=document.getElementById('l_id').value;
   const comm=document.getElementById('l_comm').value;
+  const latV=document.getElementById('l_lat').value.trim(), lonV=document.getElementById('l_lon').value.trim();
   const body={name:document.getElementById('l_name').value.trim(),ip:document.getElementById('l_ip').value.trim(),vendor:document.getElementById('l_vendor').value,div:parseFloat(document.getElementById('l_div').value),scale:parseFloat(document.getElementById('l_scale').value),offset:parseFloat(document.getElementById('l_offset').value),rx_base:document.getElementById('l_rx').value.trim(),tx_base:document.getElementById('l_tx').value.trim()};
+  if(latV!==''||lonV!==''){body.lat=parseFloat(latV);body.lon=parseFloat(lonV);}
   if(comm)body.community=comm;
   else if(!id)body.community='';
   const r=await fetch(id?`/api/olts/${id}`:'/api/olts',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
