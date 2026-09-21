@@ -1523,7 +1523,7 @@ def poll_snmp_bandwidth():
                 if time_diff > 0:
                     net_in = (diff_in * 8) / (1024 * 1024 * time_diff)
                     net_out = (diff_out * 8) / (1024 * 1024 * time_diff)
-                    if net_in > 10000 or net_out > 10000:
+                    if net_in > 100000 or net_out > 100000:
                         snmp_state[host] = {
                             'in_bytes': in_bytes,
                             'out_bytes': out_bytes,
@@ -3668,7 +3668,8 @@ def api_delete_host(ip):
 
         global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
         for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory,
-                    last_down_telegram, mt_alarm_memory, mt_is_mikrotik, mt_sysup):
+                    last_down_telegram, mt_alarm_memory, mt_is_mikrotik, mt_sysup,
+                    snmp_state):
             try:
                 if ip in mem:
                     del mem[ip]

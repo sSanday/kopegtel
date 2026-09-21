@@ -25,6 +25,11 @@ except Exception:
 class NmsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # DB_PATH di-bind sekali saat import app dan tak ikut override env
+        # di atas; sinkronkan + init_db idempoten agar urutan import modul
+        # test apa pun tetap jalan (tanpa ini: "no such table").
+        m.DB_PATH = os.environ["NMS_DB_PATH"]
+        m.init_db()
         cls.client = m.app.test_client()
 
         conn, c = m.get_db()
