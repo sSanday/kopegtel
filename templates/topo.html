@@ -80,14 +80,17 @@ summary:hover{background:rgba(255,255,255,.02)}
   </div>
 </div>
 <script>
-let TOPO=null, map=null, lastClick=null;
+let TOPO=null, map=null, lastClick=null, lastTopoJson='', firstFit=true;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const COLORS={normal:'#00ff88',warning:'#ffaa00',critical:'#ff4444',overload:'#ff66dd',stale:'#b79cff',unknown:'#2a4060'};
 function countsTxt(c){return `Σ${c.total} 🟢${c.normal} 🟡${c.warning} 🔴${c.critical} 🔊${c.overload} 🟣${c.stale}`;}
 async function load(){
   const r=await fetch('/api/fiber/topology',{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(r.status===401){location.href='/login';return;}
-  TOPO=await r.json();
+  const txt=await r.text();
+  if(txt===lastTopoJson)return; // tak ada perubahan -> jangan reset tree/zoom user
+  lastTopoJson=txt;
+  TOPO=JSON.parse(txt);
   renderTree(); renderMap();
 }
 function renderTree(){
@@ -113,6 +116,8 @@ function renderMap(){
   const olts=(TOPO&&TOPO.olts)||[];
   let marks=0;const missing=[];
   const bounds=[];
+  if(map._topoLayer)map.removeLayer(map._topoLayer);
+  const lg=L.layerGroup().addTo(map);map._topoLayer=lg;
   olts.forEach(o=>{
     (o.odps||[]).forEach(d=>{
       const od=d.odp||{};
@@ -123,7 +128,7 @@ function renderMap(){
         marks++;
         bounds.push([od.lat,od.lon]);
         L.circleMarker([od.lat,od.lon],{radius:8,color:COLORS[d.worst]||'#2a4060',weight:2,fillColor:COLORS[d.worst]||'#2a4060',fillOpacity:.35})
-          .addTo(map)
+          .addTo(lg)
           .bindPopup(`<b>${esc(d.name)}</b><br>${esc(o.name)}${od.location?' · '+esc(od.location):''}<br>${esc(countsTxt(d.counts))}${od.capacity?`<br>kapasitas ${esc(d.counts.total)}/${esc(od.capacity)}`:''}${li?`<br>terburuk:<ul style="margin:4px 0 4px 16px">${li}</ul>`:''}<br><a href="/fiber">buka fiber →</a>`);
       } else if(od.id){missing.push(d.name);}
     });
@@ -131,7 +136,7 @@ function renderMap(){
       marks++;
       bounds.push([o.olt.lat,o.olt.lon]);
       L.marker([o.olt.lat,o.olt.lon],{icon:L.divIcon({className:'',html:`<div style="width:22px;height:22px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#000">▲</div>`,iconSize:[22,22],iconAnchor:[11,11]})})
-        .addTo(map)
+        .addTo(lg)
         .bindPopup(`<b>OLT ${esc(o.name)}</b> (${esc(o.olt.vendor||'generic')})<br>${esc(o.olt.ip||'')}<br>${esc(countsTxt(o.counts))}<br><a href="/fiber">buka fiber →</a>`);
     } else if(o.registered){missing.push('OLT '+o.name);}
   });
@@ -139,7 +144,7 @@ function renderMap(){
   const nc=document.getElementById('noCoord');
   if(missing.length){nc.style.display='block';nc.innerHTML=`<b>${missing.length} lokasi belum ada koordinat:</b> ${missing.slice(0,12).map(esc).join(', ')}${missing.length>12?' …':''}<br>isi lat/lon via kelola ODP/OLT di halaman fiber.`;}
   else nc.style.display='none';
-  if(bounds.length)map.fitBounds(bounds,{padding:[30,30]});
+  if(bounds.length&&firstFit){map.fitBounds(bounds,{padding:[30,30]});firstFit=false;}
 }
 function copyPos(){
   if(!lastClick)return;
