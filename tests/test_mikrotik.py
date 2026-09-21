@@ -351,6 +351,10 @@ def _cleanup2():
             m.mt_iface_oper.pop(k, None)
         for k in [k for k in list(m.iface_state) if k[0] in (MT_IF_HOST, MT_RB_HOST)]:
             m.iface_state.pop(k, None)
+        for k in [k for k in list(m.mt_iface_tg) if k[0] in (MT_IF_HOST, MT_RB_HOST)]:
+            m.mt_iface_tg.pop(k, None)
+        for k in [k for k in list(m.mt_iface_flaps) if k[0] in (MT_IF_HOST, MT_RB_HOST)]:
+            m.mt_iface_flaps.pop(k, None)
         conn.commit()
     finally:
         conn.close()
@@ -416,6 +420,7 @@ class MikrotikIfaceTest(unittest.TestCase):
             self.client.delete(f"/api/hosts/{MT_IF_HOST}", headers=XRW_HDR)
 
     def test_port_down_up_dan_traffic(self):
+        import time as _t
         self._add(MT_IF_HOST)
         conn, c = m.get_db()
         c.execute("INSERT INTO snmp_interfaces (host, if_index, name, oper, monitor)"
@@ -439,9 +444,27 @@ class MikrotikIfaceTest(unittest.TestCase):
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             self.assertTrue(any(a["category"] == "mikrotik" and "PORT DOWN" in a["message"]
                                 for a in r.get_json()))
+            # flip balik cepat -> cooldown: tanpa telegram, tercatat flapping
             state["oper"] = 1
             m.poll_mikrotik_ifaces()
-            self.assertTrue(any("PORT UP" in s for s in sent))
+            self.assertFalse(any("PORT UP" in s for s in sent))
+            self.assertEqual(m.mt_iface_flaps.get((MT_IF_HOST, 1)), 1)
+            # DB oper + log tetap terupdate walau telegram disuppress
+            conn, c = m.get_db()
+            oper_db = c.execute("SELECT oper FROM snmp_interfaces WHERE host=? AND if_index=1",
+                                (MT_IF_HOST,)).fetchone()[0]
+            up_log = c.execute("SELECT COUNT(*) FROM system_logs WHERE host=? AND event_type='MT_PORT_UP'",
+                               (MT_IF_HOST,)).fetchone()[0]
+            conn.close()
+            self.assertEqual(oper_db, 1)
+            self.assertGreaterEqual(up_log, 1)
+            # lewat cooldown + flip lagi -> telegram dengan catatan flapping
+            m.mt_iface_tg[(MT_IF_HOST, 1)] = _t.time() - 601
+            state["oper"] = 2
+            m.poll_mikrotik_ifaces()
+            down2 = [s for s in sent if "PORT DOWN" in s]
+            self.assertEqual(len(down2), 2)
+            self.assertIn("flapping", down2[-1])
             conn, c = m.get_db()
             n = c.execute("SELECT COUNT(*) FROM iface_traffic WHERE host=?",
                           (MT_IF_HOST,)).fetchone()[0]
@@ -458,6 +481,8 @@ class MikrotikIfaceTest(unittest.TestCase):
         finally:
             m._mt_iface_check_one = orig_check
             m.send_telegram_alert = orig_tg
+            for _mem in (m.mt_iface_oper, m.iface_state, m.mt_iface_tg, m.mt_iface_flaps):
+                _mem.pop((MT_IF_HOST, 1), None)
             self.client.delete(f"/api/hosts/{MT_IF_HOST}", headers=XRW_HDR)
 
     def test_reboot_detect_dan_trigger(self):
@@ -493,6 +518,145 @@ class MikrotikIfaceTest(unittest.TestCase):
             m._snmp_get = orig_get
             m.send_telegram_alert = orig_tg
             self.client.delete(f"/api/hosts/{MT_RB_HOST}", headers=XRW_HDR)
+
+
+MT_ST_HOST = "10.99.99.25"
+
+
+def _cleanup_st():
+    conn, c = m.get_db()
+    try:
+        c.execute("DELETE FROM device_health WHERE host=?", (MT_ST_HOST,))
+        c.execute("DELETE FROM hosts WHERE ip=?", (MT_ST_HOST,))
+        m.mt_alarm_memory.pop(MT_ST_HOST, None)
+        m.mt_is_mikrotik.pop(MT_ST_HOST, None)
+        m.mt_sysup.pop(MT_ST_HOST, None)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class MikrotikStaleWrapTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_st()
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_st()
+
+    def _add(self, ip):
+        r = self.client.post("/api/hosts",
+                             json={"ip": ip, "snmp_community": "public",
+                                   "snmp_profile": "mikrotik"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+    def _insert_health(self, ts, cpu=20.0):
+        conn, c = m.get_db()
+        c.execute("INSERT INTO device_health (host, cpu, mem_used, storage_used,"
+                  " temp_c, uptime_s, timestamp, source)"
+                  " VALUES (?,?,?,?,?,?,?,'snmp-mikrotik')",
+                  (MT_ST_HOST, cpu, 30.0, 10.0, 45.0, 3600.0, ts))
+        conn.commit()
+        conn.close()
+
+    def test_stale_info_helper(self):
+        from datetime import datetime, timedelta
+        old = (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+        fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.assertTrue(m._mt_stale_info(old)[0])
+        self.assertFalse(m._mt_stale_info(fresh)[0])
+        self.assertFalse(m._mt_stale_info("")[0])
+        self.assertFalse(m._mt_stale_info(None)[0])
+
+    def test_stale_di_list_dan_triggers(self):
+        from datetime import datetime, timedelta
+        self._add(MT_ST_HOST)
+        try:
+            fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._insert_health(fresh)
+            r = self.client.get("/api/mikrotik", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["host"] == MT_ST_HOST)
+            self.assertEqual(item["status"], "normal")
+            self.assertFalse(item["stale"])
+            old = (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+            conn, c = m.get_db()
+            c.execute("UPDATE device_health SET timestamp=? WHERE host=?", (old, MT_ST_HOST))
+            conn.commit()
+            conn.close()
+            r = self.client.get("/api/mikrotik", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["host"] == MT_ST_HOST)
+            self.assertEqual(item["status"], "stale")
+            self.assertTrue(item["stale"])
+            self.assertIn("SNMP", item["advice"])
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            stale = [a for a in r.get_json()
+                     if a.get("category") == "mikrotik" and MT_ST_HOST in a.get("host", "")
+                     and "STALE" in a.get("message", "")]
+            self.assertTrue(stale)
+            self.assertEqual(stale[0]["severity"], "warning")
+        finally:
+            self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
+
+    def test_reboot_kind_helper(self):
+        self.assertEqual(m._mt_reboot_kind(100000.0, 50.0), "reboot")
+        self.assertIsNone(m._mt_reboot_kind(50.0, 100000.0))
+        self.assertIsNone(m._mt_reboot_kind(None, 50.0))
+        wrap_prev = 2 ** 32 / 100.0 - 1000.0
+        self.assertEqual(m._mt_reboot_kind(wrap_prev, 50.0), "wrap")
+        # jauh dari batas wrap walau turun -> tetap reboot
+        self.assertEqual(m._mt_reboot_kind(1000000.0, 50.0), "reboot")
+
+    def test_wrap_tidak_panik(self):
+        self._add(MT_ST_HOST)
+        sent = []
+        orig_health = m.get_mikrotik_health
+        orig_get = m._snmp_get
+        orig_tg = m.send_telegram_alert
+        wrap_prev = 2 ** 32 / 100.0 - 1000.0
+        ticks = [wrap_prev * 100]
+        m.get_mikrotik_health = lambda ip, comm, oids: {
+            "cpu": 10.0, "mem": 20.0, "storage": 10.0, "temp_raw": 400.0}
+        m._snmp_get = lambda ip, comm, oids, timeout=2.0: [ticks[0]]
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            m.poll_mikrotik_health()
+            self.assertFalse(any("REBOOT" in s or "WRAP" in s for s in sent))
+            ticks[0] = 5000
+            m.poll_mikrotik_health()
+            wrap = [s for s in sent if "WRAP" in s]
+            self.assertTrue(wrap)
+            self.assertFalse(any("REBOOT TERDETEKSI" in s for s in sent))
+        finally:
+            m.get_mikrotik_health = orig_health
+            m._snmp_get = orig_get
+            m.send_telegram_alert = orig_tg
+            self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
+
+    def test_settings_mt_stale_min(self):
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        try:
+            r = self.client.post("/api/settings", json={"mt_stale_min": 2},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/settings", json={"mt_stale_min": 2000},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/settings", json={"mt_stale_min": 30},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            r = self.client.get("/api/settings", headers=XRW_HDR)
+            self.assertEqual(int(r.get_json()["mt_stale_min"]), 30)
+        finally:
+            self.client.post("/api/settings",
+                             json={"mt_stale_min": orig["mt_stale_min"]},
+                             headers=JSON_HDR)
 
 
 if __name__ == "__main__":

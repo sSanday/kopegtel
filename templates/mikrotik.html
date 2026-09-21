@@ -35,6 +35,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .tag.normal{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.25)}
 .tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
 .tag.critical{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
+.tag.stale{background:rgba(183,156,255,.1);color:#b79cff;border:1px dashed rgba(183,156,255,.45)}
 .tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
 .advice{font-size:.62rem;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
 .bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin-top:4px;min-width:70px}
@@ -65,6 +66,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="filter-btn" data-f="normal">normal</button>
     <button class="filter-btn" data-f="warning">warning</button>
     <button class="filter-btn" data-f="critical">critical</button>
+    <button class="filter-btn" data-f="stale">stale</button>
     <input class="filter-search" id="q" placeholder="grep host / alias..." oninput="render()">
   </div>
   <div class="log-card"><div style="overflow-x:auto"><table>
@@ -101,7 +103,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 <script>
-let DATA=[], curF='all', chart=null, histH=24;
+let DATA=[], curF='all', chart=null, histH=6;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
 function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
@@ -112,6 +114,7 @@ async function load(){
     if(r.ok){const s=await r.json();
       document.getElementById('thInfo').innerHTML=
       `Threshold aktif — CPU &gt; <b>${esc(s.cpu_threshold)}%</b> · memory &gt; <b>${esc(s.ram_threshold)}%</b> · storage &gt; <b>${esc(s.disk_threshold)}%</b> · suhu ≥ <b>${esc(s.temp_threshold)}°C</b> warning / ≥ <b>${esc(s.temp_crit)}°C</b> kritis · ubah via menu settings.<br>`+
+      `Stale: tanpa data SNMP baru ≥ <b>${esc(s.mt_stale_min)} mnt</b> → status <b>stale</b> (host/community/UDP 161 bermasalah).<br>`+
       `Syarat MikroTik: <b>/snmp set enabled=yes</b> + community sama + firewall buka UDP 161 dari server NMS. Unit lama yang OID-nya beda → override per host di menu hosts.`;
       window._th=s;}
   }catch(e){}

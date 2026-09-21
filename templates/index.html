@@ -932,6 +932,7 @@ body::after{
           <div class="form-field"><label class="form-label">oid suhu</label><input type="text" id="mtTempOid" class="form-input" style="font-size:.65rem"></div>
           <div class="form-field"><label class="form-label">pembagi suhu</label><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required></div>
         </div>
+        <div class="form-field"><label class="form-label">mt stale ≥ menit (3-1440)</label><input type="number" id="mtStaleMin" class="form-input" step="1" min="3" max="1440" required></div>
         <div class="form-field">
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.<br>ℹ fiber_analisis: degradasi = Rx turun ≥ dB dalam sekian hari · stale = snmp/simulator tanpa data baru ≥ sekian menit · flap = bolak-balik normal↔terganggu ≥ sekian flip dalam sekian jam.</div>
         </div>
@@ -1801,6 +1802,7 @@ async function openSettingsModal(){
     document.getElementById('mtStoOid').value=data.mt_storage_oid||'';
     document.getElementById('mtTempOid').value=data.mt_temp_oid||'';
     document.getElementById('mtTempDiv').value=data.mt_temp_div??10;
+    document.getElementById('mtStaleMin').value=data.mt_stale_min??15;
   }catch(e){console.error(e)}
 }
 function closeSettingsModal(){document.getElementById('settingsModal').classList.remove('open')}
@@ -1839,6 +1841,8 @@ async function saveSettings(e){
   if(!Number.isFinite(tW) || tW < 0 || tW > 150 || !Number.isFinite(tC) || tC < 0 || tC > 150){ alert('Error: suhu warning/critical harus 0-150 °C'); return; }
   if(!(tW < tC)){ alert('Error: suhu warning harus < critical'); return; }
   if(!Number.isFinite(tDiv) || tDiv < 1 || tDiv > 1000){ alert('Error: pembagi suhu harus 1-1000'); return; }
+  const mtStale=parseInt(document.getElementById('mtStaleMin').value);
+  if(!Number.isInteger(mtStale) || mtStale < 3 || mtStale > 1440){ alert('Error: mt stale harus 3-1440 menit'); return; }
   const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
   const mtOids={};
   for(const [id,key] of [['mtCpuOid','mt_cpu_oid'],['mtMemOid','mt_mem_oid'],['mtStoOid','mt_storage_oid'],['mtTempOid','mt_temp_oid']]){
@@ -1849,7 +1853,7 @@ async function saveSettings(e){
     }
   }
   try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,...mtOids})});
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,...mtOids})});
     if(!res.ok){
       let m='Gagal menyimpan pengaturan';
       try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}

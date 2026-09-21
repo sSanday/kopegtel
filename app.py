@@ -329,6 +329,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.4.1.14988.1.1.3.13.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_div', '10')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_stale_min', '15')")
 
     c.execute('''CREATE TABLE IF NOT EXISTS down_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1575,6 +1576,10 @@ mt_is_mikrotik = {}
 mt_sysup = {}
 mt_iface_oper = {}
 iface_state = {}
+# cooldown telegram oper port + penghitung flap dalam window cooldown
+mt_iface_tg = {}
+mt_iface_flaps = {}
+MT_IFACE_TG_COOLDOWN_S = 600
 
 
 SYSUP_OID = "1.3.6.1.2.1.1.3.0"
@@ -1582,6 +1587,52 @@ IF_OPER_OID = "1.3.6.1.2.1.2.2.1.8"
 IF_HC_IN_OID = "1.3.6.1.2.1.31.1.1.1.6"
 IF_HC_OUT_OID = "1.3.6.1.2.1.31.1.1.1.10"
 REBOOT_ALARM_WINDOW_S = 900  # reboot <15 mnt lalu masih tampil di triggers
+# TimeTicks 32-bit melimpah tiap ~497 hari; bila uptime sebelumnya dekat
+# batas dan yang baru kecil, kemungkinan wrap (bukan reboot beneran).
+_MT_TICK_MAX_S = 2 ** 32 / 100.0
+_MT_WRAP_NEAR_S = 30 * 86400
+_MT_WRAP_FRESH_S = 86400
+# Stale: tanpa device_health baru lebih lama dari ini -> tak terpantau.
+MT_STALE_MIN = 15
+
+
+def _mt_reboot_kind(prev_up, sysup):
+    """Klasifikasi penurunan sysUpTime: 'reboot' | 'wrap' | None."""
+    try:
+        prev = float(prev_up)
+        cur = float(sysup)
+    except (ValueError, TypeError):
+        return None
+    if cur >= prev:
+        return None
+    if prev > _MT_TICK_MAX_S - _MT_WRAP_NEAR_S and cur < _MT_WRAP_FRESH_S:
+        return "wrap"
+    return "reboot"
+
+
+def _mt_stale_threshold():
+    try:
+        m = int(float(get_setting("mt_stale_min", MT_STALE_MIN)))
+    except (ValueError, TypeError):
+        m = MT_STALE_MIN
+    return min(1440, max(3, m))
+
+
+def _mt_stale_info(last_seen, now=None):
+    """(is_stale, age_txt) bila device_health terakhir melewati ambang."""
+    if not last_seen:
+        return False, None
+    try:
+        seen = datetime.strptime(str(last_seen).strip(), "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return False, None
+    now = now or datetime.now()
+    age_min = (now - seen).total_seconds() / 60.0
+    if age_min < 0:
+        return False, None
+    if age_min >= _mt_stale_threshold():
+        return True, _fmt_age(age_min)
+    return False, None
 
 
 def _mt_check_one(args):
@@ -1662,16 +1713,29 @@ def poll_mikrotik_health():
                 # deteksi reboot: sysUpTime turun dari poll sebelumnya
                 prev_up = mt_sysup.get(host)
                 if sysup is not None:
-                    if prev_up is not None and sysup < prev_up:
-                        tg_queue.append(
-                            f"🔄 *MIKROTIK REBOOT TERDETEKSI*\nHost: `{host}`\n"
-                            f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
-                            f"Waktu: {timestamp}")
-                        try:
-                            _insert_system_log(c, "MT_REBOOT", host,
-                                               f"reboot (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
-                        except Exception:
-                            pass
+                    _kind = _mt_reboot_kind(prev_up, sysup) if prev_up is not None else None
+                    if _kind:
+                        if _kind == "wrap":
+                            tg_queue.append(
+                                f"ℹ️ *MIKROTIK UPTIME WRAP?*\nHost: `{host}`\n"
+                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
+                                f"Kemungkinan wrap counter TimeTicks (>467 hari), bukan reboot beneran — verifikasi uptime.\n"
+                                f"Waktu: {timestamp}")
+                            try:
+                                _insert_system_log(c, "MT_REBOOT", host,
+                                                   f"kemungkinan wrap (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
+                            except Exception:
+                                pass
+                        else:
+                            tg_queue.append(
+                                f"🔄 *MIKROTIK REBOOT TERDETEKSI*\nHost: `{host}`\n"
+                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
+                                f"Waktu: {timestamp}")
+                            try:
+                                _insert_system_log(c, "MT_REBOOT", host,
+                                                   f"reboot (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
+                            except Exception:
+                                pass
                     mt_sysup[host] = sysup
                 try:
                     c.execute("INSERT INTO device_health (host, cpu, mem_used, storage_used,"
@@ -1763,7 +1827,7 @@ def _mt_iface_check_one(args):
 
 def poll_mikrotik_ifaces():
     """Traffic + oper-status per interface termonitor (tiap 60 dtk)."""
-    global mt_iface_oper, iface_state
+    global mt_iface_oper, iface_state, mt_iface_tg, mt_iface_flaps
     try:
         conn, c = get_db()
         try:
@@ -1829,24 +1893,44 @@ def poll_mikrotik_ifaces():
                                           (oper, timestamp, host, idx))
                             except sqlite3.OperationalError:
                                 pass
-                            if oper == 2:
-                                tg_queue.append(
-                                    f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"
-                                    f"Port: *{name}* (ifIndex {idx})\nWaktu: {timestamp}")
+                            # cooldown anti-spam port flapping (DB oper + log tetap dicatat)
+                            _last_tg = mt_iface_tg.get(key, 0)
+                            if now_time - _last_tg < MT_IFACE_TG_COOLDOWN_S:
+                                _n = mt_iface_flaps.get(key, 0) + 1
+                                mt_iface_flaps[key] = _n
+                                print(f"[MT-IFACE] {host} if{idx} "
+                                      f"{'down' if oper == 2 else 'up'} disuppress "
+                                      f"(cooldown, flap x{_n})")
                                 try:
-                                    _insert_system_log(c, "MT_PORT_DOWN", host,
-                                                       f"{name} (ifIndex {idx}) down", timestamp)
+                                    _insert_system_log(
+                                        c, "MT_PORT_DOWN" if oper == 2 else "MT_PORT_UP",
+                                        host, f"{name} (ifIndex {idx}) "
+                                        f"{'down' if oper == 2 else 'up'} (telegram disuppress, flap x{_n})",
+                                        timestamp)
                                 except Exception:
                                     pass
                             else:
-                                tg_queue.append(
-                                    f"✅ *MIKROTIK PORT UP*\nHost: `{host}`\n"
-                                    f"Port: *{name}* (ifIndex {idx})\nWaktu: {timestamp}")
-                                try:
-                                    _insert_system_log(c, "MT_PORT_UP", host,
-                                                       f"{name} (ifIndex {idx}) up", timestamp)
-                                except Exception:
-                                    pass
+                                mt_iface_tg[key] = now_time
+                                _flaps = mt_iface_flaps.pop(key, 0)
+                                _note = f" (flapping {_flaps}x/10 mnt)" if _flaps else ""
+                                if oper == 2:
+                                    tg_queue.append(
+                                        f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"
+                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}")
+                                    try:
+                                        _insert_system_log(c, "MT_PORT_DOWN", host,
+                                                           f"{name} (ifIndex {idx}) down{_note}", timestamp)
+                                    except Exception:
+                                        pass
+                                else:
+                                    tg_queue.append(
+                                        f"✅ *MIKROTIK PORT UP*\nHost: `{host}`\n"
+                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}")
+                                    try:
+                                        _insert_system_log(c, "MT_PORT_UP", host,
+                                                           f"{name} (ifIndex {idx}) up{_note}", timestamp)
+                                    except Exception:
+                                        pass
                     cnt = out["counters"].get(idx, {})
                     in_b, out_b = cnt.get("in"), cnt.get("out")
                     if in_b is not None and out_b is not None:
@@ -3594,6 +3678,10 @@ def api_delete_host(ip):
             mt_iface_oper.pop(key, None)
         for key in [k for k in list(iface_state) if k[0] == ip]:
             iface_state.pop(key, None)
+        for key in [k for k in list(mt_iface_tg) if k[0] == ip]:
+            mt_iface_tg.pop(key, None)
+        for key in [k for k in list(mt_iface_flaps) if k[0] == ip]:
+            mt_iface_flaps.pop(key, None)
         # lock sudah dipegang blok luar -> jangan lock ulang (deadlock)
         try:
             conn2, c2 = get_db()
@@ -3712,6 +3800,7 @@ def api_get_settings():
         "mt_storage_oid": get_setting("mt_storage_oid", MT_DEFAULT_OIDS["storage"], type_cast=str),
         "mt_temp_oid": get_setting("mt_temp_oid", MT_DEFAULT_OIDS["temp"], type_cast=str),
         "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
+        "mt_stale_min": get_setting("mt_stale_min", MT_STALE_MIN),
     })
 
 FIBER_SETTING_RANGES = {
@@ -3809,6 +3898,15 @@ def api_save_settings():
         if not 1 <= v <= 1000:
             return jsonify({"error": "mt_temp_div harus 1-1000"}), 400
         vals["mt_temp_div"] = v
+    v = data.get("mt_stale_min")
+    if v is not None:
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": "mt_stale_min harus angka 3-1440"}), 400
+        if not 3 <= v <= 1440:
+            return jsonify({"error": "mt_stale_min harus 3-1440 menit"}), 400
+        vals["mt_stale_min"] = v
     # konsistensi: crit < warn <= overload, tx_min <= tx_max, temp warn < crit
     merged = {k: get_setting(k, d) for k, d in
               [("fiber_rx_overload", FIBER_RX_OVERLOAD), ("fiber_rx_warn", FIBER_RX_WARN),
@@ -6089,12 +6187,19 @@ def api_mikrotik_list():
                     uptime_s = None
                 status, severity, advice = _mt_evaluate(
                     ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                stale, stale_age = _mt_stale_info(r["timestamp"])
+                if stale and status in ("normal", "warning"):
+                    status, severity = "stale", "warning"
+                    advice = (f"Tanpa data SNMP baru sejak {stale_age} "
+                              f"(terakhir {r['timestamp'] or '—'}). Kemungkinan host mati, "
+                              "community diganti, atau UDP 161 diblokir.")
                 out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
                             "category": (h.get("category") or "").strip() or "Uncategorized",
                             "cpu": r["cpu"], "mem": r["mem_used"], "storage": r["storage_used"],
                             "temp_c": r["temp_c"], "uptime_s": uptime_s,
                             "uptime": _fmt_uptime(uptime_s), "last_seen": r["timestamp"],
                             "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
+                            "stale": stale, "stale_age": stale_age,
                             "status": status, "severity": severity, "advice": advice})
             else:
                 out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
@@ -6714,10 +6819,21 @@ def get_triggers():
             for h in c.fetchall():
                 ip = h["ip"]
                 label = (h["alias"] or "").strip() or ip
-                c2 = conn.execute("SELECT cpu, mem_used, storage_used, temp_c FROM device_health"
+                c2 = conn.execute("SELECT cpu, mem_used, storage_used, temp_c, timestamp FROM device_health"
                                   " WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
                 r = c2.fetchone()
+                stale_host = False
                 if r:
+                    stale_host, stale_age = _mt_stale_info(r["timestamp"])
+                    if stale_host:
+                        alarms.append({
+                            "host": f"{label} ({ip})",
+                            "severity": "warning",
+                            "message": f"MikroTik STALE: tanpa data SNMP baru sejak {stale_age} — "
+                                       f"port/reboot tak terpantau. Cek host/community/UDP 161.",
+                            "category": "mikrotik",
+                        })
+                        continue
                     status, severity, advice = _mt_evaluate(
                         ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
                     if severity:
