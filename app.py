@@ -4296,6 +4296,39 @@ def _validate_fiber(d):
             "ont_index": ont_index}, None
 
 
+def _fiber_row_status(o):
+    """Status satu baris ONT: eval + overlay stale.
+
+    Kembalikan (status, severity, advice, need, stale, stale_age).
+    """
+    status, severity, advice, need = fiber_eval(o.get("rx_power"), o.get("tx_power"),
+                                               _th_for_ont(o))
+    stale, stale_age = _fiber_stale_info(o)
+    if stale and status in ("normal", "warning", "unknown"):
+        status, severity = "stale", "warning"
+        advice = _fiber_stale_advice(o, stale_age or "?")
+    return status, severity, advice, need, stale, stale_age
+
+
+def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0):
+    """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi)."""
+    status, severity, advice, need, stale, stale_age = _fiber_row_status(o)
+    dg = fiber_degrade_memory.get(o["id"]) or {}
+    return {**o, "calc_status": status, "severity": severity,
+            "advice": advice, "need_attenuator_db": need,
+            "mute_active": _is_mute_active(o),
+            "stale": stale, "stale_age": stale_age,
+            "degrading": bool(dg.get("degrading")),
+            "degrade_drop_db": dg.get("drop_db"),
+            "degrade_days": degrade_days, "degrade_thresh_db": degrade_thresh}
+
+
+_FIBER_SORTS = ("olt", "rx_asc", "rx_desc", "sn_asc", "sn_desc",
+                "checked_desc", "status")
+_FIBER_STATUS_RANK = {"overload": 0, "critical": 1, "warning": 2, "stale": 3,
+                      "unknown": 4, "normal": 5}
+
+
 @app.route("/api/fiber", methods=["GET"])
 @api_login_required
 def api_fiber_list():
@@ -4310,25 +4343,119 @@ def api_fiber_list():
             conn.close()
         except Exception:
             pass
-    th = _fiber_thresholds()
     _dthresh, _ddays = _fiber_degrade_settings()
-    out = []
-    for o in rows:
-        status, severity, advice, need_db = fiber_eval(o.get("rx_power"), o.get("tx_power"),
-                                                       _th_for_ont(o))
-        stale, stale_age = _fiber_stale_info(o)
-        if stale and status in ("normal", "warning", "unknown"):
-            status, severity = "stale", "warning"
-            advice = _fiber_stale_advice(o, stale_age or "?")
-        dg = fiber_degrade_memory.get(o["id"]) or {}
-        out.append({**o, "calc_status": status, "severity": severity,
-                    "advice": advice, "need_attenuator_db": need_db,
-                    "mute_active": _is_mute_active(o),
-                    "stale": stale, "stale_age": stale_age,
-                    "degrading": bool(dg.get("degrading")),
-                    "degrade_drop_db": dg.get("drop_db"),
-                    "degrade_days": _ddays, "degrade_thresh_db": _dthresh})
-    return jsonify(out)
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh) for o in rows]
+    # mode legacy (tanpa param): kembalikan array penuh seperti dulu
+    if not any(request.args.get(k) is not None
+               for k in ("page", "per_page", "sort", "q", "status", "olt", "odp")):
+        return jsonify(enriched)
+    # mode paginasi: filter + sort di server
+    status_f = (request.args.get("status") or "all").strip().lower()
+    q = (request.args.get("q") or "").strip().lower()
+    olt_f = (request.args.get("olt") or "").strip().lower()
+    odp_f = (request.args.get("odp") or "").strip().lower()
+    items = enriched
+    if status_f != "all":
+        items = [o for o in items if o["calc_status"] == status_f]
+    if olt_f:
+        items = [o for o in items if (o.get("olt_name") or "").strip().lower() == olt_f]
+    if odp_f:
+        items = [o for o in items if (o.get("odp_name") or "").strip().lower() == odp_f]
+    if q:
+        items = [o for o in items
+                 if q in " ".join(str(o.get(k) or "") for k in
+                                  ("ont_sn", "customer", "olt_name", "odp_name",
+                                   "pon_port")).lower()]
+    sort = (request.args.get("sort") or "olt").strip().lower()
+    if sort not in _FIBER_SORTS:
+        return jsonify({"error": f"sort harus salah satu {list(_FIBER_SORTS)}"}), 400
+    if sort == "rx_asc":
+        items.sort(key=lambda o: (o.get("rx_power") is None,
+                                  o.get("rx_power") if o.get("rx_power") is not None else 0,
+                                  o.get("id")))
+    elif sort == "rx_desc":
+        items.sort(key=lambda o: (o.get("rx_power") is None,
+                                  -(o.get("rx_power") if o.get("rx_power") is not None else 0),
+                                  o.get("id")))
+    elif sort == "sn_asc":
+        items.sort(key=lambda o: ((o.get("ont_sn") or "").lower(), o.get("id")))
+    elif sort == "sn_desc":
+        items.sort(key=lambda o: ((o.get("ont_sn") or "").lower(), o.get("id")),
+                   reverse=True)
+    elif sort == "checked_desc":
+        items.sort(key=lambda o: (o.get("last_checked") or ""), reverse=True)
+    elif sort == "status":
+        items.sort(key=lambda o: (_FIBER_STATUS_RANK.get(o["calc_status"], 9),
+                                  o.get("rx_power") if o.get("rx_power") is not None else 99,
+                                  o.get("id")))
+    else:
+        items.sort(key=lambda o: ((o.get("olt_name") or "").lower(), o.get("id")))
+    try:
+        page = int(request.args.get("page", 1))
+    except (ValueError, TypeError):
+        return jsonify({"error": "page harus angka >= 1"}), 400
+    try:
+        per_page = int(request.args.get("per_page", 25))
+    except (ValueError, TypeError):
+        return jsonify({"error": "per_page harus angka 1-200"}), 400
+    page = max(1, page)
+    per_page = max(1, min(per_page, 200))
+    total = len(items)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    start = (page - 1) * per_page
+    return jsonify({"items": items[start:start + per_page], "total": total,
+                    "page": page, "per_page": per_page, "pages": pages,
+                    "sort": sort})
+
+
+@app.route("/api/fiber/summary", methods=["GET"])
+@api_login_required
+def api_fiber_summary():
+    """Ringkasan fiber: hitungan per status + Rx terburuk/terbaik + opsi select."""
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM fiber_onts ORDER BY id ASC")
+        rows = [dict(r) for r in c.fetchall()]
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _dthresh, _ddays = _fiber_degrade_settings()
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh) for o in rows]
+    counts = {"total": len(enriched), "normal": 0, "warning": 0, "critical": 0,
+              "overload": 0, "stale": 0, "unknown": 0, "degrading": 0, "muted": 0}
+    for o in enriched:
+        if o["calc_status"] in counts:
+            counts[o["calc_status"]] += 1
+        if o["degrading"]:
+            counts["degrading"] += 1
+        if o["mute_active"]:
+            counts["muted"] += 1
+    with_rx = [o for o in enriched if o.get("rx_power") is not None]
+    worst = sorted(with_rx, key=lambda o: (o["rx_power"], o["id"]))[:10]
+    best = sorted(with_rx, key=lambda o: (-o["rx_power"], o["id"]))[:5]
+
+    def _mini(o):
+        return {"id": o["id"], "ont_sn": o.get("ont_sn"), "customer": o.get("customer"),
+                "olt_name": o.get("olt_name"), "odp_name": o.get("odp_name"),
+                "rx_power": o.get("rx_power"), "calc_status": o.get("calc_status")}
+
+    opts = sorted(enriched, key=lambda o: (o.get("ont_sn") or "").lower())
+    return jsonify({
+        "counts": counts,
+        "worst_rx": [_mini(o) for o in worst],
+        "best_rx": [_mini(o) for o in best],
+        "ont_options": [{"id": o["id"], "ont_sn": o.get("ont_sn"),
+                         "customer": o.get("customer"), "rx_power": o.get("rx_power")}
+                        for o in opts],
+        "olt_names": sorted({(o.get("olt_name") or "").strip() for o in enriched} - {""}),
+        "odp_names": sorted({(o.get("odp_name") or "").strip() for o in enriched} - {""}),
+        "degrade_days": _ddays, "degrade_thresh_db": _dthresh,
+    })
 
 
 @app.route("/api/fiber", methods=["POST"])
@@ -4471,8 +4598,8 @@ def api_fiber_history(fid):
     try:
         hours = int(request.args.get("hours", 24))
     except (ValueError, TypeError):
-        return jsonify({"error": "hours harus angka 1-168"}), 400
-    hours = max(1, min(hours, 168))
+        return jsonify({"error": "hours harus angka 1-720"}), 400
+    hours = max(1, min(hours, 720))
     conn, c = get_db()
     try:
         c.execute("SELECT id, ont_sn, customer FROM fiber_onts WHERE id=?", (fid,))
@@ -4480,7 +4607,7 @@ def api_fiber_history(fid):
         if not ont:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
         c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
-                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 2000",
+                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
                   (fid, f"-{hours} hours"))
         rows = c.fetchall()
     finally:
@@ -4497,6 +4624,46 @@ def api_fiber_history(fid):
     return jsonify({"ont": dict(ont), "hours": hours, "labels": labels,
                     "rx": [r["rx_power"] for r in rows],
                     "tx": [r["tx_power"] for r in rows], "count": len(rows)})
+
+
+@app.route("/api/fiber/<int:fid>/history/export")
+@api_login_required
+def api_fiber_history_export(fid):
+    """Export history Rx/Tx satu ONT ke CSV (maks 720 jam / 30 hari)."""
+    try:
+        hours = int(request.args.get("hours", 168))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-720"}), 400
+    hours = max(1, min(hours, 720))
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, ont_sn, customer FROM fiber_onts WHERE id=?", (fid,))
+        ont = c.fetchone()
+        if not ont:
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
+        c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
+                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
+                  (fid, f"-{hours} hours"))
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["timestamp", "rx_dbm", "tx_dbm"])
+    for r in rows:
+        w.writerow([r["timestamp"], r["rx_power"], r["tx_power"]])
+    try:
+        audit(current_user.username, "fiber.history_export",
+              f"{ont['ont_sn']} rows={len(rows)} hours={hours}")
+    except Exception:
+        pass
+    safe_sn = re.sub(r"[^A-Za-z0-9_.\-]", "_", ont["ont_sn"] or "ont")[:48]
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=history_{safe_sn}_{hours}h.csv"})
 
 
 @app.route("/api/fiber/export")

@@ -90,6 +90,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="info" id="thInfo">
     memuat threshold...
   </div>
+  <div class="sec-label">fiber_summary</div>
+  <div class="odp-grid" id="sumGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="sec-label">worst_rx.top5 <span style="color:var(--t3);font-weight:400">// klik untuk lihat grafik</span></div>
+  <div class="odp-grid" id="worstGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="sec-label">odp_summary <button class="act edit" onclick="openOdpModal()" style="margin-left:auto">+ kelola ODP</button></div>
   <div class="odp-grid" id="odpGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="sec-label">olt_snmp <span style="color:var(--t3);font-weight:400">// sumber Rx/Tx otomatis via SNMP</span><button class="act edit" onclick="openOltModal()" style="margin-left:auto">+ kelola OLT</button></div>
@@ -101,9 +105,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="filter-btn" data-f="critical">critical</button>
     <button class="filter-btn" data-f="overload">overload ⚠ peredam</button>
     <button class="filter-btn" data-f="stale">stale ⚠ tak terpantau</button>
-    <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="render()">
-    <select class="filter-select" id="fOlt" onchange="render()" title="Filter OLT"><option value="">olt: all</option></select>
-    <select class="filter-select" id="fOdp" onchange="render()" title="Filter ODP"><option value="">odp: all</option></select>
+    <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="onSearch()">
+    <select class="filter-select" id="fOlt" onchange="onPageFilter()" title="Filter OLT"><option value="">olt: all</option></select>
+    <select class="filter-select" id="fOdp" onchange="onPageFilter()" title="Filter ODP"><option value="">odp: all</option></select>
+    <select class="filter-select" id="fSort" onchange="onPageFilter()" title="Urut"><option value="olt">sort: olt</option><option value="rx_asc">sort: rx terburuk</option><option value="rx_desc">sort: rx terbaik</option><option value="status">sort: status</option><option value="sn_asc">sort: sn a-z</option><option value="checked_desc">sort: cek terakhir</option></select>
     <a class="add-btn" href="/api/fiber/export" style="text-decoration:none">⇩ export.csv</a>
     <select class="filter-select" id="impMode" title="Mode import duplikat"><option value="skip">import: skip duplikat</option><option value="upsert">import: upsert (update duplikat)</option></select>
     <button class="add-btn" onclick="document.getElementById('impFile').click()">⇧ import.csv</button>
@@ -113,7 +118,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="log-card"><div style="overflow-x:auto"><table>
     <thead><tr><th>ONT SN / Pelanggan</th><th>OLT / PON / ODP</th><th>Rx (dBm)</th><th>Tx (dBm)</th><th>Status</th><th>Last check</th><th></th></tr></thead>
     <tbody id="rows"><tr><td colspan="7" style="text-align:center;color:var(--t3)">loading...</td></tr></tbody>
-  </table></div></div>
+  </table></div>
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-family:var(--mono);font-size:.65rem;color:var(--t2)">
+    <button class="range-btn" id="pgPrev" onclick="goPage(-1)">← prev</button>
+    <button class="range-btn" id="pgNext" onclick="goPage(1)">next →</button>
+    <span id="pgInfo" style="margin-left:auto">page 1/1 · 0 rows</span>
+  </div></div>
   <div class="chart-card">
     <div class="chart-hd">
       <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub" id="chSub">// garis kuning = batas warning · merah = critical</div></div>
@@ -122,6 +132,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
         <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
         <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
+        <button class="range-btn" data-h="720" onclick="setH(this,720)">30D</button>
+        <a class="add-btn" id="histExp" href="#" style="text-decoration:none;padding:5px 10px">⇩ history.csv</a>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="ch"></canvas></div>
@@ -214,9 +226,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div></div>
 <script>
-let DATA=[], ODPDATA=[], OLTDATA=[], OLTPRESETS={}, curF='all', editId=null, chart=null, histH=6, TH={warn:-25,crit:-27};
+let DATA=[], ODPDATA=[], OLTDATA=[], OLTPRESETS={}, SUMMARY=null, curF='all', editId=null, chart=null, histH=6, TH={warn:-25,crit:-27};
+let PAGE=1, PERPAGE=25, TOTAL=0, PAGES=1, SORT='olt', _searchT=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;PAGE=1;fetchPage();});
+function onPageFilter(){PAGE=1;SORT=document.getElementById('fSort').value||'olt';fetchPage();}
+function onSearch(){clearTimeout(_searchT);_searchT=setTimeout(()=>{PAGE=1;fetchPage();},400);}
+function goPage(d){const np=Math.min(PAGES,Math.max(1,PAGE+d));if(np!==PAGE){PAGE=np;fetchPage();}}
 function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
 async function loadTh(){
   try{
@@ -234,11 +250,70 @@ async function loadTh(){
       `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;
   }catch(e){}
 }
+async function fetchSummary(){
+  try{
+    const r=await fetch('/api/fiber/summary',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(r.status===401){location.href='/login';return;}
+    if(!r.ok)return;
+    SUMMARY=await r.json();
+  }catch(e){return;}
+  const c=SUMMARY.counts||{};
+  const card=(k,label,color)=>`<div class="odp-card"><div class="odp-name" style="color:${color}">${c[k]??0}</div><div class="odp-sub">${label}</div></div>`;
+  document.getElementById('sumGrid').innerHTML=
+    card('total','total ONT','#e0f0ff')+card('normal','normal','var(--success)')+
+    card('warning','warning','var(--warn)')+card('critical','critical','var(--danger)')+
+    card('overload','overload','#ff66dd')+card('stale','stale (tak terpantau)','#b79cff')+
+    card('degrading','degradasi 📉','var(--warn)')+card('muted','muted','var(--t3)');
+  const wg=document.getElementById('worstGrid');
+  const worst=(SUMMARY.worst_rx||[]).slice(0,5);
+  wg.innerHTML=worst.length?worst.map(o=>`<div class="odp-card" style="cursor:pointer" onclick="jumpToOnt(${o.id})" title="klik untuk grafik">
+      <div class="odp-name">${esc(o.rx_power)} dBm</div>
+      <div class="odp-sub">${esc(o.ont_sn)}${o.customer?' · '+esc(o.customer):''}</div>
+      <div class="odp-counts"><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span><span style="margin-left:auto">${esc(o.odp_name||o.olt_name||'')}</span></div>
+    </div>`).join(''):'<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ semua ONT belum ada data Rx.</div>';
+  const sel=document.getElementById('ontSel');
+  const prevS=sel.value;
+  const opts=SUMMARY.ont_options||[];
+  sel.innerHTML=opts.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} — ${esc(o.customer||'-')}</option>`).join('')||'<option value="">(kosong)</option>';
+  if(prevS && opts.some(o=>String(o.id)===String(prevS)))sel.value=prevS;
+  const bsel=document.getElementById('b_ont');
+  const prevB=bsel.value;
+  bsel.innerHTML='<option value="">— tanpa pembanding —</option>'+opts.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} (${o.rx_power==null?'—':esc(o.rx_power)+' dBm'})</option>`).join('');
+  if(prevB)bsel.value=prevB;
+  const fOlt=document.getElementById('fOlt'), prevO=fOlt.value;
+  const olts=SUMMARY.olt_names||[];
+  fOlt.innerHTML='<option value="">olt: all</option>'+olts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(olts.includes(prevO))fOlt.value=prevO;
+  const fOdp=document.getElementById('fOdp'), prevD=fOdp.value;
+  const odps=SUMMARY.odp_names||[];
+  fOdp.innerHTML='<option value="">odp: all</option>'+odps.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  if(odps.includes(prevD))fOdp.value=prevD;
+}
+function jumpToOnt(id){
+  const sel=document.getElementById('ontSel');
+  sel.value=id;loadHist();
+  document.getElementById('ch').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function fetchPage(){
+  const p=new URLSearchParams({page:PAGE,per_page:PERPAGE,sort:SORT});
+  if(curF!=='all')p.set('status',curF);
+  const q=(document.getElementById('q').value||'').trim();
+  if(q)p.set('q',q);
+  const fO=document.getElementById('fOlt').value, fD=document.getElementById('fOdp').value;
+  if(fO)p.set('olt',fO);
+  if(fD)p.set('odp',fD);
+  try{
+    const r=await fetch('/api/fiber?'+p.toString(),{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(r.status===401){location.href='/login';return;}
+    if(!r.ok)return;
+    const j=await r.json();
+    DATA=j.items||[];TOTAL=j.total||0;PAGES=j.pages||1;PAGE=j.page||1;
+  }catch(e){return;}
+  render();
+}
 async function load(){
   loadTh();
-  const r=await fetch('/api/fiber',{headers:{'X-Requested-With':'XMLHttpRequest'}});
-  if(r.status===401){location.href='/login';return;}
-  DATA=await r.json();
+  await fetchSummary();
   try{
     const ro=await fetch('/api/odps',{headers:{'X-Requested-With':'XMLHttpRequest'}});
     if(ro.ok)ODPDATA=await ro.json();
@@ -251,26 +326,11 @@ async function load(){
     const rp=await fetch('/api/olts/presets',{headers:{'X-Requested-With':'XMLHttpRequest'}});
     if(rp.ok)OLTPRESETS=await rp.json();
   }catch(e){}
-  renderOdp(); renderOlt(); fillOdpFilters();
-  const sel=document.getElementById('ontSel');
-  const prevS=sel.value;
-  sel.innerHTML=DATA.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} — ${esc(o.customer||'-')}</option>`).join('')||'<option value="">(kosong)</option>';
-  if(prevS && DATA.some(o=>String(o.id)===String(prevS)))sel.value=prevS;
-  const bsel=document.getElementById('b_ont');
-  const prevB=bsel.value;
-  bsel.innerHTML='<option value="">— tanpa pembanding —</option>'+DATA.map(o=>`<option value="${o.id}">${esc(o.ont_sn)} (${o.rx_power==null?'—':esc(o.rx_power)+' dBm'})</option>`).join('');
-  if(prevB)bsel.value=prevB;
-  render(); loadHist();
+  renderOdp(); renderOlt(); fillOdpDatalist();
+  await fetchPage();
+  loadHist();
 }
-function fillOdpFilters(){
-  const olts=[...new Set(DATA.map(o=>(o.olt_name||'').trim()).filter(Boolean))].sort();
-  const fOlt=document.getElementById('fOlt'), prevO=fOlt.value;
-  fOlt.innerHTML='<option value="">olt: all</option>'+olts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
-  if(olts.includes(prevO))fOlt.value=prevO;
-  const odps=[...new Set(DATA.map(o=>(o.odp_name||'').trim()).filter(Boolean))].sort();
-  const fOdp=document.getElementById('fOdp'), prevD=fOdp.value;
-  fOdp.innerHTML='<option value="">odp: all</option>'+odps.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
-  if(odps.includes(prevD))fOdp.value=prevD;
+function fillOdpDatalist(){
   document.getElementById('odpDatalist').innerHTML=ODPDATA.filter(o=>o.id).map(o=>`<option value="${esc(o.name)}">`).join('');
 }
 function renderOdp(){
@@ -326,11 +386,12 @@ async function discoverOlt(id){
   }catch(e){alert('scan gagal: '+e.message);}
 }
 function render(){
-  const q=(document.getElementById('q').value||'').toLowerCase();
-  const fO=document.getElementById('fOlt').value, fD=document.getElementById('fOdp').value;
   const tb=document.getElementById('rows');
-  const rows=DATA.filter(o=>(curF==='all'||o.calc_status===curF)&&(!fO||(o.olt_name||'')===fO)&&(!fD||(o.odp_name||'')===fD)&&(!q||(o.ont_sn+' '+(o.customer||'')+' '+(o.odp_name||'')+' '+(o.olt_name||'')).toLowerCase().includes(q)));
-  if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no data — tambah ONT dulu.</td></tr>';return;}
+  const rows=DATA;
+  document.getElementById('pgInfo').textContent=`page ${PAGE}/${PAGES} · ${TOTAL} rows`;
+  document.getElementById('pgPrev').disabled=PAGE<=1;
+  document.getElementById('pgNext').disabled=PAGE>=PAGES;
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no data — tambah ONT dulu / ubah filter.</td></tr>';return;}
   tb.innerHTML=rows.map(o=>{const _mut=o.mute_active??!!o.mute_alarm;const _mexp=!_mut&&!!o.mute_alarm;
     const _mt=o.mute_reason?` title="${esc(o.mute_reason)}${o.mute_until?' s/d '+esc(o.mute_until):''}"`:(o.mute_until?` title="s/d ${esc(o.mute_until)}"`:'');return `<tr>
     <td style="color:var(--t1)">${esc(o.ont_sn)}<div style="font-size:.62rem;color:var(--t3)">${esc(o.customer||'-')}</div></td>
@@ -385,6 +446,7 @@ async function importCsv(inp){
 async function del(id){if(!confirm('hapus ONT ini?'))return;const r=await fetch(`/api/fiber/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});if(r.ok)load();}
 async function loadHist(){
   const id=document.getElementById('ontSel').value;if(!id)return;
+  document.getElementById('histExp').href=`/api/fiber/${id}/history/export?hours=${histH}`;
   const r=await fetch(`/api/fiber/${id}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(!r.ok)return;const j=await r.json();
   document.getElementById('ctitle').textContent=(j.ont?.ont_sn||'rx')+' — rx_history.ts';

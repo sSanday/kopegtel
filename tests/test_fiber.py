@@ -1398,5 +1398,122 @@ class FiberOltPresetTest(unittest.TestCase):
                 pass
 
 
+SN_PG_A = "TEST-FIBER-PG-A"
+SN_PG_B = "TEST-FIBER-PG-B"
+SN_PG_C = "TEST-FIBER-PG-C"
+OLT_PG = "TEST-OLT-PG"
+
+
+def _cleanup_pg(client):
+    for sn in (SN_PG_A, SN_PG_B, SN_PG_C):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                    m.fiber_degrade_memory.pop(row["id"], None)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+
+class FiberPagingSummaryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_pg(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+        for sn, rx in ((SN_PG_A, -19.0), (SN_PG_B, -26.0), (SN_PG_C, -29.0)):
+            r = cls.client.post("/api/fiber",
+                                json={"ont_sn": sn, "customer": "uji paging",
+                                      "olt_name": OLT_PG, "rx_power": rx,
+                                      "tx_power": 2.0, "source": "manual"},
+                                headers=JSON_HDR)
+            assert r.status_code == 201, r.get_data(as_text=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_pg(cls.client)
+
+    def test_legacy_tanpa_param_tetap_array(self):
+        r = self.client.get("/api/fiber", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        j = r.get_json()
+        self.assertIsInstance(j, list)
+        sns = {o["ont_sn"] for o in j}
+        self.assertTrue({SN_PG_A, SN_PG_B, SN_PG_C} <= sns)
+
+    def test_paginasi_dan_sort(self):
+        r = self.client.get("/api/fiber?page=1&per_page=2", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        j = r.get_json()
+        self.assertEqual(len(j["items"]), 2)
+        self.assertGreaterEqual(j["total"], 3)
+        self.assertEqual(j["page"], 1)
+        r = self.client.get("/api/fiber?page=2&per_page=2", headers=XRW_HDR)
+        self.assertEqual(r.get_json()["page"], 2)
+        # sort rx terburuk dulu
+        r = self.client.get(f"/api/fiber?sort=rx_asc&olt={OLT_PG}&per_page=50",
+                            headers=XRW_HDR)
+        items = r.get_json()["items"]
+        self.assertEqual([o["ont_sn"] for o in items], [SN_PG_C, SN_PG_B, SN_PG_A])
+        r = self.client.get(f"/api/fiber?sort=rx_desc&olt={OLT_PG}&per_page=50",
+                            headers=XRW_HDR)
+        items = r.get_json()["items"]
+        self.assertEqual([o["ont_sn"] for o in items], [SN_PG_A, SN_PG_B, SN_PG_C])
+        r = self.client.get("/api/fiber?sort=bogus", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.get("/api/fiber?page=bogus", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 400)
+
+    def test_filter_status_q_olt(self):
+        r = self.client.get("/api/fiber?status=critical&per_page=50", headers=XRW_HDR)
+        items = r.get_json()["items"]
+        self.assertTrue(all(o["calc_status"] == "critical" for o in items))
+        self.assertIn(SN_PG_C, {o["ont_sn"] for o in items})
+        r = self.client.get("/api/fiber?q=pg-b&per_page=50", headers=XRW_HDR)
+        items = r.get_json()["items"]
+        self.assertEqual({o["ont_sn"] for o in items}, {SN_PG_B})
+        r = self.client.get(f"/api/fiber?olt={OLT_PG}&per_page=50", headers=XRW_HDR)
+        items = r.get_json()["items"]
+        self.assertEqual({o["ont_sn"] for o in items}, {SN_PG_A, SN_PG_B, SN_PG_C})
+
+    def test_summary(self):
+        r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        j = r.get_json()
+        self.assertGreaterEqual(j["counts"]["total"], 3)
+        self.assertGreaterEqual(j["counts"]["critical"], 1)
+        sns = [o["ont_sn"] for o in j["worst_rx"]]
+        self.assertIn(SN_PG_C, sns)
+        self.assertLess(sns.index(SN_PG_C), sns.index(SN_PG_A) if SN_PG_A in sns else len(sns))
+        self.assertIn(OLT_PG, j["olt_names"])
+        self.assertTrue(any(o["ont_sn"] == SN_PG_A for o in j["ont_options"]))
+
+    def test_history_export_dan_range_720(self):
+        conn, c = m.get_db()
+        c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (SN_PG_A,))
+        fid = c.fetchone()["id"]
+        conn.close()
+        r = self.client.get(f"/api/fiber/{fid}/history/export?hours=24", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        self.assertIn("timestamp,rx_dbm,tx_dbm", body)
+        self.assertGreaterEqual(len(body.strip().splitlines()), 2)
+        r = self.client.get("/api/fiber/999999/history/export", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 404)
+        r = self.client.get(f"/api/fiber/{fid}/history?hours=720", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["hours"], 720)
+
+
 if __name__ == "__main__":
     unittest.main()
