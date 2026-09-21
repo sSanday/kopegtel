@@ -1401,11 +1401,14 @@ class FiberOltPresetTest(unittest.TestCase):
 SN_PG_A = "TEST-FIBER-PG-A"
 SN_PG_B = "TEST-FIBER-PG-B"
 SN_PG_C = "TEST-FIBER-PG-C"
+SN_SUM_A = "TEST-FIBER-SUM-A"
+SN_SUM_B = "TEST-FIBER-SUM-B"
+SN_SUM_M = "TEST-FIBER-SUM-M"
 OLT_PG = "TEST-OLT-PG"
 
 
 def _cleanup_pg(client):
-    for sn in (SN_PG_A, SN_PG_B, SN_PG_C):
+    for sn in (SN_PG_A, SN_PG_B, SN_PG_C, SN_SUM_A, SN_SUM_B, SN_SUM_M):
         try:
             conn, c = m.get_db()
             try:
@@ -1513,6 +1516,80 @@ class FiberPagingSummaryTest(unittest.TestCase):
         r = self.client.get(f"/api/fiber/{fid}/history?hours=720", headers=XRW_HDR)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.get_json()["hours"], 720)
+
+
+class FiberDailySummaryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_pg(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_pg(cls.client)
+
+    def test_tanpa_ont_tidak_kirim(self):
+        from unittest import mock as _mock
+
+        class _EmptyC:
+            def execute(self, *a, **k):
+                return self
+
+            def fetchall(self):
+                return []
+
+        class _EmptyConn:
+            def close(self):
+                pass
+
+        sent = []
+        real = m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            with _mock.patch.object(m, "get_db",
+                                    return_value=(_EmptyConn(), _EmptyC())):
+                m.send_fiber_summary()
+        finally:
+            m.send_telegram_alert = real
+        self.assertEqual(sent, [])
+
+    def test_isi_laporan(self):
+        for sn, rx, extra in ((SN_SUM_A, -29.0, {}),
+                              (SN_SUM_B, -19.0, {}),
+                              (SN_SUM_M, -30.0, {"mute_alarm": 1})):
+            body = {"ont_sn": sn, "customer": "uji ringkasan",
+                    "rx_power": rx, "tx_power": 2.0, "source": "manual"}
+            body.update(extra)
+            r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        conn, c = m.get_db()
+        c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (SN_SUM_B,))
+        fid_b = c.fetchone()["id"]
+        conn.close()
+        m.fiber_degrade_memory[fid_b] = {"degrading": True, "drop_db": 3.5}
+        sent = []
+        real = m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            m.send_fiber_summary()
+        finally:
+            m.send_telegram_alert = real
+            m.fiber_degrade_memory.pop(fid_b, None)
+        self.assertEqual(len(sent), 1)
+        msg = sent[0]
+        self.assertIn("Laporan Harian Fiber", msg)
+        self.assertIn("Total 3 ONT", msg)
+        self.assertIn(SN_SUM_A, msg)
+        self.assertIn("CRITICAL", msg)
+        # muted dihitung tapi tak masuk daftar perhatian
+        self.assertIn("mute 1", msg)
+        self.assertNotIn(SN_SUM_M, msg)
+        # normal + degradasi -> masuk seksi degradasi dini
+        self.assertIn(SN_SUM_B, msg)
+        self.assertIn("3.5 dB", msg)
 
 
 if __name__ == "__main__":

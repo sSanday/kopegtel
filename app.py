@@ -875,6 +875,98 @@ def send_heartbeat():
     )
 
 
+_FIBER_SUMMARY_ICON = {"overload": "🔊", "critical": "🔴", "warning": "🟡",
+                       "stale": "🟣", "unknown": "⚪", "normal": "🟢"}
+_FIBER_SUMMARY_RANK = {"overload": 0, "critical": 1, "warning": 2, "stale": 3}
+
+
+def _fiber_summary_clean(s):
+    return re.sub(r"[*_`\[\]]", "", str(s or "")).strip()[:80]
+
+
+def send_fiber_summary():
+    """Laporan harian fiber via Telegram (cron 08:05, setelah heartbeat host).
+
+    Snapshot hitungan status + daftar perlu perhatian (maks 8, diurut
+    overload > critical > warning > stale) + degradasi dini (maks 5).
+    Baris mute/maintenance dihitung tapi tak masuk daftar perhatian.
+    Tanpa ONT terdaftar -> diam (tak ada yang dilaporkan).
+    """
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT * FROM fiber_onts ORDER BY id ASC")
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[FIBER-SUMMARY] load gagal: {e}")
+        return
+    if not rows:
+        return
+    maint_map = get_active_maintenance_map()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    counts = {"total": len(rows), "normal": 0, "warning": 0, "critical": 0,
+              "overload": 0, "stale": 0, "unknown": 0,
+              "degrading": 0, "muted": 0, "maintenance": 0}
+    attention, degrading = [], []
+    for o in rows:
+        status, severity, advice, _need, _stale, _age = _fiber_row_status(o)
+        if status in counts:
+            counts[status] += 1
+        muted = _is_mute_active(o)
+        if muted:
+            counts["muted"] += 1
+        in_maint = _fiber_maintenance_info(o, maint_map)[0]
+        if in_maint:
+            counts["maintenance"] += 1
+        if muted or in_maint:
+            continue
+        if severity:
+            try:
+                rx_sort = float(o["rx_power"]) if o.get("rx_power") is not None else 99.0
+            except (ValueError, TypeError):
+                rx_sort = 99.0
+            attention.append((_FIBER_SUMMARY_RANK.get(status, 9), rx_sort, o, status))
+            continue
+        dg = fiber_degrade_memory.get(o["id"]) or {}
+        if dg.get("degrading"):
+            degrading.append((o, dg.get("drop_db")))
+    attention.sort(key=lambda t: (t[0], t[1], t[2]["id"]))
+    top = attention[:8]
+    rest = len(attention) - len(top)
+    lines = []
+    for _rank, _rx, o, status in top:
+        icon = _FIBER_SUMMARY_ICON.get(status, "•")
+        cust = _fiber_summary_clean(o.get("customer"))
+        loc = "/".join([x for x in (o.get("olt_name"), o.get("odp_name")) if x])
+        rx_txt = f"{o['rx_power']} dBm" if o.get("rx_power") is not None else "—"
+        extra = f" ({cust})" if cust else ""
+        loc_txt = f" [{_fiber_summary_clean(loc)}]" if loc else ""
+        lines.append(f"{icon} `{o['ont_sn']}`{extra} — {status.upper()} Rx {rx_txt}{loc_txt}")
+    if rest > 0:
+        lines.append(f"  … +{rest} lainnya — lihat dashboard /triggers?cat=fiber")
+    for o, drop in degrading[:5]:
+        cust = _fiber_summary_clean(o.get("customer"))
+        extra = f" ({cust})" if cust else ""
+        lines.append(f"📉 `{o['ont_sn']}`{extra} — turun {drop} dB, cek sebelum kritis")
+    if not lines:
+        lines.append("✅ Semua ONT terpantau normal.")
+    try:
+        _dth, _dd = _fiber_degrade_settings()
+    except Exception:
+        _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
+    send_telegram_alert(
+        f"📊 *Laporan Harian Fiber (snapshot)*\n"
+        f"Waktu : {now}\n"
+        f"Total {counts['total']} ONT — "
+        f"🟢{counts['normal']} 🟡{counts['warning']} 🔴{counts['critical']} "
+        f"🔊{counts['overload']} 🟣{counts['stale']} "
+        f"📉degradasi {counts['degrading']} 🔇mute {counts['muted']}\n\n"
+        + "\n".join(lines)
+    )
+
+
 _PING_TARGET_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
 _PING_RTT_RES = (
     re.compile(r"rtt min/avg/max/mdev = [\d.]+/([\d.]+)/"),
@@ -2953,6 +3045,7 @@ if SCHEDULER_ENABLED:
     scheduler.add_job(func=poll_fiber_snmp,        trigger="interval", seconds=300, **_job_defaults)
     scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
     scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
+    scheduler.add_job(func=send_fiber_summary,    trigger="cron",     hour=8, minute=5, **_job_defaults)
     scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
     scheduler.add_job(func=backup_database,        trigger="cron",     hour=0, minute=5, **_job_defaults)
     try:
