@@ -126,7 +126,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div></div>
   <div class="chart-card">
     <div class="chart-hd">
-      <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub" id="chSub">// garis kuning = batas warning · merah = critical</div></div>
+      <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub" id="chSub">// garis kuning = batas warning · merah = critical</div><div class="chart-sub" id="slaLine"></div></div>
       <div class="chart-ctl">
         <select id="ontSel" onchange="loadHist()"></select>
         <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
@@ -263,7 +263,7 @@ async function fetchSummary(){
     card('total','total ONT','#e0f0ff')+card('normal','normal','var(--success)')+
     card('warning','warning','var(--warn)')+card('critical','critical','var(--danger)')+
     card('overload','overload','#ff66dd')+card('stale','stale (tak terpantau)','#b79cff')+
-    card('degrading','degradasi 📉','var(--warn)')+card('muted','muted','var(--t3)');
+    card('down_ongoing','down saat ini','var(--danger)')+card('degrading','degradasi 📉','var(--warn)')+card('muted','muted','var(--t3)');
   const wg=document.getElementById('worstGrid');
   const worst=(SUMMARY.worst_rx||[]).slice(0,5);
   wg.innerHTML=worst.length?worst.map(o=>`<div class="odp-card" style="cursor:pointer" onclick="jumpToOnt(${o.id})" title="klik untuk grafik">
@@ -398,7 +398,7 @@ function render(){
     <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}${_mut?` · <span style="color:var(--warn)"${_mt}>muted${o.mute_until?' s/d '+esc(o.mute_until.slice(0,16)):''}</span>`:''}${_mexp?' · <span style="color:var(--danger)">mute kedaluwarsa</span>':''}</div></td>
     <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}</td>
     <td>${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
-    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown" style="margin-left:4px"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning" style="margin-left:4px">mute exp</span>':''}<div class="advice">${esc(o.advice||'')}</div></td>
+    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown" style="margin-left:4px"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning" style="margin-left:4px">mute exp</span>':''}${o.down_ongoing?`<div style="font-size:.62rem;color:var(--danger);margin-top:4px">▼ DOWN sejak ${esc((o.down_since||'').slice(5,16))}</div>`:''}<div class="advice">${esc(o.advice||'')}</div></td>
     <td style="font-size:.62rem">${esc(o.last_checked||'—')}${o.stale?`<div style="font-size:.6rem;color:#b79cff">data ${esc(o.stale_age||'?')} lalu</div>`:''}</td>
     <td style="white-space:nowrap"><button class="act edit" onclick="openModal(${o.id})">edit</button><button class="act" onclick="del(${o.id})">del</button></td>
   </tr>`;}).join('');
@@ -450,6 +450,12 @@ async function loadHist(){
   const r=await fetch(`/api/fiber/${id}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(!r.ok)return;const j=await r.json();
   document.getElementById('ctitle').textContent=(j.ont?.ont_sn||'rx')+' — rx_history.ts';
+  try{
+    const rs=await fetch(`/api/fiber/${id}/sla?days=30`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(rs.ok){const sj=await rs.json();
+      document.getElementById('slaLine').textContent=`// SLA 30 hari: ${sj.uptime_pct}% · ${sj.incidents} insiden · total down ${sj.total_downtime_str}`;}
+    else document.getElementById('slaLine').textContent='';
+  }catch(e){document.getElementById('slaLine').textContent='';}
   const ctx=document.getElementById('ch').getContext('2d');
   if(chart)chart.destroy();
   chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[

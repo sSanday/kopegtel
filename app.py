@@ -499,6 +499,17 @@ def init_db():
     )''')
     c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_hist ON fiber_history(ont_id, timestamp)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_sn ON fiber_onts(ont_sn)")
+    c.execute('''CREATE TABLE IF NOT EXISTS fiber_downtime(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ont_id INTEGER NOT NULL,
+      ont_sn TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'critical',
+      rx_dbm REAL,
+      started_at TEXT NOT NULL,
+      resolved_at TEXT,
+      duration_s INTEGER
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_down ON fiber_downtime(ont_id, resolved_at)")
 
     # --- MikroTik / SNMP device health (CPU/RAM/storage/suhu) ---
     c.execute('''CREATE TABLE IF NOT EXISTS device_health(
@@ -710,6 +721,12 @@ def cleanup_old_data():
                 print(f"[CLEANUP] fiber_history gagal: {e}")
                 deleted_fiber = 0
             try:
+                c.execute("DELETE FROM fiber_downtime WHERE resolved_at IS NOT NULL AND resolved_at < datetime('now', 'localtime', '-90 days')")
+                deleted_fiber_down = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] fiber_downtime gagal: {e}")
+                deleted_fiber_down = 0
+            try:
                 c.execute("DELETE FROM device_health WHERE timestamp < datetime('now', 'localtime', '-14 days')")
                 deleted_mt = c.rowcount
             except Exception as e:
@@ -740,7 +757,7 @@ def cleanup_old_data():
             chk.close()
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
-    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus.")
+    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus.")
 
 def backup_database():
     backup_dir = os.path.join(BASE_DIR, "backups")
@@ -2619,6 +2636,56 @@ def _fiber_degradation(fid, current_rx, now=None):
     return drop >= thresh, drop
 
 
+# Status yang dianggap "gangguan" untuk catatan downtime (layak SLA).
+_FIBER_DOWN_SEV = ("critical", "overload")
+
+
+def _fiber_downtime_transition(c, fid, ont_sn, status, rx, timestamp):
+    """Buka/tutup catatan downtime dalam transaksi milik caller.
+
+    Buka saat critical/overload; tutup saat normal/warning/unknown.
+    stale (tak terpantau) membiarkan catatan terbuka (gangguan dianggap
+    berlanjut sampai ada data segar). Kembalikan durasi detik bila baru
+    saja tertutup, else None. c = cursor aktif.
+    """
+    try:
+        c.execute("SELECT id, status, started_at FROM fiber_downtime "
+                  "WHERE ont_id=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+                  (fid,))
+        open_row = c.fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if status in _FIBER_DOWN_SEV:
+        if open_row:
+            if open_row["status"] != status:
+                try:
+                    c.execute("UPDATE fiber_downtime SET status=? WHERE id=?",
+                              (status, open_row["id"]))
+                except sqlite3.OperationalError:
+                    pass
+            return None
+        try:
+            c.execute("INSERT INTO fiber_downtime (ont_id, ont_sn, status, rx_dbm, started_at)"
+                      " VALUES (?,?,?,?,?)", (fid, ont_sn, status, rx, timestamp))
+        except sqlite3.OperationalError:
+            pass
+        return None
+    if not open_row or status == "stale":
+        return None
+    try:
+        started = datetime.strptime(open_row["started_at"], "%Y-%m-%d %H:%M:%S")
+        ended = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+        dur = max(0, int((ended - started).total_seconds()))
+    except (ValueError, TypeError):
+        dur = 0
+    try:
+        c.execute("UPDATE fiber_downtime SET resolved_at=?, duration_s=? WHERE id=?",
+                  (timestamp, dur, open_row["id"]))
+    except sqlite3.OperationalError:
+        return None
+    return dur
+
+
 def _fiber_decide(o, th, prev, maint_map, timestamp):
     """Satu keputusan evaluasi ONT. Kembalikan dict:
     {status, severity, advice, need, muted, in_maint, stale, tg_msg, log, mem}.
@@ -2727,15 +2794,24 @@ def _fiber_single_check(fid):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(fid),
                         get_active_maintenance_map(), timestamp)
+    closed_dur = None
     with db_lock:
         conn, c = get_db()
         try:
             c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
                       (dec["status"], timestamp, fid))
+            try:
+                closed_dur = _fiber_downtime_transition(
+                    c, fid, o["ont_sn"], dec["status"], o.get("rx_power"), timestamp)
+            except Exception as e:
+                print(f"[FIBER] downtime single check gagal: {e}")
+                closed_dur = None
             if dec["log"]:
+                etype, ehost, emsg = dec["log"]
+                if closed_dur is not None and etype == "FIBER_NORMAL":
+                    emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
                 try:
-                    _insert_system_log(c, dec["log"][0], dec["log"][1], dec["log"][2],
-                                       timestamp)
+                    _insert_system_log(c, etype, ehost, emsg, timestamp)
                 except Exception:
                     pass
             _commit_with_retry(conn)
@@ -2749,8 +2825,11 @@ def _fiber_single_check(fid):
             conn.close()
     fiber_alarm_memory[fid] = dec["mem"]
     if dec["tg_msg"]:
+        tmsg = dec["tg_msg"]
+        if closed_dur is not None and dec["status"] == "normal":
+            tmsg = f"{tmsg}\nDurasi gangguan: {_fmt_duration(closed_dur)}"
         try:
-            send_telegram_alert(dec["tg_msg"])
+            send_telegram_alert(tmsg)
         except Exception as e:
             print(f"[WARN] telegram fiber gagal: {e}")
 def poll_fiber_monitor():
@@ -2821,14 +2900,25 @@ def poll_fiber_monitor():
                     fiber_degrade_memory[oid] = {"degrading": bool(_degr), "drop_db": _drop}
                 except Exception as e:
                     print(f"[FIBER] degradasi {oid} gagal: {e}")
+                try:
+                    closed_dur = _fiber_downtime_transition(
+                        c, oid, o["ont_sn"], dec["status"], rx, timestamp)
+                except Exception as e:
+                    print(f"[FIBER] downtime {oid} gagal: {e}")
+                    closed_dur = None
                 if dec["log"]:
+                    etype, ehost, emsg = dec["log"]
+                    if closed_dur is not None and etype == "FIBER_NORMAL":
+                        emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
                     try:
-                        _insert_system_log(c, dec["log"][0], dec["log"][1], dec["log"][2],
-                                           timestamp)
+                        _insert_system_log(c, etype, ehost, emsg, timestamp)
                     except Exception:
                         pass
                 if dec["tg_msg"]:
-                    tg_queue.append(dec["tg_msg"])
+                    tmsg = dec["tg_msg"]
+                    if closed_dur is not None and dec["status"] == "normal":
+                        tmsg = f"{tmsg}\nDurasi gangguan: {_fmt_duration(closed_dur)}"
+                    tg_queue.append(tmsg)
                 c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
                           (dec["status"], timestamp, oid))
             _commit_with_retry(conn)
@@ -4403,17 +4493,19 @@ def _fiber_row_status(o):
     return status, severity, advice, need, stale, stale_age
 
 
-def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0):
-    """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi)."""
+def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0, down_map=None):
+    """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi, downtime)."""
     status, severity, advice, need, stale, stale_age = _fiber_row_status(o)
     dg = fiber_degrade_memory.get(o["id"]) or {}
+    down_since = (down_map or {}).get(o["id"])
     return {**o, "calc_status": status, "severity": severity,
             "advice": advice, "need_attenuator_db": need,
             "mute_active": _is_mute_active(o),
             "stale": stale, "stale_age": stale_age,
             "degrading": bool(dg.get("degrading")),
             "degrade_drop_db": dg.get("drop_db"),
-            "degrade_days": degrade_days, "degrade_thresh_db": degrade_thresh}
+            "degrade_days": degrade_days, "degrade_thresh_db": degrade_thresh,
+            "down_since": down_since, "down_ongoing": down_since is not None}
 
 
 _FIBER_SORTS = ("olt", "rx_asc", "rx_desc", "sn_asc", "sn_desc",
@@ -4437,7 +4529,8 @@ def api_fiber_list():
         except Exception:
             pass
     _dthresh, _ddays = _fiber_degrade_settings()
-    enriched = [_fiber_enrich_row(o, _ddays, _dthresh) for o in rows]
+    down_map = _fiber_open_downtime_map()
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map) for o in rows]
     # mode legacy (tanpa param): kembalikan array penuh seperti dulu
     if not any(request.args.get(k) is not None
                for k in ("page", "per_page", "sort", "q", "status", "olt", "odp")):
@@ -4518,9 +4611,11 @@ def api_fiber_summary():
         except Exception:
             pass
     _dthresh, _ddays = _fiber_degrade_settings()
-    enriched = [_fiber_enrich_row(o, _ddays, _dthresh) for o in rows]
+    down_map = _fiber_open_downtime_map()
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map) for o in rows]
     counts = {"total": len(enriched), "normal": 0, "warning": 0, "critical": 0,
-              "overload": 0, "stale": 0, "unknown": 0, "degrading": 0, "muted": 0}
+              "overload": 0, "stale": 0, "unknown": 0, "degrading": 0, "muted": 0,
+              "down_ongoing": 0}
     for o in enriched:
         if o["calc_status"] in counts:
             counts[o["calc_status"]] += 1
@@ -4528,6 +4623,8 @@ def api_fiber_summary():
             counts["degrading"] += 1
         if o["mute_active"]:
             counts["muted"] += 1
+        if o["down_ongoing"]:
+            counts["down_ongoing"] += 1
     with_rx = [o for o in enriched if o.get("rx_power") is not None]
     worst = sorted(with_rx, key=lambda o: (o["rx_power"], o["id"]))[:10]
     best = sorted(with_rx, key=lambda o: (-o["rx_power"], o["id"]))[:5]
@@ -4668,6 +4765,7 @@ def api_fiber_delete(fid):
     deleted = c.rowcount
     try:
         c.execute("DELETE FROM fiber_history WHERE ont_id=?", (fid,))
+        c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (fid,))
     except sqlite3.OperationalError:
         pass
     conn.commit()
@@ -4757,6 +4855,95 @@ def api_fiber_history_export(fid):
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition":
                              f"attachment; filename=history_{safe_sn}_{hours}h.csv"})
+
+
+def _fiber_open_downtime_map():
+    """{ont_id: started_at} catatan downtime yang masih terbuka (1 query)."""
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT ont_id, started_at FROM fiber_downtime WHERE resolved_at IS NULL")
+            return {r["ont_id"]: r["started_at"] for r in c.fetchall()}
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+
+
+@app.route("/api/fiber/<int:fid>/downtime", methods=["GET"])
+@api_login_required
+def api_fiber_downtime(fid):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
+        if not c.fetchone():
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
+        c.execute("SELECT id, ont_sn, status, rx_dbm, started_at, resolved_at, duration_s"
+                  " FROM fiber_downtime WHERE ont_id=? ORDER BY id DESC LIMIT 100", (fid,))
+        out = []
+        for r in c.fetchall():
+            out.append({
+                "id": r["id"], "ont_sn": r["ont_sn"], "status": r["status"],
+                "rx_dbm": r["rx_dbm"], "started_at": r["started_at"],
+                "resolved_at": r["resolved_at"] or "Ongoing",
+                "duration_s": r["duration_s"],
+                "duration": _fmt_duration(r["duration_s"]),
+                "state": "resolved" if r["resolved_at"] else "ongoing",
+            })
+    finally:
+        conn.close()
+    return jsonify(out)
+
+
+@app.route("/api/fiber/<int:fid>/sla", methods=["GET"])
+@api_login_required
+def api_fiber_sla(fid):
+    """SLA ONT dari catatan downtime. ?days=7|14|30|90 (default 30)."""
+    try:
+        days = int(request.args.get("days", 30))
+    except (ValueError, TypeError):
+        return jsonify({"error": "days harus angka"}), 400
+    if days not in (7, 14, 30, 90):
+        return jsonify({"error": "days harus salah satu 7/14/30/90"}), 400
+    now = datetime.now()
+    win_start = now - timedelta(days=days)
+    win_s = days * 86400
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, ont_sn FROM fiber_onts WHERE id=?", (fid,))
+        ont = c.fetchone()
+        if not ont:
+            return jsonify({"error": "ONT tidak ditemukan"}), 404
+        c.execute("SELECT started_at, resolved_at, duration_s FROM fiber_downtime"
+                  " WHERE ont_id=? AND (resolved_at IS NULL OR resolved_at >= ?)"
+                  " ORDER BY id ASC", (fid, win_start.strftime("%Y-%m-%d %H:%M:%S")))
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    down_s, incidents, longest = 0, 0, 0
+    for r in rows:
+        try:
+            s = datetime.strptime(r["started_at"], "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            continue
+        try:
+            e = datetime.strptime(r["resolved_at"], "%Y-%m-%d %H:%M:%S") if r["resolved_at"] else now
+        except (ValueError, TypeError):
+            e = now
+        s = max(s, win_start)
+        overlap = max(0, int((min(e, now) - s).total_seconds()))
+        if overlap <= 0:
+            continue
+        down_s += overlap
+        incidents += 1
+        longest = max(longest, overlap)
+    uptime_pct = round(max(0.0, (win_s - down_s) / win_s * 100), 2)
+    return jsonify({"ont": {"id": ont["id"], "ont_sn": ont["ont_sn"]},
+                    "days": days, "window_s": win_s,
+                    "uptime_pct": uptime_pct, "incidents": incidents,
+                    "total_downtime_s": down_s,
+                    "total_downtime_str": _fmt_duration(down_s),
+                    "longest_s": longest, "longest_str": _fmt_duration(longest)})
 
 
 @app.route("/api/fiber/export")

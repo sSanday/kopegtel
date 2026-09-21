@@ -39,6 +39,7 @@ def _cleanup_sn():
             row = c.fetchone()
             if row:
                 c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                 c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
                 m.fiber_alarm_memory.pop(row["id"], None)
         conn.commit()
@@ -161,6 +162,7 @@ class FiberApiTest(unittest.TestCase):
         finally:
             conn, c = m.get_db()
             c.execute("DELETE FROM fiber_history WHERE ont_id=?", (fid,))
+            c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (fid,))
             c.execute("DELETE FROM fiber_onts WHERE id=?", (fid,))
             conn.commit()
             conn.close()
@@ -351,6 +353,7 @@ def _cleanup_odp():
         row = c.fetchone()
         if row:
             c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+            c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
             c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
             m.fiber_alarm_memory.pop(row["id"], None)
         c.execute("DELETE FROM odps WHERE name=?", (ODP_NAME,))
@@ -485,6 +488,7 @@ def _cleanup_extra(client):
                 row = c.fetchone()
                 if row:
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
                     m.fiber_alarm_memory.pop(row["id"], None)
                 c.execute("DELETE FROM maintenance_windows WHERE host=?", (sn,))
@@ -762,6 +766,7 @@ def _cleanup_new(client):
                 row = c.fetchone()
                 if row:
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
                     m.fiber_alarm_memory.pop(row["id"], None)
                 c.execute("DELETE FROM maintenance_windows WHERE host=?", (sn,))
@@ -1210,6 +1215,7 @@ def _cleanup_olt_p(client):
                 c.execute("SELECT id FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
                 for r in c.fetchall():
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (r["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (r["id"],))
                     m.fiber_alarm_memory.pop(r["id"], None)
                     m.fiber_degrade_memory.pop(r["id"], None)
                 c.execute("DELETE FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
@@ -1390,6 +1396,7 @@ class FiberOltPresetTest(unittest.TestCase):
                 row = c.fetchone()
                 if row:
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
                     m.fiber_alarm_memory.pop(row["id"], None)
                 conn.commit()
@@ -1416,6 +1423,7 @@ def _cleanup_pg(client):
                 row = c.fetchone()
                 if row:
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
                     m.fiber_alarm_memory.pop(row["id"], None)
                     m.fiber_degrade_memory.pop(row["id"], None)
@@ -1590,6 +1598,192 @@ class FiberDailySummaryTest(unittest.TestCase):
         # normal + degradasi -> masuk seksi degradasi dini
         self.assertIn(SN_SUM_B, msg)
         self.assertIn("3.5 dB", msg)
+
+
+SN_DT_A = "TEST-FIBER-DT-A"
+SN_DT_B = "TEST-FIBER-DT-B"
+SN_DT_W = "TEST-FIBER-DT-W"
+SN_DT_C = "TEST-FIBER-DT-C"
+
+
+def _cleanup_dt(client):
+    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                    m.fiber_degrade_memory.pop(row["id"], None)
+                else:
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_sn=?", (sn,))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+
+class FiberDowntimeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_dt(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_dt(cls.client)
+
+    def _downtime(self, fid):
+        r = self.client.get(f"/api/fiber/{fid}/downtime", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()
+
+    def test_open_langsung_saat_create_critical(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
+                                   "tx_power": 2.0, "source": "manual"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        fid = r.get_json()["id"]
+        try:
+            rows = self._downtime(fid)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["state"], "ongoing")
+            self.assertEqual(rows[0]["status"], "critical")
+            # list menandai down_ongoing
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_DT_A)
+            self.assertTrue(item["down_ongoing"])
+            self.assertTrue(item["down_since"])
+            r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
+            self.assertGreaterEqual(r.get_json()["counts"]["down_ongoing"], 1)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_close_saat_pulih_dengan_durasi(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
+                                   "source": "manual"},
+                             headers=JSON_HDR)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_DT_A, "rx_power": -19.0,
+                                      "source": "manual"},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            rows = self._downtime(fid)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["state"], "resolved")
+            self.assertIsNotNone(rows[0]["duration_s"])
+            # log pemulihan memuat durasi
+            conn, c = m.get_db()
+            c.execute("SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_NORMAL'"
+                      " ORDER BY id DESC LIMIT 1", (SN_DT_A,))
+            log = c.fetchone()
+            conn.close()
+            self.assertIsNotNone(log)
+            self.assertIn("Durasi gangguan", log["message"])
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_DT_A)
+            self.assertFalse(item["down_ongoing"])
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_warning_tidak_membuka_catatan(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_W, "rx_power": -26.0,
+                                   "source": "manual"},
+                             headers=JSON_HDR)
+        fid = r.get_json()["id"]
+        try:
+            m.poll_fiber_monitor()
+            self.assertEqual(self._downtime(fid), [])
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_stale_membiarkan_catatan_terbuka(self):
+        from datetime import datetime, timedelta
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_B, "rx_power": -29.0,
+                                   "source": "snmp", "ont_index": "5"},
+                             headers=JSON_HDR)
+        fid = r.get_json()["id"]
+        try:
+            self.assertEqual(len(self._downtime(fid)), 1)
+            old = (datetime.now() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+            conn, c = m.get_db()
+            c.execute("UPDATE fiber_onts SET last_seen=? WHERE id=?", (old, fid))
+            conn.commit()
+            conn.close()
+            m.poll_fiber_monitor()
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_DT_B)
+            # stale tak menutupi critical (tetap butuh kunjungan teknisi)
+            self.assertEqual(item["calc_status"], "critical")
+            self.assertTrue(item["stale"])
+            rows = self._downtime(fid)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["state"], "ongoing")
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_DT_B, "rx_power": -19.0,
+                                      "source": "snmp", "ont_index": "5"},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(self._downtime(fid)[0]["state"], "resolved")
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_sla_dan_validasi_days(self):
+        from datetime import datetime, timedelta
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
+                                   "source": "manual"},
+                             headers=JSON_HDR)
+        fid = r.get_json()["id"]
+        try:
+            now = datetime.now()
+            start = (now - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+            end = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+            conn, c = m.get_db()
+            c.execute("UPDATE fiber_downtime SET started_at=?, resolved_at=?,"
+                      " duration_s=3600 WHERE ont_id=? AND resolved_at IS NULL", (start, end, fid))
+            conn.commit()
+            conn.close()
+            r = self.client.get(f"/api/fiber/{fid}/sla?days=30", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            j = r.get_json()
+            self.assertEqual(j["incidents"], 1)
+            self.assertEqual(j["total_downtime_s"], 3600)
+            self.assertAlmostEqual(j["uptime_pct"], round((30 * 86400 - 3600) / (30 * 86400) * 100, 2))
+            r = self.client.get(f"/api/fiber/{fid}/sla?days=5", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.get("/api/fiber/999999/sla", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 404)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_delete_menghapus_riwayat_downtime(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_DT_C, "rx_power": -29.0,
+                                   "source": "manual"},
+                             headers=JSON_HDR)
+        fid = r.get_json()["id"]
+        self.assertEqual(len(self._downtime(fid)), 1)
+        r = self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        conn, c = m.get_db()
+        n = c.execute("SELECT COUNT(*) FROM fiber_downtime WHERE ont_id=?", (fid,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 0)
 
 
 if __name__ == "__main__":
