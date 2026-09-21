@@ -315,6 +315,9 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_warn', '-25.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_crit', '-27.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_target', '-18.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_db', '3.0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_days', '7')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_stale_min', '60')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')")
@@ -548,6 +551,9 @@ def init_db():
         pass
     for _col, _ddl in (
         ("mute_alarm", "ALTER TABLE fiber_onts ADD COLUMN mute_alarm INTEGER NOT NULL DEFAULT 0"),
+        ("mute_until", "ALTER TABLE fiber_onts ADD COLUMN mute_until TEXT DEFAULT ''"),
+        ("mute_reason", "ALTER TABLE fiber_onts ADD COLUMN mute_reason TEXT DEFAULT ''"),
+        ("last_seen", "ALTER TABLE fiber_onts ADD COLUMN last_seen TEXT DEFAULT ''"),
         ("rx_warn", "ALTER TABLE fiber_onts ADD COLUMN rx_warn REAL"),
         ("rx_crit", "ALTER TABLE fiber_onts ADD COLUMN rx_crit REAL"),
         ("ont_index", "ALTER TABLE fiber_onts ADD COLUMN ont_index TEXT DEFAULT ''"),
@@ -556,6 +562,14 @@ def init_db():
             c.execute(_ddl)
         except sqlite3.OperationalError:
             pass
+    try:
+        # backfill sekali: ONT yang sudah punya pengukuran dianggap terpantau
+        # pada cek terakhir (agar tak langsung 'stale' setelah upgrade)
+        c.execute("UPDATE fiber_onts SET last_seen=COALESCE(NULLIF(last_checked, ''), updated_at) "
+                  "WHERE (last_seen IS NULL OR last_seen='') "
+                  "AND (rx_power IS NOT NULL OR tx_power IS NOT NULL)")
+    except sqlite3.OperationalError:
+        pass
 
     c.execute('''CREATE TABLE IF NOT EXISTS olts(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -566,10 +580,26 @@ def init_db():
       rx_base TEXT DEFAULT '',
       tx_base TEXT DEFAULT '',
       div REAL NOT NULL DEFAULT 100.0,
+      scale REAL NOT NULL DEFAULT 1.0,
+      offset REAL NOT NULL DEFAULT 0.0,
+      last_tested TEXT DEFAULT '',
+      last_test_ok INTEGER NOT NULL DEFAULT 0,
+      last_test_msg TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )''')
     c.execute("CREATE INDEX IF NOT EXISTS idx_olt_name ON olts(name)")
+    for _col, _ddl in (
+        ("scale", "ALTER TABLE olts ADD COLUMN scale REAL NOT NULL DEFAULT 1.0"),
+        ("offset", "ALTER TABLE olts ADD COLUMN offset REAL NOT NULL DEFAULT 0.0"),
+        ("last_tested", "ALTER TABLE olts ADD COLUMN last_tested TEXT DEFAULT ''"),
+        ("last_test_ok", "ALTER TABLE olts ADD COLUMN last_test_ok INTEGER NOT NULL DEFAULT 0"),
+        ("last_test_msg", "ALTER TABLE olts ADD COLUMN last_test_msg TEXT DEFAULT ''"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
 
     c.execute("SELECT COUNT(*) as cnt FROM hosts")
     if c.fetchone()["cnt"] == 0:
@@ -2145,8 +2175,17 @@ FIBER_RX_CRIT = -27.0
 FIBER_RX_TARGET = -18.0  # target ideal untuk hitung kebutuhan peredam
 FIBER_TX_MIN = 0.0
 FIBER_TX_MAX = 5.0
+# Deteksi degradasi bertahap: Rx turun >= FIBER_DEGRADE_DB dB dalam
+# FIBER_DEGRADE_DAYS hari (butuh rentang history >= 24 jam).
+FIBER_DEGRADE_DB = 3.0
+FIBER_DEGRADE_DAYS = 7
+FIBER_DEGRADE_MIN_SPAN_H = 24
+# Batas data basi (stale): sumber otomatis (snmp/simulator) tanpa pengukuran
+# baru lebih lama dari ini dianggap tak terpantau (kemungkinan LOS/ONT mati).
+FIBER_STALE_MIN = 60
 
 fiber_alarm_memory = {}
+fiber_degrade_memory = {}
 
 
 def _fiber_thresholds():
@@ -2326,15 +2365,181 @@ def get_ont_optical_power_snmp(olt_ip, community, ont_index, vendor="zte"):
     return None, None
 
 
+def _is_mute_active(o, now=None):
+    """True bila alarm ONT sedang di-mute (hormati mute_until).
+
+    mute_alarm=0 -> tidak mute. mute_until kosong -> mute permanen.
+    mute_until terlewati -> mute dianggap kedaluwarsa (alarm aktif lagi).
+    Format mute_until fleksibel mengikuti _parse_maint_time.
+    """
+    try:
+        if not o.get("mute_alarm"):
+            return False
+    except (AttributeError, TypeError):
+        return False
+    until_raw = (o.get("mute_until") or "").strip() if isinstance(o.get("mute_until"), str) else o.get("mute_until")
+    if not until_raw:
+        return True
+    try:
+        until = _parse_maint_time(str(until_raw))
+    except Exception:
+        return True
+    if not until:
+        return True
+    return (now or datetime.now()) <= until
+
+
+def _fiber_maintenance_info(o, maint_map):
+    """Cek maintenance hierarki untuk satu ONT.
+
+    Urutan: ONT SN persis -> ODP:<nama> -> OLT:<nama> (case-insensitive).
+    Kembalikan (in_maint, reason, scope) dengan scope salah satu
+    'ont'/'odp'/'olt'/None.
+    """
+    if not maint_map:
+        return False, None, None
+    try:
+        norm = {str(k).strip().lower(): v for k, v in (maint_map or {}).items()}
+    except Exception:
+        return False, None, None
+    sn = (o.get("ont_sn") or "").strip()
+    if sn and sn.lower() in norm:
+        e = norm[sn.lower()] or {}
+        return True, (e.get("reason") or "").strip() or None, "ont"
+    odp = (o.get("odp_name") or "").strip().lower()
+    if odp and ("odp:" + odp) in norm:
+        e = norm["odp:" + odp] or {}
+        return True, (e.get("reason") or "").strip() or None, "odp"
+    olt = (o.get("olt_name") or "").strip().lower()
+    if olt and ("olt:" + olt) in norm:
+        e = norm["olt:" + olt] or {}
+        return True, (e.get("reason") or "").strip() or None, "olt"
+    return False, None, None
+
+
+def _fiber_degrade_settings():
+    """(thresh_db, days) degradasi dari settings, di-clamp ke rentang valid."""
+    try:
+        thresh = float(get_setting("fiber_degrade_db", FIBER_DEGRADE_DB))
+    except (ValueError, TypeError):
+        thresh = FIBER_DEGRADE_DB
+    try:
+        days = int(float(get_setting("fiber_degrade_days", FIBER_DEGRADE_DAYS)))
+    except (ValueError, TypeError):
+        days = FIBER_DEGRADE_DAYS
+    return min(10.0, max(0.5, thresh)), min(30, max(1, days))
+
+
+def _fiber_stale_threshold_min():
+    try:
+        m = int(float(get_setting("fiber_stale_min", FIBER_STALE_MIN)))
+    except (ValueError, TypeError):
+        m = FIBER_STALE_MIN
+    return min(10080, max(10, m))
+
+
+def _fmt_age(age_min):
+    try:
+        m = float(age_min)
+    except (ValueError, TypeError):
+        return "?"
+    if m < 1:
+        return "baru saja"
+    if m < 60:
+        return f"{int(m)} mnt"
+    if m < 60 * 48:
+        return f"{int(m // 60)} jam"
+    d = m / (60 * 24)
+    return f"{int(d)} hari" if d >= 10 else f"{round(d, 1)} hari"
+
+
+def _fiber_stale_info(o, now=None):
+    """(is_stale, age_txt). Hanya sumber otomatis (snmp/simulator) yang punya
+    pengukuran tapi tak ada data baru melewati ambang fiber_stale_min.
+    Manual tak pernah stale (datanya input teknisi, bukan hasil polling)."""
+    try:
+        src = (o.get("source") or "manual").strip().lower()
+    except (AttributeError, TypeError):
+        src = "manual"
+    if src not in ("snmp", "simulator"):
+        return False, None
+    if o.get("rx_power") is None and o.get("tx_power") is None:
+        return False, None
+    seen_raw = (o.get("last_seen") or "").strip()
+    if not seen_raw:
+        return False, None
+    try:
+        seen = datetime.strptime(seen_raw, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return False, None
+    now = now or datetime.now()
+    age_min = (now - seen).total_seconds() / 60.0
+    if age_min < 0:
+        return False, None
+    if age_min >= _fiber_stale_threshold_min():
+        return True, _fmt_age(age_min)
+    return False, None
+
+
+def _fiber_stale_advice(o, age_txt):
+    rx = o.get("rx_power")
+    rx_txt = f"{rx} dBm" if rx is not None else "—"
+    seen = (o.get("last_seen") or "—")
+    return (f"Data tidak segar sejak {age_txt} (terakhir {seen}). "
+            f"Rx terakhir {rx_txt}. Kemungkinan ONT LOS/mati atau SNMP OLT gagal — "
+            "cek OLT, ONT, dan jalur fiber.")
+
+
+def _fiber_degradation(fid, current_rx, now=None):
+    """(degrading, drop_db). Bandingkan Rx terawal dalam window
+    (fiber_degrade_days) vs Rx kini. drop positif = memburuk.
+    Butuh rentang history >= 24 jam agar noise sesaat tak false-positive."""
+    try:
+        cur = float(current_rx)
+    except (ValueError, TypeError):
+        return False, None
+    if fid is None:
+        return False, None
+    thresh, days = _fiber_degrade_settings()
+    now = now or datetime.now()
+    start = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT rx_power, timestamp FROM fiber_history WHERE ont_id=? "
+                      "AND rx_power IS NOT NULL AND timestamp >= ? "
+                      "ORDER BY timestamp ASC, id ASC LIMIT 1", (fid, start))
+            first = c.fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return False, None
+    if not first:
+        return False, None
+    try:
+        first_rx = float(first["rx_power"])
+        first_ts = datetime.strptime(first["timestamp"], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError, KeyError):
+        return False, None
+    if (now - first_ts).total_seconds() < FIBER_DEGRADE_MIN_SPAN_H * 3600:
+        return False, None
+    drop = round(first_rx - cur, 2)
+    return drop >= thresh, drop
+
+
 def _fiber_decide(o, th, prev, maint_map, timestamp):
     """Satu keputusan evaluasi ONT. Kembalikan dict:
-    {status, severity, advice, need, muted, in_maint, tg_msg, log, mem}.
+    {status, severity, advice, need, muted, in_maint, stale, tg_msg, log, mem}.
     tg_msg None bila tak perlu kirim (belum berubah / mute / maintenance).
     log = (event_type, host, message) atau None. mem = nilai memory baru.
     """
     status, severity, advice, need = fiber_eval(o.get("rx_power"), o.get("tx_power"), th)
-    muted = bool(o.get("mute_alarm"))
-    in_maint = (o.get("ont_sn") or "") in (maint_map or {})
+    muted = _is_mute_active(o)
+    in_maint, maint_reason, maint_scope = _fiber_maintenance_info(o, maint_map)
+    stale, stale_age = _fiber_stale_info(o)
+    if stale and status in ("normal", "warning", "unknown"):
+        status, severity = "stale", "warning"
+        advice = _fiber_stale_advice(o, stale_age or "?")
     rx, tx = o.get("rx_power"), o.get("tx_power")
     label = o.get("customer") or o.get("ont_sn")
     tx_txt = f"Tx: {tx} dBm" if tx is not None else "Tx: —"
@@ -2357,26 +2562,54 @@ def _fiber_decide(o, th, prev, maint_map, timestamp):
                 f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
             )
         if in_maint:
+            scope_txt = f" ({maint_scope.upper()} {(o.get('odp_name') or o.get('olt_name') or o['ont_sn'])})" if maint_scope and maint_scope != "ont" else ""
             log = ("FIBER_MAINT", o["ont_sn"],
-                   f"Rx {rx} dBm Tx {tx} dalam maintenance — telegram disuppress")
+                   f"Rx {rx} dBm Tx {tx} dalam maintenance{scope_txt} — telegram disuppress"
+                   f"{(' - ' + maint_reason) if maint_reason else ''}")
             tg_msg = None
         elif muted:
-            log = ("FIBER_MUTED", o["ont_sn"], f"Rx {rx} dBm Tx {tx} — alarm dimute")
+            mute_note = ""
+            try:
+                if (o.get("mute_until") or "").strip():
+                    mute_note = f" s/d {o.get('mute_until')}"
+                if (o.get("mute_reason") or "").strip():
+                    mute_note += f" ({(o.get('mute_reason') or '').strip()[:100]})"
+            except Exception:
+                pass
+            log = ("FIBER_MUTED", o["ont_sn"], f"Rx {rx} dBm Tx {tx} — alarm dimute{mute_note}")
             tg_msg = None
         else:
             log = ("FIBER_" + status.upper(), o["ont_sn"],
                    f"Rx {rx} dBm Tx {tx} — {advice}")
     elif status == "normal":
         if prev not in (None, "normal"):
-            log = ("FIBER_NORMAL", o["ont_sn"], f"Rx kembali normal ({rx} dBm)")
+            if prev == "stale":
+                log = ("FIBER_NORMAL", o["ont_sn"], f"Terpantau kembali (Rx {rx} dBm)")
+            else:
+                log = ("FIBER_NORMAL", o["ont_sn"], f"Rx kembali normal ({rx} dBm)")
             if not muted and not in_maint:
                 tg_msg = (f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\n"
                           f"Rx: {rx} dBm\nWaktu: {timestamp}")
         mem = "normal"
+    elif status == "stale":
+        mem = "stale"
+        if prev != "stale":
+            if in_maint:
+                log = ("FIBER_MAINT", o["ont_sn"],
+                       "Stale dalam maintenance — telegram disuppress"
+                       f"{(' - ' + maint_reason) if maint_reason else ''}")
+            elif muted:
+                log = ("FIBER_MUTED", o["ont_sn"], "Stale — alarm dimute")
+            else:
+                log = ("FIBER_STALE", o["ont_sn"],
+                       f"Tak terpantau sejak {stale_age} — {advice}")
+                tg_msg = (f"⚠️ *FIBER TAK TERPANTAU (STALE)*\nONT: `{o['ont_sn']}` ({label})\n"
+                          f"{advice}\nWaktu: {timestamp}")
     elif status == "unknown":
         mem = "unknown"
     return {"status": status, "severity": severity, "advice": advice, "need": need,
-            "muted": muted, "in_maint": in_maint, "tg_msg": tg_msg, "log": log, "mem": mem}
+            "muted": muted, "in_maint": in_maint, "stale": stale,
+            "tg_msg": tg_msg, "log": log, "mem": mem}
 
 
 def _fiber_single_check(fid):
@@ -2474,8 +2707,8 @@ def poll_fiber_monitor():
                         base = -19.0
                     # clamp zona normal -22..-16 (di dalam -25..-8)
                     rx = max(-22.0, min(-16.0, round(base + random.uniform(-0.6, 0.6), 2)))
-                    c.execute("UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=? WHERE id=?",
-                              (rx, timestamp, timestamp, oid))
+                    c.execute("UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=?, last_seen=? WHERE id=?",
+                              (rx, timestamp, timestamp, timestamp, oid))
                     o["rx_power"] = rx
                 # lewati ONT tanpa data sama sekali (hemat DB, grafik tetap kosong wajar)
                 if rx is None and tx is None:
@@ -2491,6 +2724,11 @@ def poll_fiber_monitor():
                 dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(oid),
                                     maint_map, timestamp)
                 fiber_alarm_memory[oid] = dec["mem"]
+                try:
+                    _degr, _drop = _fiber_degradation(oid, rx)
+                    fiber_degrade_memory[oid] = {"degrading": bool(_degr), "drop_db": _drop}
+                except Exception as e:
+                    print(f"[FIBER] degradasi {oid} gagal: {e}")
                 if dec["log"]:
                     try:
                         _insert_system_log(c, dec["log"][0], dec["log"][1], dec["log"][2],
@@ -2570,23 +2808,23 @@ def poll_fiber_snmp():
         except Exception as e:
             print(f"[FIBER-SNMP] {t.get('ont_sn')}: {e}")
             continue
-        try:
-            div = float(olt.get("div") or 100.0) or 100.0
-        except (ValueError, TypeError):
-            div = 100.0
         new_rx, new_tx = t.get("rx_power"), t.get("tx_power")
+        got_fresh = False
         for kind, v in zip(kinds, vals or []):
             if v is None:
                 continue
-            try:
-                f = round(float(v) / div, 2)
-            except (ValueError, TypeError):
+            f = _olt_raw_to_dbm(v, olt)
+            if f is None:
                 continue
             if kind == "rx" and -40 <= f <= 10:
                 new_rx = f
+                got_fresh = True
             elif kind == "tx" and -10 <= f <= 10:
                 new_tx = f
-        if new_rx != t.get("rx_power") or new_tx != t.get("tx_power"):
+                got_fresh = True
+        # last_seen maju di tiap poll sukses (walau nilai tak berubah) agar
+        # ONT yang OLT-nya mati perlahan menjadi 'stale', bukan beku selamanya
+        if got_fresh:
             updates.append((new_rx, new_tx, timestamp, timestamp, t["id"]))
     if not updates:
         return
@@ -2594,7 +2832,7 @@ def poll_fiber_snmp():
         conn, c = get_db()
         try:
             c.executemany("UPDATE fiber_onts SET rx_power=?, tx_power=?,"
-                          " last_checked=?, updated_at=? WHERE id=?", updates)
+                          " last_seen=?, last_checked=? WHERE id=?", updates)
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] poll_fiber_snmp gagal: {e}")
@@ -2684,7 +2922,7 @@ def rebuild_alarm_memory():
                 c.execute("SELECT id, status FROM fiber_onts")
                 for r in c.fetchall():
                     st = (r["status"] or "").strip().lower()
-                    if st in ("normal", "warning", "critical", "overload", "unknown"):
+                    if st in ("normal", "warning", "critical", "overload", "unknown", "stale"):
                         fiber_alarm_memory[r["id"]] = st
             except Exception as e:
                 print(f"[REBUILD] fiber gagal: {e}")
@@ -3151,6 +3389,9 @@ def api_get_settings():
         "fiber_rx_target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
         "fiber_tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
         "fiber_tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
+        "fiber_degrade_db": get_setting("fiber_degrade_db", FIBER_DEGRADE_DB),
+        "fiber_degrade_days": get_setting("fiber_degrade_days", FIBER_DEGRADE_DAYS),
+        "fiber_stale_min": get_setting("fiber_stale_min", FIBER_STALE_MIN),
         "temp_threshold": get_setting("temp_threshold", 60.0),
         "temp_crit": get_setting("temp_crit", 75.0),
         "mt_cpu_oid": get_setting("mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str),
@@ -3195,6 +3436,26 @@ def api_save_settings():
             return jsonify({"error": f"{key} harus angka {lo}..{hi} dBm"}), 400
         if not lo <= v <= hi:
             return jsonify({"error": f"{key} harus {lo}..{hi} dBm"}), 400
+        vals[key] = v
+    v = data.get("fiber_degrade_db")
+    if v is not None:
+        try:
+            v = float(v)
+        except (ValueError, TypeError):
+            return jsonify({"error": "fiber_degrade_db harus angka 0.5-10 dB"}), 400
+        if not 0.5 <= v <= 10:
+            return jsonify({"error": "fiber_degrade_db harus 0.5-10 dB"}), 400
+        vals["fiber_degrade_db"] = v
+    for key, lo, hi in (("fiber_degrade_days", 1, 30), ("fiber_stale_min", 10, 10080)):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": f"{key} harus angka {lo}-{hi}"}), 400
+        if not lo <= v <= hi:
+            return jsonify({"error": f"{key} harus {lo}-{hi}"}), 400
         vals[key] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
@@ -3737,8 +3998,27 @@ def api_maintenance_create():
                 is_ont = bool(c.fetchone())
             except sqlite3.OperationalError:
                 pass
-        if not is_host and not is_ont:
-            return jsonify({"error": "Host/ONT SN belum terdaftar. Tambahkan dulu di dashboard."}), 404
+        # Maintenance hierarki fiber: "ODP:<nama>" / "OLT:<nama>" men-suppress
+        # semua ONT di bawahnya (lihat _fiber_maintenance_info).
+        lowered = host.lower()
+        if not is_host and not is_ont and (lowered.startswith("odp:") or lowered.startswith("olt:")):
+            scope, _, name = host.partition(":")
+            name = name.strip()
+            if not name:
+                return jsonify({"error": "Format harus ODP:<nama> atau OLT:<nama>"}), 400
+            try:
+                if lowered.startswith("odp:"):
+                    c.execute("SELECT name FROM odps WHERE name COLLATE NOCASE = ?", (name,))
+                else:
+                    c.execute("SELECT name FROM olts WHERE name COLLATE NOCASE = ?", (name,))
+                row = c.fetchone()
+            except sqlite3.OperationalError:
+                row = None
+            if not row:
+                return jsonify({"error": f"{scope.upper()} '{name}' belum terdaftar."}), 404
+            host = f"{scope.upper()}:{row['name']}"
+        if not is_host and not is_ont and not (host.startswith("ODP:") or host.startswith("OLT:")):
+            return jsonify({"error": "Host/ONT SN belum terdaftar. Tambahkan dulu di dashboard. Untuk fiber massal pakai ODP:<nama> atau OLT:<nama>."}), 404
         c.execute(
             "SELECT 1 FROM maintenance_windows WHERE host=? AND start_at <= ? AND end_at >= ? LIMIT 1",
             (host, _fmt_maint_time(end_dt), _fmt_maint_time(start_dt)),
@@ -3990,6 +4270,15 @@ def _validate_fiber(d):
         mute = 1 if int(mute) else 0
     except (ValueError, TypeError):
         mute = 0
+    mute_until_raw = d.get("mute_until", None)
+    if mute_until_raw in (None, ""):
+        mute_until = ""
+    else:
+        mute_until_dt = _parse_maint_time(str(mute_until_raw))
+        if not mute_until_dt:
+            return None, "mute_until harus format YYYY-MM-DD HH:MM (atau tanggal saja)"
+        mute_until = _fmt_maint_time(mute_until_dt)
+    mute_reason = str(d.get("mute_reason") or "").strip()[:200]
     ont_index = str(d.get("ont_index") or "").strip()[:64]
     if ont_index and not re.match(r"^[A-Za-z0-9_.\-:]{1,64}$", ont_index):
         return None, "ONT index 1-64 karakter (huruf/angka/_-.:)"
@@ -4002,7 +4291,8 @@ def _validate_fiber(d):
             "pon_port": str(d.get("pon_port") or "").strip()[:50],
             "odp_name": str(d.get("odp_name") or "").strip()[:100],
             "rx_power": rx, "tx_power": tx, "source": source,
-            "mute_alarm": mute, "rx_warn": rw, "rx_crit": rc,
+            "mute_alarm": mute, "mute_until": mute_until, "mute_reason": mute_reason,
+            "rx_warn": rw, "rx_crit": rc,
             "ont_index": ont_index}, None
 
 
@@ -4021,12 +4311,23 @@ def api_fiber_list():
         except Exception:
             pass
     th = _fiber_thresholds()
+    _dthresh, _ddays = _fiber_degrade_settings()
     out = []
     for o in rows:
         status, severity, advice, need_db = fiber_eval(o.get("rx_power"), o.get("tx_power"),
                                                        _th_for_ont(o))
+        stale, stale_age = _fiber_stale_info(o)
+        if stale and status in ("normal", "warning", "unknown"):
+            status, severity = "stale", "warning"
+            advice = _fiber_stale_advice(o, stale_age or "?")
+        dg = fiber_degrade_memory.get(o["id"]) or {}
         out.append({**o, "calc_status": status, "severity": severity,
-                    "advice": advice, "need_attenuator_db": need_db})
+                    "advice": advice, "need_attenuator_db": need_db,
+                    "mute_active": _is_mute_active(o),
+                    "stale": stale, "stale_age": stale_age,
+                    "degrading": bool(dg.get("degrading")),
+                    "degrade_drop_db": dg.get("drop_db"),
+                    "degrade_days": _ddays, "degrade_thresh_db": _dthresh})
     return jsonify(out)
 
 
@@ -4044,13 +4345,15 @@ def api_fiber_create():
         try:
             c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
                        rx_power,tx_power,status,last_checked,source,created_at,updated_at,
-                       mute_alarm,rx_warn,rx_crit,ont_index)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?)""",
+                       mute_alarm,mute_until,mute_reason,rx_warn,rx_crit,ont_index,last_seen)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?)""",
                       (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
                        vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
                        now if has_measurement else None,
                        vals["source"], now, now,
-                       vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"]))
+                       vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
+                       vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
+                       now if has_measurement else None))
             fid = c.lastrowid
             if has_measurement:
                 c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
@@ -4090,20 +4393,24 @@ def api_fiber_update(fid):
     has_measurement = vals["rx_power"] is not None or vals["tx_power"] is not None
     conn, c = get_db()
     try:
-        c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
-        if not c.fetchone():
+        c.execute("SELECT id, last_seen FROM fiber_onts WHERE id=?", (fid,))
+        _old = c.fetchone()
+        if not _old:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
+        last_seen_new = now if has_measurement else (_old["last_seen"] or None)
         try:
             c.execute("""UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
                          rx_power=?, tx_power=?, status=?, last_checked=?, source=?, updated_at=?,
-                         mute_alarm=?, rx_warn=?, rx_crit=?, ont_index=?
+                         mute_alarm=?, mute_until=?, mute_reason=?, rx_warn=?, rx_crit=?, ont_index=?,
+                         last_seen=?
                          WHERE id=?""",
                       (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
                        vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
                        now if has_measurement else None,
                        vals["source"], now,
-                       vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
-                       fid))
+                       vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
+                       vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
+                       last_seen_new, fid))
             if has_measurement:
                 c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
                           (fid, vals["rx_power"], vals["tx_power"], now))
@@ -4209,13 +4516,16 @@ def api_fiber_export():
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["ont_sn", "customer", "olt", "pon_port", "odp", "rx_dbm", "tx_dbm",
-                "status", "saran", "last_checked"])
+                "status", "saran", "last_checked", "source", "mute_alarm",
+                "mute_until", "mute_reason"])
     for o in rows:
         status, _, advice, _need = fiber_eval(o.get("rx_power"), o.get("tx_power"), _th_for_ont(o))
         w.writerow([_csv_safe(o.get("ont_sn")), _csv_safe(o.get("customer")),
                     _csv_safe(o.get("olt_name")), _csv_safe(o.get("pon_port")),
                     _csv_safe(o.get("odp_name")), o.get("rx_power"), o.get("tx_power"),
-                    status, _csv_safe(advice), _csv_safe(o.get("last_checked"))])
+                    status, _csv_safe(advice), _csv_safe(o.get("last_checked")),
+                    _csv_safe(o.get("source")), o.get("mute_alarm") or 0,
+                    _csv_safe(o.get("mute_until")), _csv_safe(o.get("mute_reason"))])
     try:
         audit(current_user.username, "fiber.export", f"rows={len(rows)}")
     except Exception:
@@ -4230,11 +4540,21 @@ def api_fiber_import():
     """Import massal ONT dari CSV (hindari input satu-satu).
 
     Kolom: ont_sn*,customer,olt_name,pon_port,odp_name,rx_power,tx_power,
-    source,mute_alarm,rx_warn,rx_crit,ont_index (*wajib).
-    Duplikat SN dilewati (skipped). Memory alarm di-seed diam-diam agar
-    import massal tak membanjiri Telegram; alarm tetap tampil di triggers
-    dan telegram dikirim saat ada perubahan berikutnya.
+    source,mute_alarm,mute_until,mute_reason,rx_warn,rx_crit,ont_index (*wajib).
+    Mode via form/query 'mode': 'skip' (default, duplikat SN dilewati) atau
+    'upsert'/'update' (duplikat SN diperbarui + snapshot history baru).
+    Semantik upsert = merge: hanya kolom yang ADA dan TERISI di CSV yang
+    ditimpa; sel kosong / kolom tak ada mempertahankan nilai lama (aman untuk
+    update massal Rx hasil OPM tanpa menghapus customer/ODP).
+    Memory alarm di-seed diam-diam agar import massal tak membanjiri Telegram;
+    alarm tetap tampil di triggers dan telegram dikirim saat ada perubahan
+    berikutnya.
     """
+    mode = ((request.form.get("mode") if request.form else None)
+            or request.args.get("mode") or "skip").strip().lower()
+    if mode not in ("skip", "upsert", "update"):
+        return jsonify({"error": "mode harus 'skip' atau 'upsert'"}), 400
+    do_upsert = mode in ("upsert", "update")
     if "file" not in request.files:
         return jsonify({"error": "File CSV wajib diunggah (field 'file')"}), 400
     try:
@@ -4255,7 +4575,7 @@ def api_fiber_import():
     except Exception:
         return jsonify({"error": "Format CSV tidak valid"}), 400
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    created, skipped, errors = 0, 0, []
+    created, updated, skipped, errors = 0, 0, 0, []
     with db_lock:
         conn, c = get_db()
         try:
@@ -4267,20 +4587,73 @@ def api_fiber_import():
                     continue
                 try:
                     c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (vals["ont_sn"],))
-                    if c.fetchone():
-                        skipped += 1
+                    existing = c.fetchone()
+                    if existing:
+                        if not do_upsert:
+                            skipped += 1
+                            continue
+                        fid = existing["id"]
+                        # merge: hanya sel terisi yang menimpa nilai lama
+                        raw = {(k.strip() if isinstance(k, str) else k): v
+                               for k, v in (r or {}).items() if k}
+                        c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,))
+                        cur = dict(c.fetchone())
+                        merged = dict(vals)
+                        for _f in ("customer", "olt_name", "pon_port", "odp_name",
+                                   "rx_power", "tx_power", "source", "mute_alarm",
+                                   "mute_until", "mute_reason", "rx_warn", "rx_crit",
+                                   "ont_index"):
+                            _rv = raw.get(_f)
+                            if _rv is None or (isinstance(_rv, str) and not _rv.strip()):
+                                merged[_f] = cur.get(_f)
+                        # normalisasi ulang tipe merge sisa DB (mute_until dkk.)
+                        if merged.get("mute_until"):
+                            try:
+                                _dt = _parse_maint_time(str(merged["mute_until"]))
+                                merged["mute_until"] = _fmt_maint_time(_dt) if _dt else ""
+                            except Exception:
+                                merged["mute_until"] = cur.get("mute_until") or ""
+                        # last_seen maju hanya bila CSV membawa pengukuran baru
+                        _raw_rx = raw.get("rx_power")
+                        _raw_tx = raw.get("tx_power")
+                        _has_new_meas = (
+                            (_raw_rx is not None and not (isinstance(_raw_rx, str) and not _raw_rx.strip()))
+                            or (_raw_tx is not None and not (isinstance(_raw_tx, str) and not _raw_tx.strip()))
+                        )
+                        merged["last_seen"] = now if _has_new_meas else (cur.get("last_seen") or None)
+                        has_meas = (merged["rx_power"] is not None or merged["tx_power"] is not None)
+                        status, _, _, _ = fiber_eval(merged["rx_power"], merged["tx_power"],
+                                                     _th_for_ont(merged))
+                        c.execute("""UPDATE fiber_onts SET customer=?, olt_name=?, pon_port=?, odp_name=?,
+                                     rx_power=?, tx_power=?, status=?, last_checked=?, source=?,
+                                     updated_at=?, mute_alarm=?, mute_until=?, mute_reason=?,
+                                     rx_warn=?, rx_crit=?, ont_index=?, last_seen=? WHERE id=?""",
+                                  (merged["customer"], merged["olt_name"], merged["pon_port"],
+                                   merged["odp_name"], merged["rx_power"], merged["tx_power"], status,
+                                   now if has_meas else None, merged["source"], now,
+                                   merged["mute_alarm"], merged["mute_until"], merged["mute_reason"],
+                                   merged["rx_warn"], merged["rx_crit"], merged["ont_index"],
+                                   merged["last_seen"], fid))
+                        if has_meas:
+                            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                                      (fid, merged["rx_power"], merged["tx_power"], now))
+                        fiber_alarm_memory[fid] = status
+                        updated += 1
                         continue
                     status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"],
                                                  _th_for_ont(vals))
+                    has_meas_imp = (vals["rx_power"] is not None or vals["tx_power"] is not None)
                     c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
                                rx_power,tx_power,status,last_checked,source,created_at,updated_at,
-                               mute_alarm,rx_warn,rx_crit,ont_index)
-                               VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?)""",
+                               mute_alarm,mute_until,mute_reason,rx_warn,rx_crit,ont_index,last_seen)
+                               VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?)""",
                               (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
                                vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                               now if (vals["rx_power"] is not None or vals["tx_power"] is not None) else None,
+                               now if has_meas_imp else None,
                                vals["source"], now, now,
-                               vals["mute_alarm"], vals["rx_warn"], vals["rx_crit"], vals["ont_index"]))
+                               vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
+                               vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
+                               now if has_meas_imp else None))
                     fid = c.lastrowid
                     if vals["rx_power"] is not None or vals["tx_power"] is not None:
                         c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
@@ -4295,11 +4668,11 @@ def api_fiber_import():
         finally:
             conn.close()
     try:
-        audit(current_user.username, "fiber.import", f"created={created} skipped={skipped}")
+        audit(current_user.username, "fiber.import", f"created={created} updated={updated} skipped={skipped}")
     except Exception:
         pass
-    return jsonify({"status": "success", "created": created, "skipped": skipped,
-                    "errors": errors[:20]})
+    return jsonify({"status": "success", "created": created, "updated": updated,
+                    "skipped": skipped, "errors": errors[:20]})
 
 
 # ---------------- ODP (agregasi ONT per ODP) ----------------
@@ -4329,7 +4702,7 @@ def _odp_aggregation():
         except sqlite3.OperationalError:
             return []
         try:
-            c.execute("SELECT odp_name, rx_power, tx_power, rx_warn, rx_crit FROM fiber_onts")
+            c.execute("SELECT odp_name, rx_power, tx_power, rx_warn, rx_crit, last_seen, source FROM fiber_onts")
             onts = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
             onts = []
@@ -4340,17 +4713,19 @@ def _odp_aggregation():
             pass
     known = {o["name"].lower(): o["name"] for o in odps}
     buckets = {o["name"]: {"total": 0, "normal": 0, "warning": 0,
-                           "critical": 0, "overload": 0, "unknown": 0} for o in odps}
+                            "critical": 0, "overload": 0, "stale": 0, "unknown": 0} for o in odps}
     buckets[""] = {"total": 0, "normal": 0, "warning": 0,
-                   "critical": 0, "overload": 0, "unknown": 0}
+                   "critical": 0, "overload": 0, "stale": 0, "unknown": 0}
     for t in onts:
         # cocokkan ODP tanpa peduli kapital agar salah ketik tidak yatim
         key = known.get((t.get("odp_name") or "").strip().lower(), "")
         status, _, _, _ = fiber_eval(t.get("rx_power"), t.get("tx_power"), _th_for_ont(t))
+        if status in ("normal", "warning", "unknown") and _fiber_stale_info(t)[0]:
+            status = "stale"
         b = buckets[key]
         b["total"] += 1
         b[status if status in b else "unknown"] += 1
-    rank = {"critical": 4, "overload": 3, "warning": 2, "unknown": 1, "normal": 0}
+    rank = {"critical": 4, "overload": 3, "warning": 2, "stale": 2, "unknown": 1, "normal": 0}
     out = []
     for o in odps:
         b = buckets[o["name"]]
@@ -4472,6 +4847,65 @@ def api_odp_delete(oid):
 
 
 # ---------------- OLT (sumber SNMP untuk Rx/Tx ONT) ----------------
+# Preset OID per vendor (hasil riset MIB + template lapangan):
+# - ZTE C300/C320 (ZXGPON-ONTMGMT-MIB): Rx kolom .10, Tx kolom .14,
+#   rumus raw*0.002-30 (sesuai template Zabbix community).
+# - Huawei MA5600T/MA5800 (HUAWEI-XPON-MIB hwGponDeviceOntOpticalDdmInfoTable):
+#   ONU Rx = .51.1.4, rumus (raw-10000)/100. Kolom Tx ONT tak ada di tabel
+#   ini (kosongkan tx_base = pantau Rx saja, atau isi manual bila ketemu).
+# Rumus umum: dBm = raw/div*scale + offset.
+OLT_VENDOR_PRESETS = {
+    "zte": {
+        "rx_base": "1.3.6.1.4.1.3902.1012.3.50.12.1.1.10",
+        "tx_base": "1.3.6.1.4.1.3902.1012.3.50.12.1.1.14",
+        "div": 1.0, "scale": 0.002, "offset": -30.0,
+        "note": "ZTE C300/C320. ont_index = sufiks hasil walk "
+                "(<ponIfIndex>.<onuIdx>[.1]), mis. 268501248.5.1. "
+                "Tx kolom .14 mengikuti encoding yang sama — verifikasi via tombol Test.",
+    },
+    "huawei": {
+        "rx_base": "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.4",
+        "tx_base": "",
+        "div": 1.0, "scale": 0.01, "offset": -100.0,
+        "note": "Huawei MA5600T/MA5800 (rumus (raw-10000)/100). "
+                "Tx ONT tidak tersedia di tabel ini — kosongkan (pantau Rx saja).",
+    },
+    "generic": {
+        "rx_base": "", "tx_base": "",
+        "div": 100.0, "scale": 1.0, "offset": 0.0,
+        "note": "",
+    },
+}
+
+
+def _olt_transform(olt):
+    """(div, scale, offset) dengan default aman untuk baris lama."""
+    try:
+        div = float(olt.get("div") or 100.0) or 100.0
+    except (ValueError, TypeError):
+        div = 100.0
+    try:
+        scale = float(olt.get("scale", 1.0))
+    except (ValueError, TypeError):
+        scale = 1.0
+    if scale == 0:
+        scale = 1.0
+    try:
+        offset = float(olt.get("offset", 0.0))
+    except (ValueError, TypeError):
+        offset = 0.0
+    return div, scale, offset
+
+
+def _olt_raw_to_dbm(raw, olt):
+    """Mentah SNMP -> dBm. None bila tak bisa dikonversi."""
+    try:
+        div, scale, offset = _olt_transform(olt)
+        return round(float(raw) / div * scale + offset, 2)
+    except (ValueError, TypeError, ZeroDivisionError):
+        return None
+
+
 def _validate_olt(d):
     name = (d.get("name") or "").strip()[:100]
     if len(name) < 2 or not re.match(r"^[A-Za-z0-9 _.\-/]{2,100}$", name):
@@ -4498,8 +4932,45 @@ def _validate_olt(d):
         return None, "div harus angka 1-10000"
     if not 1 <= div <= 10000:
         return None, "div harus 1-10000"
+    try:
+        scale = float(d.get("scale", 1.0))
+    except (ValueError, TypeError):
+        return None, "scale harus angka > 0"
+    if not 1e-9 <= scale <= 1e6:
+        return None, "scale harus 1e-9..1e6 (cth ZTE 0.002, Huawei 0.01)"
+    try:
+        offset = float(d.get("offset", 0.0))
+    except (ValueError, TypeError):
+        return None, "offset harus angka -10000..10000"
+    if not -10000 <= offset <= 10000:
+        return None, "offset harus -10000..10000 dB"
     return {"name": name, "ip": ip, "community": community, "vendor": vendor,
-            "rx_base": rx_base, "tx_base": tx_base, "div": div}, None
+            "rx_base": rx_base, "tx_base": tx_base, "div": div,
+            "scale": scale, "offset": offset}, None
+
+
+def _apply_olt_preset(vals, raw_data):
+    """Isi field kosong dari preset vendor (dipakai saat create OLT).
+
+    rx/tx yang kosong -> preset. div/scale/offset -> preset hanya bila user
+    tak mengirim ketiganya sama sekali (transform utuh default vendor);
+    bila user menyentuh salah satunya, seluruhnya dihormati apa adanya
+    agar kustomisasi tak tertimpa diam-diam.
+    """
+    p = OLT_VENDOR_PRESETS.get(vals.get("vendor") or "generic")
+    if not p or vals.get("vendor") == "generic":
+        return vals
+    vals = dict(vals)
+    if not vals.get("rx_base") and p.get("rx_base"):
+        vals["rx_base"] = p["rx_base"]
+    if not vals.get("tx_base") and p.get("tx_base"):
+        vals["tx_base"] = p["tx_base"]
+    raw_data = raw_data or {}
+    if all(raw_data.get(k) is None for k in ("div", "scale", "offset")):
+        for k in ("div", "scale", "offset"):
+            if p.get(k) is not None:
+                vals[k] = p[k]
+    return vals
 
 
 @app.route("/api/olts", methods=["GET"])
@@ -4508,7 +4979,8 @@ def api_olt_list():
     conn, c = get_db()
     try:
         try:
-            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div FROM olts ORDER BY name ASC")
+            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div, scale, offset,"
+                      " last_tested, last_test_ok, last_test_msg FROM olts ORDER BY name ASC")
             rows = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
             rows = []
@@ -4523,9 +4995,11 @@ def api_olt_list():
 @app.route("/api/olts", methods=["POST"])
 @api_login_required
 def api_olt_create():
-    vals, err = _validate_olt(request.get_json(silent=True) or {})
+    raw = request.get_json(silent=True) or {}
+    vals, err = _validate_olt(raw)
     if err:
         return jsonify({"error": err}), 400
+    vals = _apply_olt_preset(vals, raw)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn, c = get_db()
     try:
@@ -4533,10 +5007,12 @@ def api_olt_create():
         if c.fetchone():
             return jsonify({"error": "Nama OLT sudah terdaftar"}), 400
         try:
-            c.execute("INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div, created_at, updated_at)"
-                      " VALUES (?,?,?,?,?,?,?,?,?)",
+            c.execute("INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div,"
+                      " scale, offset, created_at, updated_at)"
+                      " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                       (vals["name"], vals["ip"], vals["community"], vals["vendor"],
-                       vals["rx_base"], vals["tx_base"], vals["div"], now, now))
+                       vals["rx_base"], vals["tx_base"], vals["div"],
+                       vals["scale"], vals["offset"], now, now))
             nid = c.lastrowid
             conn.commit()
         except sqlite3.IntegrityError:
@@ -4578,9 +5054,11 @@ def api_olt_update(oid):
         if c.fetchone():
             return jsonify({"error": "Nama OLT dipakai data lain"}), 400
         try:
-            c.execute("UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?, div=?, updated_at=? WHERE id=?",
+            c.execute("UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?,"
+                      " div=?, scale=?, offset=?, updated_at=? WHERE id=?",
                       (vals["name"], vals["ip"], vals["community"], vals["vendor"],
-                       vals["rx_base"], vals["tx_base"], vals["div"], now, oid))
+                       vals["rx_base"], vals["tx_base"], vals["div"],
+                       vals["scale"], vals["offset"], now, oid))
             if old["name"].lower() != vals["name"].lower():
                 c.execute("UPDATE fiber_onts SET olt_name=? WHERE olt_name COLLATE NOCASE = ?",
                           (vals["name"], old["name"]))
@@ -4624,6 +5102,260 @@ def api_olt_delete(oid):
     except Exception:
         pass
     return jsonify({"status": "success"})
+
+
+@app.route("/api/olts/presets", methods=["GET"])
+@api_login_required
+def api_olt_presets():
+    return jsonify({k: {kk: vv for kk, vv in v.items()} for k, v in OLT_VENDOR_PRESETS.items()})
+
+
+def _olt_test_connection(olt, timeout=3.0):
+    """Uji SNMP ke OLT: reachability + sampel satu entri Rx/Tx.
+
+    Kembalikan dict {reachable, sysup_s, rx, tx, ok, message, elapsed_ms}.
+    rx/tx berisi {ok, oid, index, raw, dbm} atau None bila base tak diisi.
+    """
+    import time as _t
+    t0 = _t.time()
+    ip = (olt.get("ip") or "").strip()
+    comm = (olt.get("community") or "").strip()
+    res = {"reachable": False, "sysup_s": None, "rx": None, "tx": None,
+           "ok": False, "message": "", "elapsed_ms": 0}
+    if not ip or not comm:
+        res["message"] = "IP/community OLT belum diisi"
+        return res
+    try:
+        vals = _snmp_get(ip, comm, [SYSUP_OID], timeout=timeout)
+    except Exception as e:
+        res["message"] = f"SNMP error: {e}"
+        res["elapsed_ms"] = int((_t.time() - t0) * 1000)
+        return res
+    if not vals or vals[0] is None or vals[0] < 0:
+        res["message"] = "OLT tak menjawab (cek IP/community/SNMP aktif)"
+        res["elapsed_ms"] = int((_t.time() - t0) * 1000)
+        return res
+    res["reachable"] = True
+    try:
+        res["sysup_s"] = round(vals[0] / 100.0, 1)
+    except (ValueError, TypeError):
+        pass
+    for key, base in (("rx", (olt.get("rx_base") or "").strip().strip(".")),
+                      ("tx", (olt.get("tx_base") or "").strip().strip("."))):
+        if not _valid_oid(base):
+            continue
+        try:
+            oid, _tag, ival, sval = _snmp_getnext(ip, comm, base, timeout=timeout)
+        except Exception:
+            oid, ival, sval = None, None, None
+        if not oid:
+            res[key] = {"ok": False, "error": "OID tak menjawab — cek rx/tx_base"}
+            continue
+        suffix = oid[len(base):].lstrip(".")
+        raw = ival
+        if raw is None and sval not in (None, ""):
+            try:
+                raw = float(sval)
+            except (ValueError, TypeError):
+                raw = None
+        res[key] = {"ok": raw is not None, "oid": oid, "index": suffix, "raw": raw,
+                    "dbm": _olt_raw_to_dbm(raw, olt) if raw is not None else None}
+    res["elapsed_ms"] = int((_t.time() - t0) * 1000)
+    bases = [k for k in ("rx", "tx") if res.get(k) is not None]
+    if not bases:
+        res["ok"] = True
+        res["message"] = f"terjangkau (up {res['sysup_s']}s), OID belum dikonfigurasi"
+    elif any(res[k].get("ok") for k in bases):
+        res["ok"] = True
+        parts = []
+        for k in bases:
+            e = res[k]
+            parts.append(f"{k}={e.get('dbm')}dBm(idx {e.get('index')})" if e.get("ok")
+                         else f"{k} gagal")
+        res["message"] = f"terjangkau (up {res['sysup_s']}s); " + ", ".join(parts)
+    else:
+        res["message"] = "terjangkau, tapi OID Rx/Tx tak menjawab — cek rx/tx_base"
+    return res
+
+
+@app.route("/api/olts/<int:oid>/test", methods=["POST"])
+@api_login_required
+def api_olt_test(oid):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM olts WHERE id=?", (oid,))
+        row = c.fetchone()
+        olt = dict(row) if row else None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if not olt:
+        return jsonify({"error": "OLT tidak ditemukan"}), 404
+    res = _olt_test_connection(olt)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.execute("UPDATE olts SET last_tested=?, last_test_ok=?, last_test_msg=? WHERE id=?",
+                      (now, 1 if res["ok"] else 0, res["message"][:200], oid))
+            _commit_with_retry(conn)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    try:
+        audit(current_user.username, "olt.test", f"{olt['name']} ok={res['ok']}")
+    except Exception:
+        pass
+    return jsonify({**res, "olt": {"id": olt["id"], "name": olt["name"]}, "tested_at": now})
+
+
+def _discover_sn(olt_name, suffix):
+    """SN otomatis hasil discover: sanitasi + batasi 64 karakter."""
+    base = re.sub(r"[^A-Za-z0-9_.:\-]", "-", (olt_name or "OLT").strip()) or "OLT"
+    suffix = re.sub(r"[^A-Za-z0-9_.:\-]", "-", (suffix or "").strip()) or "0"
+    room = 64 - len(suffix) - 1
+    return f"{base[:max(1, room)]}-{suffix}"
+
+
+@app.route("/api/olts/<int:oid>/discover", methods=["POST"])
+@api_login_required
+def api_olt_discover(oid):
+    """Enumerasi ONT dari OLT via walk rx_base, lalu bulk upsert.
+
+    Body opsional: {limit (1-256, default 256), update (bool, default true)}.
+    Baris baru -> source=snmp; baris existing source!=snmp dilewati aman
+    (tak menimpa data manual). Memory alarm di-seed agar tak banjir telegram.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        limit = int(data.get("limit", 256))
+    except (ValueError, TypeError):
+        return jsonify({"error": "limit harus angka 1-256"}), 400
+    limit = max(1, min(limit, 256))
+    do_update = str(data.get("update", "1")).strip().lower() not in ("0", "false", "tidak", "no")
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM olts WHERE id=?", (oid,))
+        row = c.fetchone()
+        olt = dict(row) if row else None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if not olt:
+        return jsonify({"error": "OLT tidak ditemukan"}), 404
+    ip = (olt.get("ip") or "").strip()
+    comm = (olt.get("community") or "").strip()
+    base_rx = (olt.get("rx_base") or "").strip().strip(".")
+    base_tx = (olt.get("tx_base") or "").strip().strip(".")
+    if not ip or not comm:
+        return jsonify({"error": "IP/community OLT belum diisi"}), 400
+    if not _valid_oid(base_rx):
+        return jsonify({"error": "rx_base belum diisi — pilih preset vendor dulu atau isi manual"}), 400
+    try:
+        up = _snmp_get(ip, comm, [SYSUP_OID], timeout=3.0)
+    except Exception as e:
+        return jsonify({"error": f"OLT tak terjangkau: {e}"}), 502
+    if not up or up[0] is None:
+        return jsonify({"error": "OLT tak menjawab SNMP (cek IP/community)"}), 502
+    try:
+        walked = snmp_walk(ip, comm, base_rx, max_rows=limit)
+    except Exception as e:
+        return jsonify({"error": f"walk gagal: {e}"}), 502
+    suffixes, rx_map = [], {}
+    for woid, _tag, ival, sval in walked or []:
+        suffix = (woid or "")[len(base_rx):].lstrip(".")
+        if not suffix:
+            continue
+        raw = ival
+        if raw is None and sval not in (None, ""):
+            try:
+                raw = float(sval)
+            except (ValueError, TypeError):
+                continue
+        dbm = _olt_raw_to_dbm(raw, olt)
+        if dbm is None or not -40 <= dbm <= 10:
+            continue
+        suffixes.append(suffix)
+        rx_map[suffix] = dbm
+    tx_map = {}
+    if _valid_oid(base_tx) and suffixes:
+        for i in range(0, len(suffixes), 25):
+            chunk = suffixes[i:i + 25]
+            try:
+                tvals = _snmp_get(ip, comm, [base_tx + "." + s for s in chunk], timeout=4.0)
+            except Exception:
+                tvals = [None] * len(chunk)
+            for sfx, v in zip(chunk, tvals or []):
+                if v is None:
+                    continue
+                dbm = _olt_raw_to_dbm(v, olt)
+                if dbm is not None and -10 <= dbm <= 10:
+                    tx_map[sfx] = dbm
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    created = updated = skipped_manual = skipped = 0
+    with db_lock:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT id, source, ont_index FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
+                      (olt["name"],))
+            existing = {}
+            for r in c.fetchall():
+                idx = (r["ont_index"] or "").strip()
+                if idx:
+                    existing[idx] = dict(r)
+            for sfx in suffixes:
+                rx_dbm = rx_map[sfx]
+                tx_dbm = tx_map.get(sfx)
+                ex = existing.get(sfx)
+                if ex and (ex.get("source") or "manual") != "snmp":
+                    skipped_manual += 1
+                    continue
+                status, _, _, _ = fiber_eval(rx_dbm, tx_dbm, _fiber_thresholds())
+                if ex:
+                    if not do_update:
+                        skipped += 1
+                        continue
+                    c.execute("UPDATE fiber_onts SET rx_power=?, tx_power=?, status=?,"
+                              " last_checked=?, last_seen=? WHERE id=?",
+                              (rx_dbm, tx_dbm, status, now, now, ex["id"]))
+                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                              " VALUES (?,?,?,?)", (ex["id"], rx_dbm, tx_dbm, now))
+                    fiber_alarm_memory[ex["id"]] = status
+                    updated += 1
+                    continue
+                sn = _discover_sn(olt["name"], sfx)
+                try:
+                    c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                               rx_power,tx_power,status,last_checked,source,created_at,updated_at,
+                               mute_alarm,rx_warn,rx_crit,ont_index,last_seen)
+                               VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?)""",
+                              (sn, "", olt["name"], "", "", rx_dbm, tx_dbm, status,
+                               now, "snmp", now, now, 0, None, None, sfx, now))
+                    nid = c.lastrowid
+                except sqlite3.IntegrityError:
+                    skipped += 1
+                    continue
+                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                          " VALUES (?,?,?,?)", (nid, rx_dbm, tx_dbm, now))
+                fiber_alarm_memory[nid] = status
+                created += 1
+            _commit_with_retry(conn)
+        finally:
+            conn.close()
+    try:
+        audit(current_user.username, "olt.discover",
+              f"{olt['name']} created={created} updated={updated}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "olt": olt["name"], "walked": len(suffixes),
+                    "created": created, "updated": updated,
+                    "skipped_manual": skipped_manual, "skipped": skipped})
 
 
 @app.route("/api/fiber/link-budget", methods=["POST"])
@@ -5307,17 +6039,23 @@ def get_triggers():
                 tx = None
             if rx is None and tx is None:
                 continue
-            if d.get("ont_sn") in maint_map:
+            in_maint, maint_reason, maint_scope = _fiber_maintenance_info(d, maint_map)
+            if in_maint:
+                scope_txt = f" ({maint_scope.upper()})" if maint_scope and maint_scope != "ont" else ""
                 alarms.append({
                     "host": f"{d.get('ont_sn')}",
                     "severity": "warning",
-                    "message": f"Fiber dalam maintenance — alarm disuppress{(' - ' + (maint_map[d['ont_sn']].get('reason') or '')) if maint_map[d['ont_sn']].get('reason') else ''}",
+                    "message": f"Fiber dalam maintenance{scope_txt} — alarm disuppress{(' - ' + maint_reason) if maint_reason else ''}",
                     "category": "maintenance",
                 })
                 continue
-            if d.get("mute_alarm"):
+            if _is_mute_active(d):
                 continue
             status, severity, advice, _need = fiber_eval(rx, tx, _th_for_ont(d))
+            stale, stale_age = _fiber_stale_info(d)
+            if stale and status in ("normal", "warning", "unknown"):
+                status, severity = "stale", "warning"
+                advice = _fiber_stale_advice(d, stale_age or "?")
             if severity:
                 label = d.get("customer") or d.get("ont_sn")
                 loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
@@ -5327,6 +6065,22 @@ def get_triggers():
                     "host": f"{d.get('ont_sn')} ({label})",
                     "severity": severity,
                     "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
+                    "category": "fiber",
+                })
+                continue
+            # early warning degradasi: masih normal tapi Rx turun signifikan
+            dg = fiber_degrade_memory.get(d["id"]) or {}
+            if dg.get("degrading") and rx is not None:
+                try:
+                    _dth, _dd = _fiber_degrade_settings()
+                except Exception:
+                    _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
+                label = d.get("customer") or d.get("ont_sn")
+                alarms.append({
+                    "host": f"{d.get('ont_sn')} ({label})",
+                    "severity": "warning",
+                    "message": f"Fiber DEGRADASI: Rx turun {dg.get('drop_db')} dB dalam {_dd} hari "
+                               f"(kini {rx} dBm, ambang {_dth} dB) — cek bending/konektor/splicing sebelum kritis.",
                     "category": "fiber",
                 })
     except Exception as e:

@@ -347,14 +347,14 @@
         <div class="term-dots">
           <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
         </div>
-        <div class="term-title">maintenance_schedule.sh — DOWN & telegram disuppress saat window aktif</div>
+        <div class="term-title">maintenance_schedule.sh — DOWN & telegram disuppress saat window aktif · fiber massal via ODP:&lt;nama&gt;/OLT:&lt;nama&gt;</div>
         <button class="refresh-btn" onclick="fetchMaintenance()" id="maintRefBtn">
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
           refresh
         </button>
       </div>
       <form class="maint-form" onsubmit="createMaintenance(event)">
-        <input id="maintHost" list="maintHostList" placeholder="host / ip / ONT SN" required title="IP terdaftar atau ONT SN fiber">
+        <input id="maintHost" list="maintHostList" placeholder="host / IP / ONT SN / ODP:nama / OLT:nama" required title="IP terdaftar, ONT SN fiber, atau ODP:<nama>/OLT:<nama> untuk maintenance massal fiber">
         <datalist id="maintHostList"></datalist>
         <input id="maintStart" type="datetime-local" required title="Mulai">
         <input id="maintEnd" type="datetime-local" required title="Selesai">
@@ -454,6 +454,20 @@
           if(rf.ok){
             const onts = await rf.json();
             opts += (Array.isArray(onts)?onts:[]).map(o=>`<option value="${esc(o.ont_sn)}">ONT ${esc(o.customer||'')}</option>`).join('');
+          }
+        } catch(_){}
+        try {
+          const ro = await fetch('/api/odps');
+          if(ro.ok){
+            const odps = await ro.json();
+            opts += (Array.isArray(odps)?odps:[]).filter(o=>o.id).map(o=>`<option value="ODP:${esc(o.name)}">ODP ${esc(o.total||0)} ONT</option>`).join('');
+          }
+        } catch(_){}
+        try {
+          const rl = await fetch('/api/olts');
+          if(rl.ok){
+            const olts = await rl.json();
+            opts += (Array.isArray(olts)?olts:[]).map(o=>`<option value="OLT:${esc(o.name)}">OLT ${esc(o.ip||'')}</option>`).join('');
           }
         } catch(_){}
         if(dl) dl.innerHTML = opts;

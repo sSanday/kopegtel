@@ -744,5 +744,659 @@ class SchedulerRefTest(unittest.TestCase):
                             f"job {n} didefinisikan setelah blok scheduler -> NameError produksi")
 
 
+SN_MUTEEXP = "TEST-FIBER-MUTEEXP-01"
+SN_UPSERT = "TEST-FIBER-UPSERT-01"
+SN_STALE = "TEST-FIBER-STALE-01"
+SN_DEG = "TEST-FIBER-DEG-01"
+ODP_H = "TEST-ODP-H-01"
+OLT_H = "TEST-OLT-H-01"
+SN_HIER = "TEST-FIBER-HIER-01"
+
+
+def _cleanup_new(client):
+    for sn in (SN_MUTEEXP, SN_UPSERT, SN_HIER, SN_STALE, SN_DEG):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                c.execute("DELETE FROM maintenance_windows WHERE host=?", (sn,))
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    try:
+        conn, c = m.get_db()
+        try:
+            c.execute("DELETE FROM maintenance_windows WHERE host IN (?, ?)",
+                      (f"ODP:{ODP_H}", f"OLT:{OLT_H}"))
+            c.execute("DELETE FROM odps WHERE name=?", (ODP_H,))
+            c.execute("DELETE FROM olts WHERE name=?", (OLT_H,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+class FiberMuteExpiryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_new(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_new(cls.client)
+
+    def test_is_mute_active_helper(self):
+        self.assertFalse(m._is_mute_active({"mute_alarm": 0}))
+        self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": ""}))
+        self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": None}))
+        from datetime import datetime, timedelta
+        fut = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        past = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": fut}))
+        self.assertFalse(m._is_mute_active({"mute_alarm": 1, "mute_until": past}))
+
+    def test_mute_kedaluawarsa_muncul_lagi_di_triggers(self):
+        from datetime import datetime, timedelta
+        fut = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        past = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_MUTEEXP, "rx_power": -29.0,
+                                   "tx_power": 2.0, "mute_alarm": 1,
+                                   "mute_until": fut, "mute_reason": "tunggu teknisi"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
+            self.assertTrue(item["mute_active"])
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            fib = [a for a in r.get_json()
+                   if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")]
+            self.assertEqual(fib, [])
+            # kedaluawarsa -> alarm aktif lagi
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_MUTEEXP, "rx_power": -29.0,
+                                      "tx_power": 2.0, "mute_alarm": 1,
+                                      "mute_until": past},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
+            self.assertFalse(item["mute_active"])
+            self.assertEqual(item["mute_alarm"], 1)
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            fib = [a for a in r.get_json()
+                   if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")]
+            self.assertTrue(fib)
+            self.assertEqual(fib[0]["severity"], "disaster")
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_mute_until_format_invalid_ditolak(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_MUTEEXP, "rx_power": -19.0,
+                                   "mute_alarm": 1, "mute_until": "kapan-kapan"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+
+
+class FiberHierarchyMaintenanceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_new(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+        r = cls.client.post("/api/odps", json={"name": ODP_H, "capacity": 8},
+                            headers=JSON_HDR)
+        assert r.status_code == 201, r.get_data(as_text=True)
+        r = cls.client.post("/api/olts",
+                            json={"name": OLT_H, "ip": "10.99.99.251",
+                                  "community": "public"},
+                            headers=JSON_HDR)
+        assert r.status_code == 201, r.get_data(as_text=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_new(cls.client)
+
+    def _window(self):
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        return ((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M"),
+                (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"))
+
+    def test_maintenance_odp_mensuppress_ont(self):
+        start, end = self._window()
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_HIER, "rx_power": -29.0,
+                                   "tx_power": 2.0, "odp_name": ODP_H,
+                                   "olt_name": OLT_H},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.post("/api/maintenance",
+                                 json={"host": f"ODP:{ODP_H}", "start_at": start,
+                                       "end_at": end, "reason": "ganti splitter"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+            mid = r.get_json()["id"]
+            try:
+                r = self.client.get("/api/triggers", headers=XRW_HDR)
+                alarms = r.get_json()
+                fib = [a for a in alarms
+                       if a.get("category") == "fiber" and SN_HIER in a.get("host", "")]
+                self.assertEqual(fib, [])
+                maint = [a for a in alarms
+                         if a.get("category") == "maintenance" and SN_HIER in a.get("host", "")]
+                self.assertTrue(maint)
+                self.assertIn("ODP", maint[0]["message"])
+            finally:
+                self.client.delete(f"/api/maintenance/{mid}", headers=XRW_HDR)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_maintenance_olt_mensuppress_ont(self):
+        start, end = self._window()
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_HIER, "rx_power": -29.0,
+                                   "olt_name": OLT_H},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201)
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.post("/api/maintenance",
+                                 json={"host": f"olt:{OLT_H.lower()}", "start_at": start,
+                                       "end_at": end, "reason": "upgrade firmware"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+            mid = r.get_json()["id"]
+            try:
+                r = self.client.get("/api/triggers", headers=XRW_HDR)
+                alarms = r.get_json()
+                fib = [a for a in alarms
+                       if a.get("category") == "fiber" and SN_HIER in a.get("host", "")]
+                self.assertEqual(fib, [])
+            finally:
+                self.client.delete(f"/api/maintenance/{mid}", headers=XRW_HDR)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_maintenance_odp_tidak_terdaftar_ditolak(self):
+        start, end = self._window()
+        r = self.client.post("/api/maintenance",
+                             json={"host": "ODP:TIDAK-ADA-XYZ", "start_at": start,
+                                   "end_at": end},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 404)
+
+
+class FiberImportUpsertTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_new(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_new(cls.client)
+
+    def test_upsert_update_rx_tanpa_hapus_customer(self):
+        import io as _io
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_UPSERT, "customer": "Bpk Uji",
+                                   "rx_power": -19.0, "tx_power": 2.0,
+                                   "source": "manual"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        fid = r.get_json()["id"]
+        try:
+            conn, c = m.get_db()
+            before = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
+                               (fid,)).fetchone()[0]
+            conn.close()
+            # CSV hanya berisi rx baru (tanpa customer/odp) -> merge, bukan wipe
+            csv_text = ("ont_sn,rx_power,tx_power,source\n"
+                        f"{SN_UPSERT},-26.0,2.0,manual\n")
+            r = self.client.post("/api/fiber/import?mode=upsert",
+                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                                 headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            j = r.get_json()
+            self.assertEqual(j["created"], 0)
+            self.assertEqual(j["updated"], 1)
+            self.assertEqual(j["skipped"], 0)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_UPSERT)
+            self.assertAlmostEqual(item["rx_power"], -26.0)
+            self.assertEqual(item["calc_status"], "warning")
+            self.assertEqual(item["customer"], "Bpk Uji")
+            conn, c = m.get_db()
+            after = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
+                              (fid,)).fetchone()[0]
+            conn.close()
+            self.assertEqual(after, before + 1)
+            # mode default tetap skip
+            r = self.client.post("/api/fiber/import",
+                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                                 headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            j = r.get_json()
+            self.assertEqual(j["skipped"], 1)
+            self.assertEqual(j.get("updated", 0), 0)
+            # mode invalid ditolak
+            r = self.client.post("/api/fiber/import?mode=bogus",
+                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                                 headers=XRW_HDR)
+            self.assertEqual(r.status_code, 400)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+
+class FiberStaleTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_new(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_new(cls.client)
+
+    def _age_last_seen(self, sn, hours):
+        from datetime import datetime, timedelta
+        old = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        conn, c = m.get_db()
+        c.execute("UPDATE fiber_onts SET last_seen=? WHERE ont_sn=?", (old, sn))
+        conn.commit()
+        conn.close()
+
+    def test_stale_info_helper(self):
+        from datetime import datetime, timedelta
+        old = (datetime.now() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # manual tak pernah stale walau data lama
+        self.assertEqual(m._fiber_stale_info(
+            {"source": "manual", "rx_power": -19.0, "last_seen": old})[0], False)
+        # snmp segar -> tidak stale
+        self.assertEqual(m._fiber_stale_info(
+            {"source": "snmp", "rx_power": -19.0, "last_seen": fresh})[0], False)
+        # snmp 3 jam (ambang default 60 mnt) -> stale
+        is_stale, age = m._fiber_stale_info(
+            {"source": "snmp", "rx_power": -19.0, "last_seen": old})
+        self.assertTrue(is_stale)
+        self.assertIn("jam", age)
+        # tanpa pengukuran / tanpa last_seen -> bukan stale
+        self.assertEqual(m._fiber_stale_info(
+            {"source": "snmp", "rx_power": None, "tx_power": None,
+             "last_seen": old})[0], False)
+        self.assertEqual(m._fiber_stale_info(
+            {"source": "snmp", "rx_power": -19.0, "last_seen": ""})[0], False)
+
+    def test_stale_overlay_di_list_dan_triggers(self):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": SN_STALE, "rx_power": -19.0,
+                                   "tx_power": 2.0, "source": "snmp",
+                                   "ont_index": "9"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        fid = r.get_json()["id"]
+        try:
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_STALE)
+            self.assertEqual(item["calc_status"], "normal")
+            self.assertFalse(item["stale"])
+            self._age_last_seen(SN_STALE, 3)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_STALE)
+            self.assertEqual(item["calc_status"], "stale")
+            self.assertTrue(item["stale"])
+            self.assertIn("LOS", item["advice"])
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            stale = [a for a in r.get_json()
+                     if a.get("category") == "fiber" and SN_STALE in a.get("host", "")]
+            self.assertTrue(stale)
+            self.assertEqual(stale[0]["severity"], "warning")
+            self.assertIn("STALE", stale[0]["message"])
+            # data segar masuk lagi -> kembali normal
+            r = self.client.put(f"/api/fiber/{fid}",
+                                json={"ont_sn": SN_STALE, "rx_power": -19.0,
+                                      "tx_power": 2.0, "source": "snmp",
+                                      "ont_index": "9"},
+                                headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_STALE)
+            self.assertEqual(item["calc_status"], "normal")
+            self.assertFalse(item["stale"])
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+
+    def test_settings_stale_dan_degrade_divalidasi(self):
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        try:
+            r = self.client.post("/api/settings", json={"fiber_degrade_db": 0.1},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/settings", json={"fiber_degrade_days": 99},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/settings", json={"fiber_stale_min": 5},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.post("/api/settings",
+                                 json={"fiber_degrade_db": 2.5, "fiber_degrade_days": 5,
+                                       "fiber_stale_min": 120},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            r = self.client.get("/api/settings", headers=XRW_HDR)
+            j = r.get_json()
+            self.assertAlmostEqual(j["fiber_degrade_db"], 2.5)
+            self.assertEqual(int(j["fiber_degrade_days"]), 5)
+            self.assertEqual(int(j["fiber_stale_min"]), 120)
+        finally:
+            self.client.post("/api/settings",
+                             json={k: orig[k] for k in
+                                   ("fiber_degrade_db", "fiber_degrade_days",
+                                    "fiber_stale_min")},
+                             headers=JSON_HDR)
+
+
+class FiberDegradationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_new(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_new(cls.client)
+        m.fiber_degrade_memory.pop("x", None)
+
+    def test_degradasi_terdeteksi_dan_masuk_triggers(self):
+        from datetime import datetime, timedelta
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        self.client.post("/api/settings",
+                         json={"fiber_degrade_db": 3.0, "fiber_degrade_days": 7},
+                         headers=JSON_HDR)
+        try:
+            r = self.client.post("/api/fiber",
+                                 json={"ont_sn": SN_DEG, "rx_power": -16.0,
+                                       "tx_power": 2.0, "source": "manual"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+            fid = r.get_json()["id"]
+            try:
+                # history baru saja -> rentang < 24 jam -> belum dinilai
+                degr, drop = m._fiber_degradation(fid, -16.0)
+                self.assertFalse(degr)
+                # tanam titik lama: 6 hari lalu Rx -16, kini -20 (turun 4 dB)
+                old_ts = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d %H:%M:%S")
+                conn, c = m.get_db()
+                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                          " VALUES (?, ?, ?, ?)", (fid, -16.0, 2.0, old_ts))
+                conn.commit()
+                conn.close()
+                r = self.client.put(f"/api/fiber/{fid}",
+                                    json={"ont_sn": SN_DEG, "rx_power": -20.0,
+                                          "tx_power": 2.0, "source": "manual"},
+                                    headers=JSON_HDR)
+                self.assertEqual(r.status_code, 200)
+                degr, drop = m._fiber_degradation(fid, -20.0)
+                self.assertTrue(degr)
+                self.assertAlmostEqual(drop, 4.0)
+                # poll mengisi memory -> list & triggers menampilkan
+                m.poll_fiber_monitor()
+                mem = m.fiber_degrade_memory.get(fid) or {}
+                self.assertTrue(mem.get("degrading"))
+                r = self.client.get("/api/fiber", headers=XRW_HDR)
+                item = next(o for o in r.get_json() if o["ont_sn"] == SN_DEG)
+                self.assertEqual(item["calc_status"], "normal")
+                self.assertTrue(item["degrading"])
+                self.assertAlmostEqual(item["degrade_drop_db"], 4.0)
+                r = self.client.get("/api/triggers", headers=XRW_HDR)
+                deg = [a for a in r.get_json()
+                       if a.get("category") == "fiber" and SN_DEG in a.get("host", "")
+                       and "DEGRADASI" in a.get("message", "")]
+                self.assertTrue(deg)
+                self.assertEqual(deg[0]["severity"], "warning")
+            finally:
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+                m.fiber_degrade_memory.pop(fid, None)
+        finally:
+            self.client.post("/api/settings",
+                             json={"fiber_degrade_db": orig["fiber_degrade_db"],
+                                   "fiber_degrade_days": orig["fiber_degrade_days"]},
+                             headers=JSON_HDR)
+
+
+OLT_P = "TEST-OLT-PRESET"
+OLT_P2 = "TEST-OLT-P2"
+OLT_T = "TEST-OLT-T"
+OLT_D = "TEST-OLT-D"
+
+
+def _cleanup_olt_p(client):
+    try:
+        conn, c = m.get_db()
+        try:
+            for _olt in (OLT_P, OLT_P2, OLT_T, OLT_D):
+                c.execute("SELECT id FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
+                for r in c.fetchall():
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (r["id"],))
+                    m.fiber_alarm_memory.pop(r["id"], None)
+                    m.fiber_degrade_memory.pop(r["id"], None)
+                c.execute("DELETE FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
+                c.execute("DELETE FROM olts WHERE name=?", (_olt,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+class FiberOltPresetTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_olt_p(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_olt_p(cls.client)
+
+    def _get_olt(self, name):
+        r = self.client.get("/api/olts", headers=XRW_HDR)
+        return next(o for o in r.get_json() if o["name"] == name)
+
+    def test_presets_endpoint(self):
+        r = self.client.get("/api/olts/presets", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        j = r.get_json()
+        for v in ("zte", "huawei", "generic"):
+            self.assertIn(v, j)
+        self.assertIn("3902.1012.3.50.12.1.1.10", j["zte"]["rx_base"])
+        self.assertAlmostEqual(j["zte"]["scale"], 0.002)
+        self.assertAlmostEqual(j["zte"]["offset"], -30.0)
+        self.assertIn("2011.6.128.1.1.2.51.1.4", j["huawei"]["rx_base"])
+        self.assertAlmostEqual(j["huawei"]["scale"], 0.01)
+        self.assertAlmostEqual(j["huawei"]["offset"], -100.0)
+
+    def test_transform_helper(self):
+        self.assertAlmostEqual(
+            m._olt_raw_to_dbm(5000, {"div": 1.0, "scale": 0.002, "offset": -30.0}), -20.0)
+        self.assertAlmostEqual(
+            m._olt_raw_to_dbm(7500, {"div": 1.0, "scale": 0.01, "offset": -100.0}), -25.0)
+        self.assertAlmostEqual(m._olt_raw_to_dbm(-1995, {"div": 100.0}), -19.95)
+        self.assertIsNone(m._olt_raw_to_dbm("bukan-angka", {"div": 100.0}))
+
+    def test_create_auto_preset_dan_validasi(self):
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_P, "ip": "10.99.99.252",
+                                   "community": "public", "vendor": "zte"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        o = self._get_olt(OLT_P)
+        self.assertIn("3902.1012.3.50.12.1.1.10", o["rx_base"])
+        self.assertAlmostEqual(o["scale"], 0.002)
+        self.assertAlmostEqual(o["offset"], -30.0)
+        # kustomisasi eksplisit tak tertimpa preset
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_P2, "ip": "10.99.99.253",
+                                   "community": "public", "vendor": "zte",
+                                   "rx_base": "1.3.6.1.4.1.1", "div": 100},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        o = self._get_olt(OLT_P2)
+        self.assertEqual(o["rx_base"], "1.3.6.1.4.1.1")
+        self.assertAlmostEqual(o["scale"], 1.0)
+        # validasi scale/offset
+        r = self.client.post("/api/olts",
+                             json={"name": "TEST-OLT-X", "vendor": "zte",
+                                   "scale": 0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/olts",
+                             json={"name": "TEST-OLT-X", "vendor": "zte",
+                                   "offset": 99999},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+
+    def test_olt_test_endpoint(self):
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_T, "ip": "10.99.99.253",
+                                   "community": "public", "vendor": "generic",
+                                   "rx_base": "1.3.6.1.4.1.9999.1",
+                                   "tx_base": "1.3.6.1.4.1.9999.2",
+                                   "div": 100},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        oid = r.get_json()["id"]
+        real_get, real_next = m._snmp_get, m._snmp_getnext
+        try:
+            m._snmp_get = lambda ip, comm, oids, timeout=2.0: [360000]
+            m._snmp_getnext = lambda ip, comm, base, timeout=2.5: (
+                (base + ".7", 0x02, -1995, None) if base.endswith(".1")
+                else (base + ".7", 0x02, 210, None))
+            r = self.client.post(f"/api/olts/{oid}/test", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            j = r.get_json()
+            self.assertTrue(j["reachable"])
+            self.assertTrue(j["ok"])
+            self.assertTrue(j["rx"]["ok"])
+            self.assertEqual(j["rx"]["index"], "7")
+            self.assertAlmostEqual(j["rx"]["dbm"], -19.95)
+            self.assertAlmostEqual(j["tx"]["dbm"], 2.10)
+            o = self._get_olt(OLT_T)
+            self.assertEqual(o["last_test_ok"], 1)
+            # OLT mati -> ok False
+            m._snmp_get = lambda ip, comm, oids, timeout=2.0: [None]
+            r = self.client.post(f"/api/olts/{oid}/test", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            self.assertFalse(r.get_json()["ok"])
+            r = self.client.post("/api/olts/999999/test", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 404)
+        finally:
+            m._snmp_get, m._snmp_getnext = real_get, real_next
+
+    def test_discover_bulk_upsert(self):
+        r = self.client.post("/api/olts",
+                             json={"name": OLT_D, "ip": "10.99.99.252",
+                                   "community": "public", "vendor": "generic",
+                                   "rx_base": "1.3.6.1.4.1.9999.1",
+                                   "tx_base": "1.3.6.1.4.1.9999.2",
+                                   "div": 100},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        oid = r.get_json()["id"]
+        # baris manual dengan index sama -> harus dilewati, tak ditimpa
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": "TEST-MANUAL-DISC", "customer": "Jangan Timpa",
+                                   "olt_name": OLT_D, "ont_index": "1.1",
+                                   "rx_power": -18.0, "source": "manual"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        real_get, real_walk = m._snmp_get, m.snmp_walk
+        base = "1.3.6.1.4.1.9999.1"
+        try:
+            m.snmp_walk = lambda ip, comm, b, max_rows=64: [
+                (base + ".1.1", 0x02, -1995, None),
+                (base + ".1.2", 0x02, -2600, None),
+            ]
+
+            def _fake_get(ip, comm, oids, timeout=2.0):
+                if oids == [m.SYSUP_OID]:
+                    return [360000]
+                return [210 if o.endswith(".1.1") else 215 for o in oids]
+
+            m._snmp_get = _fake_get
+            r = self.client.post(f"/api/olts/{oid}/discover",
+                                 json={"limit": 10}, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            j = r.get_json()
+            self.assertEqual(j["walked"], 2)
+            self.assertEqual(j["created"], 1)
+            self.assertEqual(j["skipped_manual"], 1)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            onts = [o for o in r.get_json() if o.get("olt_name") == OLT_D]
+            auto = [o for o in onts if o.get("ont_index") == "1.2"]
+            self.assertTrue(auto)
+            self.assertEqual(auto[0]["source"], "snmp")
+            self.assertAlmostEqual(auto[0]["rx_power"], -26.0)
+            self.assertEqual(auto[0]["calc_status"], "warning")
+            man = next(o for o in onts if o["ont_sn"] == "TEST-MANUAL-DISC")
+            self.assertEqual(man["customer"], "Jangan Timpa")
+            self.assertAlmostEqual(man["rx_power"], -18.0)
+            # discover kedua -> update, bukan create
+            r = self.client.post(f"/api/olts/{oid}/discover",
+                                 json={"limit": 10}, headers=JSON_HDR)
+            j = r.get_json()
+            self.assertEqual(j["created"], 0)
+            self.assertEqual(j["updated"], 1)
+        finally:
+            m._snmp_get, m.snmp_walk = real_get, real_walk
+            try:
+                conn, c = m.get_db()
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", ("TEST-MANUAL-DISC",))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    m.fiber_alarm_memory.pop(row["id"], None)
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+
 if __name__ == "__main__":
     unittest.main()

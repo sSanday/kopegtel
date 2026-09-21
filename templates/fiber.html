@@ -48,6 +48,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
 .tag.critical{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
 .tag.overload{background:rgba(255,0,200,.12);color:#ff66dd;border:1px solid rgba(255,0,200,.35)}
+.tag.stale{background:rgba(183,156,255,.1);color:#b79cff;border:1px dashed rgba(183,156,255,.45)}
 .tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
 .advice{font-size:.62rem;color:var(--t3);margin-top:4px;max-width:340px;line-height:1.5}
 .act{background:transparent;border:none;color:var(--t3);cursor:pointer;padding:4px;font-family:var(--mono);font-size:.65rem}
@@ -99,10 +100,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="filter-btn" data-f="warning">warning</button>
     <button class="filter-btn" data-f="critical">critical</button>
     <button class="filter-btn" data-f="overload">overload ⚠ peredam</button>
+    <button class="filter-btn" data-f="stale">stale ⚠ tak terpantau</button>
     <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="render()">
     <select class="filter-select" id="fOlt" onchange="render()" title="Filter OLT"><option value="">olt: all</option></select>
     <select class="filter-select" id="fOdp" onchange="render()" title="Filter ODP"><option value="">odp: all</option></select>
     <a class="add-btn" href="/api/fiber/export" style="text-decoration:none">⇩ export.csv</a>
+    <select class="filter-select" id="impMode" title="Mode import duplikat"><option value="skip">import: skip duplikat</option><option value="upsert">import: upsert (update duplikat)</option></select>
     <button class="add-btn" onclick="document.getElementById('impFile').click()">⇧ import.csv</button>
     <input type="file" id="impFile" accept=".csv" style="display:none" onchange="importCsv(this)">
     <button class="add-btn" onclick="openModal()" style="margin-left:0">+ Add ONT</button>
@@ -164,11 +167,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="form-group"><label>Community</label><input id="l_comm" placeholder="public"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Vendor</label><select id="l_vendor"><option value="generic">generic</option><option value="zte">zte</option><option value="huawei">huawei</option></select></div>
+      <div class="form-group"><label>Vendor</label><select id="l_vendor" onchange="onOltVendor()"><option value="generic">generic</option><option value="zte">zte (C300/C320)</option><option value="huawei">huawei (MA5600T/MA5800)</option></select></div>
       <div class="form-group"><label>Pembagi satuan (div)</label><input id="l_div" type="number" value="100" min="1" max="10000" title="Umumnya 100 = satuan 0.01 dBm"></div>
     </div>
-    <div class="form-group"><label>Rx OID base (opsional)</label><input id="l_rx" placeholder="cth: 1.3.6.1.4.1.3902.x"></div>
-    <div class="form-group"><label>Tx OID base (opsional)</label><input id="l_tx" placeholder="cth: 1.3.6.1.4.1.3902.y"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Skala (scale)</label><input id="l_scale" type="number" step="any" value="1" title="Rumus: dBm = raw/div*scale+offset"></div>
+      <div class="form-group"><label>Offset (dB)</label><input id="l_offset" type="number" step="any" value="0" title="Rumus: dBm = raw/div*scale+offset"></div>
+    </div>
+    <div id="oltPresetNote" style="display:none;margin-bottom:12px;font-family:var(--mono);font-size:.62rem;line-height:1.6;background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:6px;padding:8px 12px;color:var(--t2)"></div>
+    <div class="form-group"><label>Rx OID base (kosong=preset vendor)</label><input id="l_rx" placeholder="cth: 1.3.6.1.4.1.3902.x"></div>
+    <div class="form-group"><label>Tx OID base (kosong=preset/tanpa Tx)</label><input id="l_tx" placeholder="cth: 1.3.6.1.4.1.3902.y"></div>
     <input type="hidden" id="l_id" value="">
     <div class="btn-row"><button class="btn btn-cancel" onclick="closeOltModal()">tutup</button><button class="btn btn-submit" onclick="saveOlt()">save()</button></div>
   </div>
@@ -192,7 +200,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
     </div>
     <div class="form-row">
       <div class="form-group"><label>ONT Index (SNMP)</label><input id="f_idx" placeholder="cth: 1.2.3 (wajib bila source snmp)"></div>
-      <div class="form-group"><label>Alarm</label><select id="f_mute"><option value="0">aktif</option><option value="1">mute (tanpa telegram)</option></select></div>
+      <div class="form-group"><label>Alarm</label><select id="f_mute" onchange="document.getElementById('muteExtra').style.display=this.value==='1'?'grid':'none'"><option value="0">aktif</option><option value="1">mute (tanpa telegram)</option></select></div>
+    </div>
+    <div class="form-row" id="muteExtra" style="display:none">
+      <div class="form-group"><label>Mute s/d (kosong=permanen)</label><input id="f_mute_until" type="datetime-local" title="Alarm aktif lagi otomatis setelah waktu ini"></div>
+      <div class="form-group"><label>Alasan mute</label><input id="f_mute_reason" placeholder="cth: tunggu splicing ulang" maxlength="200"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>Override warn (dBm, kosong=global)</label><input id="f_rw" type="number" step="0.1" placeholder="-25.0"></div>
@@ -202,7 +214,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div></div>
 <script>
-let DATA=[], ODPDATA=[], OLTDATA=[], curF='all', editId=null, chart=null, histH=6, TH={warn:-25,crit:-27};
+let DATA=[], ODPDATA=[], OLTDATA=[], OLTPRESETS={}, curF='all', editId=null, chart=null, histH=6, TH={warn:-25,crit:-27};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
 function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
@@ -217,6 +229,8 @@ async function loadTh(){
     document.getElementById('thInfo').innerHTML=
       `Threshold aktif — Rx normal <b>${esc(s.fiber_rx_overload)} s/d ${esc(s.fiber_rx_warn)} dBm</b> · warning <b>${esc(s.fiber_rx_warn)} s/d ${esc(s.fiber_rx_crit)}</b> · critical <b>&lt; ${esc(s.fiber_rx_crit)} dBm</b> (redaman tinggi: cek bending/konektor/splicing/ODP) · `+
       `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
+      `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 · `+
+      `Stale: sumber <b>snmp/simulator</b> tanpa data baru ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → status <b>stale</b> (kemungkinan LOS/ONT mati/SNMP gagal).<br>`+
       `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;
   }catch(e){}
 }
@@ -232,6 +246,10 @@ async function load(){
   try{
     const rl=await fetch('/api/olts',{headers:{'X-Requested-With':'XMLHttpRequest'}});
     if(rl.ok)OLTDATA=await rl.json();
+  }catch(e){}
+  try{
+    const rp=await fetch('/api/olts/presets',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(rp.ok)OLTPRESETS=await rp.json();
   }catch(e){}
   renderOdp(); renderOlt(); fillOdpFilters();
   const sel=document.getElementById('ontSel');
@@ -259,14 +277,14 @@ function renderOdp(){
   const g=document.getElementById('odpGrid');
   if(!ODPDATA.length){g.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ no ODP — kelola via tombol di atas.</div>';return;}
   g.innerHTML=ODPDATA.map(o=>{
-    const bad=(o.critical||0)+(o.overload||0), warn=o.warning||0;
+    const bad=(o.critical||0)+(o.overload||0), warn=(o.warning||0)+(o.stale||0);
     const cls=o.id===0?'':(bad?'bad':(warn?'warn':''));
     const cap=o.capacity?` · ${o.total}/${o.capacity} port (${o.fill_pct}%)`:'';
     return `<div class="odp-card ${cls}">
       <div class="odp-name">${esc(o.name)}</div>
       <div class="odp-sub">${esc(o.olt_name||'-')}${o.location?' · '+esc(o.location):''}${cap}</div>
       ${o.capacity?`<div class="fillbar"><div style="width:${Math.min(100,o.fill_pct)}%"></div></div>`:''}
-      <div class="odp-counts"><span style="color:var(--success)">●${o.normal||0}</span><span style="color:var(--warn)">●${warn}</span><span style="color:var(--danger)">●${o.critical||0}</span><span style="color:#ff66dd">●${o.overload||0}</span><span class="tag ${esc(o.worst)}" style="margin-left:auto">${esc(o.worst)}</span></div>
+      <div class="odp-counts"><span style="color:var(--success)">●${o.normal||0}</span><span style="color:var(--warn)">●${o.warning||0}</span><span style="color:#b79cff" title="stale: tak terpantau">●${o.stale||0}</span><span style="color:var(--danger)">●${o.critical||0}</span><span style="color:#ff66dd">●${o.overload||0}</span><span class="tag ${esc(o.worst)}" style="margin-left:auto">${esc(o.worst)}</span></div>
     </div>`;}).join('');
 }
 function renderOlt(){
@@ -274,11 +292,38 @@ function renderOlt(){
   if(!OLTDATA.length){g.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ no OLT — ONT source=snmp butuh OLT terdaftar + ONT index.</div>';return;}
   g.innerHTML=OLTDATA.map(o=>{
     const ok=(o.ip&&o.rx_base)||(o.ip&&o.tx_base);
+    const tdot=o.last_tested?(o.last_test_ok?'<span style="color:var(--success)" title="test OK: '+esc(o.last_test_msg||'')+'">●</span>':'<span style="color:var(--danger)" title="test GAGAL: '+esc(o.last_test_msg||'')+'">●</span>'):'<span style="color:var(--t3)" title="belum pernah test">○</span>';
     return `<div class="odp-card ${ok?'':'warn'}">
-      <div class="odp-name">${esc(o.name)}</div>
-      <div class="odp-sub">${esc(o.vendor||'generic')} · ${esc(o.ip||'tanpa IP')} · div ${esc(o.div??100)}</div>
+      <div class="odp-name">${tdot} ${esc(o.name)}</div>
+      <div class="odp-sub">${esc(o.vendor||'generic')} · ${esc(o.ip||'tanpa IP')} · div ${esc(o.div??100)} scale ${esc(o.scale??1)} +${esc(o.offset??0)}</div>
       <div class="odp-sub" style="word-break:break-all">rx:${esc(o.rx_base||'—')} · tx:${esc(o.tx_base||'—')}</div>
+      <div style="margin-top:6px;display:flex;gap:4px"><button class="act edit" onclick="testOlt(${o.id})">test snmp</button><button class="act edit" onclick="discoverOlt(${o.id})">scan ONT</button></div>
     </div>`;}).join('');
+}
+async function testOlt(id){
+  try{
+    const r=await fetch(`/api/olts/${id}/test`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'test gagal');return;}
+    const L=[];
+    L.push(`OLT ${j.olt?.name||id}: ${j.ok?'OK ✓':'GAGAL ✕'} (${j.elapsed_ms}ms)`);
+    L.push(j.message||'');
+    if(j.rx)L.push(`Rx: ${j.rx.ok?`raw=${j.rx.raw} → ${j.rx.dbm} dBm (index ${j.rx.index})`:'gagal: '+(j.rx.error||'?')}`);
+    if(j.tx)L.push(`Tx: ${j.tx.ok?`raw=${j.tx.raw} → ${j.tx.dbm} dBm (index ${j.tx.index})`:'gagal: '+(j.tx.error||'?')}`);
+    alert(L.join('\n'));
+    load();
+  }catch(e){alert('test gagal: '+e.message);}
+}
+async function discoverOlt(id){
+  const o=OLTDATA.find(x=>x.id===id);
+  if(!confirm(`Scan ONT dari ${o?o.name:'OLT ini'} via SNMP walk?\nBaris baru dibuat otomatis (source=snmp). Data manual tak ditimpa.`))return;
+  try{
+    const r=await fetch(`/api/olts/${id}/discover`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:256})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'scan gagal');return;}
+    alert(`scan ${j.olt}: walk=${j.walked} → ${j.created} baru, ${j.updated} diperbarui, ${j.skipped_manual} manual dilewati, ${j.skipped} dilewati`);
+    load();
+  }catch(e){alert('scan gagal: '+e.message);}
 }
 function render(){
   const q=(document.getElementById('q').value||'').toLowerCase();
@@ -286,15 +331,16 @@ function render(){
   const tb=document.getElementById('rows');
   const rows=DATA.filter(o=>(curF==='all'||o.calc_status===curF)&&(!fO||(o.olt_name||'')===fO)&&(!fD||(o.odp_name||'')===fD)&&(!q||(o.ont_sn+' '+(o.customer||'')+' '+(o.odp_name||'')+' '+(o.olt_name||'')).toLowerCase().includes(q)));
   if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no data — tambah ONT dulu.</td></tr>';return;}
-  tb.innerHTML=rows.map(o=>`<tr>
+  tb.innerHTML=rows.map(o=>{const _mut=o.mute_active??!!o.mute_alarm;const _mexp=!_mut&&!!o.mute_alarm;
+    const _mt=o.mute_reason?` title="${esc(o.mute_reason)}${o.mute_until?' s/d '+esc(o.mute_until):''}"`:(o.mute_until?` title="s/d ${esc(o.mute_until)}"`:'');return `<tr>
     <td style="color:var(--t1)">${esc(o.ont_sn)}<div style="font-size:.62rem;color:var(--t3)">${esc(o.customer||'-')}</div></td>
-    <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}${o.mute_alarm?' · <span style="color:var(--warn)">muted</span>':''}</div></td>
-    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}</td>
+    <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}${_mut?` · <span style="color:var(--warn)"${_mt}>muted${o.mute_until?' s/d '+esc(o.mute_until.slice(0,16)):''}</span>`:''}${_mexp?' · <span style="color:var(--danger)">mute kedaluwarsa</span>':''}</div></td>
+    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}</td>
     <td>${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
-    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${o.mute_alarm?'<span class="tag unknown" style="margin-left:4px">muted</span>':''}<div class="advice">${esc(o.advice||'')}</div></td>
-    <td style="font-size:.62rem">${esc(o.last_checked||'—')}</td>
+    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown" style="margin-left:4px"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning" style="margin-left:4px">mute exp</span>':''}<div class="advice">${esc(o.advice||'')}</div></td>
+    <td style="font-size:.62rem">${esc(o.last_checked||'—')}${o.stale?`<div style="font-size:.6rem;color:#b79cff">data ${esc(o.stale_age||'?')} lalu</div>`:''}</td>
     <td style="white-space:nowrap"><button class="act edit" onclick="openModal(${o.id})">edit</button><button class="act" onclick="del(${o.id})">del</button></td>
-  </tr>`).join('');
+  </tr>`;}).join('');
 }
 function openModal(id){
   editId=id||null;
@@ -303,15 +349,19 @@ function openModal(id){
     f_sn.value=o.ont_sn||'';f_cust.value=o.customer||'';f_olt.value=o.olt_name||'';f_pon.value=o.pon_port||'';f_odp.value=o.odp_name||'';f_src.value=o.source||'manual';f_rx.value=o.rx_power??'';f_tx.value=o.tx_power??'';
     document.getElementById('f_idx').value=o.ont_index||'';
     document.getElementById('f_mute').value=o.mute_alarm?'1':'0';
+    document.getElementById('f_mute_until').value=(o.mute_until||'').slice(0,16).replace(' ','T');
+    document.getElementById('f_mute_reason').value=o.mute_reason||'';
+    document.getElementById('muteExtra').style.display=o.mute_alarm?'grid':'none';
     document.getElementById('f_rw').value=o.rx_warn??'';
     document.getElementById('f_rc').value=o.rx_crit??'';
-  } else {['f_sn','f_cust','f_olt','f_pon','f_odp','f_rx','f_tx','f_idx','f_rw','f_rc'].forEach(i=>document.getElementById(i).value='');f_src.value='manual';document.getElementById('f_mute').value='0';}
+  } else {['f_sn','f_cust','f_olt','f_pon','f_odp','f_rx','f_tx','f_idx','f_rw','f_rc','f_mute_until','f_mute_reason'].forEach(i=>document.getElementById(i).value='');f_src.value='manual';document.getElementById('f_mute').value='0';document.getElementById('muteExtra').style.display='none';}
   document.getElementById('modal').classList.add('active');
 }
 function closeModal(){document.getElementById('modal').classList.remove('active');}
 async function save(){
   const body={ont_sn:f_sn.value.trim(),customer:f_cust.value.trim(),olt_name:f_olt.value.trim(),pon_port:f_pon.value.trim(),odp_name:f_odp.value.trim(),source:f_src.value,rx_power:f_rx.value===''?null:parseFloat(f_rx.value),tx_power:f_tx.value===''?null:parseFloat(f_tx.value),
     ont_index:document.getElementById('f_idx').value.trim(),mute_alarm:document.getElementById('f_mute').value==='1'?1:0,
+    mute_until:document.getElementById('f_mute_until').value.trim(),mute_reason:document.getElementById('f_mute_reason').value.trim(),
     rx_warn:document.getElementById('f_rw').value===''?null:parseFloat(document.getElementById('f_rw').value),
     rx_crit:document.getElementById('f_rc').value===''?null:parseFloat(document.getElementById('f_rc').value)};
   const url=editId?`/api/fiber/${editId}`:'/api/fiber';
@@ -322,12 +372,13 @@ async function save(){
 async function importCsv(inp){
   if(!inp.files||!inp.files.length)return;
   const fd=new FormData();fd.append('file',inp.files[0]);
+  fd.append('mode',document.getElementById('impMode').value||'skip');
   inp.value='';
   try{
     const r=await fetch('/api/fiber/import',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'},body:fd});
     const j=await r.json().catch(()=>({}));
     if(!r.ok){alert(j.error||'gagal import');return;}
-    alert(`import selesai: ${j.created} dibuat, ${j.skipped} dilewati (duplikat)${j.errors&&j.errors.length?'\n'+j.errors.slice(0,5).join('\n'):''}`);
+    alert(`import selesai: ${j.created} dibuat, ${j.updated||0} diperbarui, ${j.skipped} dilewati (duplikat)${j.errors&&j.errors.length?'\n'+j.errors.slice(0,5).join('\n'):''}`);
     load();
   }catch(e){alert('gagal import: '+e.message);}
 }
@@ -383,21 +434,36 @@ async function saveOdp(){
   closeOdpModal();load();
 }
 async function delOdp(id){if(!confirm('hapus ODP ini? (ONT tidak ikut terhapus)'))return;const r=await fetch(`/api/odps/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});if(r.ok){closeOdpModal();load();}}
+function onOltVendor(){
+  const v=document.getElementById('l_vendor').value;
+  const p=OLTPRESETS[v];
+  const box=document.getElementById('oltPresetNote');
+  if(!p||v==='generic'){box.style.display='none';return;}
+  if(!document.getElementById('l_rx').value.trim()&&p.rx_base)document.getElementById('l_rx').value=p.rx_base;
+  if(!document.getElementById('l_tx').value.trim()&&p.tx_base)document.getElementById('l_tx').value=p.tx_base;
+  document.getElementById('l_div').value=p.div;
+  document.getElementById('l_scale').value=p.scale;
+  document.getElementById('l_offset').value=p.offset;
+  box.style.display='block';
+  box.innerHTML=`<b>preset ${esc(v)}</b> — ${esc(p.note||'')} Rumus: dBm = raw/${esc(p.div)}*${esc(p.scale)}+(${esc(p.offset)}).`;
+}
 function openOltModal(){
   document.getElementById('l_id').value='';document.getElementById('l_name').value='';
   document.getElementById('l_ip').value='';document.getElementById('l_comm').value='';
   document.getElementById('l_vendor').value='generic';document.getElementById('l_div').value='100';
+  document.getElementById('l_scale').value='1';document.getElementById('l_offset').value='0';
   document.getElementById('l_rx').value='';document.getElementById('l_tx').value='';
+  document.getElementById('oltPresetNote').style.display='none';
   const L=document.getElementById('oltList');
   L.innerHTML=OLTDATA.map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;border:1px solid var(--border2);font-family:var(--mono);font-size:.7rem"><span>${esc(o.name)} <span style="color:var(--t3)">(${esc(o.vendor||'generic')} · ${esc(o.ip||'tanpa IP')})</span></span><span style="white-space:nowrap"><button class="act edit" onclick="editOlt(${o.id})">edit</button><button class="act" onclick="delOlt(${o.id})">del</button></span></div>`).join('')||'<div style="color:var(--t3);font-size:.7rem">belum ada OLT.</div>';
   document.getElementById('oltModal').classList.add('active');
 }
 function closeOltModal(){document.getElementById('oltModal').classList.remove('active');}
-function editOlt(id){const o=OLTDATA.find(x=>x.id===id);if(!o)return;document.getElementById('l_id').value=o.id;document.getElementById('l_name').value=o.name;document.getElementById('l_ip').value=o.ip||'';document.getElementById('l_comm').value='';document.getElementById('l_vendor').value=o.vendor||'generic';document.getElementById('l_div').value=o.div??100;document.getElementById('l_rx').value=o.rx_base||'';document.getElementById('l_tx').value=o.tx_base||'';}
+function editOlt(id){const o=OLTDATA.find(x=>x.id===id);if(!o)return;document.getElementById('l_id').value=o.id;document.getElementById('l_name').value=o.name;document.getElementById('l_ip').value=o.ip||'';document.getElementById('l_comm').value='';document.getElementById('l_vendor').value=o.vendor||'generic';document.getElementById('l_div').value=o.div??100;document.getElementById('l_scale').value=o.scale??1;document.getElementById('l_offset').value=o.offset??0;document.getElementById('l_rx').value=o.rx_base||'';document.getElementById('l_tx').value=o.tx_base||'';document.getElementById('oltPresetNote').style.display='none';}
 async function saveOlt(){
   const id=document.getElementById('l_id').value;
   const comm=document.getElementById('l_comm').value;
-  const body={name:document.getElementById('l_name').value.trim(),ip:document.getElementById('l_ip').value.trim(),vendor:document.getElementById('l_vendor').value,div:parseFloat(document.getElementById('l_div').value),rx_base:document.getElementById('l_rx').value.trim(),tx_base:document.getElementById('l_tx').value.trim()};
+  const body={name:document.getElementById('l_name').value.trim(),ip:document.getElementById('l_ip').value.trim(),vendor:document.getElementById('l_vendor').value,div:parseFloat(document.getElementById('l_div').value),scale:parseFloat(document.getElementById('l_scale').value),offset:parseFloat(document.getElementById('l_offset').value),rx_base:document.getElementById('l_rx').value.trim(),tx_base:document.getElementById('l_tx').value.trim()};
   if(comm)body.community=comm;
   else if(!id)body.community='';
   const r=await fetch(id?`/api/olts/${id}`:'/api/olts',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
