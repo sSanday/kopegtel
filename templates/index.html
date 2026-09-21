@@ -912,6 +912,14 @@ body::after{
           <div class="form-field"><label class="form-label">tx min</label><input type="number" id="fiberTxMin" class="form-input" step="0.1" required></div>
           <div class="form-field"><label class="form-label">tx max</label><input type="number" id="fiberTxMax" class="form-input" step="0.1" required></div>
         </div>
+        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">fiber_analisis (degradasi / stale / flap)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-field"><label class="form-label">degradasi ≥ dB</label><input type="number" id="fiberDegDb" class="form-input" step="0.1" min="0.5" max="10" required></div>
+          <div class="form-field"><label class="form-label">degradasi hari</label><input type="number" id="fiberDegDays" class="form-input" step="1" min="1" max="30" required></div>
+          <div class="form-field"><label class="form-label">stale ≥ menit</label><input type="number" id="fiberStaleMin" class="form-input" step="1" min="10" max="10080" required></div>
+          <div class="form-field"><label class="form-label">flap ≥ flip</label><input type="number" id="fiberFlapFlips" class="form-input" step="1" min="2" max="20" required></div>
+          <div class="form-field"><label class="form-label">flap jam</label><input type="number" id="fiberFlapHours" class="form-input" step="1" min="1" max="72" required></div>
+        </div>
         <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">mikrotik_snmp</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="form-field"><label class="form-label">suhu warning (°C)</label><input type="number" id="tempWarn" class="form-input" step="0.5" required></div>
@@ -925,7 +933,7 @@ body::after{
           <div class="form-field"><label class="form-label">pembagi suhu</label><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required></div>
         </div>
         <div class="form-field">
-          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.</div>
+          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.<br>ℹ fiber_analisis: degradasi = Rx turun ≥ dB dalam sekian hari · stale = snmp/simulator tanpa data baru ≥ sekian menit · flap = bolak-balik normal↔terganggu ≥ sekian flip dalam sekian jam.</div>
         </div>
         <button type="submit" class="btn-primary">save_settings()</button>
       </form>
@@ -1781,6 +1789,11 @@ async function openSettingsModal(){
     document.getElementById('fiberCrit').value=data.fiber_rx_crit??-27;
     document.getElementById('fiberTxMin').value=data.fiber_tx_min??0;
     document.getElementById('fiberTxMax').value=data.fiber_tx_max??5;
+    document.getElementById('fiberDegDb').value=data.fiber_degrade_db??3;
+    document.getElementById('fiberDegDays').value=data.fiber_degrade_days??7;
+    document.getElementById('fiberStaleMin').value=data.fiber_stale_min??60;
+    document.getElementById('fiberFlapFlips').value=data.fiber_flap_flips??4;
+    document.getElementById('fiberFlapHours').value=data.fiber_flap_hours??24;
     document.getElementById('tempWarn').value=data.temp_threshold??60;
     document.getElementById('tempCrit').value=data.temp_crit??75;
     document.getElementById('mtCpuOid').value=data.mt_cpu_oid||'';
@@ -1810,6 +1823,16 @@ async function saveSettings(e){
   }
   if(!(fCrit < fWarn && fWarn <= fOver)){ alert('Error: harus crit < warn <= overload (mis. -27 < -25 <= -8)'); return; }
   if(!Number.isFinite(fTxMin) || !Number.isFinite(fTxMax) || fTxMin > fTxMax){ alert('Error: fiber tx_min harus <= tx_max'); return; }
+  const fDegDb=parseFloat(document.getElementById('fiberDegDb').value);
+  const fDegDays=parseInt(document.getElementById('fiberDegDays').value);
+  const fStaleMin=parseInt(document.getElementById('fiberStaleMin').value);
+  const fFlapFlips=parseInt(document.getElementById('fiberFlapFlips').value);
+  const fFlapHours=parseInt(document.getElementById('fiberFlapHours').value);
+  if(!Number.isFinite(fDegDb) || fDegDb < 0.5 || fDegDb > 10){ alert('Error: degradasi dB harus 0.5-10'); return; }
+  if(!Number.isInteger(fDegDays) || fDegDays < 1 || fDegDays > 30){ alert('Error: degradasi hari harus 1-30'); return; }
+  if(!Number.isInteger(fStaleMin) || fStaleMin < 10 || fStaleMin > 10080){ alert('Error: stale menit harus 10-10080'); return; }
+  if(!Number.isInteger(fFlapFlips) || fFlapFlips < 2 || fFlapFlips > 20){ alert('Error: flap flip harus 2-20'); return; }
+  if(!Number.isInteger(fFlapHours) || fFlapHours < 1 || fFlapHours > 72){ alert('Error: flap jam harus 1-72'); return; }
   const tW=parseFloat(document.getElementById('tempWarn').value);
   const tC=parseFloat(document.getElementById('tempCrit').value);
   const tDiv=parseFloat(document.getElementById('mtTempDiv').value);
@@ -1826,7 +1849,7 @@ async function saveSettings(e){
     }
   }
   try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,...mtOids})});
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,...mtOids})});
     if(!res.ok){
       let m='Gagal menyimpan pengaturan';
       try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}
