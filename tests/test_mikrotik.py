@@ -658,6 +658,48 @@ class MikrotikStaleWrapTest(unittest.TestCase):
                              json={"mt_stale_min": orig["mt_stale_min"]},
                              headers=JSON_HDR)
 
+    def test_iface_history_didisample(self):
+        from datetime import datetime, timedelta
+        self._add(MT_ST_HOST)
+        conn, c = m.get_db()
+        c.execute("INSERT INTO snmp_interfaces (host, if_index, name, oper, monitor)"
+                  " VALUES (?,?,?,1,1)", (MT_ST_HOST, 1, "ether1"))
+        base = datetime.now() - timedelta(minutes=600)
+        rows = [(MT_ST_HOST, 1, 10.0, 5.0,
+                 (base + timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M:%S"))
+                for i in range(600)]
+        c.executemany("INSERT INTO iface_traffic (host, if_index, net_in, net_out, timestamp)"
+                      " VALUES (?,?,?,?,?)", rows)
+        conn.commit()
+        conn.close()
+        try:
+            r = self.client.get(
+                f"/api/mikrotik/{MT_ST_HOST}/iface/1/history?hours=336",
+                headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            j = r.get_json()
+            self.assertLessEqual(j["count"], 500)
+            self.assertEqual(j["count"], 300)  # 600 titik -> step 2
+        finally:
+            self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
+
+    def test_discover_besar_flag_truncated(self):
+        self._add(MT_ST_HOST)
+        orig = m.discover_interfaces
+        m.discover_interfaces = lambda ip, comm, max_if=128: [
+            {"if_index": i, "name": f"ether{i}", "oper": 1} for i in range(1, 129)]
+        try:
+            r = self.client.post(
+                f"/api/mikrotik/{MT_ST_HOST}/interfaces/discover",
+                headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            j = r.get_json()
+            self.assertEqual(j["count"], 128)
+            self.assertTrue(j["truncated"])
+        finally:
+            m.discover_interfaces = orig
+            self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1324,9 +1324,10 @@ def snmp_walk(ip, community, base, max_rows=64):
 
 IF_DESCR_BASE = "1.3.6.1.2.1.2.2.1.2"
 IF_OPER_BASE = "1.3.6.1.2.1.2.2.1.8"
+DISCOVER_MAX_IF = 128  # batas interface per discover (walk berhenti sendiri di ujung tabel)
 
 
-def discover_interfaces(ip, community, max_if=48):
+def discover_interfaces(ip, community, max_if=DISCOVER_MAX_IF):
     """Walk ifDescr + ifOperStatus. Kembalikan list {if_index, name, oper}."""
     try:
         descrs = snmp_walk(ip, community, IF_DESCR_BASE, max_rows=max_if + 8)
@@ -6327,7 +6328,8 @@ def api_mt_iface_discover(host):
         threading.Thread(target=poll_mikrotik_ifaces, daemon=True).start()
     except Exception:
         pass
-    return jsonify({"status": "success", "count": len(found), "interfaces": found})
+    return jsonify({"status": "success", "count": len(found),
+                    "truncated": len(found) >= DISCOVER_MAX_IF, "interfaces": found})
 
 
 @app.route("/api/mikrotik/<path:host>/interfaces", methods=["PATCH"])
@@ -6416,6 +6418,10 @@ def api_mt_iface_history(host, idx):
         rows = c.fetchall()
     finally:
         conn.close()
+    # downsample seperti fiber (14 hari = ~20rb titik bisa bekukan browser)
+    if len(rows) > 500:
+        step = (len(rows) + 499) // 500
+        rows = rows[::step]
     labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"]
               for r in rows]
     return jsonify({"host": host, "if_index": idx, "name": iface["name"], "hours": hours,
