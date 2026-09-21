@@ -1,5 +1,10 @@
 FROM python:3.10-slim
 
+# Zona waktu WIB: scheduler (APScheduler Asia/Jakarta), datetime.now(),
+# dan SQLite localtime() harus satu jam dinding agar maintenance window,
+# mute_until, dan tampilan waktu cocok dengan input pengguna.
+ENV TZ=Asia/Jakarta
+
 RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping curl \
     && rm -rf /var/lib/apt/lists/*
 
