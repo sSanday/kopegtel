@@ -6382,6 +6382,8 @@ def api_mt_iface_delete(host, idx):
     try:
         mt_iface_oper.pop((host, idx), None)
         iface_state.pop((host, idx), None)
+        mt_iface_tg.pop((host, idx), None)
+        mt_iface_flaps.pop((host, idx), None)
     except Exception:
         pass
     if not deleted:
