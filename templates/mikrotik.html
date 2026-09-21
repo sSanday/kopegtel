@@ -85,6 +85,20 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
   <div class="chart-card">
     <div class="chart-hd">
+      <div><div class="chart-title">backup_konfig</div><div class="chart-sub" id="bkSub">// backup otomatis 02:00 bila diaktifkan + SSH terisi</div></div>
+      <div class="chart-ctl"><button class="range-btn" onclick="backupNow()">⇪ backup now</button></div>
+    </div>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Waktu</th><th>Size</th><th>SHA</th><th>Status</th><th></th></tr></thead>
+      <tbody id="bkRows"><tr><td colspan="5" style="text-align:center;color:var(--t3)">pilih host...</td></tr></tbody>
+    </table></div>
+    <div id="bkDetail" style="display:none;margin-top:12px">
+      <div class="chart-sub" id="bkDetailTitle" style="margin-bottom:8px"></div>
+      <pre id="bkPre" style="max-height:320px;overflow:auto;background:rgba(0,0,0,.35);border:1px solid var(--border2);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:.65rem;line-height:1.6;color:var(--t2);white-space:pre-wrap;word-break:break-all"></pre>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
       <div><div class="chart-title" id="ctitle">device_history.ts</div><div class="chart-sub">// poll tiap 60 detik via SNMP</div></div>
       <div class="chart-ctl">
         <select id="hostSel" onchange="onHostChange()"></select>
@@ -122,7 +136,7 @@ async function load(){
   if(r.status===401){location.href='/login';return;}
   DATA=await r.json();
   document.getElementById('hostSel').innerHTML=DATA.map(o=>`<option value="${esc(o.host)}">${esc(o.alias||o.host)}</option>`).join('')||'<option value="">(kosong)</option>';
-  render(); loadIfaces(); loadHist();
+  render(); loadIfaces(); loadHist(); loadBackups();
 }
 function render(){
   const q=(document.getElementById('q').value||'').toLowerCase();
@@ -184,7 +198,55 @@ async function delIface(idx){
   await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces/${idx}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
   loadIfaces();
 }
-function onHostChange(){loadIfaces();loadHist();}
+function onHostChange(){loadIfaces();loadHist();loadBackups();}
+async function loadBackups(){
+  const host=document.getElementById('hostSel').value;
+  const tb=document.getElementById('bkRows');
+  document.getElementById('bkDetail').style.display='none';
+  if(!host){tb.innerHTML='<tr><td colspan="5" style="text-align:center">—</td></tr>';return;}
+  const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/backups`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!r.ok){tb.innerHTML='<tr><td colspan="5" style="text-align:center">gagal memuat</td></tr>';return;}
+  const rows=await r.json();
+  document.getElementById('bkSub').textContent=`// ${rows.length} versi tersimpan · backup otomatis 02:00 bila diaktifkan + SSH terisi`;
+  if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--t3)">$ belum ada backup — aktifkan di kelola host + klik backup now.</td></tr>';return;}
+  tb.innerHTML=rows.map(b=>`<tr>
+    <td>${esc(b.taken_at)}</td><td>${(b.size/1024).toFixed(1)} KB</td>
+    <td style="font-size:.6rem">${esc((b.sha256||'').slice(0,12))}</td>
+    <td>${b.changed?'<span class="tag warning">changed</span>':'<span class="tag normal">baseline/ok</span>'}</td>
+    <td style="white-space:nowrap"><button class="range-btn" onclick="viewBackup(${b.id})">view</button> <button class="range-btn" onclick="diffBackup(${b.id})">diff</button> <button class="range-btn" onclick="dlBackup(${b.id})">⇩</button></td>
+  </tr>`).join('');
+}
+async function _bkJson(url){
+  const host=document.getElementById('hostSel').value;if(!host)return null;
+  const r=await fetch(url.replace('{h}',encodeURIComponent(host)),{headers:{'X-Requested-With':'XMLHttpRequest'}});
+  if(!r.ok){const j=await r.json().catch(()=>({}));alert(j.error||'gagal');return null;}
+  return r.json();
+}
+async function viewBackup(id){
+  const j=await _bkJson(`/api/mikrotik/{h}/backups/${id}`);if(!j)return;
+  document.getElementById('bkDetail').style.display='block';
+  document.getElementById('bkDetailTitle').textContent=`// backup #${j.id} ${j.taken_at} (${(j.size/1024).toFixed(1)} KB)`;
+  document.getElementById('bkPre').textContent=j.content||'(kosong)';
+}
+async function diffBackup(id){
+  const j=await _bkJson(`/api/mikrotik/{h}/backups/${id}/diff`);if(!j)return;
+  document.getElementById('bkDetail').style.display='block';
+  document.getElementById('bkDetailTitle').textContent=j.vs?`// diff #${j.vs} → #${j.id}`:`// #${j.id}: ${j.note||''}`;
+  document.getElementById('bkPre').textContent=(j.diff||[]).join('\n')||'(tidak ada perbedaan)';
+}
+function dlBackup(id){
+  const host=document.getElementById('hostSel').value;if(!host)return;
+  location.href=`/api/mikrotik/${encodeURIComponent(host)}/backups/${id}?download=1`;
+}
+async function backupNow(){
+  const host=document.getElementById('hostSel').value;if(!host)return;
+  if(!confirm(`tarik backup konfigurasi ${host} sekarang?`))return;
+  const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/backup`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.error||'backup gagal');return;}
+  alert(j.notified?'backup tersimpan + berubah (Telegram terkirim).':'backup tersimpan.');
+  loadBackups();
+}
 async function loadHist(){
   const host=document.getElementById('hostSel').value;if(!host)return;
   const metric=document.getElementById('metricSel').value;

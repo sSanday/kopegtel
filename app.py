@@ -6,6 +6,8 @@ import sqlite3
 import os
 import glob
 import time
+import hashlib
+import difflib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import requests
@@ -366,6 +368,30 @@ def init_db():
             c.execute(f"ALTER TABLE hosts ADD COLUMN {_col} TEXT DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+    for _col, _ddl in (
+        ("ssh_user", "ALTER TABLE hosts ADD COLUMN ssh_user TEXT DEFAULT ''"),
+        ("ssh_pass", "ALTER TABLE hosts ADD COLUMN ssh_pass TEXT DEFAULT ''"),
+        ("ssh_port", "ALTER TABLE hosts ADD COLUMN ssh_port INTEGER DEFAULT 22"),
+        ("backup_enable", "ALTER TABLE hosts ADD COLUMN backup_enable INTEGER NOT NULL DEFAULT 0"),
+        ("backup_last", "ALTER TABLE hosts ADD COLUMN backup_last TEXT DEFAULT ''"),
+        ("backup_ok", "ALTER TABLE hosts ADD COLUMN backup_ok INTEGER NOT NULL DEFAULT 0"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_backup_keep', '10')")
+
+    c.execute('''CREATE TABLE IF NOT EXISTS mt_backups(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host TEXT NOT NULL,
+      taken_at TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      sha256 TEXT NOT NULL DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      changed INTEGER NOT NULL DEFAULT 0
+    )''')
+    c.execute("CREATE INDEX IF NOT EXISTS idx_mt_backup ON mt_backups(host, id)")
 
 
     c.execute('''CREATE TABLE IF NOT EXISTS agent_metrics (
@@ -2002,6 +2028,195 @@ def poll_mikrotik_ifaces():
             print(f"[WARN] telegram mikrotik-iface gagal: {e}")
 
 
+# ---------------- BACKUP KONFIGURASI MIKROTIK via SSH ----------------
+# Opt-in per host (backup_enable=1 + ssh_user/pass). Scheduler tiap 02:00
+# + tombol manual. Baseline pertama sunyi; perubahan -> telegram + diff.
+# Password tak pernah dikirim ke UI/API (ikuti konvensi community OLT).
+MT_BACKUP_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _mt_backup_keep():
+    try:
+        k = int(float(get_setting("mt_backup_keep", 10)))
+    except (ValueError, TypeError):
+        k = 10
+    return min(50, max(3, k))
+
+
+def fetch_mikrotik_config(host, username, password, port=22, timeout=20):
+    """Ambil /export via SSH. Kembalikan (ok, text_atau_error)."""
+    try:
+        import paramiko
+    except ImportError:
+        return False, "paramiko belum terinstal di server"
+    if not (username or "").strip() or not (password or ""):
+        return False, "SSH user/password belum diisi"
+    try:
+        port = int(port or 22)
+    except (ValueError, TypeError):
+        return False, "SSH port tidak valid"
+    if not 1 <= port <= 65535:
+        return False, "SSH port harus 1-65535"
+    client = None
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(host, port=port, username=username, password=password,
+                       timeout=timeout, banner_timeout=timeout,
+                       auth_timeout=timeout, look_for_keys=False,
+                       allow_agent=False)
+        _in, _out, _err = client.exec_command("/export", timeout=timeout)
+        raw = _out.read()
+        try:
+            text = raw.decode("utf-8-sig").strip()
+        except Exception:
+            text = raw.decode("utf-8", errors="replace").strip()
+        if not text:
+            return False, "export kosong"
+        return True, text
+    except Exception as e:
+        return False, f"SSH gagal: {e}"[:300]
+    finally:
+        try:
+            if client is not None:
+                client.close()
+        except Exception:
+            pass
+
+
+def _store_mt_backup(c, host, ok, payload, timestamp):
+    """Simpan hasil fetch (cursor milik transaksi caller yang pegang db_lock).
+
+    Kembalikan pesan telegram|None. Baseline pertama & kegagalan tak
+    bertelegram (kegagalan tampil di triggers + status host).
+    """
+    if not ok:
+        try:
+            c.execute("UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
+                      (timestamp, host))
+            _insert_system_log(c, "MT_BACKUP_FAIL", host, str(payload)[:200],
+                               timestamp)
+        except sqlite3.OperationalError:
+            pass
+        return None
+    text = payload if isinstance(payload, str) else ""
+    if len(text.encode("utf-8")) > MT_BACKUP_MAX_BYTES:
+        try:
+            c.execute("UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
+                      (timestamp, host))
+            _insert_system_log(c, "MT_BACKUP_FAIL", host,
+                               "export >2MB, dilewati", timestamp)
+        except sqlite3.OperationalError:
+            pass
+        return None
+    sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    try:
+        c.execute("SELECT id, sha256, content FROM mt_backups WHERE host=? "
+                  "ORDER BY id DESC LIMIT 1", (host,))
+        prev = c.fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if prev and prev["sha256"] == sha:
+        try:
+            c.execute("UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?",
+                      (timestamp, host))
+        except sqlite3.OperationalError:
+            pass
+        return None
+    added = removed = 0
+    if prev and prev["content"] is not None:
+        for line in difflib.unified_diff((prev["content"] or "").splitlines(),
+                                         text.splitlines(), n=0):
+            if line.startswith("+") and not line.startswith("+++"):
+                added += 1
+            elif line.startswith("-") and not line.startswith("---"):
+                removed += 1
+    try:
+        c.execute("INSERT INTO mt_backups (host, taken_at, size, sha256, content, changed)"
+                  " VALUES (?,?,?,?,?,?)",
+                  (host, timestamp, len(text.encode("utf-8")), sha, text,
+                   1 if prev else 0))
+        keep = _mt_backup_keep()
+        c.execute("DELETE FROM mt_backups WHERE host=? AND id NOT IN "
+                  "(SELECT id FROM mt_backups WHERE host=? ORDER BY id DESC LIMIT ?)",
+                  (host, host, keep))
+        c.execute("UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?",
+                  (timestamp, host))
+        _insert_system_log(c, "MT_BACKUP", host,
+                           f"tersimpan {len(text.encode('utf-8')) // 1024} KB"
+                           + (f" (+{added}/-{removed})" if prev else " (baseline)"),
+                           timestamp)
+    except sqlite3.OperationalError as e:
+        print(f"[MT-BACKUP] simpan {host} gagal: {e}")
+        return None
+    if not prev:
+        return None
+    return (f"💾 *MIKROTIK BACKUP BERUBAH*\nHost: `{host}`\n"
+            f"Ukuran: {len(text.encode('utf-8')) // 1024} KB · +{added}/-{removed} baris\n"
+            f"Waktu: {timestamp}\nLihat diff di halaman mikrotik.")
+
+
+def _mt_backup_candidates():
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT ip, ssh_user, ssh_pass, ssh_port FROM hosts "
+                      "WHERE backup_enable=1")
+            return [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[MT-BACKUP] load kandidat gagal: {e}")
+        return []
+
+
+def poll_mt_backups():
+    """Job scheduler: backup konfigurasi semua host opt-in (tiap 02:00)."""
+    cands = _mt_backup_candidates()
+    if not cands:
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _one(h):
+        try:
+            return h["ip"], fetch_mikrotik_config(
+                h["ip"], h.get("ssh_user") or "", h.get("ssh_pass") or "",
+                h.get("ssh_port") or 22)
+        except Exception as e:
+            return h["ip"], (False, f"fetch gagal: {e}"[:200])
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(len(cands), 5)) as ex:
+        for host, res in ex.map(_one, cands):
+            results[host] = res
+    tg_queue = []
+    with db_lock:
+        conn, c = get_db()
+        try:
+            for host, (ok, payload) in results.items():
+                try:
+                    msg = _store_mt_backup(c, host, ok, payload, timestamp)
+                except Exception as e:
+                    print(f"[MT-BACKUP] {host} gagal: {e}")
+                    continue
+                if msg:
+                    tg_queue.append(msg)
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            print(f"[DB LOCK] poll_mt_backups gagal: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        finally:
+            conn.close()
+    for msg in tg_queue:
+        try:
+            send_telegram_alert(msg)
+        except Exception as e:
+            print(f"[WARN] telegram backup gagal: {e}")
+
+
 def check_network():
     global status_memory, down_since
     targets = get_target_hosts()
@@ -3573,6 +3788,7 @@ if SCHEDULER_ENABLED:
     scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
     scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
     scheduler.add_job(func=send_fiber_summary,    trigger="cron",     hour=8, minute=5, **_job_defaults)
+    scheduler.add_job(func=poll_mt_backups,       trigger="cron",     hour=2, minute=0, **_job_defaults)
     scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
     scheduler.add_job(func=backup_database,        trigger="cron",     hour=0, minute=5, **_job_defaults)
     try:
@@ -3801,12 +4017,40 @@ def _parse_snmp_fields(data):
     return {"snmp_profile": profile, **oids}, None
 
 
+def _parse_ssh_fields(data):
+    """Validasi kredensial SSH + flag backup. Hanya key yang ADA divalidasi.
+
+    Kembalikan (dict, err). Password tak pernah dikembalikan ke UI.
+    """
+    out = {}
+    if "ssh_user" in data:
+        out["ssh_user"] = str(data.get("ssh_user") or "").strip()[:64]
+    if "ssh_pass" in data:
+        out["ssh_pass"] = str(data.get("ssh_pass") or "")[:128]
+    if "ssh_port" in data:
+        try:
+            port = int(data.get("ssh_port", 22))
+        except (ValueError, TypeError):
+            return None, "ssh_port harus angka 1-65535"
+        if not 1 <= port <= 65535:
+            return None, "ssh_port harus 1-65535"
+        out["ssh_port"] = port
+    if "backup_enable" in data:
+        v = data.get("backup_enable")
+        if isinstance(v, str):
+            v = v.strip().lower() in ("1", "true", "ya", "yes", "on")
+        out["backup_enable"] = 1 if v else 0
+    return out, None
+
+
 @app.route("/api/hosts", methods=["GET"])
 @api_login_required
 def api_get_hosts():
     conn, c = get_db()
     c.execute("SELECT id, ip, snmp_community, if_index, alias, category,"
-              " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid"
+              " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
+              " ssh_user, ssh_port, backup_enable, backup_last, backup_ok,"
+              " CASE WHEN ssh_pass IS NOT NULL AND ssh_pass != '' THEN 1 ELSE 0 END AS ssh_pass_set"
               " FROM hosts ORDER BY id ASC")
     hosts = []
     for r in c.fetchall():
@@ -3818,7 +4062,13 @@ def api_get_hosts():
                       "snmp_profile": (r["snmp_profile"] or "auto")
                       if (r["snmp_profile"] or "auto") in SNMP_PROFILES else "auto",
                       "cpu_oid": r["cpu_oid"] or "", "mem_oid": r["mem_oid"] or "",
-                      "storage_oid": r["storage_oid"] or "", "temp_oid": r["temp_oid"] or ""})
+                      "storage_oid": r["storage_oid"] or "", "temp_oid": r["temp_oid"] or "",
+                      "ssh_user": r["ssh_user"] or "",
+                      "ssh_pass_set": bool(r["ssh_pass_set"]),
+                      "ssh_port": r["ssh_port"] or 22,
+                      "backup_enable": bool(r["backup_enable"]),
+                      "backup_last": r["backup_last"] or "",
+                      "backup_ok": bool(r["backup_ok"])})
     conn.close()
     return jsonify(hosts)
 
@@ -3831,6 +4081,9 @@ def api_add_host():
     category = str(data.get("category") or "").strip() or "Uncategorized"
     snmp_community = str(data.get("snmp_community") or "").strip()
     snmp_vals, err = _parse_snmp_fields(data)
+    if err:
+        return jsonify({"error": err}), 400
+    ssh_vals, err = _parse_ssh_fields(data)
     if err:
         return jsonify({"error": err}), 400
     try:
@@ -3860,11 +4113,14 @@ def api_add_host():
             conn.close()
             return jsonify({"error": f"Batas maksimum {MAX_HOSTS} host tercapai"}), 400
         c.execute("INSERT INTO hosts (ip, snmp_community, if_index, alias, category,"
-                  " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid)"
-                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
+                  " ssh_user, ssh_pass, ssh_port, backup_enable)"
+                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                   (ip, snmp_community, if_index, alias, category,
                    snmp_vals["snmp_profile"], snmp_vals["cpu_oid"], snmp_vals["mem_oid"],
-                   snmp_vals["storage_oid"], snmp_vals["temp_oid"]))
+                   snmp_vals["storage_oid"], snmp_vals["temp_oid"],
+                   ssh_vals.get("ssh_user", ""), ssh_vals.get("ssh_pass", ""),
+                   ssh_vals.get("ssh_port", 22), ssh_vals.get("backup_enable", 0)))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.rollback()
@@ -3913,6 +4169,7 @@ def api_delete_host(ip):
             conn2, c2 = get_db()
             try:
                 c2.execute("DELETE FROM snmp_interfaces WHERE host=?", (ip,))
+                c2.execute("DELETE FROM mt_backups WHERE host=?", (ip,))
                 conn2.commit()
             finally:
                 try:
@@ -3964,6 +4221,9 @@ def api_update_host_snmp(ip):
     snmp_vals, err = _parse_snmp_fields(data)
     if err:
         return jsonify({"error": err}), 400
+    ssh_vals, err = _parse_ssh_fields(data)
+    if err:
+        return jsonify({"error": err}), 400
     sets, params = [], []
     if "snmp_community" in data:
         sets.append("snmp_community=?")
@@ -3981,6 +4241,10 @@ def api_update_host_snmp(ip):
         if key in data:
             sets.append(f"{key}=?")
             params.append(snmp_vals[key])
+    for key in ("ssh_user", "ssh_pass", "ssh_port", "backup_enable"):
+        if key in ssh_vals:
+            sets.append(f"{key}=?")
+            params.append(ssh_vals[key])
     if not sets:
         return jsonify({"error": "Tidak ada field SNMP yang dikirim"}), 400
     conn, c = get_db()
@@ -3995,7 +4259,11 @@ def api_update_host_snmp(ip):
     except Exception:
         pass
     try:
-        audit(current_user.username, "host.snmp", f"{ip} {','.join(k for k in snmp_vals if k in data)}")
+        _changed = [k for k in list(snmp_vals) + list(ssh_vals)
+                    if k in data and k != "ssh_pass"]
+        if "ssh_pass" in data:
+            _changed.append("ssh_pass=***")
+        audit(current_user.username, "host.snmp", f"{ip} {','.join(_changed)}")
     except Exception:
         pass
     return jsonify({"status": "success"})
@@ -4028,6 +4296,7 @@ def api_get_settings():
         "mt_temp_oid": get_setting("mt_temp_oid", MT_DEFAULT_OIDS["temp"], type_cast=str),
         "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
         "mt_stale_min": get_setting("mt_stale_min", MT_STALE_MIN),
+        "mt_backup_keep": get_setting("mt_backup_keep", 10),
     })
 
 FIBER_SETTING_RANGES = {
@@ -4143,6 +4412,15 @@ def api_save_settings():
         if not 3 <= v <= 1440:
             return jsonify({"error": "mt_stale_min harus 3-1440 menit"}), 400
         vals["mt_stale_min"] = v
+    v = data.get("mt_backup_keep")
+    if v is not None:
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": "mt_backup_keep harus angka 3-50"}), 400
+        if not 3 <= v <= 50:
+            return jsonify({"error": "mt_backup_keep harus 3-50 versi"}), 400
+        vals["mt_backup_keep"] = v
     # konsistensi: crit < warn <= overload, tx_min <= tx_max, temp warn < crit
     merged = {k: get_setting(k, d) for k, d in
               [("fiber_rx_overload", FIBER_RX_OVERLOAD), ("fiber_rx_warn", FIBER_RX_WARN),
@@ -6798,6 +7076,122 @@ def api_mt_iface_delete(host, idx):
     return jsonify({"status": "success"})
 
 
+def _mt_backup_host_row(host):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip, ssh_user, ssh_pass, ssh_port, backup_enable,"
+                  " backup_last, backup_ok FROM hosts WHERE ip=?", (host,))
+        row = c.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+@app.route("/api/mikrotik/<path:host>/backups", methods=["GET"])
+@api_login_required
+def api_mt_backup_list(host):
+    if not _mt_backup_host_row(host):
+        return jsonify({"error": "Host tidak ditemukan"}), 404
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, taken_at, size, sha256, changed FROM mt_backups"
+                  " WHERE host=? ORDER BY id DESC LIMIT 50", (host,))
+        out = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    return jsonify(out)
+
+
+@app.route("/api/mikrotik/<path:host>/backups/<int:bid>", methods=["GET"])
+@api_login_required
+def api_mt_backup_get(host, bid):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, host, taken_at, size, sha256, content FROM mt_backups"
+                  " WHERE host=? AND id=?", (host, bid))
+        row = c.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Backup tidak ditemukan"}), 404
+    d = dict(row)
+    if str(request.args.get("download") or "").strip() == "1":
+        safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", host)[:48]
+        return Response(d.get("content") or "", mimetype="text/plain",
+                        headers={"Content-Disposition":
+                                 f"attachment; filename={safe}_{d.get('taken_at','')[:10]}.rsc"})
+    return jsonify({k: d.get(k) for k in ("id", "host", "taken_at", "size", "sha256", "content")})
+
+
+@app.route("/api/mikrotik/<path:host>/backups/<int:bid>/diff", methods=["GET"])
+@api_login_required
+def api_mt_backup_diff(host, bid):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, taken_at, content FROM mt_backups"
+                  " WHERE host=? AND id<=? ORDER BY id DESC LIMIT 2", (host, bid))
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+    if not rows or rows[0]["id"] != bid:
+        return jsonify({"error": "Backup tidak ditemukan"}), 404
+    cur = rows[0]
+    prev = rows[1] if len(rows) > 1 else None
+    if not prev:
+        return jsonify({"id": bid, "vs": None, "diff": [],
+                        "note": "versi pertama (baseline, tanpa pembanding)"})
+    diff = list(difflib.unified_diff((prev.get("content") or "").splitlines(),
+                                     (cur.get("content") or "").splitlines(),
+                                     fromfile=f"#{prev['id']} {prev['taken_at']}",
+                                     tofile=f"#{cur['id']} {cur['taken_at']}", n=3))
+    if len(diff) > 500:
+        diff = diff[:500] + [f"... dipotong, total {len(diff)} baris"]
+    return jsonify({"id": bid, "vs": prev["id"], "diff": diff,
+                    "lines": len(diff)})
+
+
+@app.route("/api/mikrotik/<path:host>/backup", methods=["POST"])
+@api_login_required
+def api_mt_backup_now(host):
+    row = _mt_backup_host_row(host)
+    if not row:
+        return jsonify({"error": "Host tidak ditemukan"}), 404
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        ok, payload = fetch_mikrotik_config(
+            host, row.get("ssh_user") or "", row.get("ssh_pass") or "",
+            row.get("ssh_port") or 22)
+    except Exception as e:
+        return jsonify({"error": f"fetch gagal: {e}"}), 502
+    tg_msg = None
+    with db_lock:
+        conn, c = get_db()
+        try:
+            tg_msg = _store_mt_backup(c, host, ok, payload, timestamp)
+            _commit_with_retry(conn)
+        except sqlite3.OperationalError as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": f"DB sibuk: {e}"}), 503
+        finally:
+            conn.close()
+    if tg_msg:
+        try:
+            send_telegram_alert(tg_msg)
+        except Exception as e:
+            print(f"[WARN] telegram backup gagal: {e}")
+    try:
+        audit(current_user.username, "mt.backup_now", f"{host} ok={ok}")
+    except Exception:
+        pass
+    if not ok:
+        return jsonify({"error": payload}), 502
+    return jsonify({"status": "success", "taken_at": timestamp,
+                    "notified": bool(tg_msg)})
+
+
 @app.route("/api/mikrotik/<path:host>/iface/<int:idx>/history")
 @api_login_required
 def api_mt_iface_history(host, idx):
@@ -7328,6 +7722,40 @@ def get_triggers():
             conn.close()
     except Exception as e:
         print(f"[TRIGGERS] mikrotik gagal: {e}")
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT ip, alias, backup_last, backup_ok FROM hosts"
+                      " WHERE backup_enable=1 ORDER BY ip ASC")
+            now = datetime.now()
+            for r in c.fetchall():
+                last = (r["backup_last"] or "").strip()
+                try:
+                    age_h = ((now - datetime.strptime(last, "%Y-%m-%d %H:%M:%S"))
+                             .total_seconds() / 3600) if last else None
+                except (ValueError, TypeError):
+                    age_h = None
+                if age_h is not None and r["backup_ok"] and age_h <= 48:
+                    continue
+                label = (r["alias"] or "").strip() or r["ip"]
+                if age_h is None:
+                    reason = "belum pernah"
+                elif not r["backup_ok"]:
+                    reason = "gagal"
+                else:
+                    reason = f"basi {int(age_h)} jam"
+                alarms.append({
+                    "host": f"{label} ({r['ip']})",
+                    "severity": "warning",
+                    "message": f"Backup konfigurasi {reason} (terakhir {last or '—'}) — "
+                               f"cek kredensial SSH / jadwal backup.",
+                    "category": "mikrotik",
+                })
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[TRIGGERS] mt-backup gagal: {e}")
 
     severity_order = {"disaster": 1, "high": 2, "warning": 3}
     alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))

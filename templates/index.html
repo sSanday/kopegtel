@@ -866,6 +866,10 @@ body::after{
           <option value="mikrotik">mikrotik</option>
           <option value="generic">generic</option>
         </select>
+        <input type="text" id="newHostSshUser" placeholder="ssh user (opt)" title="SSH user MikroTik (untuk backup konfigurasi)" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
+        <input type="password" id="newHostSshPass" placeholder="ssh pass (opt)" title="SSH password" autocomplete="new-password" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
+        <input type="number" id="newHostSshPort" placeholder="22" value="22" style="width:65px;" title="SSH port">
+        <label title="Backup konfigurasi otomatis tiap 02:00" style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.7rem;color:var(--t2)"><input type="checkbox" id="newHostBackup"> backup</label>
         <button type="submit">+ add</button>
       </form>
       <details style="margin-top:8px;font-family:var(--mono);font-size:.68rem;color:var(--t3)">
@@ -876,7 +880,7 @@ body::after{
           <input type="text" id="newHostStoOid" placeholder="oid storage" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
           <input type="text" id="newHostTempOid" placeholder="oid suhu" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
         </div>
-        <div style="margin-top:6px">Untuk host yang sudah ada, edit via API: <span style="color:var(--accent)">PATCH /api/hosts/&lt;ip&gt;/snmp</span></div>
+        <div style="margin-top:6px">Untuk host yang sudah ada, edit via API: <span style="color:var(--accent)">PATCH /api/hosts/&lt;ip&gt;/snmp</span> (termasuk ssh_user, ssh_pass, ssh_port, backup_enable).</div>
       </details>
     </div>
   </div>
@@ -934,6 +938,7 @@ body::after{
           <div class="form-field"><label class="form-label">pembagi suhu</label><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required></div>
         </div>
         <div class="form-field"><label class="form-label">mt stale ≥ menit (3-1440)</label><input type="number" id="mtStaleMin" class="form-input" step="1" min="3" max="1440" required></div>
+        <div class="form-field"><label class="form-label">backup simpan versi (3-50)</label><input type="number" id="mtBackupKeep" class="form-input" step="1" min="3" max="50" required></div>
         <div class="form-field">
           <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.<br>ℹ fiber_analisis: degradasi = Rx turun ≥ dB dalam sekian hari · stale = snmp/simulator tanpa data baru ≥ sekian menit · flap = bolak-balik normal↔terganggu ≥ sekian flip dalam sekian jam.</div>
         </div>
@@ -1703,6 +1708,14 @@ async function loadHosts(){
           sub.appendChild(peek);
         }
         sub.appendChild(document.createTextNode(` | ifIndex: ${h.if_index} | Cat: ${h.category || 'Uncategorized'} | Prof: ${h.snmp_profile || 'auto'}`));
+        if(h.backup_enable){
+          const bk=document.createElement('span');
+          const okTxt=h.backup_ok?`✓ ${h.backup_last||''}`:'✕ gagal';
+          bk.style.cssText=`color:${h.backup_ok?'var(--accent2)':'var(--danger)'}`;
+          bk.textContent=` | BK: ${okTxt}`;
+          bk.title='Backup konfigurasi otomatis (02:00)';
+          sub.appendChild(bk);
+        }
         info.appendChild(title);
         info.appendChild(sub);
         const delBtn = document.createElement('button');
@@ -1727,6 +1740,12 @@ async function addHost(event){
   let idx = parseInt(document.getElementById('newHostIfIndex').value, 10);
   if(!Number.isFinite(idx) || idx < 1) idx = 1;
   const profile = document.getElementById('newHostProfile').value;
+  const sshUser = document.getElementById('newHostSshUser').value.trim();
+  const sshPass = document.getElementById('newHostSshPass').value;
+  let sshPort = parseInt(document.getElementById('newHostSshPort').value, 10);
+  if(!Number.isFinite(sshPort) || sshPort < 1 || sshPort > 65535) sshPort = 22;
+  const backupEn = document.getElementById('newHostBackup').checked ? 1 : 0;
+  if(backupEn && (!sshUser || !sshPass)){ alert('Error: backup aktif butuh ssh user + pass'); return; }
   const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
   const oids={};
   for(const [id,key] of [['newHostCpuOid','cpu_oid'],['newHostMemOid','mem_oid'],['newHostStoOid','storage_oid'],['newHostTempOid','temp_oid']]){
@@ -1750,7 +1769,7 @@ async function addHost(event){
   try{
     res = await fetch('/api/hosts', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx, snmp_profile:profile, ...oids})
+      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx, snmp_profile:profile, ...oids, ssh_user:sshUser, ssh_pass:sshPass||undefined, ssh_port:sshPort, backup_enable:backupEn})
     });
   }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); return; }
   if(res.ok){
@@ -1760,6 +1779,10 @@ async function addHost(event){
     document.getElementById('newHostSnmp').value='';
     document.getElementById('newHostIfIndex').value='1';
     document.getElementById('newHostProfile').value='auto';
+    document.getElementById('newHostSshUser').value='';
+    document.getElementById('newHostSshPass').value='';
+    document.getElementById('newHostSshPort').value='22';
+    document.getElementById('newHostBackup').checked=false;
     ['newHostCpuOid','newHostMemOid','newHostStoOid','newHostTempOid'].forEach(id=>document.getElementById(id).value='');
     await loadHosts();
     await refresh();
@@ -1805,6 +1828,7 @@ async function openSettingsModal(){
     document.getElementById('mtTempOid').value=data.mt_temp_oid||'';
     document.getElementById('mtTempDiv').value=data.mt_temp_div??10;
     document.getElementById('mtStaleMin').value=data.mt_stale_min??15;
+    document.getElementById('mtBackupKeep').value=data.mt_backup_keep??10;
   }catch(e){console.error(e)}
 }
 function closeSettingsModal(){document.getElementById('settingsModal').classList.remove('open')}
@@ -1847,6 +1871,8 @@ async function saveSettings(e){
   if(!Number.isFinite(tDiv) || tDiv < 1 || tDiv > 1000){ alert('Error: pembagi suhu harus 1-1000'); return; }
   const mtStale=parseInt(document.getElementById('mtStaleMin').value);
   if(!Number.isInteger(mtStale) || mtStale < 3 || mtStale > 1440){ alert('Error: mt stale harus 3-1440 menit'); return; }
+  const mtKeep=parseInt(document.getElementById('mtBackupKeep').value);
+  if(!Number.isInteger(mtKeep) || mtKeep < 3 || mtKeep > 50){ alert('Error: backup versi harus 3-50'); return; }
   const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
   const mtOids={};
   for(const [id,key] of [['mtCpuOid','mt_cpu_oid'],['mtMemOid','mt_mem_oid'],['mtStoOid','mt_storage_oid'],['mtTempOid','mt_temp_oid']]){
@@ -1857,7 +1883,7 @@ async function saveSettings(e){
     }
   }
   try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,fiber_parent_min:fParentMin,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,...mtOids})});
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,fiber_parent_min:fParentMin,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,mt_backup_keep:mtKeep,...mtOids})});
     if(!res.ok){
       let m='Gagal menyimpan pengaturan';
       try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}

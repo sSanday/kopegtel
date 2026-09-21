@@ -701,5 +701,172 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
 
+MT_BK_HOST = "10.99.99.26"
+CFG_V1 = "/system identity\nset name=R1\n/ip address\nadd address=1.1.1.1/24 interface=ether1\n"
+CFG_V2 = "/system identity\nset name=R1-RENAMED\n/ip address\nadd address=1.1.1.1/24 interface=ether1\nadd address=2.2.2.2/24 interface=ether2\n"
+
+
+def _cleanup_bk():
+    conn, c = m.get_db()
+    try:
+        c.execute("DELETE FROM mt_backups WHERE host=?", (MT_BK_HOST,))
+        c.execute("DELETE FROM hosts WHERE ip=?", (MT_BK_HOST,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class MikrotikBackupTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_bk()
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_bk()
+
+    def _add(self):
+        r = self.client.post("/api/hosts",
+                             json={"ip": MT_BK_HOST, "snmp_community": "",
+                                   "ssh_user": "admin", "ssh_pass": "rahasia",
+                                   "ssh_port": 22, "backup_enable": 1},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+    def test_validasi_ssh(self):
+        r = self.client.post("/api/hosts",
+                             json={"ip": "10.99.99.27", "ssh_port": 99999},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        self._add()
+        try:
+            r = self.client.patch(f"/api/hosts/{MT_BK_HOST}/snmp",
+                                  json={"ssh_port": 0}, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 400)
+            r = self.client.patch(f"/api/hosts/{MT_BK_HOST}/snmp",
+                                  json={"ssh_port": 2222, "backup_enable": 1},
+                                  headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            r = self.client.get("/api/hosts", headers=XRW_HDR)
+            body = r.get_data(as_text=True)
+            self.assertNotIn("rahasia", body)
+            self.assertNotIn("ssh_pass", body.replace("ssh_pass_set", ""))
+            item = next(o for o in r.get_json() if o["ip"] == MT_BK_HOST)
+            self.assertEqual(item["ssh_user"], "admin")
+            self.assertTrue(item["ssh_pass_set"])
+            self.assertEqual(item["ssh_port"], 2222)
+            self.assertTrue(item["backup_enable"])
+        finally:
+            self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
+
+    def test_poll_baseline_dedup_berubah_prune(self):
+        self._add()
+        cfg = [CFG_V1]
+        sent = []
+        orig_fetch, orig_tg = m.fetch_mikrotik_config, m.send_telegram_alert
+        m.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            m.poll_mt_backups()  # baseline sunyi
+            conn, c = m.get_db()
+            n = c.execute("SELECT COUNT(*) FROM mt_backups WHERE host=?",
+                          (MT_BK_HOST,)).fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 1)
+            self.assertEqual(sent, [])
+            m.poll_mt_backups()  # identik -> tak ada baris baru
+            conn, c = m.get_db()
+            n = c.execute("SELECT COUNT(*) FROM mt_backups WHERE host=?",
+                          (MT_BK_HOST,)).fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 1)
+            cfg[0] = CFG_V2
+            m.poll_mt_backups()  # berubah -> telegram
+            conn, c = m.get_db()
+            row = c.execute("SELECT changed FROM mt_backups WHERE host=? ORDER BY id DESC LIMIT 1",
+                            (MT_BK_HOST,)).fetchone()
+            conn.close()
+            self.assertEqual(row[0], 1)
+            self.assertTrue(any("BERUBAH" in s for s in sent))
+            # prune ke 3 versi
+            r = self.client.get("/api/settings", headers=XRW_HDR)
+            orig = r.get_json()
+            self.client.post("/api/settings", json={"mt_backup_keep": 3}, headers=JSON_HDR)
+            try:
+                for txt in ("#v3\n", "#v4\n", "#v5\n"):
+                    cfg[0] = CFG_V2 + txt
+                    m.poll_mt_backups()
+                conn, c = m.get_db()
+                n = c.execute("SELECT COUNT(*) FROM mt_backups WHERE host=?",
+                              (MT_BK_HOST,)).fetchone()[0]
+                conn.close()
+                self.assertEqual(n, 3)
+            finally:
+                self.client.post("/api/settings",
+                                 json={"mt_backup_keep": orig["mt_backup_keep"]},
+                                 headers=JSON_HDR)
+        finally:
+            m.fetch_mikrotik_config, m.send_telegram_alert = orig_fetch, orig_tg
+            self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
+
+    def test_gagal_tak_bertelegram_tapi_trigger(self):
+        self._add()
+        orig_fetch, orig_tg = m.fetch_mikrotik_config, m.send_telegram_alert
+        m.fetch_mikrotik_config = lambda *a, **k: (False, "auth failed")
+        sent = []
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            m.poll_mt_backups()
+            self.assertEqual(sent, [])
+            r = self.client.get("/api/hosts", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ip"] == MT_BK_HOST)
+            self.assertFalse(item["backup_ok"])
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            bad = [a for a in r.get_json()
+                   if a.get("category") == "mikrotik" and MT_BK_HOST in a.get("host", "")
+                   and "Backup" in a.get("message", "")]
+            self.assertTrue(bad)
+        finally:
+            m.fetch_mikrotik_config, m.send_telegram_alert = orig_fetch, orig_tg
+            self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
+
+    def test_endpoint_list_isi_download_diff_manual(self):
+        self._add()
+        cfg = [CFG_V1]
+        orig_fetch = m.fetch_mikrotik_config
+        m.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
+        try:
+            r = self.client.post(f"/api/mikrotik/{MT_BK_HOST}/backup", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+            self.assertFalse(r.get_json()["notified"])
+            cfg[0] = CFG_V2
+            r = self.client.post(f"/api/mikrotik/{MT_BK_HOST}/backup", headers=XRW_HDR)
+            self.assertTrue(r.get_json()["notified"])
+            r = self.client.get(f"/api/mikrotik/{MT_BK_HOST}/backups", headers=XRW_HDR)
+            rows = r.get_json()
+            self.assertEqual(len(rows), 2)
+            self.assertNotIn("content", r.get_data(as_text=True))
+            bid = rows[0]["id"]
+            r = self.client.get(f"/api/mikrotik/{MT_BK_HOST}/backups/{bid}", headers=XRW_HDR)
+            self.assertIn("set name=R1-RENAMED", r.get_json()["content"])
+            r = self.client.get(f"/api/mikrotik/{MT_BK_HOST}/backups/{bid}?download=1",
+                                headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("attachment", r.headers.get("Content-Disposition", ""))
+            r = self.client.get(f"/api/mikrotik/{MT_BK_HOST}/backups/{bid}/diff",
+                                headers=XRW_HDR)
+            j = r.get_json()
+            self.assertTrue(any(l.startswith("+") and "ether2" in l for l in j["diff"]))
+            r = self.client.get(f"/api/mikrotik/10.99.99.250/backups", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 404)
+        finally:
+            m.fetch_mikrotik_config = orig_fetch
+            self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
+
+
 if __name__ == "__main__":
     unittest.main()
