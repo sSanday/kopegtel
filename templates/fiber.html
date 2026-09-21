@@ -245,7 +245,7 @@ async function loadTh(){
     document.getElementById('thInfo').innerHTML=
       `Threshold aktif — Rx normal <b>${esc(s.fiber_rx_overload)} s/d ${esc(s.fiber_rx_warn)} dBm</b> · warning <b>${esc(s.fiber_rx_warn)} s/d ${esc(s.fiber_rx_crit)}</b> · critical <b>&lt; ${esc(s.fiber_rx_crit)} dBm</b> (redaman tinggi: cek bending/konektor/splicing/ODP) · `+
       `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
-      `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 · `+
+      `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 + notif Telegram sekali (cooldown 24 jam) · `+
       `Flap: bolak-balik normal↔terganggu ≥ <b>${esc(s.fiber_flap_flips)}x</b> dalam <b>${esc(s.fiber_flap_hours)} jam</b> → entry FLAPPING ↔ (konektor longgar/ODP basah) · `+
       `Stale: sumber <b>snmp/simulator</b> tanpa data baru ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → status <b>stale</b> (kemungkinan LOS/ONT mati/SNMP gagal).<br>`+
       `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;

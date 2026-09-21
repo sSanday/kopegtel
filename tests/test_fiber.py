@@ -1605,10 +1605,14 @@ SN_DT_B = "TEST-FIBER-DT-B"
 SN_DT_W = "TEST-FIBER-DT-W"
 SN_DT_C = "TEST-FIBER-DT-C"
 SN_FLAP = "TEST-FIBER-FLAP-01"
+SN_DGN = "TEST-FIBER-DGN-01"
+SN_DGM = "TEST-FIBER-DGM-01"
+SN_DGW = "TEST-FIBER-DGW-01"
 
 
 def _cleanup_dt(client):
-    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C, SN_FLAP):
+    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C, SN_FLAP,
+               SN_DGN, SN_DGM, SN_DGW):
         try:
             conn, c = m.get_db()
             try:
@@ -1875,6 +1879,117 @@ class FiberFlapTest(unittest.TestCase):
         r = self.client.post("/api/settings", json={"fiber_flap_flips": 21},
                              headers=JSON_HDR)
         self.assertEqual(r.status_code, 400)
+
+
+class FiberDegradeNotifyTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_dt(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+        r = cls.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        cls._orig = {k: orig[k] for k in ("fiber_rx_warn", "fiber_rx_crit",
+                                          "fiber_degrade_db", "fiber_degrade_days")}
+        cls.client.post("/api/settings",
+                        json={"fiber_rx_warn": -25.0, "fiber_rx_crit": -27.0,
+                              "fiber_degrade_db": 3.0, "fiber_degrade_days": 7},
+                        headers=JSON_HDR)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.client.post("/api/settings", json=cls._orig, headers=JSON_HDR)
+        _cleanup_dt(cls.client)
+
+    def _make_degrading(self, sn, old_rx, new_rx, **kw):
+        from datetime import datetime, timedelta
+        body = {"ont_sn": sn, "rx_power": old_rx, "tx_power": 2.0,
+                "source": "manual"}
+        body.update(kw)
+        r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        fid = r.get_json()["id"]
+        old_ts = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+        conn, c = m.get_db()
+        c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                  " VALUES (?,?,?,?)", (fid, old_rx, 2.0, old_ts))
+        conn.commit()
+        conn.close()
+        body["rx_power"] = new_rx
+        r = self.client.put(f"/api/fiber/{fid}", json=body, headers=JSON_HDR)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        m.fiber_degrade_memory.pop(fid, None)
+        m.fiber_degrade_tg.pop(fid, None)
+        return fid
+
+    def _poll_capturing(self):
+        sent = []
+        real = m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            m.poll_fiber_monitor()
+        finally:
+            m.send_telegram_alert = real
+        return sent
+
+    def test_notif_sekali_lalu_diam(self):
+        import time as _t
+        fid = self._make_degrading(SN_DGN, -16.0, -20.0)
+        try:
+            sent = self._poll_capturing()
+            degr = [s for s in sent if "DEGRADASI" in s and SN_DGN in s]
+            self.assertEqual(len(degr), 1)
+            # poll berikutnya: tetap degrading -> diam
+            sent = self._poll_capturing()
+            self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
+            # turun-naik melewati ambang dalam 24 jam -> cooldown menahan
+            m.fiber_degrade_memory.pop(fid, None)
+            sent = self._poll_capturing()
+            self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
+            # setelah 24 jam -> boleh ingatkan lagi
+            m.fiber_degrade_memory.pop(fid, None)
+            m.fiber_degrade_tg[fid] = _t.time() - 90000
+            sent = self._poll_capturing()
+            self.assertEqual(len([s for s in sent if "DEGRADASI" in s]), 1)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            m.fiber_degrade_memory.pop(fid, None)
+            m.fiber_degrade_tg.pop(fid, None)
+
+    def test_muted_tak_kirim_tapi_log(self):
+        fid = self._make_degrading(SN_DGM, -16.0, -20.0, mute_alarm=1)
+        try:
+            sent = self._poll_capturing()
+            self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
+            conn, c = m.get_db()
+            c.execute("SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_MUTED'"
+                      " ORDER BY id DESC LIMIT 1", (SN_DGM,))
+            row = c.fetchone()
+            conn.close()
+            self.assertIsNotNone(row)
+            self.assertIn("Degradasi", row["message"])
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            m.fiber_degrade_memory.pop(fid, None)
+            m.fiber_degrade_tg.pop(fid, None)
+
+    def test_status_warning_tak_dinotif_degradasi(self):
+        # sudah beralarm warning sendiri -> notif degradasi terpisah tak perlu
+        fid = self._make_degrading(SN_DGW, -22.0, -26.0)
+        try:
+            sent = self._poll_capturing()
+            self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
+            # warning-nya sendiri tetap tampil di triggers
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            warn = [a for a in r.get_json()
+                    if a.get("category") == "fiber" and SN_DGW in a.get("host", "")]
+            self.assertTrue(warn)
+        finally:
+            self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            m.fiber_degrade_memory.pop(fid, None)
+            m.fiber_degrade_tg.pop(fid, None)
 
 
 if __name__ == "__main__":

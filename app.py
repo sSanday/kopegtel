@@ -2318,6 +2318,9 @@ FIBER_FLAP_HOURS = 24
 fiber_alarm_memory = {}
 fiber_degrade_memory = {}
 fiber_flap_memory = {}
+# cooldown notifikasi degradasi per ONT (epoch detik telegram terakhir)
+fiber_degrade_tg = {}
+FIBER_DEGRADE_TG_COOLDOWN_S = 86400
 
 
 def _fiber_thresholds():
@@ -2978,10 +2981,48 @@ def poll_fiber_monitor():
                                     maint_map, timestamp)
                 fiber_alarm_memory[oid] = dec["mem"]
                 try:
+                    _was_degr = bool((fiber_degrade_memory.get(oid) or {}).get("degrading"))
                     _degr, _drop = _fiber_degradation(oid, rx)
                     fiber_degrade_memory[oid] = {"degrading": bool(_degr), "drop_db": _drop}
                 except Exception as e:
                     print(f"[FIBER] degradasi {oid} gagal: {e}")
+                    _was_degr, _degr, _drop = False, False, None
+                # notifikasi sekali saat degradasi BARU muncul pada ONT yang
+                # statusnya masih normal (yang sudah warning/kritis sudah
+                # beralarm sendiri). Cooldown 24 jam menahan osilasi ambang.
+                if _degr and not _was_degr and dec["status"] == "normal":
+                    try:
+                        _dth, _dd = _fiber_degrade_settings()
+                    except Exception:
+                        _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
+                    _last_tg = fiber_degrade_tg.get(oid, 0)
+                    if time.time() - _last_tg >= FIBER_DEGRADE_TG_COOLDOWN_S:
+                        fiber_degrade_tg[oid] = time.time()
+                        _label = o.get("customer") or o.get("ont_sn")
+                        _dlog, _dtg = None, None
+                        if dec.get("in_maint"):
+                            _dlog = ("FIBER_MAINT", o["ont_sn"],
+                                     f"Degradasi {_drop} dB dalam maintenance — telegram disuppress")
+                        elif dec.get("muted"):
+                            _dlog = ("FIBER_MUTED", o["ont_sn"],
+                                     f"Degradasi {_drop} dB — alarm dimute")
+                        else:
+                            _dlog = ("FIBER_DEGRADE", o["ont_sn"],
+                                     f"Rx turun {_drop} dB dalam {_dd} hari (kini {rx} dBm)")
+                            _dtg = (
+                                f"📉 *FIBER DEGRADASI TERDETEKSI*\nONT: `{o['ont_sn']}` ({_label})\n"
+                                f"Rx turun *{_drop} dB* dalam {_dd} hari "
+                                f"(kini {rx} dBm, ambang {_dth} dB).\n"
+                                f"Cek bending/konektor/splicing sebelum kritis.\nWaktu: {timestamp}"
+                            )
+                        if _dlog:
+                            try:
+                                _insert_system_log(c, _dlog[0], _dlog[1], _dlog[2],
+                                                   timestamp)
+                            except Exception:
+                                pass
+                        if _dtg:
+                            tg_queue.append(_dtg)
                 try:
                     _flap, _flips = _fiber_flap(oid)
                     fiber_flap_memory[oid] = {"flapping": bool(_flap), "flips": _flips}
