@@ -246,6 +246,7 @@ async function loadTh(){
       `Threshold aktif — Rx normal <b>${esc(s.fiber_rx_overload)} s/d ${esc(s.fiber_rx_warn)} dBm</b> · warning <b>${esc(s.fiber_rx_warn)} s/d ${esc(s.fiber_rx_crit)}</b> · critical <b>&lt; ${esc(s.fiber_rx_crit)} dBm</b> (redaman tinggi: cek bending/konektor/splicing/ODP) · `+
       `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
       `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 · `+
+      `Flap: bolak-balik normal↔terganggu ≥ <b>${esc(s.fiber_flap_flips)}x</b> dalam <b>${esc(s.fiber_flap_hours)} jam</b> → entry FLAPPING ↔ (konektor longgar/ODP basah) · `+
       `Stale: sumber <b>snmp/simulator</b> tanpa data baru ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → status <b>stale</b> (kemungkinan LOS/ONT mati/SNMP gagal).<br>`+
       `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;
   }catch(e){}
@@ -263,7 +264,7 @@ async function fetchSummary(){
     card('total','total ONT','#e0f0ff')+card('normal','normal','var(--success)')+
     card('warning','warning','var(--warn)')+card('critical','critical','var(--danger)')+
     card('overload','overload','#ff66dd')+card('stale','stale (tak terpantau)','#b79cff')+
-    card('down_ongoing','down saat ini','var(--danger)')+card('degrading','degradasi 📉','var(--warn)')+card('muted','muted','var(--t3)');
+    card('down_ongoing','down saat ini','var(--danger)')+card('degrading','degradasi 📉','var(--warn)')+card('flapping','flapping ↔','var(--warn)')+card('muted','muted','var(--t3)');
   const wg=document.getElementById('worstGrid');
   const worst=(SUMMARY.worst_rx||[]).slice(0,5);
   wg.innerHTML=worst.length?worst.map(o=>`<div class="odp-card" style="cursor:pointer" onclick="jumpToOnt(${o.id})" title="klik untuk grafik">
@@ -396,7 +397,7 @@ function render(){
     const _mt=o.mute_reason?` title="${esc(o.mute_reason)}${o.mute_until?' s/d '+esc(o.mute_until):''}"`:(o.mute_until?` title="s/d ${esc(o.mute_until)}"`:'');return `<tr>
     <td style="color:var(--t1)">${esc(o.ont_sn)}<div style="font-size:.62rem;color:var(--t3)">${esc(o.customer||'-')}</div></td>
     <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}${_mut?` · <span style="color:var(--warn)"${_mt}>muted${o.mute_until?' s/d '+esc(o.mute_until.slice(0,16)):''}</span>`:''}${_mexp?' · <span style="color:var(--danger)">mute kedaluwarsa</span>':''}</div></td>
-    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}</td>
+    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}${o.flapping?`<div style="font-size:.6rem;color:var(--warn)" title="Bolak-balik normal↔terganggu ${esc(o.flap_count)}x dalam ${esc(o.flap_hours??24)} jam — cek konektor longgar/ODP basah">↔ flap ${esc(o.flap_count)}x</div>`:''}</td>
     <td>${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
     <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown" style="margin-left:4px"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning" style="margin-left:4px">mute exp</span>':''}${o.down_ongoing?`<div style="font-size:.62rem;color:var(--danger);margin-top:4px">▼ DOWN sejak ${esc((o.down_since||'').slice(5,16))}</div>`:''}<div class="advice">${esc(o.advice||'')}</div></td>
     <td style="font-size:.62rem">${esc(o.last_checked||'—')}${o.stale?`<div style="font-size:.6rem;color:#b79cff">data ${esc(o.stale_age||'?')} lalu</div>`:''}</td>

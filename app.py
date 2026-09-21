@@ -318,6 +318,8 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_db', '3.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_days', '7')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_stale_min', '60')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_flips', '4')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_hours', '24')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')")
@@ -925,8 +927,8 @@ def send_fiber_summary():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     counts = {"total": len(rows), "normal": 0, "warning": 0, "critical": 0,
               "overload": 0, "stale": 0, "unknown": 0,
-              "degrading": 0, "muted": 0, "maintenance": 0}
-    attention, degrading = [], []
+              "degrading": 0, "muted": 0, "maintenance": 0, "flapping": 0}
+    attention, degrading, flapping = [], [], []
     for o in rows:
         status, severity, advice, _need, _stale, _age = _fiber_row_status(o)
         if status in counts:
@@ -948,7 +950,12 @@ def send_fiber_summary():
             continue
         dg = fiber_degrade_memory.get(o["id"]) or {}
         if dg.get("degrading"):
+            counts["degrading"] += 1
             degrading.append((o, dg.get("drop_db")))
+        fl = fiber_flap_memory.get(o["id"]) or {}
+        if fl.get("flapping"):
+            counts["flapping"] += 1
+            flapping.append((o, fl.get("flips")))
     attention.sort(key=lambda t: (t[0], t[1], t[2]["id"]))
     top = attention[:8]
     rest = len(attention) - len(top)
@@ -967,6 +974,17 @@ def send_fiber_summary():
         cust = _fiber_summary_clean(o.get("customer"))
         extra = f" ({cust})" if cust else ""
         lines.append(f"📉 `{o['ont_sn']}`{extra} — turun {drop} dB, cek sebelum kritis")
+    _listed = {o["id"] for o, _ in degrading[:5]}
+    try:
+        _fth, _fh = _fiber_flap_settings()
+    except Exception:
+        _fth, _fh = FIBER_FLAP_FLIPS, FIBER_FLAP_HOURS
+    for o, flips in flapping[:3]:
+        if o["id"] in _listed:
+            continue
+        cust = _fiber_summary_clean(o.get("customer"))
+        extra = f" ({cust})" if cust else ""
+        lines.append(f"↔ `{o['ont_sn']}`{extra} — flapping {flips}x/{_fh} jam, cek konektor/ODP")
     if not lines:
         lines.append("✅ Semua ONT terpantau normal.")
     try:
@@ -979,7 +997,7 @@ def send_fiber_summary():
         f"Total {counts['total']} ONT — "
         f"🟢{counts['normal']} 🟡{counts['warning']} 🔴{counts['critical']} "
         f"🔊{counts['overload']} 🟣{counts['stale']} "
-        f"📉degradasi {counts['degrading']} 🔇mute {counts['muted']}\n\n"
+        f"📉degradasi {counts['degrading']} ↔flap {counts['flapping']} 🔇mute {counts['muted']}\n\n"
         + "\n".join(lines)
     )
 
@@ -2292,9 +2310,14 @@ FIBER_DEGRADE_MIN_SPAN_H = 24
 # Batas data basi (stale): sumber otomatis (snmp/simulator) tanpa pengukuran
 # baru lebih lama dari ini dianggap tak terpantau (kemungkinan LOS/ONT mati).
 FIBER_STALE_MIN = 60
+# Flap: status normal <-> terganggu (warning/critical/overload) bolak-balik
+# >= FIBER_FLAP_FLIPS kali dalam FIBER_FLAP_HOURS jam terakhir.
+FIBER_FLAP_FLIPS = 4
+FIBER_FLAP_HOURS = 24
 
 fiber_alarm_memory = {}
 fiber_degrade_memory = {}
+fiber_flap_memory = {}
 
 
 def _fiber_thresholds():
@@ -2636,6 +2659,65 @@ def _fiber_degradation(fid, current_rx, now=None):
     return drop >= thresh, drop
 
 
+def _fiber_flap_settings():
+    """(min_flips, hours) flap dari settings, di-clamp ke rentang valid."""
+    try:
+        flips = int(float(get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS)))
+    except (ValueError, TypeError):
+        flips = FIBER_FLAP_FLIPS
+    try:
+        hours = int(float(get_setting("fiber_flap_hours", FIBER_FLAP_HOURS)))
+    except (ValueError, TypeError):
+        hours = FIBER_FLAP_HOURS
+    return min(20, max(2, flips)), min(72, max(1, hours))
+
+
+def _fiber_flap(fid, now=None):
+    """(flapping, flips). Hitung bolak-balik normal<->terganggu dari history.
+
+    Tiap titik dinilai via fiber_eval (threshold global); pindah kubu
+    normal<->(warning/critical/overload) dihitung 1 flip. Titik tanpa data
+    dilewati (tak memutus rangkaian).
+    """
+    if fid is None:
+        return False, None
+    thresh, hours = _fiber_flap_settings()
+    now = now or datetime.now()
+    start = (now - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT rx_power, tx_power FROM fiber_history WHERE ont_id=? "
+                      "AND timestamp >= ? ORDER BY timestamp ASC, id ASC LIMIT 20000",
+                      (fid, start))
+            pts = c.fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return False, None
+    if not pts:
+        return False, 0
+    th = _fiber_thresholds()
+    flips, prev_bad = 0, None
+    for r in pts:
+        try:
+            rx = None if r["rx_power"] is None else float(r["rx_power"])
+        except (ValueError, TypeError):
+            rx = None
+        try:
+            tx = None if r["tx_power"] is None else float(r["tx_power"])
+        except (ValueError, TypeError):
+            tx = None
+        if rx is None and tx is None:
+            continue
+        status, _, _, _ = fiber_eval(rx, tx, th)
+        bad = status in ("warning", "critical", "overload")
+        if prev_bad is not None and bad != prev_bad:
+            flips += 1
+        prev_bad = bad
+    return flips >= thresh, flips
+
+
 # Status yang dianggap "gangguan" untuk catatan downtime (layak SLA).
 _FIBER_DOWN_SEV = ("critical", "overload")
 
@@ -2900,6 +2982,11 @@ def poll_fiber_monitor():
                     fiber_degrade_memory[oid] = {"degrading": bool(_degr), "drop_db": _drop}
                 except Exception as e:
                     print(f"[FIBER] degradasi {oid} gagal: {e}")
+                try:
+                    _flap, _flips = _fiber_flap(oid)
+                    fiber_flap_memory[oid] = {"flapping": bool(_flap), "flips": _flips}
+                except Exception as e:
+                    print(f"[FIBER] flap {oid} gagal: {e}")
                 try:
                     closed_dur = _fiber_downtime_transition(
                         c, oid, o["ont_sn"], dec["status"], rx, timestamp)
@@ -3575,6 +3662,8 @@ def api_get_settings():
         "fiber_degrade_db": get_setting("fiber_degrade_db", FIBER_DEGRADE_DB),
         "fiber_degrade_days": get_setting("fiber_degrade_days", FIBER_DEGRADE_DAYS),
         "fiber_stale_min": get_setting("fiber_stale_min", FIBER_STALE_MIN),
+        "fiber_flap_flips": get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS),
+        "fiber_flap_hours": get_setting("fiber_flap_hours", FIBER_FLAP_HOURS),
         "temp_threshold": get_setting("temp_threshold", 60.0),
         "temp_crit": get_setting("temp_crit", 75.0),
         "mt_cpu_oid": get_setting("mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str),
@@ -3630,6 +3719,17 @@ def api_save_settings():
             return jsonify({"error": "fiber_degrade_db harus 0.5-10 dB"}), 400
         vals["fiber_degrade_db"] = v
     for key, lo, hi in (("fiber_degrade_days", 1, 30), ("fiber_stale_min", 10, 10080)):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": f"{key} harus angka {lo}-{hi}"}), 400
+        if not lo <= v <= hi:
+            return jsonify({"error": f"{key} harus {lo}-{hi}"}), 400
+        vals[key] = v
+    for key, lo, hi in (("fiber_flap_flips", 2, 20), ("fiber_flap_hours", 1, 72)):
         v = data.get(key)
         if v is None:
             continue
@@ -4493,10 +4593,12 @@ def _fiber_row_status(o):
     return status, severity, advice, need, stale, stale_age
 
 
-def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0, down_map=None):
-    """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi, downtime)."""
+def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0, down_map=None,
+                      flap_hours=24):
+    """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi, flap, downtime)."""
     status, severity, advice, need, stale, stale_age = _fiber_row_status(o)
     dg = fiber_degrade_memory.get(o["id"]) or {}
+    fl = fiber_flap_memory.get(o["id"]) or {}
     down_since = (down_map or {}).get(o["id"])
     return {**o, "calc_status": status, "severity": severity,
             "advice": advice, "need_attenuator_db": need,
@@ -4505,6 +4607,8 @@ def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0, down_map=None):
             "degrading": bool(dg.get("degrading")),
             "degrade_drop_db": dg.get("drop_db"),
             "degrade_days": degrade_days, "degrade_thresh_db": degrade_thresh,
+            "flapping": bool(fl.get("flapping")), "flap_count": fl.get("flips"),
+            "flap_hours": flap_hours,
             "down_since": down_since, "down_ongoing": down_since is not None}
 
 
@@ -4529,8 +4633,9 @@ def api_fiber_list():
         except Exception:
             pass
     _dthresh, _ddays = _fiber_degrade_settings()
+    _fthresh, _fhours = _fiber_flap_settings()
     down_map = _fiber_open_downtime_map()
-    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map) for o in rows]
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map, _fhours) for o in rows]
     # mode legacy (tanpa param): kembalikan array penuh seperti dulu
     if not any(request.args.get(k) is not None
                for k in ("page", "per_page", "sort", "q", "status", "olt", "odp")):
@@ -4611,11 +4716,12 @@ def api_fiber_summary():
         except Exception:
             pass
     _dthresh, _ddays = _fiber_degrade_settings()
+    _fthresh, _fhours = _fiber_flap_settings()
     down_map = _fiber_open_downtime_map()
-    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map) for o in rows]
+    enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map, _fhours) for o in rows]
     counts = {"total": len(enriched), "normal": 0, "warning": 0, "critical": 0,
               "overload": 0, "stale": 0, "unknown": 0, "degrading": 0, "muted": 0,
-              "down_ongoing": 0}
+              "down_ongoing": 0, "flapping": 0}
     for o in enriched:
         if o["calc_status"] in counts:
             counts[o["calc_status"]] += 1
@@ -4625,6 +4731,8 @@ def api_fiber_summary():
             counts["muted"] += 1
         if o["down_ongoing"]:
             counts["down_ongoing"] += 1
+        if o["flapping"]:
+            counts["flapping"] += 1
     with_rx = [o for o in enriched if o.get("rx_power") is not None]
     worst = sorted(with_rx, key=lambda o: (o["rx_power"], o["id"]))[:10]
     best = sorted(with_rx, key=lambda o: (-o["rx_power"], o["id"]))[:5]
@@ -6528,6 +6636,22 @@ def get_triggers():
                     "severity": "warning",
                     "message": f"Fiber DEGRADASI: Rx turun {dg.get('drop_db')} dB dalam {_dd} hari "
                                f"(kini {rx} dBm, ambang {_dth} dB) — cek bending/konektor/splicing sebelum kritis.",
+                    "category": "fiber",
+                })
+                continue
+            # flap: bolak-balik normal<->terganggu (konektor longgar/ODP basah)
+            fl = fiber_flap_memory.get(d["id"]) or {}
+            if fl.get("flapping"):
+                try:
+                    _fth, _fh = _fiber_flap_settings()
+                except Exception:
+                    _fth, _fh = FIBER_FLAP_FLIPS, FIBER_FLAP_HOURS
+                label = d.get("customer") or d.get("ont_sn")
+                alarms.append({
+                    "host": f"{d.get('ont_sn')} ({label})",
+                    "severity": "warning",
+                    "message": f"Fiber FLAPPING: {fl.get('flips')}x berubah normal↔terganggu dalam {_fh} jam "
+                               f"(ambang {_fth}x) — cek konektor longgar, splicing, ODP basah/rusak.",
                     "category": "fiber",
                 })
     except Exception as e:

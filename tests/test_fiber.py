@@ -1604,10 +1604,11 @@ SN_DT_A = "TEST-FIBER-DT-A"
 SN_DT_B = "TEST-FIBER-DT-B"
 SN_DT_W = "TEST-FIBER-DT-W"
 SN_DT_C = "TEST-FIBER-DT-C"
+SN_FLAP = "TEST-FIBER-FLAP-01"
 
 
 def _cleanup_dt(client):
-    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C):
+    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C, SN_FLAP):
         try:
             conn, c = m.get_db()
             try:
@@ -1784,6 +1785,96 @@ class FiberDowntimeTest(unittest.TestCase):
         n = c.execute("SELECT COUNT(*) FROM fiber_downtime WHERE ont_id=?", (fid,)).fetchone()[0]
         conn.close()
         self.assertEqual(n, 0)
+
+
+class FiberFlapTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_dt(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_dt(cls.client)
+
+    def test_flap_terdeteksi_dan_masuk_triggers(self):
+        from datetime import datetime, timedelta
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        self.client.post("/api/settings",
+                         json={"fiber_rx_warn": -25.0, "fiber_rx_crit": -27.0,
+                               "fiber_flap_flips": 4, "fiber_flap_hours": 24},
+                         headers=JSON_HDR)
+        try:
+            r = self.client.post("/api/fiber",
+                                 json={"ont_sn": SN_FLAP, "rx_power": -19.0,
+                                       "tx_power": 2.0, "source": "manual"},
+                                 headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+            fid = r.get_json()["id"]
+            try:
+                # baru 1 titik -> belum flap
+                flapping, flips = m._fiber_flap(fid)
+                self.assertFalse(flapping)
+                self.assertEqual(flips, 0)
+                # tanam riwayat bolak-balik: -19,-26,-19,-26,-19 (4 flip)
+                now = datetime.now()
+                conn, c = m.get_db()
+                for h, rx in ((5, -19.0), (4, -26.0), (3, -19.0),
+                              (2, -26.0), (1, -19.0)):
+                    ts = (now - timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S")
+                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                              " VALUES (?,?,?,?)", (fid, rx, 2.0, ts))
+                conn.commit()
+                conn.close()
+                r = self.client.put(f"/api/fiber/{fid}",
+                                    json={"ont_sn": SN_FLAP, "rx_power": -19.0,
+                                          "tx_power": 2.0, "source": "manual"},
+                                    headers=JSON_HDR)
+                self.assertEqual(r.status_code, 200)
+                flapping, flips = m._fiber_flap(fid)
+                self.assertTrue(flapping)
+                self.assertEqual(flips, 4)
+                m.poll_fiber_monitor()
+                mem = m.fiber_flap_memory.get(fid) or {}
+                self.assertTrue(mem.get("flapping"))
+                r = self.client.get("/api/fiber", headers=XRW_HDR)
+                item = next(o for o in r.get_json() if o["ont_sn"] == SN_FLAP)
+                self.assertEqual(item["calc_status"], "normal")
+                self.assertTrue(item["flapping"])
+                self.assertEqual(item["flap_count"], 4)
+                r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
+                self.assertGreaterEqual(r.get_json()["counts"]["flapping"], 1)
+                r = self.client.get("/api/triggers", headers=XRW_HDR)
+                flap = [a for a in r.get_json()
+                        if a.get("category") == "fiber" and SN_FLAP in a.get("host", "")
+                        and "FLAPPING" in a.get("message", "")]
+                self.assertTrue(flap)
+                self.assertEqual(flap[0]["severity"], "warning")
+            finally:
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+                m.fiber_flap_memory.pop(fid, None)
+        finally:
+            self.client.post("/api/settings",
+                             json={"fiber_rx_warn": orig["fiber_rx_warn"],
+                                   "fiber_rx_crit": orig["fiber_rx_crit"],
+                                   "fiber_flap_flips": orig["fiber_flap_flips"],
+                                   "fiber_flap_hours": orig["fiber_flap_hours"]},
+                             headers=JSON_HDR)
+
+    def test_settings_flap_divalidasi(self):
+        r = self.client.post("/api/settings", json={"fiber_flap_flips": 1},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/settings", json={"fiber_flap_hours": 0},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/settings", json={"fiber_flap_flips": 21},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
 
 
 if __name__ == "__main__":
