@@ -255,6 +255,7 @@ async function loadTh(){
       `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
       `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 + notif Telegram sekali (cooldown 24 jam) · `+
       `Flap: bolak-balik normal↔terganggu ≥ <b>${esc(s.fiber_flap_flips)}x</b> dalam <b>${esc(s.fiber_flap_hours)} jam</b> → entry FLAPPING ↔ (konektor longgar/ODP basah) · `+
+      `Korelasi induk: ≥ <b>${esc(s.fiber_parent_min)} ONT</b> kritis/overload satu OLT (atau IP OLT DOWN) → 1 alarm induk, alarm individual disuppress.<br>`+
       `Stale: sumber <b>snmp/simulator</b> tanpa data baru ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → status <b>stale</b> (kemungkinan LOS/ONT mati/SNMP gagal).<br>`+
       `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;
   }catch(e){}

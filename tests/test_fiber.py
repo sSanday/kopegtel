@@ -2103,5 +2103,248 @@ class FiberTopoTest(unittest.TestCase):
         self.assertIn("leaflet", r.get_data(as_text=True).lower())
 
 
+OLT_PAR = "TEST-OLT-PAR"
+OLT_SYN = "TEST-OLT-SYN"
+OLT_PAR_IP = "10.99.99.60"
+SN_PP1 = "TEST-FIBER-PP-1"
+SN_PP2 = "TEST-FIBER-PP-2"
+SN_SY1 = "TEST-FIBER-SY-1"
+SN_SY2 = "TEST-FIBER-SY-2"
+SN_SY3 = "TEST-FIBER-SY-3"
+SN_BL1 = "TEST-FIBER-BL-1"
+SN_BL2 = "TEST-FIBER-BL-2"
+
+
+def _cleanup_par(client):
+    for sn in (SN_PP1, SN_PP2, SN_SY1, SN_SY2, SN_SY3, SN_BL1, SN_BL2):
+        try:
+            conn, c = m.get_db()
+            try:
+                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+                row = c.fetchone()
+                if row:
+                    c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
+                    c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
+                    for _mem in (m.fiber_alarm_memory, m.fiber_degrade_memory,
+                                 m.fiber_flap_memory, m.fiber_degrade_tg):
+                        _mem.pop(row["id"], None)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    try:
+        conn, c = m.get_db()
+        try:
+            c.execute("DELETE FROM olts WHERE name IN (?, ?)", (OLT_PAR, OLT_SYN))
+            c.execute("DELETE FROM down_events WHERE host=?", (OLT_PAR_IP,))
+            c.execute("DELETE FROM ping_logs WHERE host=?", (OLT_PAR_IP,))
+            c.execute("DELETE FROM hosts WHERE ip=?", (OLT_PAR_IP,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    for _mem in (m.status_memory, m.down_since):
+        _mem.pop(OLT_PAR_IP, None)
+    for _k in [k for k in list(m.fiber_parent_down)
+               if k in (OLT_PAR.lower(), OLT_SYN.lower())]:
+        m.fiber_parent_down.pop(_k, None)
+
+
+class FiberParentTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_par(cls.client)
+        r = cls.client.post("/login",
+                            data={"username": "admin", "password": "admin12345"})
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_par(cls.client)
+
+    def _mk_olt(self, name, ip=""):
+        body = {"name": name, "vendor": "generic"}
+        if ip:
+            body.update({"ip": ip, "community": "public"})
+        r = self.client.post("/api/olts", json=body, headers=JSON_HDR)
+        self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
+
+    def _mk_ont(self, sn, olt, rx=-19.0):
+        r = self.client.post("/api/fiber",
+                             json={"ont_sn": sn, "olt_name": olt, "rx_power": rx,
+                                   "tx_power": 2.0, "source": "manual"},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
+        return r.get_json()["id"]
+
+    def _put_rx(self, fid, sn, rx, olt=""):
+        body = {"ont_sn": sn, "rx_power": rx, "tx_power": 2.0,
+                "source": "manual"}
+        if olt:
+            body["olt_name"] = olt
+        r = self.client.put(f"/api/fiber/{fid}",
+                            json=body,
+                            headers=JSON_HDR)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+
+    def _fid(self, sn):
+        conn, c = m.get_db()
+        c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (sn,))
+        fid = c.fetchone()["id"]
+        conn.close()
+        return fid
+
+    def test_ping_parent_mensuppress_dan_pulih(self):
+        self._mk_olt(OLT_PAR, OLT_PAR_IP)
+        r = self.client.post("/api/hosts", json={"ip": OLT_PAR_IP}, headers=JSON_HDR)
+        self.assertIn(r.status_code, (200, 201, 400), r.get_data(as_text=True))
+        f1 = self._mk_ont(SN_PP1, OLT_PAR)
+        f2 = self._mk_ont(SN_PP2, OLT_PAR)
+        sent = []
+        real_ping, real_tg = m.ping_host, m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        down = {OLT_PAR_IP: True}
+        m.ping_host = lambda h: (-1.0, 100.0) if down.get(h) else (0.5, 0.0)
+        try:
+            sent.clear()
+            m.check_network()
+            downs = [s for s in sent if "ALARM!" in s and OLT_PAR_IP in s]
+            self.assertTrue(downs)
+            self.assertIn(OLT_PAR, downs[0])
+            self.assertIn("2 ONT", downs[0])
+            self.assertIn(OLT_PAR.lower(), m.fiber_parent_down)
+            # transisi kritis di bawah induk -> sunyi, log FIBER_PARENT
+            sent.clear()
+            self._put_rx(f1, SN_PP1, -29.0, OLT_PAR)
+            self._put_rx(f2, SN_PP2, -29.0, OLT_PAR)
+            self.assertEqual([s for s in sent if "FIBER" in s], [])
+            conn, c = m.get_db()
+            n = c.execute("SELECT COUNT(*) FROM system_logs WHERE event_type='FIBER_PARENT'"
+                          " AND host IN (?, ?)", (SN_PP1, SN_PP2)).fetchone()[0]
+            conn.close()
+            self.assertEqual(n, 2)
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            alarms = r.get_json()
+            par = [a for a in alarms if a.get("category") == "fiber"
+                   and OLT_PAR in a.get("host", "")]
+            self.assertTrue(par)
+            self.assertEqual(par[0]["severity"], "disaster")
+            sup = [a for a in alarms if SN_PP1 in a.get("host", "")
+                   or SN_PP2 in a.get("host", "")]
+            self.assertTrue(sup)
+            self.assertTrue(all(a["category"] == "maintenance" for a in sup))
+            indiv = [a for a in alarms if a.get("category") == "fiber"
+                     and (SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", ""))]
+            self.assertEqual(indiv, [])
+            # induk pulih -> perilaku normal kembali (recovery individual)
+            down.clear()
+            sent.clear()
+            m.check_network()
+            self.assertTrue(any("PULIH!" in s for s in sent))
+            self.assertNotIn(OLT_PAR.lower(), m.fiber_parent_down)
+            sent.clear()
+            self._put_rx(f1, SN_PP1, -19.0, OLT_PAR)
+            self._put_rx(f2, SN_PP2, -19.0, OLT_PAR)
+            rec = [s for s in sent if "PULIH" in s]
+            self.assertEqual(len(rec), 2)
+        finally:
+            m.ping_host, m.send_telegram_alert = real_ping, real_tg
+            for fid in (f1, f2):
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            self.client.delete(f"/api/hosts/{OLT_PAR_IP}", headers=XRW_HDR)
+            _cleanup_par(self.client)
+
+    def test_insiden_massal_otomatis(self):
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        self.client.post("/api/settings", json={"fiber_parent_min": 3}, headers=JSON_HDR)
+        self._mk_olt(OLT_SYN)
+        fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_SY1, SN_SY2, SN_SY3)]
+        sent = []
+        real_tg = m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            # jatuhkan ketiganya TANPA single check (simulasi serentak)
+            conn, c = m.get_db()
+            for fid in fids:
+                c.execute("UPDATE fiber_onts SET rx_power=-29.0 WHERE id=?", (fid,))
+            conn.commit()
+            conn.close()
+            sent.clear()
+            m.poll_fiber_monitor()
+            mass = [s for s in sent if "INSIDEN MASSAL" in s]
+            self.assertEqual(len(mass), 1)
+            self.assertIn(OLT_SYN, mass[0])
+            indiv = [s for s in sent if "REDAMAN TINGGI" in s or "FIBER WARNING" in s]
+            self.assertEqual(indiv, [])
+            self.assertIn(OLT_SYN.lower(), m.fiber_parent_down)
+            # poll berikut diam; triggers tampilkan induk + supresi
+            sent.clear()
+            m.poll_fiber_monitor()
+            self.assertEqual(sent, [])
+            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            alarms = r.get_json()
+            self.assertTrue(any(a.get("category") == "fiber" and OLT_SYN in a.get("host", "")
+                                for a in alarms))
+            # pulihkan semua -> 1 telegram pulih induk, bukan 3 individual
+            for fid, sn in zip(fids, (SN_SY1, SN_SY2, SN_SY3)):
+                self._put_rx(fid, sn, -19.0, OLT_SYN)
+            sent.clear()
+            m.poll_fiber_monitor()
+            self.assertEqual(len([s for s in sent if "INSIDEN MASSAL PULIH" in s]), 1)
+            self.assertEqual([s for s in sent if "PULIH" in s and "INSIDEN" not in s], [])
+            self.assertNotIn(OLT_SYN.lower(), m.fiber_parent_down)
+        finally:
+            m.send_telegram_alert = real_tg
+            for fid in fids:
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            self.client.post("/api/settings",
+                             json={"fiber_parent_min": orig["fiber_parent_min"]},
+                             headers=JSON_HDR)
+            _cleanup_par(self.client)
+
+    def test_di_bawah_ambang_tetap_individual(self):
+        r = self.client.get("/api/settings", headers=XRW_HDR)
+        orig = r.get_json()
+        self.client.post("/api/settings", json={"fiber_parent_min": 5}, headers=JSON_HDR)
+        self._mk_olt(OLT_SYN)
+        fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_BL1, SN_BL2)]
+        sent = []
+        real_tg = m.send_telegram_alert
+        m.send_telegram_alert = lambda msg: sent.append(msg)
+        try:
+            conn, c = m.get_db()
+            for fid in fids:
+                c.execute("UPDATE fiber_onts SET rx_power=-29.0 WHERE id=?", (fid,))
+            conn.commit()
+            conn.close()
+            sent.clear()
+            m.poll_fiber_monitor()
+            indiv = [s for s in sent if "REDAMAN TINGGI" in s]
+            self.assertEqual(len(indiv), 2)
+            self.assertEqual([s for s in sent if "INSIDEN MASSAL" in s], [])
+            self.assertNotIn(OLT_SYN.lower(), m.fiber_parent_down)
+        finally:
+            m.send_telegram_alert = real_tg
+            for fid in fids:
+                self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
+            self.client.post("/api/settings",
+                             json={"fiber_parent_min": orig["fiber_parent_min"]},
+                             headers=JSON_HDR)
+            _cleanup_par(self.client)
+
+    def test_settings_parent_min_divalidasi(self):
+        r = self.client.post("/api/settings", json={"fiber_parent_min": 1},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/settings", json={"fiber_parent_min": 51},
+                             headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

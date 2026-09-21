@@ -919,6 +919,7 @@ body::after{
           <div class="form-field"><label class="form-label">stale ≥ menit</label><input type="number" id="fiberStaleMin" class="form-input" step="1" min="10" max="10080" required></div>
           <div class="form-field"><label class="form-label">flap ≥ flip</label><input type="number" id="fiberFlapFlips" class="form-input" step="1" min="2" max="20" required></div>
           <div class="form-field"><label class="form-label">flap jam</label><input type="number" id="fiberFlapHours" class="form-input" step="1" min="1" max="72" required></div>
+          <div class="form-field"><label class="form-label">induk massal ≥ ONT</label><input type="number" id="fiberParentMin" class="form-input" step="1" min="2" max="50" required></div>
         </div>
         <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">mikrotik_snmp</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1795,6 +1796,7 @@ async function openSettingsModal(){
     document.getElementById('fiberStaleMin').value=data.fiber_stale_min??60;
     document.getElementById('fiberFlapFlips').value=data.fiber_flap_flips??4;
     document.getElementById('fiberFlapHours').value=data.fiber_flap_hours??24;
+    document.getElementById('fiberParentMin').value=data.fiber_parent_min??5;
     document.getElementById('tempWarn').value=data.temp_threshold??60;
     document.getElementById('tempCrit').value=data.temp_crit??75;
     document.getElementById('mtCpuOid').value=data.mt_cpu_oid||'';
@@ -1835,6 +1837,8 @@ async function saveSettings(e){
   if(!Number.isInteger(fStaleMin) || fStaleMin < 10 || fStaleMin > 10080){ alert('Error: stale menit harus 10-10080'); return; }
   if(!Number.isInteger(fFlapFlips) || fFlapFlips < 2 || fFlapFlips > 20){ alert('Error: flap flip harus 2-20'); return; }
   if(!Number.isInteger(fFlapHours) || fFlapHours < 1 || fFlapHours > 72){ alert('Error: flap jam harus 1-72'); return; }
+  const fParentMin=parseInt(document.getElementById('fiberParentMin').value);
+  if(!Number.isInteger(fParentMin) || fParentMin < 2 || fParentMin > 50){ alert('Error: induk massal harus 2-50 ONT'); return; }
   const tW=parseFloat(document.getElementById('tempWarn').value);
   const tC=parseFloat(document.getElementById('tempCrit').value);
   const tDiv=parseFloat(document.getElementById('mtTempDiv').value);
@@ -1853,7 +1857,7 @@ async function saveSettings(e){
     }
   }
   try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,...mtOids})});
+    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,fiber_parent_min:fParentMin,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,...mtOids})});
     if(!res.ok){
       let m='Gagal menyimpan pengaturan';
       try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}

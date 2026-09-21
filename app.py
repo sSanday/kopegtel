@@ -320,6 +320,7 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_stale_min', '60')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_flips', '4')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_hours', '24')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')")
@@ -944,6 +945,7 @@ def send_fiber_summary():
               "overload": 0, "stale": 0, "unknown": 0,
               "degrading": 0, "muted": 0, "maintenance": 0, "flapping": 0}
     attention, degrading, flapping = [], [], []
+    _pbuckets = {}
     for o in rows:
         status, severity, advice, _need, _stale, _age = _fiber_row_status(o)
         if status in counts:
@@ -955,6 +957,15 @@ def send_fiber_summary():
         if in_maint:
             counts["maintenance"] += 1
         if muted or in_maint:
+            continue
+        _pkey = _fiber_oltkey(o)
+        _parent = fiber_parent_down.get(_pkey) if _pkey else None
+        if _parent:
+            if severity:
+                _b = _pbuckets.setdefault(_pkey, {"ent": _parent, "n": 0, "crit": 0})
+                _b["n"] += 1
+                if status in ("critical", "overload"):
+                    _b["crit"] += 1
             continue
         if severity:
             try:
@@ -975,6 +986,12 @@ def send_fiber_summary():
     top = attention[:8]
     rest = len(attention) - len(top)
     lines = []
+    for _pkey, _pb in _pbuckets.items():
+        if not _pb["n"]:
+            continue
+        _nm = ((_pb["ent"] or {}).get("name") or _pkey)
+        lines.append(f"🔌 `{_nm}` — induk bermasalah, {_pb['n']} ONT "
+                     f"({_pb['crit']} kritis/overload) disuppress")
     for _rank, _rx, o, status in top:
         icon = _FIBER_SUMMARY_ICON.get(status, "•")
         cust = _fiber_summary_clean(o.get("customer"))
@@ -2052,8 +2069,12 @@ def check_network():
                             last_tg = last_down_telegram.get(host)
                             if last_tg is None or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S:
                                 last_down_telegram[host] = now_dt
+                                # korelasi induk fiber: OLT ber-IP ini -> alarm ONT disuppress
+                                _aff, _onames = _fiber_parent_register(host, timestamp, c)
+                                _impact = (f"\nOLT: `{', '.join(_onames)}` "
+                                           f"(~{_aff} ONT, alarm ONT disuppress)") if _aff else ""
                                 telegram_queue.append(
-                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}"
+                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}"
                                 )
                             else:
                                 print(f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)")
@@ -2103,6 +2124,14 @@ def check_network():
                             telegram_queue.append(
                                 f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
                             )
+                            # induk ping pulih -> lepas supresi fiber OLT ini
+                            try:
+                                for _k in [k for k, v in list(fiber_parent_down.items())
+                                           if not (v or {}).get("synthetic")
+                                           and (v or {}).get("ip") == host]:
+                                    fiber_parent_down.pop(_k, None)
+                            except Exception:
+                                pass
 
 
                     c.execute(
@@ -2420,6 +2449,101 @@ fiber_flap_memory = {}
 # cooldown notifikasi degradasi per ONT (epoch detik telegram terakhir)
 fiber_degrade_tg = {}
 FIBER_DEGRADE_TG_COOLDOWN_S = 86400
+# Korelasi induk: oltkey(lower) -> {ip|None, since, synthetic, count}.
+# Entri ping = IP OLT sedang DOWN; sintetik = >=min ONT kritis/overload.
+fiber_parent_down = {}
+FIBER_PARENT_MIN = 5
+
+
+def _fiber_parent_min():
+    try:
+        m = int(float(get_setting("fiber_parent_min", FIBER_PARENT_MIN)))
+    except (ValueError, TypeError):
+        m = FIBER_PARENT_MIN
+    return min(50, max(2, m))
+
+
+def _fiber_oltkey(o):
+    try:
+        return (o.get("olt_name") or "").strip().lower()
+    except (AttributeError, TypeError):
+        return ""
+
+
+def refresh_fiber_parent_map():
+    """Sinkronkan entri ping dari status_memory (sintetik dipertahankan).
+
+    Kembalikan map (boleh dipakai langsung). Dipanggil tiap awal poll dan
+    single check; check_network juga register/unregister langsung agar
+    tak ada jeda ras.
+    """
+    global fiber_parent_down
+    try:
+        down_ips = {h for h, d in list(status_memory.items()) if d}
+    except Exception:
+        down_ips = set()
+    if not down_ips:
+        for k in [k for k, v in list(fiber_parent_down.items())
+                  if not (v or {}).get("synthetic")]:
+            fiber_parent_down.pop(k, None)
+        return fiber_parent_down
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT name, ip FROM olts")
+            olts = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        return fiber_parent_down
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    by_ip = {}
+    for o in olts:
+        ip = (o.get("ip") or "").strip()
+        if ip:
+            by_ip.setdefault(ip, []).append((o.get("name") or "").strip().lower())
+    live = set()
+    for ip in down_ips:
+        for key in by_ip.get(ip, []):
+            if not key:
+                continue
+            live.add(key)
+            if key not in fiber_parent_down:
+                reg = next((o.get("name") for o in olts
+                            if (o.get("name") or "").strip().lower() == key), "")
+                fiber_parent_down[key] = {"ip": ip, "since": now, "name": reg or key,
+                                          "synthetic": False, "count": 0}
+    for k in [k for k, v in list(fiber_parent_down.items())
+              if not (v or {}).get("synthetic") and k not in live]:
+        fiber_parent_down.pop(k, None)
+    return fiber_parent_down
+
+
+def _fiber_parent_register(host_ip, timestamp, c):
+    """Daftarkan OLT ber-IP ini sebagai induk + hitung ONT terdampak.
+
+    Kembalikan (affected_count, [olt_names]). c = cursor aktif (baca saja).
+    Dipakai transisi DOWN host agar supresi berlaku seketika.
+    """
+    try:
+        c.execute("SELECT name FROM olts WHERE ip=?", (host_ip,))
+        names = [(r["name"] or "").strip() for r in c.fetchall()
+                 if (r["name"] or "").strip()]
+    except sqlite3.OperationalError:
+        return 0, []
+    affected = 0
+    for name in names:
+        key = name.lower()
+        if key and key not in fiber_parent_down:
+            fiber_parent_down[key] = {"ip": host_ip, "since": timestamp,
+                                      "name": name, "synthetic": False, "count": 0}
+        try:
+            affected += c.execute(
+                "SELECT COUNT(*) FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
+                (name,)).fetchone()[0]
+        except sqlite3.OperationalError:
+            pass
+    return affected, names
 
 
 def _fiber_thresholds():
@@ -2870,6 +2994,46 @@ def _fiber_downtime_transition(c, fid, ont_sn, status, rx, timestamp):
     return dur
 
 
+# Tipe log yang boleh disuppress induk (mute/maintenance eksplisit selalu menang).
+_FIBER_PARENT_LOGS = {"FIBER_CRITICAL", "FIBER_WARNING", "FIBER_OVERLOAD",
+                      "FIBER_NORMAL", "FIBER_STALE", "FIBER_DEGRADE"}
+
+
+def _fiber_parent_of(o):
+    """Entri induk aktif untuk satu ONT (None bila tak ada)."""
+    try:
+        return fiber_parent_down.get(_fiber_oltkey(o))
+    except Exception:
+        return None
+
+
+def _fiber_emit(c, o, rx, dec, log, tg, timestamp, tg_queue, closed_dur=None):
+    """Tulis log + antre telegram dengan aturan supresi induk.
+
+    Bila ONT di bawah parent aktif dan event bertipe alarm/pulih/stale/
+    degradasi (bukan mute/maintenance eksplisit): telegram dibuang,
+    log ditulis ulang sebagai FIBER_PARENT. Dipakai poll & single check.
+    """
+    parent = _fiber_parent_of(o)
+    if log:
+        etype, ehost, emsg = log
+        if closed_dur is not None and etype == "FIBER_NORMAL":
+            emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
+        if parent and etype in _FIBER_PARENT_LOGS:
+            pname = (parent.get("name") or _fiber_oltkey(o) or "?")
+            etype = "FIBER_PARENT"
+            emsg = (f"{dec['status'].upper()} Rx {rx} Tx {o.get('tx_power')} — "
+                    f"telegram disuppress (induk OLT '{pname}' bermasalah)")
+        try:
+            _insert_system_log(c, etype, ehost, emsg, timestamp)
+        except Exception:
+            pass
+    if tg and not parent:
+        if closed_dur is not None and dec["status"] == "normal":
+            tg = f"{tg}\nDurasi gangguan: {_fmt_duration(closed_dur)}"
+        tg_queue.append(tg)
+
+
 def _fiber_decide(o, th, prev, maint_map, timestamp):
     """Satu keputusan evaluasi ONT. Kembalikan dict:
     {status, severity, advice, need, muted, in_maint, stale, tg_msg, log, mem}.
@@ -2976,9 +3140,14 @@ def _fiber_single_check(fid):
         print(f"[FIBER] single check load gagal: {e}")
         return
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        refresh_fiber_parent_map()
+    except Exception as e:
+        print(f"[FIBER] parent refresh gagal: {e}")
     dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(fid),
                         get_active_maintenance_map(), timestamp)
     closed_dur = None
+    tg_out = []
     with db_lock:
         conn, c = get_db()
         try:
@@ -2990,14 +3159,8 @@ def _fiber_single_check(fid):
             except Exception as e:
                 print(f"[FIBER] downtime single check gagal: {e}")
                 closed_dur = None
-            if dec["log"]:
-                etype, ehost, emsg = dec["log"]
-                if closed_dur is not None and etype == "FIBER_NORMAL":
-                    emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
-                try:
-                    _insert_system_log(c, etype, ehost, emsg, timestamp)
-                except Exception:
-                    pass
+            _fiber_emit(c, o, o.get("rx_power"), dec, dec["log"], dec["tg_msg"],
+                        timestamp, tg_out, closed_dur)
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] fiber single check gagal: {e}")
@@ -3008,10 +3171,7 @@ def _fiber_single_check(fid):
         finally:
             conn.close()
     fiber_alarm_memory[fid] = dec["mem"]
-    if dec["tg_msg"]:
-        tmsg = dec["tg_msg"]
-        if closed_dur is not None and dec["status"] == "normal":
-            tmsg = f"{tmsg}\nDurasi gangguan: {_fmt_duration(closed_dur)}"
+    for tmsg in tg_out:
         try:
             send_telegram_alert(tmsg)
         except Exception as e:
@@ -3025,6 +3185,10 @@ def poll_fiber_monitor():
     Telegram hanya saat status berubah (anti spam); disuppress saat mute /
     maintenance (tetap dicatat di system_logs, memory di-set agar tak ada
     ledakan notifikasi setelah maintenance selesai).
+    Korelasi induk: 2-pass. Pass 1 evaluasi murni semua ONT; pass 1.5
+    mendeteksi insiden massal per OLT (>=fiber_parent_min kritis/overload)
+    menjadi 1 alarm induk; pass 2 menerapkan log/telegram/status dengan
+    supresi induk (alarm individual dibuang, log FIBER_PARENT).
     """
     import random
     try:
@@ -3044,7 +3208,17 @@ def poll_fiber_monitor():
         return
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     maint_map = get_active_maintenance_map()
+    try:
+        refresh_fiber_parent_map()
+    except Exception as e:
+        print(f"[FIBER] parent refresh gagal: {e}")
+    try:
+        parent_min = _fiber_parent_min()
+    except Exception:
+        parent_min = FIBER_PARENT_MIN
     tg_queue = []
+    computed = []
+    _clearing = []
     with db_lock:
         conn, c = get_db()
         try:
@@ -3086,19 +3260,76 @@ def poll_fiber_monitor():
                 except Exception as e:
                     print(f"[FIBER] degradasi {oid} gagal: {e}")
                     _was_degr, _degr, _drop = False, False, None
-                # notifikasi sekali saat degradasi BARU muncul pada ONT yang
-                # statusnya masih normal (yang sudah warning/kritis sudah
-                # beralarm sendiri). Cooldown 24 jam menahan osilasi ambang.
+                try:
+                    _flap, _flips = _fiber_flap(oid)
+                    fiber_flap_memory[oid] = {"flapping": bool(_flap), "flips": _flips}
+                except Exception as e:
+                    print(f"[FIBER] flap {oid} gagal: {e}")
+                computed.append((o, oid, rx, tx, dec, _was_degr, _degr, _drop))
+            # PASS 1.5: korelasi induk — >=min ONT kritis/overload satu OLT
+            # (non-mute/maint) menjadi 1 insiden; sintetik yang anggotanya
+            # sudah habis dibersihkan + telegram pulih.
+            try:
+                bad_by_olt = {}
+                for (_o, _oid, _rx, _tx, _dec, _w, _d, _dr) in computed:
+                    if _dec["status"] in ("critical", "overload") \
+                            and not _dec.get("muted") and not _dec.get("in_maint"):
+                        bad_by_olt.setdefault(_fiber_oltkey(_o), []).append(_o)
+                for _oltkey, _members in bad_by_olt.items():
+                    if not _oltkey or _oltkey in fiber_parent_down \
+                            or len(_members) < parent_min:
+                        continue
+                    _name = next(((m.get("olt_name") or "").strip() for m in _members
+                                  if (m.get("olt_name") or "").strip()), _oltkey)
+                    fiber_parent_down[_oltkey] = {"ip": None, "since": timestamp,
+                                                  "name": _name, "synthetic": True,
+                                                  "count": len(_members)}
+                    tg_queue.append(
+                        f"🔌 *INSIDEN MASSAL OLT*\nOLT: `{_name}`\n"
+                        f"{len(_members)} ONT kritis/overload (ambang {parent_min}). "
+                        f"Alarm individual disuppress mulai kini.\n"
+                        f"Cek OLT/power/PON uplink!\nWaktu: {timestamp}")
+                    try:
+                        _insert_system_log(c, "FIBER_PARENT", _name,
+                                           f"insiden massal: {len(_members)} ONT kritis/overload",
+                                           timestamp)
+                    except Exception:
+                        pass
+                for _key, _ent in list(fiber_parent_down.items()):
+                    if not (_ent or {}).get("synthetic"):
+                        continue
+                    _still = sum(1 for (_o, _oid, _rx, _tx, _dec, _w, _d, _dr) in computed
+                                 if _fiber_oltkey(_o) == _key
+                                 and _dec["status"] in ("critical", "overload"))
+                    (_ent or {}).update({"count": _still})
+                    if not _still:
+                        # ditandai dulu, di-pop setelah pass 2 agar recovery
+                        # individual siklus ini tetap tersuppress (diwakili
+                        # 1 telegram pulih induk)
+                        _clearing.append(_key)
+                        _pname = (_ent or {}).get("name") or _key
+                        tg_queue.append(
+                            f"✅ *INSIDEN MASSAL PULIH*\nOLT: `{_pname}`\n"
+                            f"Seluruh ONT kembali normal.\nWaktu: {timestamp}")
+                        try:
+                            _insert_system_log(c, "FIBER_PARENT", _pname,
+                                               "insiden massal pulih", timestamp)
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[FIBER] korelasi induk gagal: {e}")
+            # PASS 2: terapkan (downtime, log, telegram dengan supresi induk, status)
+            for (o, oid, rx, tx, dec, _was_degr, _degr, _drop) in computed:
+                # notifikasi degradasi baru (hanya status normal; cooldown 24 jam)
+                _dlog, _dtg = None, None
                 if _degr and not _was_degr and dec["status"] == "normal":
                     try:
                         _dth, _dd = _fiber_degrade_settings()
                     except Exception:
                         _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
-                    _last_tg = fiber_degrade_tg.get(oid, 0)
-                    if time.time() - _last_tg >= FIBER_DEGRADE_TG_COOLDOWN_S:
+                    if time.time() - fiber_degrade_tg.get(oid, 0) >= FIBER_DEGRADE_TG_COOLDOWN_S:
                         fiber_degrade_tg[oid] = time.time()
                         _label = o.get("customer") or o.get("ont_sn")
-                        _dlog, _dtg = None, None
                         if dec.get("in_maint"):
                             _dlog = ("FIBER_MAINT", o["ont_sn"],
                                      f"Degradasi {_drop} dB dalam maintenance — telegram disuppress")
@@ -3114,40 +3345,19 @@ def poll_fiber_monitor():
                                 f"(kini {rx} dBm, ambang {_dth} dB).\n"
                                 f"Cek bending/konektor/splicing sebelum kritis.\nWaktu: {timestamp}"
                             )
-                        if _dlog:
-                            try:
-                                _insert_system_log(c, _dlog[0], _dlog[1], _dlog[2],
-                                                   timestamp)
-                            except Exception:
-                                pass
-                        if _dtg:
-                            tg_queue.append(_dtg)
-                try:
-                    _flap, _flips = _fiber_flap(oid)
-                    fiber_flap_memory[oid] = {"flapping": bool(_flap), "flips": _flips}
-                except Exception as e:
-                    print(f"[FIBER] flap {oid} gagal: {e}")
                 try:
                     closed_dur = _fiber_downtime_transition(
                         c, oid, o["ont_sn"], dec["status"], rx, timestamp)
                 except Exception as e:
                     print(f"[FIBER] downtime {oid} gagal: {e}")
                     closed_dur = None
-                if dec["log"]:
-                    etype, ehost, emsg = dec["log"]
-                    if closed_dur is not None and etype == "FIBER_NORMAL":
-                        emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
-                    try:
-                        _insert_system_log(c, etype, ehost, emsg, timestamp)
-                    except Exception:
-                        pass
-                if dec["tg_msg"]:
-                    tmsg = dec["tg_msg"]
-                    if closed_dur is not None and dec["status"] == "normal":
-                        tmsg = f"{tmsg}\nDurasi gangguan: {_fmt_duration(closed_dur)}"
-                    tg_queue.append(tmsg)
+                _fiber_emit(c, o, rx, dec, dec["log"], dec["tg_msg"],
+                            timestamp, tg_queue, closed_dur)
+                _fiber_emit(c, o, rx, dec, _dlog, _dtg, timestamp, tg_queue)
                 c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
                           (dec["status"], timestamp, oid))
+            for _ckey in _clearing:
+                fiber_parent_down.pop(_ckey, None)
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] poll_fiber gagal: {e}")
@@ -3809,6 +4019,7 @@ def api_get_settings():
         "fiber_stale_min": get_setting("fiber_stale_min", FIBER_STALE_MIN),
         "fiber_flap_flips": get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS),
         "fiber_flap_hours": get_setting("fiber_flap_hours", FIBER_FLAP_HOURS),
+        "fiber_parent_min": get_setting("fiber_parent_min", FIBER_PARENT_MIN),
         "temp_threshold": get_setting("temp_threshold", 60.0),
         "temp_crit": get_setting("temp_crit", 75.0),
         "mt_cpu_oid": get_setting("mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str),
@@ -3886,6 +4097,15 @@ def api_save_settings():
         if not lo <= v <= hi:
             return jsonify({"error": f"{key} harus {lo}-{hi}"}), 400
         vals[key] = v
+    v = data.get("fiber_parent_min")
+    if v is not None:
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": "fiber_parent_min harus angka 2-50"}), 400
+        if not 2 <= v <= 50:
+            return jsonify({"error": "fiber_parent_min harus 2-50 ONT"}), 400
+        vals["fiber_parent_min"] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
         if v is None:
@@ -6925,6 +7145,7 @@ def get_triggers():
         finally:
             conn.close()
         maint_map = get_active_maintenance_map()
+        sev_rows = []
         for d in rows:
             try:
                 rx = None if d.get("rx_power") is None else float(d.get("rx_power"))
@@ -6953,7 +7174,19 @@ def get_triggers():
             if stale and status in ("normal", "warning", "unknown"):
                 status, severity = "stale", "warning"
                 advice = _fiber_stale_advice(d, stale_age or "?")
+            _okey = _fiber_oltkey(d)
+            _parent = fiber_parent_down.get(_okey) if _okey else None
             if severity:
+                sev_rows.append((_okey, d.get("ont_sn"), status))
+                if _parent:
+                    _pname = (_parent.get("name") or _okey)
+                    alarms.append({
+                        "host": f"{d.get('ont_sn')}",
+                        "severity": "warning",
+                        "message": f"Fiber {status.upper()} disuppress — induk OLT '{_pname}' bermasalah",
+                        "category": "maintenance",
+                    })
+                    continue
                 label = d.get("customer") or d.get("ont_sn")
                 loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
                 rx_txt = f"{rx} dBm" if rx is not None else "—"
@@ -6964,6 +7197,9 @@ def get_triggers():
                     "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
                     "category": "fiber",
                 })
+                continue
+            if _parent:
+                # anggota insiden tanpa alarm sendiri: tak perlu baris tambahan
                 continue
             # early warning degradasi: masih normal tapi Rx turun signifikan
             dg = fiber_degrade_memory.get(d["id"]) or {}
@@ -6996,6 +7232,36 @@ def get_triggers():
                                f"(ambang {_fth}x) — cek konektor longgar, splicing, ODP basah/rusak.",
                     "category": "fiber",
                 })
+        # entri induk: 1 baris per OLT bermasalah + hitungan anggota
+        try:
+            _members = {}
+            for (_ok, _sn, _st) in sev_rows:
+                if _ok:
+                    _members.setdefault(_ok, []).append((_sn, _st))
+            for _key, _ent in fiber_parent_down.items():
+                _mlist = _members.get(_key, [])
+                if not _mlist:
+                    continue
+                _name = (_ent or {}).get("name") or _key
+                _crit = sum(1 for _, _st in _mlist if _st in ("critical", "overload"))
+                _warn = len(_mlist) - _crit
+                if (_ent or {}).get("synthetic"):
+                    _msg = (f"Insiden massal OLT '{_name}' — {len(_mlist)} ONT "
+                            f"({_crit} kritis/overload, {_warn} warning), "
+                            f"alarm individual disuppress")
+                else:
+                    _ip = (_ent or {}).get("ip") or "?"
+                    _msg = (f"Induk OLT '{_name}' DOWN (mgmt {_ip}) — {len(_mlist)} ONT "
+                            f"({_crit} kritis/overload, {_warn} warning), "
+                            f"alarm individual disuppress")
+                alarms.append({
+                    "host": f"OLT {_name}",
+                    "severity": "disaster",
+                    "message": _msg,
+                    "category": "fiber",
+                })
+        except Exception:
+            pass
     except Exception as e:
         print(f"[TRIGGERS] fiber gagal: {e}")
 
