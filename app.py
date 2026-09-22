@@ -3877,6 +3877,23 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/dashboard")
+@login_required
+def dashboard_page():
+    return render_template(
+        "dashboard.html",
+        sidebar_hosts=[],
+        waktu_segar="",
+        kesimpulan="",
+        ringkas_angka={},
+        pita=[],
+        kelompok=[],
+        gangguan=[],
+        riwayat_labels=[],
+        riwayat_series={},
+    )
+
+
 @app.route("/host/<path:ip>")
 @login_required
 def host_detail(ip):
