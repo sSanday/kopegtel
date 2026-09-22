@@ -4,25 +4,76 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fiber Redaman — NMS KOPEGTEL</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#080c14;--surface:#0c1220;--card:rgba(12,18,32,.8);--border:rgba(0,255,136,.1);--border2:rgba(255,255,255,.06);--accent:#00a2ff;--accent2:#00ff88;--t1:#e0f0ff;--t2:#6a8aaa;--t3:#2a4060;--mono:'JetBrains Mono',monospace;--danger:#ff4444;--success:#00ff88;--warn:#ffaa00}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
-.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
 .tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
 .tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center}
-.tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
-.tb-path .crumb.active{color:var(--accent2)}
+.tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+.tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+.tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+.tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+.tb-sep{color:var(--t3);font-size:.62rem}
+.tb-links{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+.tb-links .back-btn{border-color:transparent;border-radius:4px}
 .back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
 .back-btn:hover{color:var(--t1)}
 .wrap{padding:20px 24px 48px;max-width:1400px;margin:0 auto}
-.sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
-.sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
-.info{background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.68rem;color:var(--t2);margin-bottom:16px;line-height:1.7}
+.sec-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:12px}
+.sec-label::before{content:'//';color:var(--accent2)}
+.info{background:rgba(0,162,255,.04);border:1px solid rgba(0,162,255,.12);border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:.68rem;color:var(--t2);margin-bottom:20px;line-height:1.7}
 .info b{color:var(--t1)}
-.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px}
+.th-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.th-title{font-family:var(--mono);font-size:.65rem;font-weight:700;letter-spacing:1.5px;color:var(--t1);text-transform:uppercase}
+.th-hint{margin-left:auto;font-family:var(--mono);font-size:.6rem;color:var(--t3)}
+.th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.th-item{background:rgba(0,162,255,.04);border:1px solid rgba(0,162,255,.12);border-radius:10px;padding:10px 14px;line-height:1.65}
+.th-item.ok{background:rgba(0,255,136,.045);border-color:rgba(0,255,136,.13)}
+.th-item.warn{background:rgba(255,170,0,.045);border-color:rgba(255,170,0,.13)}
+.th-item.crit{background:rgba(255,68,68,.045);border-color:rgba(255,68,68,.13)}
+.th-k{display:block;font-family:var(--mono);font-size:.58rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:3px}
+.th-v{font-family:var(--mono);font-size:.66rem;color:var(--t2)}
+.th-v b{color:var(--t1)}
+.src-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.src-chip{font-family:var(--mono);font-size:.6rem;color:var(--t2);background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:99px;padding:4px 12px}
+.src-chip b{color:var(--t1)}
+.live-badge{font-family:var(--mono);font-size:.55rem;font-weight:700;letter-spacing:1px;color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:2px 9px}
+.scale-wrap{margin:6px 0 12px}
+.scale-bar{position:relative;height:14px;border-radius:99px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);overflow:hidden}
+.zone{position:absolute;top:0;bottom:0}
+.zone.crit{background:rgba(255,68,68,.4)}
+.zone.warn{background:rgba(255,170,0,.35)}
+.zone.ok{background:rgba(0,255,136,.28)}
+.zone.ov{background:rgba(255,0,200,.32)}
+.tmark{position:absolute;top:-2px;bottom:-2px;width:2px;background:#e0f0ff;box-shadow:0 0 6px rgba(255,255,255,.6)}
+.scale-ticks{position:relative;height:28px;margin-top:5px;font-family:var(--mono);font-size:.55rem;color:var(--t3)}
+.tick{position:absolute;transform:translateX(-50%);text-align:center;white-space:nowrap;line-height:1.5}
+.tick.tl{transform:none}
+.tick.tr{transform:translateX(-100%)}
+.tick b{display:block;color:var(--t2);font-weight:600}
+.th-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.stat-chip{flex:1;min-width:130px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:7px 12px;font-family:var(--mono)}
+.stat-chip .k{display:block;font-size:.55rem;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:2px}
+.stat-chip .v{font-size:.72rem;font-weight:700}
+.th-guide{margin-top:10px;border:1px solid rgba(255,255,255,.07);border-radius:8px;background:rgba(0,0,0,.18)}
+.th-guide summary{cursor:pointer;list-style:none;font-family:var(--mono);font-size:.62rem;font-weight:600;letter-spacing:1px;color:var(--t2);padding:9px 14px;display:flex;align-items:center;gap:8px}
+.th-guide summary::-webkit-details-marker{display:none}
+.th-guide summary::before{content:'▸';color:var(--accent2)}
+.th-guide[open] summary::before{content:'▾'}
+.th-guide summary:hover{color:var(--t1)}
+.th-guide .th-body{padding:2px 14px 14px}
+.filter-bar{display:flex;flex-direction:column;gap:10px;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:20px}
+.fb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fb-group{display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+.fb-group .filter-btn{border-color:transparent;border-radius:4px}
+.fb-count{margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);font-variant-numeric:tabular-nums}
+.fb-sep{width:1px;height:22px;background:var(--border2)}
+.add-btn.ghost{background:transparent;border-color:var(--border2);color:var(--t2)}
+.add-btn.ghost:hover{background:rgba(255,255,255,.05);color:var(--t1);border-color:rgba(255,255,255,.14)}
 .filter-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;padding:4px 10px;border-radius:4px;cursor:pointer}
 .filter-btn.active,.filter-btn:hover{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.45);color:var(--success)}
 .filter-search{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:6px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;min-width:160px;outline:none}
@@ -36,13 +87,54 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-hei
 .fillbar{height:4px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin:6px 0 8px}
 .fillbar>div{height:100%;background:var(--accent)}
 .odp-counts{display:flex;gap:10px;font-family:var(--mono);font-size:.62rem;color:var(--t2);flex-wrap:wrap}
+.sum-hero{grid-column:1/-1;display:flex;align-items:center;gap:16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px}
+.ring{position:relative;width:84px;height:84px;flex-shrink:0}
+.ring svg{transform:rotate(-90deg);display:block}
+.ring .rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono)}
+.ring .rn{font-size:1.15rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;line-height:1}
+.ring .rl{font-size:.5rem;letter-spacing:1px;color:var(--t3);margin-top:2px}
+.sum-hero-txt .sh-n{font-family:var(--mono);font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.sum-hero-txt .sh-l{font-family:var(--mono);font-size:.6rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-top:3px}
+.sum-hero-txt .sh-s{font-family:var(--mono);font-size:.65rem;color:var(--t2);margin-top:5px}
+.sum-tiles{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.sum-tile{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 12px;transition:.15s}
+.sum-tile:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.14)}
+.sum-tile.dim{opacity:.45}
+.sdot{width:8px;height:8px;border-radius:99px;flex-shrink:0}
+.sdot.neutral{background:var(--t2)}
+.sdot.ok{background:var(--success);box-shadow:0 0 8px rgba(0,255,136,.5)}
+.sdot.warn{background:var(--warn);box-shadow:0 0 8px rgba(255,170,0,.5)}
+.sdot.crit{background:var(--danger);box-shadow:0 0 8px rgba(255,68,68,.5)}
+.sdot.ov{background:#ff66dd;box-shadow:0 0 8px rgba(255,0,200,.5)}
+.sdot.stale{background:#b79cff;box-shadow:0 0 8px rgba(183,156,255,.5)}
+.sdot.mut{background:var(--t3)}
+.sum-tile .sn{font-family:var(--mono);font-size:1.25rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;line-height:1}
+.sum-tile .sl{font-family:var(--mono);font-size:.56rem;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-top:3px}
 .add-btn{background:rgba(0,162,255,.1);border:1px solid rgba(0,162,255,.3);color:var(--accent);padding:8px 16px;border-radius:5px;font-family:var(--mono);font-size:.7rem;cursor:pointer;margin-left:auto}
 .add-btn:hover{background:rgba(0,162,255,.2);color:#fff}
+.empty-panel{grid-column:1/-1;text-align:center;padding:30px 20px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.015)}
+.empty-ic{color:var(--t3);margin-bottom:10px;display:flex;justify-content:center}
+.empty-t{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--t1);margin-bottom:5px}
+.empty-d{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin:0 auto 14px;line-height:1.7;max-width:460px}
+.empty-panel .add-btn{display:inline-flex;margin:0}
 .log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+.table-scroll{overflow:auto;max-height:calc(100vh - 330px);min-height:180px}
+.log-card thead th{position:sticky;top:0;z-index:2;background:#0c1220}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rx-ok{color:var(--success);font-weight:700}
+.rx-warn{color:var(--warn);font-weight:700}
+.rx-crit{color:var(--danger);font-weight:700}
+.rx-stale{color:#b79cff;font-weight:700}
+td.stcell{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+td.stcell .advice{margin-top:0}
+td.rowact{white-space:nowrap}
+.rowact-btns{display:flex;gap:2px;justify-content:flex-end;align-items:center}
+tbody tr:nth-child(even) td{background:rgba(255,255,255,.014)}
+tbody tr:hover td{background:rgba(0,162,255,.05)}
 table{width:100%;border-collapse:collapse}
 th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,.15);white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:top}
-tr:hover td{background:rgba(255,255,255,.02)}
+td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:middle}
+tbody tr:nth-child(even) td{background:rgba(255,255,255,.014)}
 .tag{font-family:var(--mono);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap;display:inline-block}
 .tag.normal{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.25)}
 .tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
@@ -62,7 +154,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .chart-ctl select{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;max-width:240px}
 .range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;padding:4px 9px;border-radius:4px;cursor:pointer}
 .range-btn.active{color:var(--accent);border-color:rgba(0,162,255,.4)}
+.range-btn:disabled{opacity:.35;cursor:not-allowed}
+.pg-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-family:var(--mono);font-size:.65rem;color:var(--t2);background:rgba(0,0,0,.15)}
+.pg-info{margin-left:auto;font-variant-numeric:tabular-nums}
 .chart-wrap{position:relative;height:240px}
+.lg{display:inline-flex;align-items:center;gap:5px;margin-right:12px}
+.lg i{width:10px;height:3px;border-radius:2px;display:inline-block}
+.rxstat{font-family:var(--mono);font-size:.65rem;color:var(--t1);font-variant-numeric:tabular-nums;margin-top:3px}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:.3s}
 .modal-overlay.active{opacity:1;pointer-events:auto}
 .modal{background:var(--surface);width:420px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:8px;border:1px solid var(--border2)}
@@ -76,14 +174,36 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .btn{padding:8px 16px;border-radius:5px;font-size:.72rem;font-family:var(--mono);cursor:pointer;border:none}
 .btn-cancel{background:transparent;color:var(--t2);border:1px solid var(--border2)}
 .btn-submit{background:var(--accent);color:#fff}
+.lb-eq{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.lb-chip{font-family:var(--mono);font-size:.65rem;color:var(--t2);background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:5px 10px}
+.lb-chip b{color:var(--t1)}
+.lb-chip.tot{border-color:rgba(0,162,255,.35)}
+.lb-chip.tot,.lb-chip.tot b{color:var(--accent)}
+.lb-op{color:var(--t3);font-family:var(--mono);font-size:.7rem}
+.lb-out{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:8px;padding:12px 16px}
+@media(max-width:700px){.lb-out{grid-template-columns:1fr}}
+.lb-k{font-family:var(--mono);font-size:.56rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:2px}
+.lb-big{font-family:var(--mono);font-size:1.6rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;line-height:1.1}
+.lb-big small{font-size:.7rem;color:var(--t3);font-weight:400}
+.lb-bars{display:flex;flex-direction:column;gap:6px;min-width:180px}
+.lb-bar-row{display:grid;grid-template-columns:52px 1fr 62px;gap:8px;align-items:center;font-family:var(--mono);font-size:.6rem;color:var(--t2)}
+.lb-bar-row .vv{text-align:right;color:var(--t1);font-variant-numeric:tabular-nums}
+.lb-track{height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.lb-fill{height:100%;border-radius:99px}
+.lb-note{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+.verdict{font-family:var(--mono);font-size:.62rem;font-weight:700;letter-spacing:1px;border-radius:99px;padding:5px 14px;white-space:nowrap;justify-self:start}
+.verdict.v-ok{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.3)}
+.verdict.v-warn{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
+.verdict.v-bad{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
+.lb-advice{grid-column:1/-1;font-family:var(--mono);font-size:.65rem;color:var(--t2);line-height:1.6}
 </style>
 </head>
 <body>
 <div class="topbar">
   <div class="tb-brand"><div class="tb-logo">◈</div>
-    <div class="tb-path"><span>~/noc</span><span>/</span><span>dashboard</span><span>/</span><span class="crumb active">fiber</span></div>
+    <div class="tb-path"><a class="crumb" href="/" title="Dashboard utama">~/noc</a><span class="tb-sep">›</span><a class="crumb" href="/" title="Dashboard utama">dashboard</a><span class="tb-sep">›</span><span class="crumb active">fiber</span></div>
   </div>
-  <div style="display:flex;gap:8px"><a href="/topo" class="back-btn">🗺 topo</a><a href="/" class="back-btn">← cd ..</a></div>
+  <div class="tb-links"><a href="/topo" class="back-btn">🗺 topo</a><a href="/" class="back-btn">← cd ..</a></div>
 </div>
 <div class="wrap">
   <div class="sec-label">fiber_redaman.list — Rx/Tx ONT (dBm)</div>
@@ -91,49 +211,55 @@ tr:hover td{background:rgba(255,255,255,.02)}
     memuat threshold...
   </div>
   <div class="sec-label">fiber_summary</div>
-  <div class="odp-grid" id="sumGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="odp-grid" id="sumGrid" style="margin-bottom:20px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="sec-label">worst_rx.top5 <span style="color:var(--t3);font-weight:400">// klik untuk lihat grafik</span></div>
-  <div class="odp-grid" id="worstGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="odp-grid" id="worstGrid" style="margin-bottom:20px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="sec-label">odp_summary <button class="act edit" onclick="openOdpModal()" style="margin-left:auto">+ kelola ODP</button></div>
-  <div class="odp-grid" id="odpGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="odp-grid" id="odpGrid" style="margin-bottom:20px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="sec-label">olt_snmp <span style="color:var(--t3);font-weight:400">// sumber Rx/Tx otomatis via SNMP</span><button class="act edit" onclick="openOltModal()" style="margin-left:auto">+ kelola OLT</button></div>
-  <div class="odp-grid" id="oltGrid" style="margin-bottom:16px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
+  <div class="odp-grid" id="oltGrid" style="margin-bottom:20px"><div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">loading...</div></div>
   <div class="filter-bar">
-    <button class="filter-btn active" data-f="all">all</button>
-    <button class="filter-btn" data-f="normal">normal</button>
-    <button class="filter-btn" data-f="warning">warning</button>
-    <button class="filter-btn" data-f="critical">critical</button>
-    <button class="filter-btn" data-f="overload">overload ⚠ peredam</button>
-    <button class="filter-btn" data-f="stale">stale ⚠ tak terpantau</button>
-    <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="onSearch()">
-    <select class="filter-select" id="fOlt" onchange="onPageFilter()" title="Filter OLT"><option value="">olt: all</option></select>
-    <select class="filter-select" id="fOdp" onchange="onPageFilter()" title="Filter ODP"><option value="">odp: all</option></select>
-    <select class="filter-select" id="fSort" onchange="onPageFilter()" title="Urut"><option value="olt">sort: olt</option><option value="rx_asc">sort: rx terburuk</option><option value="rx_desc">sort: rx terbaik</option><option value="status">sort: status</option><option value="sn_asc">sort: sn a-z</option><option value="checked_desc">sort: cek terakhir</option></select>
-    <a class="add-btn" href="/api/fiber/export" style="text-decoration:none">⇩ export.csv</a>
-    <select class="filter-select" id="impMode" title="Mode import duplikat"><option value="skip">import: skip duplikat</option><option value="upsert">import: upsert (update duplikat)</option></select>
-    <button class="add-btn" onclick="document.getElementById('impFile').click()">⇧ import.csv</button>
-    <input type="file" id="impFile" accept=".csv" style="display:none" onchange="importCsv(this)">
-    <button class="add-btn" onclick="openModal()" style="margin-left:0">+ Add ONT</button>
+    <div class="fb-row">
+      <div class="fb-group" role="group" aria-label="Filter status">
+        <button class="filter-btn active" data-f="all">all</button>
+        <button class="filter-btn" data-f="normal">normal</button>
+        <button class="filter-btn" data-f="warning">warning</button>
+        <button class="filter-btn" data-f="critical">critical</button>
+        <button class="filter-btn" data-f="overload">overload ⚠ peredam</button>
+        <button class="filter-btn" data-f="stale">stale ⚠ tak terpantau</button>
+      </div>
+      <span class="fb-count" id="fbCount"></span>
+    </div>
+    <div class="fb-row">
+      <input class="filter-search" id="q" placeholder="grep ont / pelanggan / odp..." oninput="onSearch()" style="flex:1;min-width:180px">
+      <select class="filter-select" id="fOlt" onchange="onPageFilter()" title="Filter OLT"><option value="">olt: all</option></select>
+      <select class="filter-select" id="fOdp" onchange="onPageFilter()" title="Filter ODP"><option value="">odp: all</option></select>
+      <select class="filter-select" id="fSort" onchange="onPageFilter()" title="Urut"><option value="olt">sort: olt</option><option value="rx_asc">sort: rx terburuk</option><option value="rx_desc">sort: rx terbaik</option><option value="status">sort: status</option><option value="sn_asc">sort: sn a-z</option><option value="checked_desc">sort: cek terakhir</option></select>
+      <span class="fb-sep"></span>
+      <a class="add-btn ghost" href="/api/fiber/export" style="text-decoration:none">⇩ export.csv</a>
+      <select class="filter-select" id="impMode" title="Mode import duplikat"><option value="skip">import: skip duplikat</option><option value="upsert">import: upsert (update duplikat)</option></select>
+      <button class="add-btn ghost" onclick="document.getElementById('impFile').click()">⇧ import.csv</button>
+      <input type="file" id="impFile" accept=".csv" style="display:none" onchange="importCsv(this)">
+      <button class="add-btn" onclick="openModal()">+ Add ONT</button>
+    </div>
   </div>
-  <div class="log-card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>ONT SN / Pelanggan</th><th>OLT / PON / ODP</th><th>Rx (dBm)</th><th>Tx (dBm)</th><th>Status</th><th>Last check</th><th></th></tr></thead>
+  <div class="log-card"><div class="table-scroll"><table>
+    <thead><tr><th>ONT SN / Pelanggan</th><th>OLT / PON / ODP</th><th class="num">Rx (dBm)</th><th class="num">Tx (dBm)</th><th>Status</th><th>Last check</th><th></th></tr></thead>
     <tbody id="rows"><tr><td colspan="7" style="text-align:center;color:var(--t3)">loading...</td></tr></tbody>
   </table></div>
-  <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-family:var(--mono);font-size:.65rem;color:var(--t2)">
-    <button class="range-btn" id="pgPrev" onclick="goPage(-1)">← prev</button>
-    <button class="range-btn" id="pgNext" onclick="goPage(1)">next →</button>
-    <span id="pgInfo" style="margin-left:auto">page 1/1 · 0 rows</span>
-  </div></div>
+  <div class="pg-bar"><div class="fb-group"><button class="range-btn" id="pgPrev" onclick="goPage(-1)">← prev</button><button class="range-btn" id="pgNext" onclick="goPage(1)">next →</button></div><span id="pgInfo" class="pg-info">page 1/1 · 0 rows</span></div></div>
   <div class="chart-card">
     <div class="chart-hd">
-      <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub" id="chSub">// garis kuning = batas warning · merah = critical</div><div class="chart-sub" id="slaLine"></div></div>
+      <div><div class="chart-title" id="ctitle">rx_history.ts</div><div class="chart-sub" id="chSub"></div><div class="rxstat" id="rxStats"></div><div class="chart-sub" id="slaLine"></div></div>
       <div class="chart-ctl">
-        <select id="ontSel" onchange="loadHist()"></select>
-        <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
-        <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
-        <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
-        <button class="range-btn" data-h="720" onclick="setH(this,720)">30D</button>
-        <a class="add-btn" id="histExp" href="#" style="text-decoration:none;padding:5px 10px">⇩ history.csv</a>
+        <select id="ontSel" onchange="loadHist()" title="Pilih ONT"></select>
+        <div class="fb-group" role="group" aria-label="Rentang">
+          <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
+          <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
+          <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
+          <button class="range-btn" data-h="720" onclick="setH(this,720)">30D</button>
+        </div>
+        <a class="add-btn ghost" id="histExp" href="#" style="text-decoration:none;padding:5px 10px">⇩ history.csv</a>
       </div>
     </div>
     <div class="chart-wrap"><canvas id="ch"></canvas></div>
@@ -237,6 +363,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 let DATA=[], ODPDATA=[], OLTDATA=[], OLTPRESETS={}, SUMMARY=null, curF='all', editId=null, chart=null, histH=6, TH={warn:-25,crit:-27};
 let PAGE=1, PERPAGE=25, TOTAL=0, PAGES=1, SORT='olt', _searchT=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _empty=(icon,title,desc,btn,fn)=>`<div class="empty-panel"><div class="empty-ic">${icon}</div><div class="empty-t">${title}</div><div class="empty-d">${desc}</div><button class="add-btn" onclick="${fn}">${btn}</button></div>`;
+const _IC_CHART='<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 14V8M6 14V4M10 14V9M14 14V2"/></svg>';
+const _IC_BOX='<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8l6 3-6 3-6-3z"/><path d="M2 7.8l6 3 6-3M2 10.8l6 3 6-3"/></svg>';
+const _IC_TOWER='<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M8 13V8"/><circle cx="8" cy="13.5" r="1" fill="currentColor" stroke="none"/><path d="M4.8 5.5a4.5 4.5 0 016.4 0M6.4 7a2.3 2.3 0 013.2 0"/></svg>';
+const _IC_TABLE='<svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v10H2zM2 6.5h12M2 10h12M6.5 3v10"/></svg>';
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;PAGE=1;fetchPage();});
 function onPageFilter(){PAGE=1;SORT=document.getElementById('fSort').value||'olt';fetchPage();}
 function onSearch(){clearTimeout(_searchT);_searchT=setTimeout(()=>{PAGE=1;fetchPage();},400);}
@@ -249,15 +380,37 @@ async function loadTh(){
     TH.warn=parseFloat(s.fiber_rx_warn);TH.crit=parseFloat(s.fiber_rx_crit);
     if(!Number.isFinite(TH.warn))TH.warn=-25;
     if(!Number.isFinite(TH.crit))TH.crit=-27;
-    document.getElementById('chSub').textContent=`// garis kuning = batas warning ${TH.warn} dBm · merah = critical ${TH.crit} dBm`;
+    document.getElementById('chSub').innerHTML=`<span class="lg"><i style="background:#ffaa00"></i>warn ${esc(TH.warn)} dBm</span><span class="lg"><i style="background:#ff4444"></i>crit ${esc(TH.crit)} dBm</span>`;
+    const _num=(v,d)=>{v=parseFloat(v);return Number.isFinite(v)?v:d;};
+    const _ov=_num(s.fiber_rx_overload,-8),_wn=_num(s.fiber_rx_warn,-25),_cr=_num(s.fiber_rx_crit,-27),
+          _tg=_num(s.fiber_rx_target,-18),_tx0=_num(s.fiber_tx_min,0),_tx1=_num(s.fiber_tx_max,5);
+    const _min=-35,_max=0;
+    const _pc=v=>Math.min(100,Math.max(0,(v-_min)/(_max-_min)*100));
+    const _zones=[['crit',_min,_cr],['warn',_cr,_wn],['ok',_wn,_ov],['ov',_ov,_max]]
+      .map(z=>`<div class="zone ${z[0]}" style="left:${_pc(z[1]).toFixed(1)}%;width:${Math.max(0,_pc(z[2])-_pc(z[1])).toFixed(1)}%"></div>`).join('');
+    const _ticks=[[_max,'kuat','tr'],[_ov,'overload',''],[_tg,'target',''],[_wn,'warn',''],[_cr,'crit',''],[_min,'lemah','tl']]
+      .map(t=>`<span class="tick ${t[2]}" style="left:${_pc(t[0]).toFixed(1)}%"><b>${esc(t[0])}</b>${t[1]}</span>`).join('');
     document.getElementById('thInfo').innerHTML=
-      `Threshold aktif — Rx normal <b>${esc(s.fiber_rx_overload)} s/d ${esc(s.fiber_rx_warn)} dBm</b> · warning <b>${esc(s.fiber_rx_warn)} s/d ${esc(s.fiber_rx_crit)}</b> · critical <b>&lt; ${esc(s.fiber_rx_crit)} dBm</b> (redaman tinggi: cek bending/konektor/splicing/ODP) · `+
-      `overload <b>&gt; ${esc(s.fiber_rx_overload)} dBm</b> (terlalu kuat → <b>pasang PEREDAM/attenuator 5/10/15 dB</b>, target ~${esc(s.fiber_rx_target)} dBm) · Tx normal <b>${esc(s.fiber_tx_min)}..${esc(s.fiber_tx_max)} dBm</b> · ubah via menu settings di dashboard.<br>`+
-      `Degradasi: Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> dalam <b>${esc(s.fiber_degrade_days)} hari</b> (butuh history ≥24 jam) → early warning 📉 + notif Telegram sekali (cooldown 24 jam) · `+
-      `Flap: bolak-balik normal↔terganggu ≥ <b>${esc(s.fiber_flap_flips)}x</b> dalam <b>${esc(s.fiber_flap_hours)} jam</b> → entry FLAPPING ↔ (konektor longgar/ODP basah) · `+
-      `Korelasi induk: ≥ <b>${esc(s.fiber_parent_min)} ONT</b> kritis/overload satu OLT (atau IP OLT DOWN) → 1 alarm induk, alarm individual disuppress.<br>`+
-      `Stale: sumber <b>snmp/simulator</b> tanpa data baru ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → status <b>stale</b> (kemungkinan LOS/ONT mati/SNMP gagal).<br>`+
-      `Sumber <b>manual</b>=input OPM teknisi · <b>simulator</b>=data dummy bergerak untuk demo · <b>snmp</b>=tarik otomatis dari OLT tiap 5 mnt (isi ONT index + daftarkan ODP/OLT di atas, cocokkan nama OLT persis).`;
+      `<div class="th-head"><span class="th-title">◈ threshold Rx</span><span class="live-badge">● live</span><span class="th-hint">ubah via menu settings di dashboard</span></div>`+
+      `<div class="scale-wrap"><div class="scale-bar">${_zones}<div class="tmark" style="left:${_pc(_tg).toFixed(1)}%" title="target ${esc(_tg)} dBm"></div></div><div class="scale-ticks">${_ticks}</div></div>`+
+      `<div class="th-stats">`+
+      `<div class="stat-chip"><span class="k">normal</span><span class="v" style="color:var(--success)">${esc(_ov)} s/d ${esc(_wn)}</span></div>`+
+      `<div class="stat-chip"><span class="k">warning</span><span class="v" style="color:var(--warn)">${esc(_wn)} s/d ${esc(_cr)}</span></div>`+
+      `<div class="stat-chip"><span class="k">critical</span><span class="v" style="color:var(--danger)">&lt; ${esc(_cr)} dBm</span></div>`+
+      `<div class="stat-chip"><span class="k">overload</span><span class="v" style="color:#ff66dd">&gt; ${esc(_ov)} dBm</span></div>`+
+      `<div class="stat-chip"><span class="k">Tx normal</span><span class="v" style="color:var(--t1)">${esc(_tx0)}..${esc(_tx1)} dBm</span></div>`+
+      `</div>`+
+      `<details class="th-guide"><summary>panduan analisis & sumber data</summary><div class="th-body">`+
+      `<div class="th-grid">`+
+      `<div class="th-item crit"><span class="th-k">Rx overload</span><span class="th-v">Sinyal terlalu kuat — pasang <b>PEREDAM 5/10/15 dB</b> (target ~${esc(_tg)} dBm)</span></div>`+
+      `<div class="th-item crit"><span class="th-k">Rx critical</span><span class="th-v">Redaman tinggi — cek bending / konektor / splicing / ODP</span></div>`+
+      `<div class="th-item warn"><span class="th-k">Degradasi 📉</span><span class="th-v">Rx turun ≥ <b>${esc(s.fiber_degrade_db)} dB</b> / <b>${esc(s.fiber_degrade_days)} hari</b> (history ≥24 jam) → early warning + Telegram 1x (cooldown 24 jam)</span></div>`+
+      `<div class="th-item warn"><span class="th-k">Flapping ↔</span><span class="th-v">Normal↔terganggu ≥ <b>${esc(s.fiber_flap_flips)}x</b> / <b>${esc(s.fiber_flap_hours)} jam</b> → entry FLAPPING (konektor longgar / ODP basah)</span></div>`+
+      `<div class="th-item"><span class="th-k">Korelasi induk</span><span class="th-v">≥ <b>${esc(s.fiber_parent_min)} ONT</b> kritis/overload per OLT (atau IP OLT DOWN) → 1 alarm induk, individual disuppress</span></div>`+
+      `<div class="th-item"><span class="th-k">Stale</span><span class="th-v">snmp/simulator tanpa data ≥ <b>${esc(s.fiber_stale_min)} mnt</b> → stale (LOS / ONT mati / SNMP gagal)</span></div>`+
+      `</div>`+
+      `<div class="src-row"><span class="src-chip"><b>manual</b> · input OPM teknisi</span><span class="src-chip"><b>simulator</b> · dummy untuk demo</span><span class="src-chip"><b>snmp</b> · otomatis dari OLT / 5 mnt (cocokkan nama OLT + daftarkan ODP/OLT & ONT index)</span></div>`+
+      `</div></details>`;
   }catch(e){}
 }
 async function fetchSummary(){
@@ -268,19 +421,30 @@ async function fetchSummary(){
     SUMMARY=await r.json();
   }catch(e){return;}
   const c=SUMMARY.counts||{};
-  const card=(k,label,color)=>`<div class="odp-card"><div class="odp-name" style="color:${color}">${c[k]??0}</div><div class="odp-sub">${label}</div></div>`;
+  const _n=k=>parseInt(c[k]??0,10)||0;
+  const _total=_n('total'),_normal=_n('normal');
+  const _atten=_n('warning')+_n('critical')+_n('overload')+_n('stale')+_n('down_ongoing');
+  const _pct=_total?Math.round(_normal/_total*100):0;
+  const _ringC=_total===0?'#2a4060':(_atten===0?'#00ff88':(_pct>=90?'#ffaa00':'#ff4444'));
+  const _pctTxt=_total===0?'—':_pct+'%';
+  const _sub=_total===0?'belum ada ONT terdaftar':`${_normal} sehat · ${_atten} perlu perhatian`;
+  const _circ=(2*Math.PI*34).toFixed(1);
+  const _tiles=[['total ONT','neutral',_total,0],['normal','ok',_normal,0],['warning','warn',_n('warning'),1],
+    ['critical','crit',_n('critical'),1],['overload','ov',_n('overload'),1],['stale (tak terpantau)','stale',_n('stale'),1],
+    ['down saat ini','crit',_n('down_ongoing'),1],['degradasi 📉','warn',_n('degrading'),1],
+    ['flapping ↔','warn',_n('flapping'),1],['muted','mut',_n('muted'),1]]
+    .map(t=>`<div class="sum-tile${t[3]&&t[2]===0?' dim':''}"><span class="sdot ${t[1]}"></span><div><div class="sn">${t[2]}</div><div class="sl">${t[0]}</div></div></div>`).join('');
   document.getElementById('sumGrid').innerHTML=
-    card('total','total ONT','#e0f0ff')+card('normal','normal','var(--success)')+
-    card('warning','warning','var(--warn)')+card('critical','critical','var(--danger)')+
-    card('overload','overload','#ff66dd')+card('stale','stale (tak terpantau)','#b79cff')+
-    card('down_ongoing','down saat ini','var(--danger)')+card('degrading','degradasi 📉','var(--warn)')+card('flapping','flapping ↔','var(--warn)')+card('muted','muted','var(--t3)');
+    `<div class="sum-hero"><div class="ring"><svg width="84" height="84" viewBox="0 0 84 84"><circle cx="42" cy="42" r="34" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="8"/><circle cx="42" cy="42" r="34" fill="none" stroke="${_ringC}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(_pct/100*2*Math.PI*34).toFixed(1)} ${_circ}"/></svg><div class="rc"><span class="rn">${_pctTxt}</span><span class="rl">sehat</span></div></div>`+
+    `<div class="sum-hero-txt"><div class="sh-n">${_total}</div><div class="sh-l">total ONT terpantau</div><div class="sh-s">${_sub}</div></div></div>`+
+    `<div class="sum-tiles">${_tiles}</div>`;
   const wg=document.getElementById('worstGrid');
   const worst=(SUMMARY.worst_rx||[]).slice(0,5);
   wg.innerHTML=worst.length?worst.map(o=>`<div class="odp-card" style="cursor:pointer" onclick="jumpToOnt(${o.id})" title="klik untuk grafik">
       <div class="odp-name">${esc(o.rx_power)} dBm</div>
       <div class="odp-sub">${esc(o.ont_sn)}${o.customer?' · '+esc(o.customer):''}</div>
       <div class="odp-counts"><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span><span style="margin-left:auto">${esc(o.odp_name||o.olt_name||'')}</span></div>
-    </div>`).join(''):'<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ semua ONT belum ada data Rx.</div>';
+    </div>`).join(''):_empty(_IC_CHART,'belum ada data Rx','Tambahkan ONT dan isi Rx-nya — 5 terbawah muncul di sini, klik untuk melihat grafik.','+ Add ONT','openModal()');
   const sel=document.getElementById('ontSel');
   const prevS=sel.value;
   const opts=SUMMARY.ont_options||[];
@@ -345,7 +509,7 @@ function fillOdpDatalist(){
 }
 function renderOdp(){
   const g=document.getElementById('odpGrid');
-  if(!ODPDATA.length){g.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ no ODP — kelola via tombol di atas.</div>';return;}
+  if(!ODPDATA.length){g.innerHTML=_empty(_IC_BOX,'belum ada ODP','Daftarkan ODP agar ONT terpetakan ke lokasi & kapasitas port.','+ kelola ODP','openOdpModal()');return;}
   g.innerHTML=ODPDATA.map(o=>{
     const bad=(o.critical||0)+(o.overload||0), warn=(o.warning||0)+(o.stale||0);
     const cls=o.id===0?'':(bad?'bad':(warn?'warn':''));
@@ -359,7 +523,7 @@ function renderOdp(){
 }
 function renderOlt(){
   const g=document.getElementById('oltGrid');
-  if(!OLTDATA.length){g.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem">$ no OLT — ONT source=snmp butuh OLT terdaftar + ONT index.</div>';return;}
+  if(!OLTDATA.length){g.innerHTML=_empty(_IC_TOWER,'belum ada OLT','ONT source=snmp butuh OLT terdaftar + ONT index.','+ kelola OLT','openOltModal()');return;}
   g.innerHTML=OLTDATA.map(o=>{
     const ok=(o.ip&&o.rx_base)||(o.ip&&o.tx_base);
     const tdot=o.last_tested?(o.last_test_ok?'<span style="color:var(--success)" title="test OK: '+esc(o.last_test_msg||'')+'">●</span>':'<span style="color:var(--danger)" title="test GAGAL: '+esc(o.last_test_msg||'')+'">●</span>'):'<span style="color:var(--t3)" title="belum pernah test">○</span>';
@@ -399,18 +563,20 @@ function render(){
   const tb=document.getElementById('rows');
   const rows=DATA;
   document.getElementById('pgInfo').textContent=`page ${PAGE}/${PAGES} · ${TOTAL} rows`;
+  const _fc=document.getElementById('fbCount');if(_fc)_fc.textContent=`${TOTAL} ONT`;
   document.getElementById('pgPrev').disabled=PAGE<=1;
   document.getElementById('pgNext').disabled=PAGE>=PAGES;
-  if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no data — tambah ONT dulu / ubah filter.</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7" style="border-bottom:none;padding:22px 16px">'+_empty(_IC_TABLE,'belum ada data ONT','Tambah ONT baru, atau longgarkan filter & pencarian.','+ Add ONT','openModal()')+'</td></tr>';return;}
   tb.innerHTML=rows.map(o=>{const _mut=o.mute_active??!!o.mute_alarm;const _mexp=!_mut&&!!o.mute_alarm;
+    const _rxc={critical:'rx-crit',overload:'rx-crit',warning:'rx-warn',stale:'rx-stale',normal:'rx-ok'}[o.calc_status]||'';
     const _mt=o.mute_reason?` title="${esc(o.mute_reason)}${o.mute_until?' s/d '+esc(o.mute_until):''}"`:(o.mute_until?` title="s/d ${esc(o.mute_until)}"`:'');return `<tr>
     <td style="color:var(--t1)">${esc(o.ont_sn)}<div style="font-size:.62rem;color:var(--t3)">${esc(o.customer||'-')}</div></td>
     <td>${esc(o.olt_name||'-')} / ${esc(o.pon_port||'-')}<div style="font-size:.62rem;color:var(--t3)">${esc(o.odp_name||'')}</div><div style="font-size:.6rem;color:var(--t3)">src:${esc(o.source||'manual')}${_mut?` · <span style="color:var(--warn)"${_mt}>muted${o.mute_until?' s/d '+esc(o.mute_until.slice(0,16)):''}</span>`:''}${_mexp?' · <span style="color:var(--danger)">mute kedaluwarsa</span>':''}</div></td>
-    <td style="color:var(--t1);font-weight:700">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}${o.flapping?`<div style="font-size:.6rem;color:var(--warn)" title="Bolak-balik normal↔terganggu ${esc(o.flap_count)}x dalam ${esc(o.flap_hours??24)} jam — cek konektor longgar/ODP basah">↔ flap ${esc(o.flap_count)}x</div>`:''}</td>
-    <td>${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
-    <td><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown" style="margin-left:4px"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning" style="margin-left:4px">mute exp</span>':''}${o.down_ongoing?`<div style="font-size:.62rem;color:var(--danger);margin-top:4px">▼ DOWN sejak ${esc((o.down_since||'').slice(5,16))}</div>`:''}<div class="advice">${esc(o.advice||'')}</div></td>
+    <td class="num"><span class="${_rxc}">${o.rx_power==null?'—':esc(o.rx_power)+' dBm'}</span>${o.degrading?`<div style="font-size:.6rem;color:var(--warn)" title="Rx turun ${esc(o.degrade_drop_db)} dB dalam ${esc(o.degrade_days??7)} hari (ambang ${esc(o.degrade_thresh_db??3)} dB) — cek jalur sebelum kritis">📉 −${esc(o.degrade_drop_db)} dB</div>`:''}${o.flapping?`<div style="font-size:.6rem;color:var(--warn)" title="Bolak-balik normal↔terganggu ${esc(o.flap_count)}x dalam ${esc(o.flap_hours??24)} jam — cek konektor longgar/ODP basah">↔ flap ${esc(o.flap_count)}x</div>`:''}</td>
+    <td class="num">${o.tx_power==null?'—':esc(o.tx_power)+' dBm'}</td>
+    <td class="stcell"><span class="tag ${esc(o.calc_status)}">${esc(o.calc_status)}</span>${_mut?`<span class="tag unknown"${_mt}>muted</span>`:''}${_mexp?'<span class="tag warning">mute exp</span>':''}${o.down_ongoing?`<div style="font-size:.62rem;color:var(--danger)">▼ DOWN sejak ${esc((o.down_since||'').slice(5,16))}</div>`:''}<div class="advice">${esc(o.advice||'')}</div></td>
     <td style="font-size:.62rem">${esc(o.last_checked||'—')}${o.stale?`<div style="font-size:.6rem;color:#b79cff">data ${esc(o.stale_age||'?')} lalu</div>`:''}</td>
-    <td style="white-space:nowrap"><button class="act edit" onclick="openModal(${o.id})">edit</button><button class="act" onclick="del(${o.id})">del</button></td>
+    <td class="rowact"><div class="rowact-btns"><button class="act edit" onclick="openModal(${o.id})">edit</button><button class="act" onclick="del(${o.id})">del</button></div></td>
   </tr>`;}).join('');
 }
 function openModal(id){
@@ -459,6 +625,11 @@ async function loadHist(){
   document.getElementById('histExp').href=`/api/fiber/${id}/history/export?hours=${histH}`;
   const r=await fetch(`/api/fiber/${id}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(!r.ok)return;const j=await r.json();
+  try{
+    const _rx=(j.rx||[]).map(Number).filter(Number.isFinite);
+    const _rs=document.getElementById('rxStats');
+    if(_rs)_rs.textContent=_rx.length?`terkini ${_rx[_rx.length-1].toFixed(1)} · min ${Math.min(..._rx).toFixed(1)} · max ${Math.max(..._rx).toFixed(1)} dBm`:'';
+  }catch(_){}
   document.getElementById('ctitle').textContent=(j.ont?.ont_sn||'rx')+' — rx_history.ts';
   try{
     const rs=await fetch(`/api/fiber/${id}/sla?days=30`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
@@ -487,12 +658,24 @@ async function calcBudget(){
     const j=await r.json();
     if(!r.ok){box.innerHTML=`<span style="color:var(--danger)">Error: ${esc(j.error||'gagal')}</span>`;return;}
     const L=j.losses;
-    const vcolor=j.verdict==='ok'?'var(--success)':(j.severity==='high'||j.severity==='disaster'?'var(--danger)':'var(--warn)');
+    const vcls=j.verdict==='ok'?'v-ok':((j.severity==='high'||j.severity==='disaster')?'v-bad':'v-warn');
+    const _sp=v=>Math.min(100,Math.max(0,(parseFloat(v)+35)/35*100));
+    const _bars=j.actual_rx!=null?`<div class="lb-bars">`+
+      `<div class="lb-bar-row"><span>teoritis</span><div class="lb-track"><div class="lb-fill" style="width:${_sp(j.expected_rx).toFixed(1)}%;background:var(--accent)"></div></div><span class="vv">${esc(j.expected_rx)} dBm</span></div>`+
+      `<div class="lb-bar-row"><span>aktual</span><div class="lb-track"><div class="lb-fill" style="width:${_sp(j.actual_rx).toFixed(1)}%;background:${vcls==='v-ok'?'var(--success)':(vcls==='v-bad'?'var(--danger)':'var(--warn)')}"></div></div><span class="vv">${esc(j.actual_rx)} dBm</span></div>`+
+      `<div class="lb-bar-row"><span>selisih</span><span class="vv" style="grid-column:2/4;text-align:left">Δ ${esc(j.delta_db)} dB · ${esc(j.ont?.ont_sn)}</span></div></div>`
+      :`<div class="lb-note">(tanpa pembanding ONT)</div>`;
     box.innerHTML=
-      `Tx OLT <b style="color:var(--t1)">${esc(j.tx_dbm)} dBm</b> − splitter ${esc(L.splitter_db)} − serat ${esc(L.fiber_db)} − konektor ${esc(L.connector_db)} − splice ${esc(L.splice_db)} = rugi total <b style="color:var(--t1)">${esc(L.total_db)} dB</b><br>`+
-      `Rx teoritis: <b style="color:var(--accent)">${esc(j.expected_rx)} dBm</b>`+
-      (j.actual_rx!=null?` · Rx aktual ONT ${esc(j.ont?.ont_sn)}: <b style="color:var(--t1)">${esc(j.actual_rx)} dBm</b> · selisih <b style="color:${vcolor}">${esc(j.delta_db)} dB</b>`:` (tanpa pembanding ONT)`)+`<br>`+
-      `<span style="color:${vcolor}">■ ${esc(j.verdict.toUpperCase())}</span> — ${esc(j.advice)}`;
+      `<div class="lb-eq"><span class="lb-chip">Tx <b>${esc(j.tx_dbm)} dBm</b></span><span class="lb-op">−</span>`+
+      `<span class="lb-chip">splitter <b>${esc(L.splitter_db)}</b></span><span class="lb-op">−</span>`+
+      `<span class="lb-chip">serat <b>${esc(L.fiber_db)}</b></span><span class="lb-op">−</span>`+
+      `<span class="lb-chip">konektor <b>${esc(L.connector_db)}</b></span><span class="lb-op">−</span>`+
+      `<span class="lb-chip">splice <b>${esc(L.splice_db)}</b></span><span class="lb-op">=</span>`+
+      `<span class="lb-chip tot">rugi <b>${esc(L.total_db)} dB</b></span></div>`+
+      `<div class="lb-out"><div><div class="lb-k">Rx teoritis</div><div class="lb-big">${esc(j.expected_rx)} <small>dBm</small></div></div>`+
+      _bars+
+      `<span class="verdict ${vcls}">${esc(j.verdict.toUpperCase())}</span>`+
+      `<div class="lb-advice">${esc(j.advice)}</div></div>`;
   }catch(e){box.innerHTML=`<span style="color:var(--danger)">Error: ${esc(e.message)}</span>`;}
 }
 function openOdpModal(){

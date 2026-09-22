@@ -76,10 +76,12 @@ body::before{
 .sb-left{display:flex;align-items:center;gap:16px}
 .sb-right{display:flex;align-items:center;gap:6px}
 .sb-pill{
-  display:flex;align-items:center;gap:4px;color:var(--accent2);
-  font-size:.58rem;
+  display:flex;align-items:center;gap:6px;color:var(--accent2);
+  font-size:.58rem;background:rgba(0,255,136,.07);
+  border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:3px 10px;
+  letter-spacing:1px;
 }
-.sb-dot{width:5px;height:5px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite}
+.sb-dot{width:5px;height:5px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite;box-shadow:0 0 8px var(--accent2)}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
 /* Main card */
@@ -140,9 +142,9 @@ body::before{
 .logo-name{font-family:'JetBrains Mono',monospace;font-size:.9rem;font-weight:700;letter-spacing:3px;color:var(--t1)}
 .logo-sub{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--t3);margin-top:4px;letter-spacing:1px}
 .sys-badge{
-  display:inline-flex;align-items:center;gap:5px;
+  display:inline-flex;align-items:center;gap:6px;
   background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);
-  border-radius:3px;padding:3px 10px;
+  border-radius:99px;padding:4px 12px;
   font-family:'JetBrains Mono',monospace;font-size:.58rem;font-weight:600;
   color:var(--accent2);margin-top:10px;letter-spacing:1.5px;
 }
@@ -222,6 +224,7 @@ input::placeholder{color:var(--t3);font-size:.72rem}
   cursor:pointer;transition:.2s;position:relative;overflow:hidden;
   margin-top:6px;
   box-shadow:0 0 20px rgba(0,162,255,0.15);
+  display:flex;align-items:center;justify-content:center;gap:10px;
 }
 .btn-login::before{
   content:'';position:absolute;inset:0;
@@ -239,10 +242,10 @@ input::placeholder{color:var(--t3);font-size:.72rem}
 
 /* Spinner */
 .spinner{
-  display:none;width:16px;height:16px;
+  display:none;width:16px;height:16px;flex-shrink:0;
   border:2px solid rgba(224,240,255,0.2);
   border-top-color:var(--t1);border-radius:50%;
-  animation:spin .6s linear infinite;margin:0 auto;
+  animation:spin .6s linear infinite;margin:0;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 

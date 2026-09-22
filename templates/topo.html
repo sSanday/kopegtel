@@ -4,28 +4,40 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Topologi Fiber — NMS KOPEGTEL</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#080c14;--surface:#0c1220;--card:rgba(12,18,32,.8);--border:rgba(0,255,136,.1);--border2:rgba(255,255,255,.06);--accent:#00a2ff;--accent2:#00ff88;--t1:#e0f0ff;--t2:#6a8aaa;--t3:#2a4060;--mono:'JetBrains Mono',monospace;--danger:#ff4444;--success:#00ff88;--warn:#ffaa00}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
-.topbar{position:sticky;top:0;z-index:1000;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
+.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
 .tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
 .tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center}
-.tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
-.tb-path .crumb.active{color:var(--accent2)}
+.tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+.tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+.tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+.tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+.tb-sep{color:var(--t3);font-size:.62rem}
+.tb-links{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+.tb-links .back-btn{border-color:transparent;border-radius:4px}
 .tb-links{display:flex;gap:8px}
 .back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
 .back-btn:hover{color:var(--t1)}
 .wrap{padding:20px 24px 48px;max-width:1600px;margin:0 auto}
-.sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
-.sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
+.sec-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:12px}
+.sec-label::before{content:'//';color:var(--accent2)}
 .layout{display:grid;grid-template-columns:minmax(340px,420px) 1fr;gap:16px;align-items:start}
 @media(max-width:1000px){.layout{grid-template-columns:1fr}}
 .panel{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
-.panel-hd{padding:12px 16px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:.7rem;display:flex;justify-content:space-between;align-items:center}
+.panel-hd{padding:12px 16px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:.7rem;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.head-count{font-family:var(--mono);font-size:.6rem;color:var(--t3);background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:99px;padding:2px 10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.add-btn{background:rgba(0,162,255,.1);border:1px solid rgba(0,162,255,.3);color:var(--accent);padding:8px 16px;border-radius:5px;font-family:var(--mono);font-size:.7rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.add-btn:hover{background:rgba(0,162,255,.2);color:#fff}
+.empty-panel{text-align:center;padding:32px 20px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.015);margin:12px}
+.empty-ic{color:var(--t3);margin-bottom:10px;display:flex;justify-content:center}
+.empty-t{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--t1);margin-bottom:5px}
+.empty-d{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin:0 auto 14px;line-height:1.7;max-width:420px}
 #map{height:560px;min-height:320px;background:#0a0f1a;z-index:1}
 .tree{max-height:560px;overflow-y:auto;padding:8px}
 details{border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,.2)}
@@ -46,12 +58,14 @@ summary:hover{background:rgba(255,255,255,.02)}
 .tag.stale{background:rgba(183,156,255,.1);color:#b79cff;border:1px dashed rgba(183,156,255,.45)}
 .tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
 .counts{font-size:.6rem;color:var(--t3);margin-left:auto;white-space:nowrap}
-.nocoord{padding:12px 16px;font-family:var(--mono);font-size:.65rem;color:var(--t3);line-height:1.8}
+.nocoord{margin:0 16px 12px;font-family:var(--mono);font-size:.62rem;color:var(--t2);line-height:1.7;background:rgba(255,170,0,.05);border:1px solid rgba(255,170,0,.18);border-radius:8px;padding:10px 14px}
 .nocoord b{color:var(--warn)}
-.clickread{padding:8px 16px;font-family:var(--mono);font-size:.62rem;color:var(--t2);border-top:1px solid var(--border2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.clickread button{background:transparent;border:1px solid var(--border2);color:var(--t2);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:.62rem;cursor:pointer}
-.clickread button:hover{color:var(--t1)}
-.legend{display:flex;gap:12px;flex-wrap:wrap;padding:10px 16px;font-family:var(--mono);font-size:.6rem;color:var(--t2);border-top:1px solid var(--border2)}
+.clickread{padding:10px 16px;font-family:var(--mono);font-size:.62rem;color:var(--t2);border-top:1px solid var(--border2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.clickread .coord{font-size:.65rem;color:var(--t1);background:rgba(0,0,0,.3);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-variant-numeric:tabular-nums;min-width:170px;text-align:center}
+.clickread .copy-btn{background:rgba(0,162,255,.1);border:1px solid rgba(0,162,255,.3);color:var(--accent);padding:4px 12px;border-radius:5px;font-family:var(--mono);font-size:.62rem;cursor:pointer}
+.clickread .copy-btn:hover{background:rgba(0,162,255,.2);color:#fff}
+.legend{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;font-family:var(--mono);font-size:.6rem;color:var(--t2);border-top:1px solid var(--border2)}
+.legend span{display:inline-flex;align-items:center;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:99px;padding:3px 10px}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:99px;margin-right:4px}
 .leaflet-popup-content-wrapper{background:#0c1220;color:#e0f0ff;border:1px solid rgba(255,255,255,.08)}
 .leaflet-popup-content{font-family:var(--mono);font-size:.68rem;line-height:1.7}
@@ -62,18 +76,18 @@ summary:hover{background:rgba(255,255,255,.02)}
 <body>
 <div class="topbar">
   <div class="tb-brand"><div class="tb-logo">◈</div>
-    <div class="tb-path"><span>~/noc</span><span>/</span><span>dashboard</span><span>/</span><span class="crumb active">topo</span></div>
+    <div class="tb-path"><a class="crumb" href="/" title="Dashboard utama">~/noc</a><span class="tb-sep">›</span><a class="crumb" href="/" title="Dashboard utama">dashboard</a><span class="tb-sep">›</span><span class="crumb active">topo</span></div>
   </div>
   <div class="tb-links"><a href="/fiber" class="back-btn">fiber</a><a href="/" class="back-btn">← cd ..</a></div>
 </div>
 <div class="wrap">
   <div class="sec-label">fiber_topology.tree — OLT → ODP → ONT</div>
   <div class="layout">
-    <div class="panel"><div class="panel-hd"><span id="treeCount">loading...</span></div><div class="tree" id="tree"></div></div>
+    <div class="panel"><div class="panel-hd"><span>fiber_tree.topo</span><span id="treeCount" class="head-count">loading...</span></div><div class="tree" id="tree"></div></div>
     <div class="panel">
-      <div class="panel-hd"><span>fiber_map.geo</span><span id="mapCount" style="color:var(--t3)"></span></div>
+      <div class="panel-hd"><span>fiber_map.geo</span><span id="mapCount" class="head-count"></span></div>
       <div id="map"></div>
-      <div class="clickread"><span>klik peta untuk salin koordinat (untuk isi lat/lon ODP/OLT):</span><b id="clickPos" style="color:var(--t1)">—</b><button onclick="copyPos()">copy</button></div>
+      <div class="clickread"><span>klik peta untuk salin koordinat lat/lon ODP & OLT:</span><b id="clickPos" class="coord">—</b><button class="copy-btn" id="copyBtn" onclick="copyPos()">copy</button></div>
       <div class="legend"><span><i style="background:#00a2ff"></i>OLT</span><span><i style="background:#00ff88"></i>normal</span><span><i style="background:#ffaa00"></i>warning</span><span><i style="background:#ff4444"></i>critical</span><span><i style="background:#ff66dd"></i>overload</span><span><i style="background:#b79cff"></i>stale</span></div>
       <div class="nocoord" id="noCoord" style="display:none"></div>
     </div>
@@ -98,7 +112,7 @@ function renderTree(){
   let nOnt=0;olts.forEach(o=>{nOnt+=o.counts.total;});
   document.getElementById('treeCount').textContent=`${olts.length} OLT · ${nOnt} ONT`;
   const box=document.getElementById('tree');
-  if(!olts.length){box.innerHTML='<div style="color:var(--t3);font-family:var(--mono);font-size:.7rem;padding:12px">$ no data — tambah OLT/ODP/ONT di halaman fiber.</div>';return;}
+  if(!olts.length){box.innerHTML='<div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="3" r="1.6"/><circle cx="3.5" cy="12.5" r="1.6"/><circle cx="12.5" cy="12.5" r="1.6"/><path d="M8 4.6v3M8 7.6L4.3 11M8 7.6l3.7 3.4"/></svg></div><div class="empty-t">belum ada topologi</div><div class="empty-d">Tambah OLT / ODP / ONT di halaman fiber — pohon & peta terisi otomatis.</div><a class="add-btn" href="/fiber">buka fiber →</a></div>';return;}
   box.innerHTML=olts.map(o=>`<details${o.worst!=='normal'?' open':''}>
     <summary><span class="tag ${esc(o.worst)}">${esc(o.worst)}</span><b style="color:var(--t1)">${esc(o.name)}</b>${o.registered?'':' <span style="color:var(--warn)">(liar)</span>'}<span class="counts">${esc(countsTxt(o.counts))}</span></summary>
     ${(o.odps||[]).map(d=>`<details${d.worst!=='normal'?' open':''}>
@@ -149,7 +163,8 @@ function renderMap(){
 function copyPos(){
   if(!lastClick)return;
   const t=`${lastClick.lat.toFixed(6)}, ${lastClick.lng.toFixed(6)}`;
-  if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>alert('tersalin: '+t)).catch(()=>alert(t));
+  const done=()=>{const b=document.getElementById('copyBtn');if(b){b.textContent='tersalin ✓';setTimeout(()=>b.textContent='copy',1500);}};
+  if(navigator.clipboard)navigator.clipboard.writeText(t).then(done).catch(()=>alert(t));
   else alert(t);
 }
 load();setInterval(load,120000);

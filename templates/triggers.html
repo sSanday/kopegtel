@@ -48,126 +48,67 @@
       pointer-events:none;z-index:0;
     }
 
-    /* ── TOPBAR ── */
+    /* Topbar */
     .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0 0;height:56px;
-      border-bottom:1px solid var(--border);
-      background:rgba(8,12,20,0.95);
       position:sticky;top:0;z-index:100;
+      height:52px;background:rgba(8,12,20,0.97);
+      border-bottom:1px solid var(--border2);
       backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;
     }
-    .tb-left{display:flex;align-items:center;gap:0;height:100%}
+    .tb-brand{
+      display:flex;align-items:center;gap:12px;
+      font-family:var(--mono);font-size:.72rem;
+    }
     .tb-logo{
-      display:flex;align-items:center;gap:10px;padding:0 24px;
-      height:56px;border-right:1px solid var(--border);
+      width:26px;height:26px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
     }
-    .logo-icon{
-      width:28px;height:28px;background:linear-gradient(135deg,#00a2ff,#00ff88);
-      border-radius:6px;display:flex;align-items:center;justify-content:center;
-      font-size:14px;box-shadow:0 0 16px rgba(0,162,255,0.5);
-    }
-    .logo-name{
-      font-family:var(--mono);font-size:.78rem;font-weight:700;
-      color:var(--t1);letter-spacing:1px;text-transform:uppercase;
-    }
-    .logo-name span{color:var(--accent2);margin-left:2px}
-
-    .tb-path{
-      padding:0 20px;height:56px;
+    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+    .tb-sep{color:var(--t3);font-size:.62rem}
+    .back-btn{
       display:flex;align-items:center;gap:6px;
-      font-family:var(--mono);font-size:.72rem;color:var(--t2);
-      border-right:1px solid var(--border);
+      background:rgba(0,0,0,.2);border:1px solid var(--border2);
+      color:var(--t2);padding:6px 14px;border-radius:6px;
+      font-family:var(--mono);font-size:.65rem;
+      text-decoration:none;transition:.15s;
     }
-    .tb-path .crumb{color:var(--t2)}
-    .tb-path .crumb.active{color:var(--accent2)}
-    .tb-sep{color:var(--t3)}
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
 
-    .tb-search{
-      display:flex;align-items:center;height:100%;
-      padding-left:16px;border-left:1px solid var(--border);
-    }
-    .tb-search input{
-      background:transparent;border:none;outline:none;
-      color:var(--t1);font-family:var(--mono);font-size:.72rem;
-      width:200px;transition:.2s;
-    }
-    .tb-search input::placeholder{color:var(--t3)}
-    .tb-search input:focus{width:260px}
-
-    .tb-right{display:flex;align-items:center;height:56px}
-    .tb-btn{
-      display:flex;align-items:center;gap:6px;
-      height:56px;padding:0 16px;
-      background:transparent;border:none;border-left:1px solid var(--border);
-      color:var(--t2);font-family:var(--mono);font-size:.72rem;
-      cursor:pointer;transition:.2s;text-decoration:none;white-space:nowrap;
-    }
-    .tb-btn:hover{color:var(--t1);background:rgba(255,255,255,0.04)}
-    .tb-btn svg{width:14px;height:14px;flex-shrink:0}
-    .tb-btn.danger{color:rgba(255,68,68,0.7)}
-    .tb-btn.danger:hover{color:#ff4444;background:rgba(255,68,68,0.06)}
-
-    .live-pill{
-      display:flex;align-items:center;gap:5px;
-      background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.25);
-      border-radius:4px;padding:3px 8px;
-      font-family:var(--mono);font-size:.65rem;font-weight:700;
-      color:var(--accent2);letter-spacing:1.5px;margin:0 12px;
-    }
-    .live-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-
-    /* ── MAIN AREA & SIDEBAR ── */
-    .main{display:flex;min-height:calc(100vh - 56px)}
-    .sidebar{
-      width:220px;flex-shrink:0;border-right:1px solid var(--border);
-      padding:20px 0;background:rgba(8,12,20,0.6);backdrop-filter:blur(8px);
-      display:flex;flex-direction:column;
-    }
-    .sb-section{padding:0 16px;margin-bottom:20px}
-    .sb-label{font-family:var(--mono);font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:10px;}
-    .sb-item{
-      display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;
-      font-family:var(--mono);font-size:.72rem;color:var(--t2);
-      cursor:pointer;transition:.15s;margin-bottom:2px;text-decoration:none;
-    }
-    .sb-item:hover{background:rgba(255,255,255,0.05);color:var(--t1)}
-    .sb-item.active{background:rgba(0,255,136,0.08);color:var(--accent2);border-left:2px solid var(--accent2);padding-left:8px}
-    .sb-item svg{width:13px;height:13px;flex-shrink:0}
-    .sb-item.sb-disabled{opacity:.38;cursor:not-allowed}
-    .soon-badge{margin-left:auto;font-size:.55rem;border:1px solid var(--border2);border-radius:3px;padding:1px 5px;color:var(--t3);letter-spacing:1px}
-
-    .sb-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-    .sb-dot.up{background:var(--success);box-shadow:0 0 6px var(--success)}
-    .sb-dot.down{background:var(--danger);box-shadow:0 0 6px var(--danger)}
-
-    .content{flex:1;min-width:0;padding:24px 28px}
+    /* Main layout */
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
 
     /* Section label */
     .sec-label{
       font-family:var(--mono);font-size:.62rem;font-weight:600;
       text-transform:uppercase;letter-spacing:2px;
-      color:var(--t3);display:flex;align-items:center;gap:6px;
-      margin-bottom:14px;
+      color:var(--t3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      margin-bottom:12px;
     }
     .sec-label::before{content:'//';color:var(--accent2)}
 
     /* Filter bar */
     .filter-bar{
-      display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      display:flex;flex-direction:column;gap:10px;
       padding:14px 16px;
       background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;margin-bottom:16px;
+      border-radius:8px;margin-bottom:20px;
       backdrop-filter:blur(8px);
     }
+    .t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .filter-label{
       font-family:var(--mono);font-size:.6rem;color:var(--t3);
       text-transform:uppercase;letter-spacing:1.5px;flex-shrink:0;
     }
-    .filter-btns{display:flex;gap:6px;flex-wrap:wrap}
+    .filter-btns{display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
     .filter-btn{
-      background:transparent;border:1px solid var(--border2);
+      background:transparent;border:1px solid transparent;
       color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
       padding:4px 10px;border-radius:4px;cursor:pointer;transition:.15s;
     }
@@ -178,20 +119,22 @@
     .filter-btn[data-sev="warning"].active{background:rgba(255,170,0,0.12);border-color:rgba(255,170,0,0.45);color:var(--warn)}
     .filter-search{
       background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:5px 10px;border-radius:4px;font-family:var(--mono);font-size:.65rem;
-      min-width:160px;outline:none;transition:.2s;
+      padding:6px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;
+      min-width:160px;flex:1;outline:none;transition:.2s;
     }
-    .filter-search:focus{border-color:rgba(0,162,255,0.45)}
+    .filter-search:focus{border-color:rgba(0,162,255,0.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
     .filter-search::placeholder{color:var(--t3)}
     .filter-select{
       background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.62rem;outline:none;
+      padding:6px 8px;border-radius:6px;font-family:var(--mono);font-size:.62rem;outline:none;transition:.2s;
     }
+    .filter-select:focus{border-color:rgba(0,162,255,0.45)}
     .filter-stats{
-      margin-left:auto;font-family:var(--mono);font-size:.65rem;color:var(--t3);
-      display:flex;gap:12px;flex-shrink:0;
+      margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);
+      display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;
     }
-    .filter-stats span{display:flex;align-items:center;gap:4px}
+    .filter-stats span{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:99px;padding:3px 11px;font-variant-numeric:tabular-nums}
+    .filter-stats span::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
     .filter-stats b{color:var(--t1)}
     .active-filter-note{
       font-family:var(--mono);font-size:.6rem;color:var(--info);
@@ -204,453 +147,266 @@
     .host-link{color:inherit;text-decoration:none;cursor:pointer}
     .host-link:hover{color:var(--accent2);text-decoration:underline}
     .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-left:8px}
-    /* Hero */
-    .log-hero {
-      display: flex; align-items: center; justify-content: space-between;
-      background: linear-gradient(135deg, rgba(8,16,28,0.9), rgba(12,24,42,0.95));
-      border: 1px solid rgba(0,162,255,0.15); border-radius: 12px;
-      padding: 24px 28px; margin-bottom: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      position: relative; overflow: hidden;
-    }
-    .log-hero::before {
-      content:''; position:absolute; top:0; left:0; right:0; height:1px;
-      background:linear-gradient(90deg,transparent,rgba(0,162,255,0.4),rgba(0,255,136,0.3),transparent);
-    }
-    .hero-left { display: flex; align-items: center; gap: 20px; z-index: 2; }
-    .hero-icon-box {
-      width: 64px; height: 64px;
-      background: rgba(0,255,136,0.05); border: 1px solid rgba(0,255,136,0.3);
-      border-radius: 14px; display: flex; align-items: center; justify-content: center;
-      color: var(--success); box-shadow: 0 0 20px rgba(0,255,136,0.1) inset;
-    }
-    .hero-title {
-      font-family: var(--sans); font-size: 1.6rem; font-weight: 700;
-      color: var(--t1); margin-bottom: 4px; line-height: 1.1;
-    }
-    .hero-sub {
-      font-family: var(--sans); font-size: .85rem; color: var(--success);
-      display: flex; align-items: center; gap: 6px;
-    }
-    .hero-right {
-      display: flex; align-items: center; gap: 16px; z-index: 2;
-    }
-    .hero-stats {
-      display: flex; align-items: center; gap: 16px;
-      font-family: var(--sans); font-size: .8rem; font-weight: 600;
-    }
-    .stat-disaster { color: var(--disaster); }
-    .stat-high { color: var(--danger); }
-    .stat-warn { color: var(--warn); }
-    .hero-wave {
-      position: absolute; right: 250px; top: 0; bottom: 0; width: 300px;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 50 C 50 10, 100 90, 150 50 C 200 10, 250 90, 300 50' stroke='rgba(0,162,255,0.1)' stroke-width='2'/%3E%3Cpath d='M0 50 C 50 90, 100 10, 150 50 C 200 90, 250 10, 300 50' stroke='rgba(0,255,136,0.1)' stroke-width='2'/%3E%3C/svg%3E") center/cover no-repeat;
-      opacity: 0.6; z-index: 1; pointer-events: none;
-    }
-
-    /* Refresh Button */
-    .refresh-btn {
-      background: rgba(0,162,255,0.1); border: 1px solid rgba(0,162,255,0.3);
-      color: var(--t1); padding: 8px 16px; border-radius: 20px;
-      font-family: var(--sans); font-size: .85rem; font-weight: 600; cursor: pointer;
-      transition: .2s; display: flex; align-items: center; gap: 8px;
-    }
-    .refresh-btn:hover { background: rgba(0,162,255,0.2); border-color: rgba(0,162,255,0.5); }
-    .refresh-btn.spin svg { animation: spin 1s linear infinite; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .pagination{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-family:var(--mono);font-size:.62rem;color:var(--t3);background:rgba(0,0,0,.15);font-variant-numeric:tabular-nums}
+    .pg-group{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+    .pagination button{background:transparent;border:1px solid transparent;color:var(--t2);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:.62rem}
+    .pagination button:disabled{opacity:.35;cursor:not-allowed}
+    .pagination button:not(:disabled):hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
+    .pagination .last-updated{margin-left:auto}
 
     /* Log table card */
-    .log-card {
-      background: var(--card); border: 1px solid var(--border2);
-      border-radius: 12px; overflow: hidden; backdrop-filter: blur(8px);
-    }
-    .table-scroll { overflow-x: auto; }
-
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      text-align: left; color: var(--t3); font-weight: 600;
-      font-family: var(--mono); font-size: .6rem; text-transform: uppercase; letter-spacing: 1.5px;
-      padding: 14px 20px; border-bottom: 1px solid var(--border2);
-      background: rgba(0,0,0,0.15); white-space: nowrap;
-    }
-    td {
-      padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.025);
-      font-family: var(--mono); font-size: .75rem; color: var(--t2);
-      transition: .12s; vertical-align: middle; position: relative;
-    }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,0.03); color: var(--t1); }
-    tr:hover td:first-child { color: var(--t2); }
-
-    /* Left border color strip */
-    .row-strip {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-      background: transparent;
-    }
-    tr.s-disaster .row-strip { background: var(--disaster); }
-    tr.s-high .row-strip { background: var(--danger); }
-    tr.s-warning .row-strip { background: var(--warn); }
-    tr.s-info .row-strip { background: var(--info); }
-
-    .col-time { color: var(--t3)!important; white-space: nowrap; }
-    .col-host { color: var(--t1)!important; white-space: nowrap; font-weight: 500; }
-    .col-ip { color: var(--t3); font-size: .65rem; margin-top: 2px; font-weight: 400; }
-    .col-msg { color: var(--t2); line-height: 1.5; }
-
-    /* Severity tags */
-    .sev-tag {
-      font-family: var(--mono); font-size: .55rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 1px;
-      border-radius: 4px; padding: 3px 6px; white-space: nowrap; display: inline-block;
-    }
-    .sev-tag.disaster { background: rgba(255,0,85,0.2); color: var(--disaster); border: 1px solid rgba(255,0,85,0.4); }
-    .sev-tag.high { background: rgba(255,68,68,0.2); color: var(--danger); border: 1px solid rgba(255,68,68,0.4); }
-    .sev-tag.warning { background: rgba(255,170,0,0.2); color: var(--warn); border: 1px solid rgba(255,170,0,0.4); }
-
-    /* Category tags (Pills) */
-    .cat-tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-family: var(--mono); font-size: .6rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 1px;
-      border-radius: 20px; padding: 4px 10px; white-space: nowrap;
-    }
-    .cat-tag.availability { background: rgba(0,162,255,0.1); border: 1px solid rgba(0,162,255,0.3); color: var(--info); }
-    .cat-tag.resource { background: rgba(162,0,255,0.1); border: 1px solid rgba(162,0,255,0.3); color: #a200ff; }
-    .cat-tag.cpu { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); color: var(--success); }
-    .cat-tag.network { background: rgba(0,162,255,0.1); border: 1px solid rgba(0,162,255,0.3); color: var(--info); }
-
-    .empty-state { text-align: center; padding: 60px; font-family: var(--sans); font-size: .9rem; color: var(--t3); }
-
-    /* Pagination */
-    .pagination {
-      display: flex; align-items: center; justify-content: flex-end; gap: 12px;
-      padding: 16px 20px; font-family: var(--mono); font-size: .7rem; color: var(--t3);
-      border-top: 1px solid var(--border2);
-    }
-    .page-btn {
-      background: transparent; color: var(--t2); border: none;
-      width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: .15s;
-    }
-    .page-btn:hover:not(:disabled) { background: rgba(255,255,255,0.05); color: var(--t1); }
-    .page-btn:disabled { opacity: .35; cursor: not-allowed; }
-    .page-limit {
-      background: transparent; border: 1px solid var(--border2); color: var(--t2);
-      border-radius: 4px; padding: 4px 8px; font-family: var(--mono); font-size: .7rem;
-      outline: none; margin-left: 8px;
+    .log-card{
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
     }
 
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    tbody tr { animation: fadeIn .25s ease both; }
+    /* Terminal top bar */
+    .term-topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
+    }
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    
+    .refresh-btn {
+      background:transparent;border:1px solid rgba(0,162,255,0.3);
+      color:var(--accent);padding:4px 10px;border-radius:4px;
+      font-family:var(--mono);font-size:.6rem;cursor:pointer;
+      transition:.2s;display:flex;align-items:center;gap:4px;
+    }
+    .refresh-btn:hover {background:rgba(0,162,255,0.1);color:#fff}
+    .refresh-btn.spin svg {animation:spin 1s linear infinite}
+    @keyframes spin {100%{transform:rotate(360deg)}}
 
-    /* Maintenance Section */
-    .maint-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 12px; margin-top: 32px;
+    table{width:100%;border-collapse:collapse}
+    th{
+      text-align:left;color:var(--t3);font-weight:600;
+      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
+      padding:10px 14px;border-bottom:1px solid var(--border2);
+      background:#0d1424;white-space:nowrap;
+      position:sticky;top:0;z-index:1;
     }
-    .mh-title {
-      display: flex; align-items: center; gap: 12px;
+    td{
+      padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
+      font-family:var(--mono);font-size:.7rem;color:var(--t2);
+      transition:.12s;vertical-align:middle;
     }
-    .mh-icon { width: 40px; height: 40px; background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--success); }
-    .mh-text { font-family: var(--sans); font-size: .9rem; font-weight: 700; color: var(--t1); }
-    .mh-sub { font-family: var(--sans); font-size: .75rem; font-weight: 400; color: var(--t3); }
-    .mh-add-btn {
-      background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.4);
-      color: var(--success); font-family: var(--sans); font-size: .8rem; font-weight: 600;
-      padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: .2s;
-      display: flex; align-items: center; gap: 6px;
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(0,162,255,0.05);color:var(--t1)}
+    #triggersBody tr td:first-child{box-shadow:inset 2px 0 0 transparent}
+    #triggersBody tr.sev-disaster td:first-child{box-shadow:inset 2px 0 0 var(--disaster)}
+    #triggersBody tr.sev-high td:first-child{box-shadow:inset 2px 0 0 var(--danger)}
+    #triggersBody tr.sev-warning td:first-child{box-shadow:inset 2px 0 0 var(--warn)}
+    #triggersBody tr.sev-disaster{background:rgba(255,0,85,.03)}
+    .table-scroll{overflow:auto;max-height:430px}
+    
+    .col-host{color:var(--t1)!important;white-space:nowrap;font-weight:500;}
+    .col-msg{color:var(--t2);line-height:1.4}
+    
+    .host-alias {
+      font-size:.6rem;
+      color:var(--t3);
+      display:block;
+      margin-top:2px;
     }
-    .mh-add-btn:hover { background: rgba(0,255,136,0.2); }
 
-      color:var(--danger);padding:3px 8px;border-radius:3px;cursor:pointer;
-      font-family:var(--mono);font-size:.6rem;
+    /* Event type tags */
+    .tag{
+      font-family:var(--mono);font-size:.58rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.8px;
+      border-radius:3px;padding:3px 8px;white-space:nowrap;
+      display:inline-block;
+    }
+    .tag.disaster{background:rgba(255,0,85,0.1);color:var(--disaster);border:1px solid rgba(255,0,85,0.3);box-shadow:0 0 10px rgba(255,0,85,0.2)}
+    .tag.high{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
+    .tag.warning{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
+    .tag.info{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
+
+    .empty-state{
+      text-align:center;padding:60px 20px;
+      font-family:var(--mono);font-size:.72rem;color:var(--success);
+      line-height:2;
+    }
+    .empty-state svg{
+      width:48px;height:48px;margin-bottom:16px;opacity:0.8;
+      stroke:var(--success);
+    }
+    .empty-state .cmd{color:var(--accent2);display:block;font-size:1.2rem;margin-bottom:8px}
+
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    tbody tr{animation:fadeIn .25s ease both}
+
+    /* Maintenance manager */
+    .maint-card{
+      margin-top:16px;
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
+    }
+    .maint-form{
+      display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+      padding:14px 16px;border-bottom:1px solid var(--border2);
+      background:rgba(0,0,0,.12);
+    }
+    .maint-form input{
+      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
+      padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;
+      outline:none;min-width:140px;transition:.2s;color-scheme:dark;
+    }
+    .maint-form input:focus{border-color:rgba(0,162,255,0.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
+    .maint-form input::placeholder{color:var(--t3)}
+    .maint-form button{
+      display:inline-flex;align-items:center;gap:6px;
+      background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.4);
+      color:var(--info);padding:8px 16px;border-radius:6px;cursor:pointer;
+      font-family:var(--mono);font-size:.65rem;font-weight:700;transition:.15s;
+    }
+    .maint-form button:hover{background:rgba(0,162,255,0.2);color:#fff}
+    .maint-del{
+      display:inline-flex;align-items:center;justify-content:center;
+      background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.25);
+      color:var(--danger);padding:4px;border-radius:4px;cursor:pointer;
+      font-family:var(--mono);font-size:.6rem;transition:.15s;
     }
     .maint-del:hover{background:rgba(255,68,68,0.18)}
+    #maintBody tr.mnt-active td{background:rgba(255,170,0,.04)}
+    #maintBody tr.mnt-active td:first-child{box-shadow:inset 2px 0 0 var(--warn)}
+    .empty-panel{text-align:center;padding:28px 20px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.015);margin:14px}
+    .empty-ic{color:var(--t3);margin-bottom:10px;display:flex;justify-content:center}
+    .empty-t{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--t1);margin-bottom:5px}
+    .empty-d{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin:0 auto;line-height:1.7;max-width:440px}
     .tag.maintenance{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
   </style>
 </head>
 <body>
 
-  <!-- TOPBAR -->
+  <!-- Topbar -->
   <div class="topbar">
-    <div class="tb-left">
-      <div class="tb-logo">
-        <div class="logo-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div class="logo-name">NMS<span>KOPEGTEL</span></div>
-      </div>
+    <div class="tb-brand">
+      <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="tb-path">
-        <a href="/" class="crumb" style="text-decoration:none"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:4px;vertical-align:-1px"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/><path d="M6 14v-4h4v4"/></svg></a>
-        <span class="tb-sep">/</span>
-        <a href="/" class="crumb" style="text-decoration:none">dashboard</a>
-        <span class="tb-sep">/</span>
+        <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
+        <span class="tb-sep">›</span>
+        <a class="crumb" href="/" title="Dashboard utama">dashboard</a>
+        <span class="tb-sep">›</span>
         <span class="crumb active">active-triggers</span>
       </div>
-      <div class="tb-search">
-        <span style="color:var(--accent);margin-right:6px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/></svg></span>
-        <input type="text" id="qSearch" placeholder="Search hosts, triggers, events..." autocomplete="off">
-      </div>
     </div>
-    <div class="tb-right">
-      <div class="live-pill"><div class="live-dot"></div>LIVE</div>
-      <a href="/logs" class="tb-btn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-        Logs
-      </a>
-      <button class="tb-btn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
-        Settings
-      </button>
-      <button class="tb-btn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M5 7h6M5 10h4"/></svg>
-        Hosts
-      </button>
-      <button class="tb-btn" id="notifBtn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1a5 5 0 015 5v3l1.5 2.5H1.5L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg>
-        Notif
-      </button>
-      <a href="/logout" class="tb-btn danger">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
-        Logout
-      </a>
-    </div>
+    <a href="/" class="back-btn">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
+      cd ..
+    </a>
   </div>
 
-  <div class="main">
-    <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-      <div class="sb-section">
-        <div class="sb-label">MAIN NAVIGATION</div>
-        <a href="/" class="sb-item" data-nav="dashboard">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-          Dashboard
-        </a>
-        <a href="/triggers" class="sb-item" data-nav="monitoring">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4v4l2 2"/></svg>
-          Monitoring <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
-        </a>
-        <a href="/services" class="sb-item" data-nav="services">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 4H2v8h12V4z"/><path d="M6 16v-4M10 16v-4M4 16h8"/></svg>
-          Services
-        </a>
-        <a href="/inventory" class="sb-item" data-nav="inventory">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 7h12"/></svg>
-          Inventory
-        </a>
-        <div class="sb-item" data-nav="fiber">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c3-1 4-6 6-6s3 5 6 4"/><circle cx="2" cy="12" r="1.2"/><circle cx="14" cy="10" r="1.2"/></svg>
-          Fiber <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
-        </div>
-        <div class="sb-item" data-nav="mikrotik">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 12v2M11 12v2M8 9v5M4 5.5h8"/></svg>
-          MikroTik <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
-        </div>
-        <a href="/reports" class="sb-item" data-nav="reports">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4h8v8M4 16h8M6 8h4"/></svg>
-          Reports
-        </a>
-        <a href="/logs" class="sb-item" data-nav="logs">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-          Logs
-        </a>
-        <a href="/triggers?severity=disaster,high" class="sb-item active" data-nav="alerts" style="background:rgba(255,255,255,0.05)">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 00-4 4v3l-2 2v1h12v-1l-2-2V6a4 4 0 00-4-4z"/><path d="M6 13a2 2 0 004 0"/></svg>
-          Alerts
-          <span style="margin-left:auto;background:var(--danger);color:#fff;font-size:.5rem;padding:2px 5px;border-radius:10px">3</span>
-        </a>
-        <div class="sb-item sb-disabled">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
-          WSFPS <span class="soon-badge">soon</span>
-        </div>
-        <div class="sb-item sb-disabled">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4a2 2 0 100 4 2 2 0 000-4z"/></svg>
-          Administration <span class="soon-badge">soon</span>
-        </div>
-      </div>
-      
-      <div class="sb-section" style="margin-top:auto">
-        <div class="sb-label">NODES</div>
-        <div style="font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-bottom:4px">- HP</div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot up"></div> Infinix Hot 10 Play
-        </div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot down"></div> Infinix Note 40
-        </div>
-        <div style="font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-bottom:4px;margin-top:10px">- LAPTOP</div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot up"></div> Server/NMS
-        </div>
-      </div>
-      
-      <div style="margin-top:10px;padding:16px;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:24px;height:24px;background:rgba(0,255,136,0.1);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--accent2)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1l3 13-3-2-3 2z"/></svg></div>
-          <div>
-            <div style="font-family:var(--mono);font-size:.65rem;font-weight:700;color:var(--t1)">NMS KOPEGTEL</div>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--t3)">Network Monitoring System</div>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--t3)">v1.107.0</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="content">
-
-    <!-- Hero Section -->
-    <div class="log-hero">
-      <div class="hero-wave"></div>
-      <div class="hero-left">
-        <div class="hero-icon-box">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        </div>
-        <div>
-          <div class="hero-title">ACTIVE TRIGGERS LIST</div>
-          <div class="hero-sub">Monitoring active alerts and triggers</div>
-        </div>
-      </div>
-      <div class="hero-right">
-        <div class="hero-stats">
-          <div class="stat-disaster"><span class="sb-dot down" style="display:inline-block;margin-right:6px"></span>Disaster <span id="cnt-disaster">0</span></div>
-          <div class="stat-high"><span class="sb-dot down" style="display:inline-block;margin-right:6px;background:var(--warn);box-shadow:0 0 6px var(--warn)"></span>High <span id="cnt-high">0</span></div>
-          <div class="stat-warn"><span class="sb-dot up" style="display:inline-block;margin-right:6px;background:var(--warn);box-shadow:0 0 6px var(--warn)"></span>Warning <span id="cnt-warn">0</span></div>
-        </div>
-        <button class="refresh-btn" id="refBtn" onclick="fetchTriggers()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-          Refresh
-        </button>
-      </div>
-    </div>
+  <div class="wrap">
 
     <!-- Filter Bar -->
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;background:var(--card);padding:14px 20px;border-radius:8px;border:1px solid var(--border2);backdrop-filter:blur(8px);">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-family:var(--mono);font-size:.65rem;color:var(--t3);text-transform:uppercase">Severity</span>
-        <select class="filter-select" id="sevFilter" onchange="toggleSev(this.value)">
-          <option value="all">All</option>
-          <option value="disaster">Disaster</option>
-          <option value="high">High</option>
-          <option value="warning">Warning</option>
-        </select>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-left:12px">
-        <span style="font-family:var(--mono);font-size:.65rem;color:var(--t3);text-transform:uppercase">Host</span>
-        <select class="filter-select" id="catFilter" onchange="setCatFilter(this.value)" style="min-width:140px">
-          <option value="all">All hosts</option>
-          <option value="availability">Availability</option>
-          <option value="resource">Resource</option>
-          <option value="network">Network</option>
-          <option value="agent">Agent</option>
-        </select>
-      </div>
-      <div style="position:relative;margin-left:auto;display:flex;align-items:center;gap:12px">
-        <div style="position:relative">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="filter-search" id="qFilter" placeholder="Search host, trigger, message..." style="padding-left:32px;width:240px">
+    <div class="sec-label" id="secLabel">active_alarms.list</div>
+    <div class="filter-bar">
+      <div class="t-row">
+        <span class="filter-label">Severity</span>
+        <div class="filter-btns" id="sevBtns">
+          <button class="filter-btn active" data-sev="all">all</button>
+          <button class="filter-btn" data-sev="disaster">disaster</button>
+          <button class="filter-btn" data-sev="high">high</button>
+          <button class="filter-btn" data-sev="warning">warning</button>
         </div>
-        <button class="filter-btn" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:4px" onclick="downloadCSV()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          CSV
+        <div class="filter-stats">
+          <span style="color:var(--disaster)">Disaster: <b id="cnt-disaster">0</b></span>
+          <span style="color:var(--danger)">High: <b id="cnt-high">0</b></span>
+          <span style="color:var(--warn)">Warning: <b id="cnt-warn">0</b></span>
+        </div>
+      </div>
+      <div class="t-row">
+        <select class="filter-select" id="catSelect" title="Filter kategori">
+          <option value="all">cat: all</option>
+          <option value="availability">availability</option>
+          <option value="agent">agent</option>
+          <option value="resource">resource</option>
+          <option value="service">service</option>
+          <option value="maintenance">maintenance</option>
+        </select>
+        <input class="filter-search" id="hostSearch" type="text" placeholder="grep host..." autocomplete="off">
+        <span class="active-filter-note" id="filterNote"></span>
+      </div>
+    </div>
+
+    <!-- Log Table -->
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        </div>
+        <div class="term-title">triggers_active.sh</div>
+        <button class="refresh-btn" onclick="fetchTriggers()" id="refBtn">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
+          refresh
         </button>
       </div>
-    </div>
-
-    <!-- Active Triggers Table -->
-    <div class="log-card">
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:80px">#</th>
-              <th style="width:180px">TIMESTAMP</th>
-              <th style="width:250px">HOST</th>
-              <th style="width:180px">EVENT TYPE</th>
-              <th>MESSAGE</th>
-            </tr>
-          </thead>
-          <tbody id="triggersBody">
-            <tr><td colspan="5" class="empty-state">Fetching active triggers...</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pagination">
-        <button class="page-btn" id="prevBtn" onclick="chPage(-1)">&lt;</button>
-        <span id="pageInfo">Page 1 / 1</span>
-        <button class="page-btn" id="nextBtn" onclick="chPage(1)">&gt;</button>
-        <select class="page-limit" id="pageLimit" onchange="chLimit(this.value)">
-          <option value="10">10 / page</option>
-          <option value="50" selected>50 / page</option>
-          <option value="100">100 / page</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Maintenance Section -->
-    <div class="maint-header">
-      <div class="mh-title">
-        <div class="mh-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        </div>
-        <div>
-          <div class="mh-text">MAINTENANCE WINDOWS CONFIG</div>
-          <div class="mh-sub">Schedules and configuration for maintenance windows</div>
-        </div>
-      </div>
-      <button class="mh-add-btn" onclick="document.getElementById('maintForm').style.display = document.getElementById('maintForm').style.display === 'none' ? 'flex' : 'none'">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add
-      </button>
-    </div>
-
-    <div class="log-card" style="overflow:visible">
-      <form class="maint-form" id="maintForm" onsubmit="createMaintenance(event)" style="display:none;background:rgba(0,0,0,0.2)">
-        <div style="display:flex;align-items:center;gap:12px;width:100%;margin-bottom:12px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-family:var(--mono);font-size:.65rem;color:var(--t3);text-transform:uppercase">Host</span>
-            <input type="text" id="maintHost" placeholder="IP / Hostname" required list="maintHostList" style="width:200px">
-            <datalist id="maintHostList"></datalist>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-family:var(--mono);font-size:.65rem;color:var(--t3);text-transform:uppercase">Type</span>
-            <select class="filter-select" style="min-width:140px"><option>All types</option></select>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="datetime-local" id="maintStart" required style="width:160px">
-            <span style="color:var(--t3)">→</span>
-            <input type="datetime-local" id="maintEnd" required style="width:160px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t3)"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;width:100%">
-          <div style="position:relative;flex:1">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="maintReason" placeholder="Search description..." required style="width:100%;padding-left:32px">
-          </div>
-          <button type="submit" style="display:flex;align-items:center;gap:6px;padding:6px 16px;border-radius:20px">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            Submit
-          </button>
-        </div>
-      </form>
       
       <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:200px">HOST</th>
-              <th style="width:200px">MAINTENANCE WINDOW</th>
-              <th style="width:120px">TYPE</th>
-              <th style="width:120px">STATUS</th>
-              <th style="width:120px">ALARM</th>
-              <th>MESSAGE</th>
-              <th style="width:80px">ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody id="maintBody">
-            <tr><td colspan="7" class="empty-state">Loading...</td></tr>
-          </tbody>
-        </table>
+      <table id="triggersTable">
+        <thead>
+          <tr>
+            <th style="width:140px">Severity</th>
+            <th style="width:250px">Host</th>
+            <th style="width:150px">Category</th>
+            <th>Problem Description</th>
+          </tr>
+        </thead>
+        <tbody id="triggersBody">
+          <!-- populated via JS -->
+        </tbody>
+      </table>
+      </div>
+      <div class="pagination">
+        <div class="pg-group"><button id="prevBtn">← prev</button><button id="nextBtn">next →</button></div>
+        <span id="pageInfo">page 1/1 · 0 rows</span>
+        <span class="last-updated">updated: <span id="lastUpdated">—</span></span>
       </div>
     </div>
+
+    <!-- Maintenance Window Manager -->
+    <div class="sec-label" style="margin-top:20px">maintenance_windows.config</div>
+    <div class="maint-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
+        </div>
+        <div class="term-title">maintenance_schedule.sh — DOWN & telegram disuppress saat window aktif · fiber massal via ODP:&lt;nama&gt;/OLT:&lt;nama&gt;</div>
+        <button class="refresh-btn" onclick="fetchMaintenance()" id="maintRefBtn">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
+          refresh
+        </button>
+      </div>
+      <form class="maint-form" onsubmit="createMaintenance(event)">
+        <input id="maintHost" list="maintHostList" placeholder="host / IP / ONT SN / ODP:nama / OLT:nama" required title="IP terdaftar, ONT SN fiber, atau ODP:<nama>/OLT:<nama> untuk maintenance massal fiber" style="flex:2;min-width:200px" autocomplete="off">
+        <datalist id="maintHostList"></datalist>
+        <input id="maintStart" type="datetime-local" required title="Mulai">
+        <input id="maintEnd" type="datetime-local" required title="Selesai">
+        <input id="maintReason" type="text" placeholder="alasan (misal: upgrade firmware)" maxlength="200" style="flex:2;min-width:180px" autocomplete="off">
+        <button type="submit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>schedule</button>
+      </form>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Host</th>
+            <th>Mulai</th>
+            <th>Selesai</th>
+            <th>Status</th>
+            <th>Alasan</th>
+            <th style="width:80px">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="maintBody">
+          <tr><td colspan="6" style="text-align:center;padding:20px">loading...</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -762,6 +518,10 @@
 
     function renderTable(){
       const tbody = document.getElementById('triggersBody');
+      const cDis = document.getElementById('cnt-disaster');
+      const cHi = document.getElementById('cnt-high');
+      const cWarn = document.getElementById('cnt-warn');
+      // Counter dari data ASLI (belum difilter) agar tidak menyesatkan
       let dis=0, hi=0, warn=0;
       (allAlarms || []).forEach(a=>{
         const s = String(a.severity || '').toLowerCase();
@@ -769,9 +529,9 @@
         else if(s === 'high') hi++;
         else if(s === 'warning') warn++;
       });
-      document.getElementById('cnt-disaster').textContent = dis;
-      document.getElementById('cnt-high').textContent = hi;
-      document.getElementById('cnt-warn').textContent = warn;
+      if(cDis) cDis.textContent = dis;
+      if(cHi) cHi.textContent = hi;
+      if(cWarn) cWarn.textContent = warn;
 
       const filtered = getFiltered();
       const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -783,73 +543,36 @@
       let html = '';
       if(!filtered.length){
         const isFiltering = sevSet.size > 0 || catFilter !== 'all' || searchQuery;
-        html = `<tr><td colspan="5">
+        html = `<tr><td colspan="4">
           <div class="empty-state">
-            <div style="color:var(--success);font-family:var(--mono);font-size:1.2rem;margin-bottom:8px">${isFiltering ? '$ filter = NO_MATCH' : '$ status = ALL_CLEAR'}</div>
-            ${isFiltering ? 'Tidak ada alarm yang cocok dengan filter.' : 'Tidak ada alarm aktif saat ini.'}
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            <span class="cmd">${isFiltering ? '$ filter = NO_MATCH' : '$ status = ALL_CLEAR'}</span>
+            ${isFiltering ? 'Tidak ada alarm yang cocok dengan filter. Ubah filter atau klik all.' : 'Tidak ada alarm aktif saat ini. Jaringan berjalan normal.'}
           </div>
         </td></tr>`;
       } else {
-        const dStr = new Date().toISOString().replace('T',' ').substring(0,19);
-        rows.forEach((a, i) => {
+        rows.forEach(a => {
           const hostName = esc(aliasMap[a.host] || a.host);
           const rawHost = esc(a.host);
-          const sClass = esc(a.severity);
-          const cClass = esc(a.category);
-          
-          html += `<tr class="s-${sClass}">
-            <td style="position:relative;padding-left:20px;vertical-align:top">
-              <div class="row-strip"></div>
-              <div style="margin-bottom:4px;color:var(--t1)">${start + i + 1}</div>
-              <span class="sev-tag ${sClass}">${sClass}</span>
-            </td>
-            <td class="col-time">${dStr}</td>
-            <td class="col-host">
-              <a class="host-link" href="/host/${encodeURIComponent(a.host)}">${hostName}</a>
-              ${hostName !== a.host ? `<div class="col-ip">${rawHost}</div>` : ''}
-            </td>
-            <td>
-              <span class="cat-tag ${cClass}">
-                <div style="width:6px;height:6px;border-radius:50%;background:currentColor"></div>
-                ${cClass}
-              </span>
-            </td>
+          const subName = (hostName !== a.host) ? `<span class="host-alias">${rawHost}</span>` : '';
+          const hostCell = `<a class="host-link" href="/host/${encodeURIComponent(a.host)}" title="Detail ${rawHost}">${hostName}${subName}</a>`;
+          html += `<tr class="sev-${esc(a.severity)}">
+            <td><span class="tag ${esc(a.severity)}">${esc(a.severity)}</span></td>
+            <td class="col-host">${hostCell}</td>
+            <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc((a.category||'').toUpperCase())}</span></td>
             <td class="col-msg">${esc(a.message)}</td>
           </tr>`;
         });
       }
       tbody.innerHTML = html;
-      document.getElementById('pageInfo').textContent = `Page ${curPage} / ${totalPages}`;
-      document.getElementById('prevBtn').disabled = curPage <= 1;
-      document.getElementById('nextBtn').disabled = curPage >= totalPages;
-    }
-
-    function toggleSev(val) {
-      if(val === 'all') sevSet.clear();
-      else { sevSet.clear(); sevSet.add(val); }
-      curPage = 1;
-      renderTable();
-    }
-    
-    function setCatFilter(val) {
-      catFilter = val;
-      curPage = 1;
-      renderTable();
-    }
-
-    function chPage(delta) {
-      curPage += delta;
-      renderTable();
-    }
-    
-    function chLimit(val) {
-      PAGE_SIZE = parseInt(val, 10);
-      curPage = 1;
-      renderTable();
-    }
-    
-    function downloadCSV() {
-      alert("Feature CSV Export is not implemented yet in the mock UI.");
+      const pageInfo = document.getElementById('pageInfo');
+      if(pageInfo) pageInfo.textContent = `page ${curPage}/${totalPages} · ${filtered.length} rows`;
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      if(prevBtn) prevBtn.disabled = curPage <= 1;
+      if(nextBtn) nextBtn.disabled = curPage >= totalPages;
     }
 
     async function fetchTriggers(){
@@ -886,7 +609,7 @@
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         const rows = await res.json() || [];
         if(!rows.length){
-          tb.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--t3)">$ no_maintenance_scheduled — semua alarm aktif normal.</td></tr>`;
+          tb.innerHTML = `<tr><td colspan="6" style="border-bottom:none"><div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 2"/></svg></div><div class="empty-t">tidak ada jadwal maintenance</div><div class="empty-d">Semua alarm aktif normal. Isi form di atas untuk meredam alarm saat perbaikan terjadwal.</div></div></td></tr>`;
           return;
         }
         tb.innerHTML = rows.map(r => {
@@ -895,13 +618,13 @@
             : (String(r.start_at) > new Date().toISOString().slice(0,19).replace('T',' ')
                 ? `<span class="tag info">SCHEDULED</span>`
                 : `<span class="tag" style="color:var(--t3);border:1px solid var(--border2)">EXPIRED</span>`);
-          return `<tr>
+          return `<tr${r.is_active?' class="mnt-active"':''}>
             <td class="col-host">${esc(r.host)}</td>
             <td>${esc(r.start_at)}</td>
             <td>${esc(r.end_at)}</td>
             <td>${st}</td>
             <td class="col-msg">${esc(r.reason || '—')}</td>
-            <td><button class="maint-del" onclick="deleteMaintenance(${r.id})">rm</button></td>
+            <td><button class="maint-del" onclick="deleteMaintenance(${r.id})" title="Hapus jadwal"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M5.5 4V2.5h5V4M4 4l.7 10h6.6L12 4"/></svg></button></td>
           </tr>`;
         }).join('');
       } catch(e){
@@ -942,16 +665,36 @@
 
     // Init
     window.addEventListener('DOMContentLoaded', async () => {
-      // Setup Search Event Listener
-      const qf = document.getElementById('qFilter');
-      let deb = null;
-      if(qf) {
-        qf.addEventListener('input', () => {
-          clearTimeout(deb);
-          deb = setTimeout(()=>{ searchQuery = qf.value; curPage = 1; renderTable(); }, 200);
+      initFilterFromURL();
+      document.querySelectorAll('#sevBtns .filter-btn').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          const sev = b.getAttribute('data-sev');
+          if(sev === 'all'){ sevSet.clear(); }
+          else {
+            if(sevSet.has(sev)) sevSet.delete(sev);
+            else sevSet.add(sev);
+          }
+          curPage = 1;
+          syncFilterUI(); renderTable();
         });
-      }
-
+      });
+      const catSel = document.getElementById('catSelect');
+      if(catSel) catSel.addEventListener('change', ()=>{ catFilter = catSel.value; curPage = 1; syncFilterUI(); renderTable(); });
+      const si = document.getElementById('hostSearch');
+      let deb = null;
+      if(si) si.addEventListener('input', ()=>{
+        clearTimeout(deb);
+        deb = setTimeout(()=>{ searchQuery = si.value.toLowerCase().trim(); curPage = 1; syncFilterUI(); renderTable(); }, 180);
+      });
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      if(prevBtn) prevBtn.addEventListener('click', ()=>{ if(curPage>1){curPage--; renderTable();} });
+      if(nextBtn) nextBtn.addEventListener('click', ()=>{ curPage++; renderTable(); });
+      document.addEventListener('keydown', (e)=>{
+        const tag = (document.activeElement && document.activeElement.tagName) || '';
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if(e.key === '/' && !typing){ e.preventDefault(); const s=document.getElementById('hostSearch'); if(s) s.focus(); }
+      });
       await loadHosts();
       fetchTriggers();
       fetchMaintenance();
@@ -959,9 +702,10 @@
       setInterval(fetchTriggers, 10000);
       setInterval(fetchMaintenance, 30000);
     });
-    
-    // Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
-    (function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
   </script>
+<script>
+// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
 </body>
 </html>

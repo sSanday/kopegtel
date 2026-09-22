@@ -47,117 +47,57 @@
       pointer-events:none;z-index:0;
     }
 
-    /* ── TOPBAR ── */
+    /* Topbar */
     .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0 0;height:56px;
-      border-bottom:1px solid var(--border);
-      background:rgba(8,12,20,0.95);
       position:sticky;top:0;z-index:100;
+      height:52px;background:rgba(8,12,20,0.97);
+      border-bottom:1px solid var(--border2);
       backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;
     }
-    .tb-left{display:flex;align-items:center;gap:0;height:100%}
+    .tb-brand{
+      display:flex;align-items:center;gap:12px;
+      font-family:var(--mono);font-size:.72rem;
+    }
     .tb-logo{
-      display:flex;align-items:center;gap:10px;padding:0 24px;
-      height:56px;border-right:1px solid var(--border);
+      width:26px;height:26px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
     }
-    .logo-icon{
-      width:28px;height:28px;background:linear-gradient(135deg,#00a2ff,#00ff88);
-      border-radius:6px;display:flex;align-items:center;justify-content:center;
-      font-size:14px;box-shadow:0 0 16px rgba(0,162,255,0.5);
-    }
-    .logo-name{
-      font-family:var(--mono);font-size:.78rem;font-weight:700;
-      color:var(--t1);letter-spacing:1px;text-transform:uppercase;
-    }
-    .logo-name span{color:var(--accent2);margin-left:2px}
-
-    .tb-path{
-      padding:0 20px;height:56px;
+    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+    .tb-sep{color:var(--t3);font-size:.62rem}
+    .back-btn{
       display:flex;align-items:center;gap:6px;
-      font-family:var(--mono);font-size:.72rem;color:var(--t2);
-      border-right:1px solid var(--border);
+      background:rgba(0,0,0,.2);border:1px solid var(--border2);
+      color:var(--t2);padding:6px 14px;border-radius:6px;
+      font-family:var(--mono);font-size:.65rem;
+      text-decoration:none;transition:.15s;
     }
-    .tb-path .crumb{color:var(--t2)}
-    .tb-path .crumb.active{color:var(--accent2)}
-    .tb-sep{color:var(--t3)}
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
 
-    .tb-search{
-      display:flex;align-items:center;height:100%;
-      padding-left:16px;border-left:1px solid var(--border);
-    }
-    .tb-search input{
-      background:transparent;border:none;outline:none;
-      color:var(--t1);font-family:var(--mono);font-size:.72rem;
-      width:200px;transition:.2s;
-    }
-    .tb-search input::placeholder{color:var(--t3)}
-    .tb-search input:focus{width:260px}
-
-    .tb-right{display:flex;align-items:center;height:56px}
-    .tb-btn{
-      display:flex;align-items:center;gap:6px;
-      height:56px;padding:0 16px;
-      background:transparent;border:none;border-left:1px solid var(--border);
-      color:var(--t2);font-family:var(--mono);font-size:.72rem;
-      cursor:pointer;transition:.2s;text-decoration:none;white-space:nowrap;
-    }
-    .tb-btn:hover{color:var(--t1);background:rgba(255,255,255,0.04)}
-    .tb-btn svg{width:14px;height:14px;flex-shrink:0}
-    .tb-btn.danger{color:rgba(255,68,68,0.7)}
-    .tb-btn.danger:hover{color:#ff4444;background:rgba(255,68,68,0.06)}
-
-    .live-pill{
-      display:flex;align-items:center;gap:5px;
-      background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.25);
-      border-radius:4px;padding:3px 8px;
-      font-family:var(--mono);font-size:.65rem;font-weight:700;
-      color:var(--accent2);letter-spacing:1.5px;margin:0 12px;
-    }
-    .live-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-
-    /* ── MAIN AREA & SIDEBAR ── */
-    .main{display:flex;min-height:calc(100vh - 56px)}
-    .sidebar{
-      width:220px;flex-shrink:0;border-right:1px solid var(--border);
-      padding:20px 0;background:rgba(8,12,20,0.6);backdrop-filter:blur(8px);
-      display:flex;flex-direction:column;
-    }
-    .sb-section{padding:0 16px;margin-bottom:20px}
-    .sb-label{font-family:var(--mono);font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:10px;}
-    .sb-item{
-      display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;
-      font-family:var(--mono);font-size:.72rem;color:var(--t2);
-      cursor:pointer;transition:.15s;margin-bottom:2px;text-decoration:none;
-    }
-    .sb-item:hover{background:rgba(255,255,255,0.05);color:var(--t1)}
-    .sb-item.active{background:rgba(0,255,136,0.08);color:var(--accent2);border-left:2px solid var(--accent2);padding-left:8px}
-    .sb-item svg{width:13px;height:13px;flex-shrink:0}
-    .sb-item.sb-disabled{opacity:.38;cursor:not-allowed}
-    .soon-badge{margin-left:auto;font-size:.55rem;border:1px solid var(--border2);border-radius:3px;padding:1px 5px;color:var(--t3);letter-spacing:1px}
-
-    .sb-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-    .sb-dot.up{background:var(--success);box-shadow:0 0 6px var(--success)}
-    .sb-dot.down{background:var(--danger);box-shadow:0 0 6px var(--danger)}
-
-    .content{flex:1;min-width:0;padding:24px 28px}
+    /* Main layout */
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
 
     /* Section label */
     .sec-label{
       font-family:var(--mono);font-size:.62rem;font-weight:600;
       text-transform:uppercase;letter-spacing:2px;
-      color:var(--t3);display:flex;align-items:center;gap:6px;
-      margin-bottom:14px;
+      color:var(--t3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      margin-bottom:12px;
     }
     .sec-label::before{content:'//';color:var(--accent2)}
 
     /* Filter bar */
     .filter-bar{
-      display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      display:flex;align-items:center;gap:8px;row-gap:12px;flex-wrap:wrap;
       padding:14px 16px;
       background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;margin-bottom:16px;
+      border-radius:8px;margin-bottom:20px;
       backdrop-filter:blur(8px);
     }
     .filter-label{
@@ -167,180 +107,125 @@
     select{
       background:rgba(0,0,0,0.4);color:var(--t1);
       border:1px solid var(--border2);padding:7px 10px;
-      border-radius:5px;font-family:var(--mono);font-size:.7rem;
+      border-radius:6px;font-family:var(--mono);font-size:.7rem;
       outline:none;cursor:pointer;transition:.15s;
       -webkit-appearance:none;appearance:none;
       background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%232a4060'/%3E%3C/svg%3E");
       background-repeat:no-repeat;background-position:right 8px center;
       padding-right:26px;
     }
-    select:focus{border-color:rgba(0,162,255,0.35);background-color:rgba(0,162,255,0.04)}
+    select:focus{border-color:rgba(0,162,255,0.35);background-color:rgba(0,162,255,0.04);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
     select option{background:#0c1220}
 
-    .filter-sep{width:1px;height:22px;background:var(--border2);margin:0 4px;flex-shrink:0}
     .filter-search{
       background:rgba(0,0,0,0.4);border:1px solid var(--border2);color:var(--t1);
-      padding:7px 10px;border-radius:5px;font-family:var(--mono);font-size:.7rem;
-      min-width:180px;outline:none;
+      padding:7px 12px;border-radius:6px;font-family:var(--mono);font-size:.7rem;
+      min-width:180px;flex:1;outline:none;transition:.2s;
     }
-    .filter-search:focus{border-color:rgba(0,162,255,0.35)}
+    .filter-search:focus{border-color:rgba(0,162,255,0.35);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
     .filter-search::placeholder{color:var(--t3)}
     .export-btn{
-      display:inline-flex;align-items:center;gap:6px;background:transparent;
-      border:1px solid var(--border2);color:var(--t2);padding:7px 12px;border-radius:5px;
+      display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);
+      border:1px solid var(--border2);color:var(--t2);padding:7px 14px;border-radius:6px;
       font-family:var(--mono);font-size:.65rem;cursor:pointer;text-decoration:none;transition:.15s;
     }
-    .export-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
+    .export-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,.04)}
     .filter-stats{
-      margin-left:auto;font-family:var(--mono);font-size:.65rem;color:var(--t3);
+      margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);
+      background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:99px;
+      padding:4px 12px;font-variant-numeric:tabular-nums;white-space:nowrap;
     }
-    .filter-stats b{color:var(--t2)}
-    .table-scroll{overflow-x:auto}
+    .filter-stats b{color:var(--t1)}
+    .table-scroll{overflow:auto;max-height:560px}
     .table-scroll table{min-width:760px}
 
-    /* Log Hero */
-    .log-hero {
-      display: flex; align-items: center; justify-content: space-between;
-      background: linear-gradient(135deg, rgba(8,16,28,0.9), rgba(12,24,42,0.95));
-      border: 1px solid rgba(0,162,255,0.15); border-radius: 12px;
-      padding: 24px 28px; margin-bottom: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      position: relative; overflow: hidden;
-    }
-    .log-hero::before {
-      content:''; position:absolute; top:0; left:0; right:0; height:1px;
-      background:linear-gradient(90deg,transparent,rgba(0,162,255,0.4),rgba(0,255,136,0.3),transparent);
-    }
-    .hero-left { display: flex; align-items: center; gap: 20px; z-index: 2; }
-    .hero-icon-box {
-      width: 64px; height: 64px;
-      background: rgba(0,255,136,0.05); border: 1px solid rgba(0,255,136,0.3);
-      border-radius: 14px; display: flex; align-items: center; justify-content: center;
-      color: var(--success); box-shadow: 0 0 20px rgba(0,255,136,0.1) inset;
-    }
-    .hero-title {
-      font-family: var(--sans); font-size: 1.6rem; font-weight: 700;
-      color: var(--t1); margin-bottom: 4px; line-height: 1.1;
-    }
-    .hero-sub {
-      font-family: var(--sans); font-size: .85rem; color: var(--success);
-      display: flex; align-items: center; gap: 6px;
-    }
-    .hero-sub span { color: var(--t2); }
-    .hero-right {
-      display: flex; align-items: center; gap: 16px; z-index: 2;
-      background: rgba(0,0,0,0.2); padding: 12px 20px; border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.05);
-    }
-    .hr-icon {
-      width: 40px; height: 40px; background: rgba(0,162,255,0.1);
-      border: 1px solid rgba(0,162,255,0.3); border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      color: var(--accent);
-    }
-    .hr-text { font-family: var(--sans); font-size: .75rem; color: var(--t2); max-width: 200px; line-height: 1.4; }
-    .hero-wave {
-      position: absolute; right: 250px; top: 0; bottom: 0; width: 300px;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 100' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 50 C 50 10, 100 90, 150 50 C 200 10, 250 90, 300 50' stroke='rgba(0,162,255,0.1)' stroke-width='2'/%3E%3Cpath d='M0 50 C 50 90, 100 10, 150 50 C 200 90, 250 10, 300 50' stroke='rgba(0,255,136,0.1)' stroke-width='2'/%3E%3C/svg%3E") center/cover no-repeat;
-      opacity: 0.6; z-index: 1; pointer-events: none;
-    }
-
     /* Log table card */
-    .log-card {
-      background: var(--card); border: 1px solid var(--border2);
-      border-radius: 12px; overflow: hidden; backdrop-filter: blur(8px);
+    .log-card{
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
     }
 
-    /* Table top bar */
-    .term-topbar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 20px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border2);
+    /* Terminal top bar */
+    .term-topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
     }
-    .term-title-wrap { display: flex; align-items: center; gap: 10px; }
-    .term-icon { width: 24px; height: 24px; background: rgba(0,162,255,0.1); color: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-    .term-title { font-family: var(--sans); font-size: 1rem; font-weight: 600; color: var(--t1); }
-    .term-badge {
-      display: flex; align-items: center; gap: 6px;
-      font-family: var(--mono); font-size: .65rem; font-weight: 700;
-      background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.25);
-      color: var(--success); padding: 4px 10px; border-radius: 20px; letter-spacing: 1.5px;
-      cursor: pointer; user-select: none;
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    .term-badge{
+      font-family:var(--mono);font-size:.58rem;
+      background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);
+      color:var(--accent2);padding:2px 8px;border-radius:3px;letter-spacing:1px;
+      cursor:pointer;user-select:none;
     }
-    .term-badge .dot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; animation: blink 1s step-end infinite; }
-    .term-badge.paused { background: rgba(255,255,255,0.04); border-color: var(--border2); color: var(--t3); }
-    .term-badge.paused .dot { background: var(--t3); animation: none; }
+    .term-badge.paused{background:rgba(255,255,255,0.04);border-color:var(--border2);color:var(--t3)}
 
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      text-align: left; color: var(--t3); font-weight: 600;
-      font-family: var(--mono); font-size: .6rem; text-transform: uppercase; letter-spacing: 1.5px;
-      padding: 14px 20px; border-bottom: 1px solid var(--border2);
-      background: rgba(0,0,0,0.15); white-space: nowrap;
+    table{width:100%;border-collapse:collapse}
+    th{
+      text-align:left;color:var(--t3);font-weight:600;
+      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
+      padding:10px 14px;border-bottom:1px solid var(--border2);
+      background:#0d1424;white-space:nowrap;
+      position:sticky;top:0;z-index:1;
     }
-    td {
-      padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.025);
-      font-family: var(--mono); font-size: .75rem; color: var(--t2);
-      transition: .12s; vertical-align: middle; position: relative;
+    td{
+      padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
+      font-family:var(--mono);font-size:.7rem;color:var(--t2);
+      transition:.12s;vertical-align:middle;font-variant-numeric:tabular-nums;
     }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,0.03); color: var(--t1); }
-    tr:hover td:first-child { color: var(--t2); }
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(0,162,255,0.05);color:var(--t1)}
+    tr:hover td:first-child{color:var(--t2)}
+    tbody tr.lg-down td{background:rgba(255,68,68,.03)}
+    tbody tr.lg-down td.row-num{box-shadow:inset 2px 0 0 var(--danger)}
+    tbody tr.lg-down:hover td{background:rgba(255,68,68,.07)}
 
-    /* Left border color strip */
-    .row-strip {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-      background: transparent;
-    }
-    tr.s-up .row-strip { background: var(--success); }
-    tr.s-down .row-strip { background: var(--danger); }
-    tr.s-warn .row-strip { background: var(--warn); }
-    tr.s-info .row-strip { background: var(--info); }
-
-    .col-time { color: var(--t3)!important; white-space: nowrap; }
-    .col-host { color: var(--t1)!important; white-space: nowrap; }
-    .col-ip { color: var(--t3); font-size: .65rem; margin-top: 2px; }
-    .col-msg { color: var(--t2); line-height: 1.5; }
+    .col-time{color:var(--t3)!important;white-space:nowrap}
+    .col-host{color:var(--t1)!important;white-space:nowrap}
+    .col-msg{color:var(--t2);line-height:1.4}
 
     /* Event type tags */
-    .tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-family: var(--mono); font-size: .6rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 1px;
-      border-radius: 20px; padding: 4px 10px; white-space: nowrap;
+    .tag{
+      font-family:var(--mono);font-size:.58rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.8px;
+      border-radius:3px;padding:2px 7px;white-space:nowrap;
     }
-    .tag-dot { width: 6px; height: 6px; border-radius: 50%; }
-    .tag.down { background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.25); color: var(--danger); }
-    .tag.down .tag-dot { background: var(--danger); }
-    .tag.up { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.25); color: var(--success); }
-    .tag.up .tag-dot { background: var(--success); }
-    .tag.warn { background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.25); color: var(--warn); }
-    .tag.warn .tag-dot { background: var(--warn); }
-    .tag.info { background: rgba(0,162,255,0.1); border: 1px solid rgba(0,162,255,0.25); color: var(--info); }
-    .tag.info .tag-dot { background: var(--info); }
+    .tag.down{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.25)}
+    .tag.up{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.warn{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
+    .tag.info{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
 
     /* Line number gutter */
-    .row-num {
-      color: var(--t3); font-family: var(--mono); font-size: .65rem;
-      text-align: center; user-select: none; width: 40px; padding-left: 10px;
+    .row-num{
+      color:var(--t3);font-family:var(--mono);font-size:.62rem;
+      text-align:right;padding-right:6px;user-select:none;width:40px;
     }
 
-    .empty-state { text-align: center; padding: 40px; font-family: var(--mono); font-size: .72rem; color: var(--t3); line-height: 2; }
-    
+    .empty-state{
+      text-align:center;padding:40px;
+      font-family:var(--mono);font-size:.72rem;color:var(--t3);
+      line-height:2;
+    }
+    .empty-state .cmd{color:var(--accent2)}
+
     /* Pagination */
-    .pagination {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-top: 20px;
+    .pagination{
+      display:flex;align-items:center;justify-content:space-between;
+      margin-top:16px;flex-wrap:wrap;gap:10px;
     }
-    .page-info { font-family: var(--sans); font-size: .75rem; color: var(--t3); }
-    .page-btns { display: flex; align-items: center; gap: 4px; }
-    .page-btn {
-      background: transparent; color: var(--t2); border: 1px solid var(--border2);
-      width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-family: var(--mono); font-size: .75rem; transition: .15s;
+    .page-info{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+    .page-info b{color:var(--t2)}
+    .page-btns{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+    .page-btn{
+      background:transparent;color:var(--t2);
+      border:1px solid transparent;padding:6px 12px;
+      border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:.65rem;
+      transition:.15s;
     }
-    .page-btn.active { background: rgba(0,255,136,0.1); border-color: rgba(0,255,136,0.3); color: var(--success); }
-    .page-btn:hover:not(:disabled):not(.active) { background: rgba(255,255,255,0.05); color: var(--t1); }
-    .page-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .page-btn:hover:not(:disabled){background:rgba(255,255,255,0.05);color:var(--t1)}
+    .page-btn:disabled{opacity:.35;cursor:not-allowed}
 
     @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     tbody tr{animation:fadeIn .25s ease both}
@@ -348,234 +233,92 @@
 </head>
 <body>
 
-  <!-- TOPBAR -->
+  <!-- Topbar -->
   <div class="topbar">
-    <div class="tb-left">
-      <div class="tb-logo">
-        <div class="logo-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div class="logo-name">NMS<span>KOPEGTEL</span></div>
-      </div>
+    <div class="tb-brand">
+      <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="tb-path">
-        <a href="/" class="crumb" style="text-decoration:none"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-right:4px;vertical-align:-1px"><path d="M2 7l6-5 6 5v7a1 1 0 01-1 1H3a1 1 0 01-1-1V7z"/><path d="M6 14v-4h4v4"/></svg></a>
-        <span class="tb-sep">/</span>
-        <a href="/" class="crumb" style="text-decoration:none">dashboard</a>
-        <span class="tb-sep">/</span>
+        <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
+        <span class="tb-sep">›</span>
+        <a class="crumb" href="/" title="Dashboard utama">dashboard</a>
+        <span class="tb-sep">›</span>
         <span class="crumb active">audit-logs</span>
       </div>
-      <div class="tb-search">
-        <span style="color:var(--accent);margin-right:6px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/></svg></span>
-        <input type="text" id="qSearch" placeholder="Search logs, host, event..." autocomplete="off">
-      </div>
     </div>
-    <div class="tb-right">
-      <div class="live-pill"><div class="live-dot"></div>LIVE</div>
-      <a href="/logs" class="tb-btn" style="background:rgba(255,255,255,0.05)">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-        Logs
-      </a>
-      <button class="tb-btn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
-        Settings
-      </button>
-      <button class="tb-btn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M5 7h6M5 10h4"/></svg>
-        Hosts
-      </button>
-      <button class="tb-btn" id="notifBtn">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1a5 5 0 015 5v3l1.5 2.5H1.5L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg>
-        Notif
-      </button>
-      <a href="/logout" class="tb-btn danger">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
-        Logout
-      </a>
-    </div>
+    <a href="/" class="back-btn">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
+      cd ..
+    </a>
   </div>
 
-  <div class="main">
-    <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
-      <div class="sb-section">
-        <div class="sb-label">MAIN NAVIGATION</div>
-        <a href="/" class="sb-item" data-nav="dashboard">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-          Dashboard
-        </a>
-        <a href="/triggers" class="sb-item" data-nav="monitoring">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4v4l2 2"/></svg>
-          Monitoring <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
-        </a>
-        <a href="/services" class="sb-item" data-nav="services">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 4H2v8h12V4z"/><path d="M6 16v-4M10 16v-4M4 16h8"/></svg>
-          Services
-        </a>
-        <a href="/inventory" class="sb-item" data-nav="inventory">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 7h12"/></svg>
-          Inventory
-        </a>
-        <div class="sb-item" data-nav="fiber">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c3-1 4-6 6-6s3 5 6 4"/><circle cx="2" cy="12" r="1.2"/><circle cx="14" cy="10" r="1.2"/></svg>
-          Fiber <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
+  <div class="wrap">
+
+    <!-- Filter Bar -->
+    <div class="sec-label">audit_log.tail</div>
+    <div class="filter-bar">
+      <span class="filter-label">type</span>
+      <select id="typeFilter" onchange="resetAndFetch()">
+        <option value="">all_events</option>
+        <option value="NETWORK_DOWN">NETWORK_DOWN</option>
+        <option value="NETWORK_UP">NETWORK_UP</option>
+        <option value="HIGH_CPU">HIGH_CPU</option>
+        <option value="CPU_NORMAL">CPU_NORMAL</option>
+        <option value="HIGH_RAM">HIGH_RAM</option>
+        <option value="RAM_NORMAL">RAM_NORMAL</option>
+        <option value="HIGH_DISK">HIGH_DISK</option>
+        <option value="DISK_NORMAL">DISK_NORMAL</option>
+        <option value="AGENT_OFFLINE">AGENT_OFFLINE</option>
+        <option value="AGENT_ONLINE">AGENT_ONLINE</option>
+        <option value="AUDIT">AUDIT</option>
+      </select>
+      <span class="filter-label">host</span>
+      <select id="hostFilter" onchange="resetAndFetch()">
+        <option value="">all_hosts</option>
+      </select>
+      <input class="filter-search" id="qSearch" type="text" placeholder="$ grep message..." autocomplete="off">
+      <a class="export-btn" id="exportBtn" href="/api/system_logs/export"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> csv</a>
+      <div class="filter-stats" id="statsLabel">loading...</div>
+    </div>
+
+    <!-- Log Table -->
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
         </div>
-        <div class="sb-item" data-nav="mikrotik">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 12v2M11 12v2M8 9v5M4 5.5h8"/></svg>
-          MikroTik <span style="margin-left:auto"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg></span>
-        </div>
-        <a href="/reports" class="sb-item" data-nav="reports">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4h8v8M4 16h8M6 8h4"/></svg>
-          Reports
-        </a>
-        <a href="/logs" class="sb-item active" data-nav="logs">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-          Logs
-        </a>
-        <a href="/triggers?severity=disaster,high" class="sb-item" data-nav="alerts">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 00-4 4v3l-2 2v1h12v-1l-2-2V6a4 4 0 00-4-4z"/><path d="M6 13a2 2 0 004 0"/></svg>
-          Alerts
-          <span style="margin-left:auto;background:var(--danger);color:#fff;font-size:.5rem;padding:2px 5px;border-radius:10px">3</span>
-        </a>
-        <div class="sb-item sb-disabled">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
-          WSFPS <span class="soon-badge">soon</span>
-        </div>
-        <div class="sb-item sb-disabled">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4a2 2 0 100 4 2 2 0 000-4z"/></svg>
-          Administration <span class="soon-badge">soon</span>
-        </div>
+        <div class="term-title">bash — tail -f /var/log/nms/audit.log</div>
+        <div class="term-badge" id="liveBadge" role="button" tabindex="0" title="Klik untuk pause/resume auto-refresh 10s">LIVE</div>
       </div>
-      
-      <div class="sb-section" style="margin-top:auto">
-        <div class="sb-label">NODES</div>
-        <div style="font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-bottom:4px">- HP</div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot up"></div> Infinix Hot 10 Play
-        </div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot down"></div> Infinix Note 40
-        </div>
-        <div style="font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-bottom:4px;margin-top:10px">- LAPTOP</div>
-        <div class="sb-item" style="padding-left:14px">
-          <div class="sb-dot up"></div> Server/NMS
-        </div>
-      </div>
-      
-      <div style="margin-top:10px;padding:16px;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:24px;height:24px;background:rgba(0,255,136,0.1);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--accent2)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1l3 13-3-2-3 2z"/></svg></div>
-          <div>
-            <div style="font-family:var(--mono);font-size:.65rem;font-weight:700;color:var(--t1)">NMS KOPEGTEL</div>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--t3)">Network Monitoring System</div>
-            <div style="font-family:var(--mono);font-size:.5rem;color:var(--t3)">v1.107.0</div>
-          </div>
-        </div>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>timestamp</th>
+            <th>host</th>
+            <th>event_type</th>
+            <th>message</th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody">
+          <tr><td colspan="5" class="empty-state"><span class="cmd">$</span> loading data...</td></tr>
+        </tbody>
+      </table>
       </div>
     </div>
 
-    <div class="content">
-      
-      <!-- HERO SECTION -->
-      <div class="log-hero">
-        <div class="hero-wave"></div>
-        <div class="hero-left">
-          <div class="hero-icon-box">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-          </div>
-          <div>
-            <div class="hero-title">Audit Log Viewer</div>
-            <div class="hero-sub">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              Monitoring <span>&gt;</span> Audit Logs
-            </div>
-          </div>
-        </div>
-        <div class="hero-right">
-          <div class="hr-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </div>
-          <div class="hr-text">Track and monitor all system events for better security and performance.</div>
-        </div>
+    <!-- Pagination -->
+    <div class="pagination">
+      <div class="page-info" id="pageInfo">page <b>1</b></div>
+      <div class="page-btns">
+        <button class="page-btn" id="prevBtn" onclick="prevPage()" disabled>← prev</button>
+        <button class="page-btn" id="nextBtn" onclick="nextPage()" disabled>next →</button>
       </div>
-
-      <!-- FILTER BAR -->
-      <div class="filter-bar">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div>
-            <div class="filter-label" style="margin-bottom:4px">TYPE</div>
-            <select id="typeFilter" onchange="resetAndFetch()">
-              <option value="">all_events</option>
-              <option value="NETWORK_DOWN">NETWORK_DOWN</option>
-              <option value="NETWORK_UP">NETWORK_UP</option>
-              <option value="HIGH_CPU">HIGH_CPU</option>
-              <option value="CPU_NORMAL">CPU_NORMAL</option>
-              <option value="HIGH_RAM">HIGH_RAM</option>
-              <option value="RAM_NORMAL">RAM_NORMAL</option>
-              <option value="HIGH_DISK">HIGH_DISK</option>
-              <option value="DISK_NORMAL">DISK_NORMAL</option>
-              <option value="AGENT_OFFLINE">AGENT_OFFLINE</option>
-              <option value="AGENT_ONLINE">AGENT_ONLINE</option>
-              <option value="AUDIT">AUDIT</option>
-            </select>
-          </div>
-          <div>
-            <div class="filter-label" style="margin-bottom:4px">HOST</div>
-            <select id="hostFilter" onchange="resetAndFetch()">
-              <option value="">all_hosts</option>
-            </select>
-          </div>
-          <div style="display:flex;align-items:flex-end;margin-left:10px">
-            <div style="position:relative">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input class="filter-search" id="qSearch" type="text" placeholder="grep message..." autocomplete="off" style="padding-left:32px">
-            </div>
-            <a class="export-btn" id="exportBtn" href="/api/system_logs/export" style="margin-left:12px;margin-bottom:2px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              CSV
-            </a>
-          </div>
-        </div>
-        <div class="filter-stats" id="statsLabel">loading...</div>
-      </div>
-
-      <!-- LOG TABLE -->
-      <div class="log-card">
-        <div class="term-topbar">
-          <div class="term-title-wrap">
-            <div class="term-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            </div>
-            <div class="term-title">Audit Logs</div>
-          </div>
-          <div class="term-badge" id="liveBadge" role="button" tabindex="0" title="Klik untuk pause/resume auto-refresh 10s">
-            <div class="dot"></div> LIVE
-          </div>
-        </div>
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:50px">#</th>
-                <th style="width:180px">TIMESTAMP <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;color:var(--success)"><path d="M12 5v14M5 12l7 7 7-7"/></svg></th>
-                <th style="width:250px">HOST</th>
-                <th style="width:180px">EVENT TYPE</th>
-                <th>MESSAGE</th>
-              </tr>
-            </thead>
-            <tbody id="logTableBody">
-              <tr><td colspan="5" class="empty-state">loading data...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- PAGINATION -->
-      <div class="pagination">
-        <div class="page-info" id="pageInfo">Showing 1 - 50 of 0 events</div>
-        <div class="page-btns" id="pageBtns">
-          <!-- Rendered by JS -->
-        </div>
-      </div>
-
     </div>
+
+  </div>
 
 <script>
   let currentPage=1;
@@ -640,7 +383,7 @@
   async function fetchLogs(showLoading=true){
     const {type, host, q} = currentQuery();
     const tbody=document.getElementById('logTableBody');
-    if(showLoading) tbody.innerHTML='<tr><td colspan="5" class="empty-state">fetching data...</td></tr>';
+    if(showLoading) tbody.innerHTML='<tr><td colspan="5" class="empty-state"><span style="color:var(--accent2)">$</span> fetching data...</td></tr>';
     document.getElementById('exportBtn').href = `/api/system_logs/export?host=${encodeURIComponent(host)}&type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`;
 
     try{
@@ -650,9 +393,11 @@
       const data=await res.json();
 
       if(!data.logs || data.logs.length===0){
-        tbody.innerHTML='<tr><td colspan="5" class="empty-state">grep: no records found<br><span style="color:var(--t3)">(try adjusting your filters)</span></td></tr>';
-        renderPagination(0, limit, currentPage);
-        document.getElementById('statsLabel').innerHTML='<b>0</b> events total';
+        tbody.innerHTML='<tr><td colspan="5" class="empty-state"><span style="color:var(--accent2)">$</span> grep: no records found<br><span style="color:var(--t3)">(try adjusting your filters)</span></td></tr>';
+        document.getElementById('prevBtn').disabled=true;
+        document.getElementById('nextBtn').disabled=true;
+        document.getElementById('pageInfo').innerHTML='page <b>1</b> / <b>1</b>';
+        document.getElementById('statsLabel').innerHTML='<b>0</b> events';
         return;
       }
 
@@ -661,24 +406,24 @@
       data.logs.forEach((log,i)=>{
         const rawHost = String(log.host || '');
         const displayName = window.aliasMap && window.aliasMap[rawHost] ? window.aliasMap[rawHost] : rawHost;
-        const tagClass = getTagClass(log.event_type);
+        const _tc = getTagClass(log.event_type);
         const tr=document.createElement('tr');
-        tr.className = `s-${tagClass}`;
+        if(_tc==='down')tr.className='lg-down';
         tr.style.animationDelay=`${i*.02}s`;
         tr.innerHTML=`
-          <td class="row-num">
-            <div class="row-strip"></div>
-            ${offset+i+1}
-          </td>
+          <td class="row-num">${offset+i+1}</td>
           <td class="col-time">${esc(log.timestamp)}</td>
-          <td class="col-host">${esc(displayName)}${esc(displayName)!==esc(rawHost)?`<div class="col-ip">${esc(rawHost)}</div>`:''}</td>
-          <td><span class="tag ${esc(tagClass)}"><div class="tag-dot"></div> ${esc(log.event_type)}</span></td>
+          <td class="col-host">${esc(displayName)}${esc(displayName)!==esc(rawHost)?`<br><span style="color:var(--t3);font-size:.6rem">${esc(rawHost)}</span>`:''}</td>
+          <td><span class="tag ${_tc}">${esc(log.event_type)}</span></td>
           <td class="col-msg">${esc(log.message)}</td>`;
         tbody.appendChild(tr);
       });
 
-      renderPagination(data.total, limit, currentPage);
+      const totalPages=Math.ceil(data.total/limit)||1;
+      document.getElementById('pageInfo').innerHTML=`page <b>${currentPage}</b> / <b>${totalPages}</b>`;
       document.getElementById('statsLabel').innerHTML=`<b>${data.total}</b> events total`;
+      document.getElementById('prevBtn').disabled=currentPage===1;
+      document.getElementById('nextBtn').disabled=currentPage>=totalPages;
 
     }catch(e){
       console.error(e);
@@ -686,34 +431,8 @@
     }
   }
 
-  window.lastTotal = 0;
-  function renderPagination(total, limit, current) {
-    window.lastTotal = total;
-    const totalPages = Math.ceil(total/limit) || 1;
-    let html = `<button class="page-btn" onclick="goToPage(${current-1})" ${current === 1 ? 'disabled' : ''}>&lt;</button>`;
-    
-    let start = Math.max(1, current - 2);
-    let end = Math.min(totalPages, current + 2);
-    if (current <= 3) end = Math.min(totalPages, 5);
-    if (current >= totalPages - 2) start = Math.max(1, totalPages - 4);
-    
-    for(let i = start; i <= end; i++) {
-      html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
-    }
-    
-    html += `<button class="page-btn" onclick="goToPage(${current+1})" ${current === totalPages ? 'disabled' : ''}>&gt;</button>`;
-    document.getElementById('pageBtns').innerHTML = html;
-    
-    const startRow = total === 0 ? 0 : ((current - 1) * limit) + 1;
-    const endRow = Math.min(current * limit, total);
-    document.getElementById('pageInfo').innerHTML = `Showing ${startRow} - ${endRow} of ${total} events`;
-  }
-  function goToPage(p){
-    const totalPages = Math.ceil(window.lastTotal/limit) || 1;
-    if(p < 1 || p > totalPages) return;
-    currentPage = p;
-    fetchLogs();
-  }
+  function prevPage(){if(currentPage>1){currentPage--;fetchLogs()}}
+  function nextPage(){currentPage++;fetchLogs()}
 
   init();
 </script>

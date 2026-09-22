@@ -21,16 +21,25 @@
     .topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,0.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
     .tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
     .tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px}
-    .tb-path{display:flex;align-items:center;gap:6px;color:var(--t2)}
-    .tb-path .crumb.active{color:var(--accent2)}
+    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+    .tb-sep{color:var(--t3);font-size:.62rem}
+    .back-btn{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);border:1px solid var(--border2);color:var(--t2);padding:6px 14px;border-radius:6px;font-family:var(--mono);font-size:.65rem;text-decoration:none;transition:.15s}
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
     .tb-sep{color:var(--t3)}
     .back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
     .back-btn:hover{color:var(--t1)}
     .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
-    .sec-label{font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:14px}
-    .sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
-    .filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:16px}
-    .range-btns{display:flex;gap:4px}
+.sec-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:12px}
+.sec-label::before{content:'//';color:var(--accent2)}
+    .filter-bar{display:flex;flex-direction:column;gap:10px;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:20px}
+    .t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .range-btns{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
+    .range-btns .range-btn{border-color:transparent;border-radius:4px}
+    .gen-chip{font-family:var(--mono);font-size:.62rem;color:var(--t3);background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:99px;padding:4px 12px;font-variant-numeric:tabular-nums}
+    .gen-chip b{color:var(--t2);font-weight:500}
     .range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.65rem;font-weight:600;padding:5px 12px;border-radius:4px;cursor:pointer}
     .range-btn.active{background:rgba(0,162,255,0.12);border-color:rgba(0,162,255,0.45);color:var(--info)}
     .btn{background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.3);color:var(--accent);padding:7px 14px;border-radius:5px;font-family:var(--mono);font-size:.65rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
@@ -41,26 +50,35 @@
     .btn.ghost:hover{color:var(--t1)}
     .btn:disabled{opacity:.5;cursor:wait}
     .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px}
-    .card{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:14px 16px}
-    .card .k{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
-    .card .v{font-family:var(--mono);font-size:1.4rem;font-weight:700}
+    .card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:14px 16px 14px 19px;transition:.15s}
+    .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);opacity:.7}
+    .card:nth-child(2)::before{background:var(--accent2)}
+    .card:nth-child(3)::before{background:var(--danger)}
+    .card:nth-child(4)::before{background:var(--warn)}
+    .card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
+    .card .k{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+    .card .k::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+    .card .v{font-family:var(--mono);font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
     .log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-bottom:16px}
     .term-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2)}
     .term-dots{display:flex;gap:5px}
     .term-dot{width:10px;height:10px;border-radius:50%}
     .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
     .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
-    .table-scroll{overflow-x:auto}
+    .table-scroll{overflow:auto;max-height:430px}
     table{width:100%;border-collapse:collapse;min-width:760px}
-    th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.15);white-space:nowrap}
-    td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.68rem;color:var(--t2)}
+    th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:#0d1424;white-space:nowrap;position:sticky;top:0;z-index:1}
+    td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.68rem;color:var(--t2);font-variant-numeric:tabular-nums}
     tr:last-child td{border-bottom:none}
-    tr:hover td{background:rgba(255,255,255,0.02)}
+    tr:hover td{background:rgba(0,162,255,0.05)}
+    tbody tr.trg-ongoing td{background:rgba(255,68,68,.04)}
+    tbody tr.trg-ongoing td:first-child{box-shadow:inset 2px 0 0 var(--danger)}
+    tbody tr.trg-ongoing:hover td{background:rgba(255,68,68,.08)}
     .tag{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap}
     .tag.resolved{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
     .tag.ongoing{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
     .empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--mono);font-size:.7rem}
-    .note{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-top:8px}
+    .note{font-family:var(--mono);font-size:.62rem;color:var(--t2);margin-top:10px;background:rgba(0,162,255,.05);border:1px solid rgba(0,162,255,.15);border-radius:8px;padding:10px 14px;line-height:1.7}
     .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
     @media print{
       body::before,body::after,.filter-bar .btn,.back-btn{display:none!important}
@@ -74,24 +92,27 @@
   <div class="topbar">
     <div class="tb-brand">
       <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="tb-path"><span class="crumb">~/noc</span><span class="tb-sep">/</span><span class="crumb">dashboard</span><span class="tb-sep">/</span><span class="crumb active">reports</span></div>
+      <div class="tb-path"><a class="crumb" href="/" title="Dashboard utama">~/noc</a><span class="tb-sep">›</span><a class="crumb" href="/" title="Dashboard utama">dashboard</a><span class="tb-sep">›</span><span class="crumb active">reports</span></div>
     </div>
     <a href="/" class="back-btn">cd ..</a>
   </div>
   <div class="wrap">
     <div class="sec-label">sla_report</div>
     <div class="filter-bar">
-      <div class="range-btns" id="daysBtns">
-        <button class="range-btn" data-days="1">1D</button>
-        <button class="range-btn" data-days="3">3D</button>
-        <button class="range-btn active" data-days="7">7D</button>
+      <div class="t-row">
+        <div class="range-btns" id="daysBtns">
+          <button class="range-btn" data-days="1">1D</button>
+          <button class="range-btn" data-days="3">3D</button>
+          <button class="range-btn active" data-days="7">7D</button>
+        </div>
+        <span class="gen-chip">generated: <b id="genAt">—</b></span>
       </div>
-      <span class="last-updated">generated: <span id="genAt">—</span></span>
-      <span style="flex:1"></span>
-      <a class="btn ghost" id="expSummary" href="#"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> summary.csv</a>
-      <a class="btn ghost" id="expOutages" href="#"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> outages.csv</a>
-      <button class="btn" onclick="window.print()"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M5 6V2h6v4M2.5 6h11v5h-3M2.5 6v5h3"/><path d="M4.5 11.5h7V14h-7z"/></svg> print/pdf</button>
-      <button class="btn green" id="sendBtn" onclick="sendTelegram()"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2 7.5 8.5M14 2l-4.5 12-2-5.5L2 6.5z"/></svg> telegram</button>
+      <div class="t-row">
+        <a class="btn ghost" id="expSummary" href="#"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> summary.csv</a>
+        <a class="btn ghost" id="expOutages" href="#"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> outages.csv</a>
+        <button class="btn ghost" onclick="window.print()"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M5 6V2h6v4M2.5 6h11v5h-3M2.5 6v5h3"/><path d="M4.5 11.5h7V14h-7z"/></svg> print/pdf</button>
+        <button class="btn green" id="sendBtn" onclick="sendTelegram()" style="margin-left:auto"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2 7.5 8.5M14 2l-4.5 12-2-5.5L2 6.5z"/></svg> telegram</button>
+      </div>
     </div>
     <div class="cards">
       <div class="card"><div class="k">hosts</div><div class="v" id="tHosts">—</div></div>
@@ -145,7 +166,7 @@ async function fetchReport(){
     }).join('') : `<tr><td colspan="8"><div class="empty">$ no hosts</div></td></tr>`;
     const ob = document.getElementById('outBody');
     document.getElementById('outCount').textContent = `${d.outages.length} rows`;
-    ob.innerHTML = d.outages.length ? d.outages.map(o=>`<tr><td style="color:var(--t1)">${esc(o.alias)}<br><span style="color:var(--t3);font-size:.6rem">${esc(o.host)}</span></td><td>${esc(o.started_at)}</td><td>${esc(o.resolved_at)}</td><td>${esc(o.duration_str)}</td><td><span class="tag ${esc(o.status)}">${esc(o.status)}</span></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty">$ status = ALL_CLEAR — tidak ada outage pada periode ini.</div></td></tr>`;
+    ob.innerHTML = d.outages.length ? d.outages.map(o=>`<tr${String(o.status).toLowerCase()==='ongoing'?' class="trg-ongoing"':''}><td style="color:var(--t1)">${esc(o.alias)}<br><span style="color:var(--t3);font-size:.6rem">${esc(o.host)}</span></td><td>${esc(o.started_at)}</td><td>${esc(o.resolved_at)}</td><td>${esc(o.duration_str)}</td><td><span class="tag ${esc(o.status)}">${esc(o.status)}</span></td></tr>`).join('') : `<tr><td colspan="5"><div class="empty">$ status = ALL_CLEAR — tidak ada outage pada periode ini.</div></td></tr>`;
   }catch(e){ console.error(e); }
 }
 async function sendTelegram(){
