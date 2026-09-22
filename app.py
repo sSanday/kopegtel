@@ -8,7 +8,7 @@ import glob
 import time
 import hashlib
 import difflib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
@@ -1776,22 +1776,22 @@ def poll_mikrotik_health():
                         if _kind == "wrap":
                             tg_queue.append(
                                 f"ℹ️ *MIKROTIK UPTIME WRAP?*\nHost: `{host}`\n"
-                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
+                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up or 0))} → sekarang: {_fmt_duration(int(sysup or 0))}\n"
                                 f"Kemungkinan wrap counter TimeTicks (>467 hari), bukan reboot beneran — verifikasi uptime.\n"
                                 f"Waktu: {timestamp}")
                             try:
                                 _insert_system_log(c, "MT_REBOOT", host,
-                                                   f"kemungkinan wrap (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
+                                                   f"kemungkinan wrap (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)", timestamp)
                             except Exception:
                                 pass
                         else:
                             tg_queue.append(
                                 f"🔄 *MIKROTIK REBOOT TERDETEKSI*\nHost: `{host}`\n"
-                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up))} → sekarang: {_fmt_duration(int(sysup))}\n"
+                                f"Uptime sebelumnya: {_fmt_duration(int(prev_up or 0))} → sekarang: {_fmt_duration(int(sysup or 0))}\n"
                                 f"Waktu: {timestamp}")
                             try:
                                 _insert_system_log(c, "MT_REBOOT", host,
-                                                   f"reboot (uptime {int(prev_up)}s -> {int(sysup)}s)", timestamp)
+                                                   f"reboot (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)", timestamp)
                             except Exception:
                                 pass
                     mt_sysup[host] = sysup
@@ -2494,13 +2494,13 @@ def get_ssl_expiry(url, timeout=5):
         exp = None
         for fmt in ("%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z"):
             try:
-                exp = datetime.strptime(not_after, fmt)
+                exp = datetime.strptime(str(not_after), fmt)
                 break
             except ValueError:
                 continue
         if exp is None:
             return None, None
-        days_left = (exp - datetime.utcnow()).days
+        days_left = (exp - datetime.now(timezone.utc).replace(tzinfo=None)).days
         return exp.strftime("%Y-%m-%d %H:%M:%S"), days_left
     except Exception as e:
         print(f"[SSL] {url}: {e}")
@@ -3471,13 +3471,13 @@ def poll_fiber_monitor():
                 try:
                     _was_degr = bool((fiber_degrade_memory.get(oid) or {}).get("degrading"))
                     _degr, _drop = _fiber_degradation(oid, rx)
-                    fiber_degrade_memory[oid] = {"degrading": bool(_degr), "drop_db": _drop}
+                    fiber_degrade_memory[oid] = {"degrading": _degr, "drop_db": _drop}
                 except Exception as e:
                     print(f"[FIBER] degradasi {oid} gagal: {e}")
                     _was_degr, _degr, _drop = False, False, None
                 try:
                     _flap, _flips = _fiber_flap(oid)
-                    fiber_flap_memory[oid] = {"flapping": bool(_flap), "flips": _flips}
+                    fiber_flap_memory[oid] = {"flapping": _flap, "flips": _flips}
                 except Exception as e:
                     print(f"[FIBER] flap {oid} gagal: {e}")
                 computed.append((o, oid, rx, tx, dec, _was_degr, _degr, _drop))
@@ -4083,9 +4083,11 @@ def api_add_host():
     snmp_vals, err = _parse_snmp_fields(data)
     if err:
         return jsonify({"error": err}), 400
+    assert snmp_vals is not None
     ssh_vals, err = _parse_ssh_fields(data)
     if err:
         return jsonify({"error": err}), 400
+    assert ssh_vals is not None
     try:
         if_index = int(data.get("if_index", 1))
     except (ValueError, TypeError):
@@ -4221,9 +4223,11 @@ def api_update_host_snmp(ip):
     snmp_vals, err = _parse_snmp_fields(data)
     if err:
         return jsonify({"error": err}), 400
+    assert snmp_vals is not None
     ssh_vals, err = _parse_ssh_fields(data)
     if err:
         return jsonify({"error": err}), 400
+    assert ssh_vals is not None
     sets, params = [], []
     if "snmp_community" in data:
         sets.append("snmp_community=?")
@@ -4496,7 +4500,7 @@ def agent_report():
     if AGENT_API_KEY:
         import hmac
         provided = request.headers.get("X-API-Key") or ""
-        if not provided or not hmac.compare_digest(str(provided), str(AGENT_API_KEY)):
+        if not provided or not hmac.compare_digest(provided, AGENT_API_KEY):
             return jsonify({"error": "Forbidden: API key agent salah"}), 403
 
     data = request.get_json(silent=True) or {}
@@ -4885,7 +4889,7 @@ def clear_events():
 @app.route("/api/maintenance", methods=["GET"])
 @api_login_required
 def api_maintenance_list():
-    active_only = str(request.args.get("active") or "").strip() == "1"
+    active_only = (request.args.get("active") or "").strip() == "1"
     host_filter = (request.args.get("host") or "").strip()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn, c = get_db()
@@ -5048,7 +5052,7 @@ def add_service_api():
     port = None
     if svc_type == "tcp":
         try:
-            port = int(port_raw)
+            port = int(port_raw or 0)
         except (ValueError, TypeError):
             return jsonify({"error": "TCP Port harus angka 1-65535"}), 400
         if not 1 <= port <= 65535:
@@ -6361,7 +6365,7 @@ def _olt_test_connection(olt, timeout=3.0):
     t0 = _t.time()
     ip = (olt.get("ip") or "").strip()
     comm = (olt.get("community") or "").strip()
-    res = {"reachable": False, "sysup_s": None, "rx": None, "tx": None,
+    res: dict = {"reachable": False, "sysup_s": None, "rx": None, "tx": None,
            "ok": False, "message": "", "elapsed_ms": 0}
     if not ip or not comm:
         res["message"] = "IP/community OLT belum diisi"
@@ -6410,7 +6414,7 @@ def _olt_test_connection(olt, timeout=3.0):
         res["ok"] = True
         parts = []
         for k in bases:
-            e = res[k]
+            e: dict = res[k]
             parts.append(f"{k}={e.get('dbm')}dBm(idx {e.get('index')})" if e.get("ok")
                          else f"{k} gagal")
         res["message"] = f"terjangkau (up {res['sysup_s']}s); " + ", ".join(parts)
@@ -7115,7 +7119,7 @@ def api_mt_backup_get(host, bid):
     if not row:
         return jsonify({"error": "Backup tidak ditemukan"}), 404
     d = dict(row)
-    if str(request.args.get("download") or "").strip() == "1":
+    if (request.args.get("download") or "").strip() == "1":
         safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", host)[:48]
         return Response(d.get("content") or "", mimetype="text/plain",
                         headers={"Content-Disposition":
@@ -7502,7 +7506,7 @@ def get_triggers():
                 lvl = _ssl_level(d.get("ssl_days_left"))
                 if lvl and (d.get("url") or "").lower().startswith("https://"):
                     try:
-                        days = int(d.get("ssl_days_left"))
+                        days = int(d.get("ssl_days_left") or 0)
                     except (ValueError, TypeError):
                         days = None
                     if lvl == "expired":

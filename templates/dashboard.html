@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="gelap">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NMS Kopegtel — Konsol operasional</title>
+<meta name="description" content="Konsol operasional NMS Kopegtel: kondisi jaringan, latensi, dan riwayat gangguan.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+<a class="lewati" href="#isi">Lewati ke isi utama</a>
+
+<div class="aplikasi">
+  <!-- ============ Sidebar ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-titik" aria-hidden="true"></span>
+      <div>
+        <p class="brand-nama">NMS Kopegtel</p>
+        <p class="brand-sub">Konsol operasional</p>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="Bagian halaman">
+      <a href="#ringkasan">Ringkasan</a>
+      <a href="#host">Host</a>
+      <a href="#latensi">Latensi</a>
+      <a href="#gangguan">Gangguan</a>
+    </nav>
+
+    <div class="side-host">
+      <p class="side-judul">Host terpantau</p>
+      <ul class="side-daftar" id="sideDaftar">
+        {# Placeholder Jinja dari SQLite: sidebar_hosts = [{nama, ip, status}] #}
+        {% for h in sidebar_hosts | default([], true) %}
+        <li>
+          <span class="titik titik-{{ h.status | default('pending', true) }}" aria-hidden="true"></span>
+          <span class="side-nama">{{ h.nama | default(h.ip, true) }}</span>
+          <span class="mono side-ip">{{ h.ip }}</span>
+        </li>
+        {% else %}
+        <li class="side-kosong">Belum ada host terdaftar. Tambahkan host dulu agar daftar muncul di sini.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <button class="btn-tema" id="btnTemaSide" type="button" aria-pressed="false">
+      <span aria-hidden="true">◐</span> Ganti tema
+    </button>
+  </aside>
+  <div class="overlay" id="overlay" hidden></div>
+
+  <!-- ============ Kolom utama ============ -->
+  <div class="utama">
+    <header class="topbar">
+      <button class="btn-garis" id="btnMenu" type="button" aria-label="Buka navigasi" aria-expanded="false" aria-controls="sidebar">
+        <span aria-hidden="true">☰</span>
+      </button>
+      <div class="topbar-teks">
+        <h1>Kondisi jaringan hari ini</h1>
+        <p>Diperbarui <span class="mono" id="waktuSegar">{{ waktu_segar | default('—', true) }}</span></p>
+      </div>
+      <button class="btn-garis hanya-ponsel" id="btnTemaTop" type="button" aria-pressed="false">Ganti tema</button>
+    </header>
+
+    <main class="isi" id="isi">
+      <!-- ============ 1. Ringkasan ============ -->
+      <section class="panel ringkasan" id="ringkasan" aria-labelledby="jRingkasan">
+        <h2 id="jRingkasan">Ringkasan</h2>
+        {# Placeholder Jinja: kesimpulan adalah satu kalimat dari backend #}
+        <p class="kesimpulan" id="kesimpulan">{{ kesimpulan | default('Mengambil kondisi terbaru dari database. Jika lama tidak muncul, periksa koneksi lalu muat ulang halaman.', true) }}</p>
+
+        <dl class="angka" aria-label="Angka pendukung">
+          <div>
+            <dt>Merespons</dt>
+            <dd class="mono"><span id="angkaMerespons">{{ ringkas_angka.merespons | default(0, true) }}</span><span class="angka-kecil"> / <span id="angkaTotal">{{ ringkas_angka.total | default(5, true) }}</span></span></dd>
+          </div>
+          <div>
+            <dt>Uptime 24 jam</dt>
+            <dd class="mono"><span id="angkaUptime">{{ ringkas_angka.uptime | default('—', true) }}</span><span class="angka-kecil"> %</span></dd>
+          </div>
+          <div>
+            <dt>Rata-rata latensi</dt>
+            <dd class="mono"><span id="angkaRata">{{ ringkas_angka.rata | default('—', true) }}</span><span class="angka-kecil"> ms</span></dd>
+          </div>
+        </dl>
+
+        <div class="pita-wrap">
+          <div class="pita-kepala">
+            <p>Ketersediaan 24 jam</p>
+            <p class="petunjuk">Setiap blok mewakili 15 menit. Hijau berarti semua host merespons, kuning sebagian, merah semua tidak merespons.</p>
+          </div>
+          {# Placeholder Jinja: pita = list 96 {waktu, kondisi: normal|sebagian|turun|kosong} #}
+          <div class="pita" id="pita" role="img" aria-label="Pita ketersediaan 24 jam">
+            {% for b in pita | default([], true) %}
+            <span class="blok blok-{{ b.kondisi | default('kosong', true) }}" title="{{ b.waktu | default('', true) }}"></span>
+            {% else %}
+            <span class="blok blok-kosong"></span>
+            {% endfor %}
+          </div>
+          <p class="kosong kecil" id="pitaKosong" hidden>Belum ada data 24 jam. Pita akan terisi setelah pemantauan berjalan beberapa menit.</p>
+        </div>
+      </section>
+
+      <!-- ============ 2. Daftar host ============ -->
+      <section class="host-seksi" id="host" aria-labelledby="jHost">
+        <h2 id="jHost">Host</h2>
+        <p class="petunjuk">Daftar dikelompokkan berdasarkan jenis. Pilih baris untuk menyorot host di grafik.</p>
+        <div id="kelompok">
+          {# Placeholder Jinja dari SQLite: kelompok = [{jenis, hosts:[{nama, ip, status, status_teks, uptime, rata, min, puncak, loss, spark}]}] #}
+          {% for g in kelompok | default([], true) %}
+          <div class="kelompok">
+            <h3>{{ g.jenis }} <span class="kelompok-info">{{ g.turun | default(0, true) }} dari {{ g.total | default(g.hosts|length, true) }} tidak merespons</span></h3>
+            <ul class="baris-daftar">
+              {% for h in g.hosts %}
+              <li>
+                <button class="baris status-{{ h.status | default('pending', true) }}" type="button" data-host="{{ h.ip }}">
+                  <span class="rel" aria-hidden="true"></span>
+                  <span class="baris-identitas">
+                    <span class="baris-nama">{{ h.nama | default(h.ip, true) }}</span>
+                    <span class="mono baris-ip">{{ h.ip }}</span>
+                  </span>
+                  <span class="lencana lencana-{{ h.status | default('pending', true) }}">{{ h.status_teks | default('Menunggu data', true) }}</span>
+                  <canvas class="spark" width="120" height="32" aria-hidden="true" data-spark='{{ h.spark | default([], true) | tojson }}'></canvas>
+                  <span class="metrik">
+                    <span>Rata <b class="mono">{{ h.rata | default('—', true) }} ms</b></span>
+                    <span>Min <b class="mono">{{ h.min | default('—', true) }}</b></span>
+                    <span>Puncak <b class="mono">{{ h.puncak | default('—', true) }}</b></span>
+                    <span>Loss <b class="mono">{{ h.loss | default('—', true) }}%</b></span>
+                    <span>Uptime <b class="mono">{{ h.uptime | default('—', true) }}%</b></span>
+                  </span>
+                </button>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% else %}
+          <div class="panel">
+            <p class="kosong">Belum ada data host untuk ditampilkan. Data awal dari database belum tersedia — tunggu pemindaian pertama selesai, lalu muat ulang halaman.</p>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <!-- ============ 3. Grafik latensi ============ -->
+      <section class="panel grafik" id="latensi" aria-labelledby="jLatensi">
+        <div class="grafik-kepala">
+          <div>
+            <h2 id="jLatensi">Latensi</h2>
+            <p class="petunjuk">Sumbu tegak memakai skala log dari 0,1 sampai 500 ms. Garis yang terputus berarti host tidak merespons, bukan nol.</p>
+          </div>
+          <div class="rentang" role="group" aria-label="Rentang waktu">
+            <button type="button" data-rentang="1" aria-pressed="true">1 jam</button>
+            <button type="button" data-rentang="6" aria-pressed="false">6 jam</button>
+            <button type="button" data-rentang="24" aria-pressed="false">24 jam</button>
+          </div>
+        </div>
+        <div class="toggle-host" id="toggleHost" aria-label="Pilih host yang tampil"></div>
+        <div class="kanvas-wrap">
+          <canvas id="grafikLatensi" role="img" aria-label="Grafik latensi per host"></canvas>
+        </div>
+        <p class="kosong" id="grafikKosong" hidden>Belum ada riwayat latensi pada rentang ini. Coba rentang lain, atau tunggu hingga pemantauan mencatat data baru.</p>
+        <p class="galat" id="grafikGalat" hidden>Riwayat tidak dapat dimuat. Periksa koneksi ke server, lalu muat ulang halaman atau coba rentang lain.</p>
+      </section>
+
+      <!-- ============ 4. Riwayat gangguan ============ -->
+      <section class="panel" id="gangguan" aria-labelledby="jGangguan">
+        <h2 id="jGangguan">Riwayat gangguan</h2>
+        <p class="petunjuk">Yang masih berlangsung selalu di atas dan ditandai.</p>
+        {# Placeholder Jinja: gangguan = [{host, mulai, pulih, berlangsung, durasi_teks, catatan}] #}
+        <ol class="timeline" id="timeline">
+          {% for e in gangguan | default([], true) %}
+          <li class="tl {{ 'berlangsung' if e.berlangsung else '' }}">
+            <span class="tl-titik" aria-hidden="true"></span>
+            <div class="tl-isi">
+              <p class="tl-durasi mono">{{ e.durasi_teks | default('—', true) }}{% if e.berlangsung %} <span class="lencana lencana-turun">Berlangsung</span>{% endif %}</p>
+              <p class="tl-host">{{ e.host }}</p>
+              <p class="tl-waktu mono">Mulai {{ e.mulai | default('—', true) }} · Pulih {{ e.pulih | default('belum pulih', true) }}</p>
+              {% if e.catatan %}<p class="tl-catatan">{{ e.catatan }}</p>{% endif %}
+            </div>
+          </li>
+          {% else %}
+          <li class="kosong-li">
+            <p class="kosong">Tidak ada gangguan dalam 24 jam terakhir. Riwayat baru akan muncul di sini jika ada host yang berhenti merespons.</p>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+
+      <footer class="kaki">
+        <p>Sumber data: database SQLite pemantauan. Angka diperbarui otomatis setiap menit.</p>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+/* Data awal dari server (Jinja). JS akan menyegarkan lewat API yang sudah ada,
+   tanpa mengubah endpoint apa pun. */
+window.__NMS_BOOT__ = {
+  labels: {{ riwayat_labels | default([], true) | tojson }},
+  series: {{ riwayat_series | default({}, true) | tojson }},
+  waktuSegar: {{ waktu_segar | default('', true) | tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+</body>
+</html>
