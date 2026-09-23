@@ -15,6 +15,7 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+from nms import snmp as _snmpmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -344,17 +345,17 @@ class SnmpWalkTest(unittest.TestCase):
             ("1.3.6.1.2.1.2.2.1.3.1", 0x02, 1500, None),
         ]
         it = iter(seq)
-        orig = m._snmp_getnext
-        m._snmp_getnext = lambda ip, comm, oid, timeout=2.5: next(it)
+        orig = _snmpmod._snmp_getnext
+        _snmpmod._snmp_getnext = lambda ip, comm, oid, timeout=2.5: next(it)
         try:
             out = m.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2")
             self.assertEqual(len(out), 2)
         finally:
-            m._snmp_getnext = orig
+            _snmpmod._snmp_getnext = orig
 
     def test_walk_loop_dan_cap(self):
-        orig = m._snmp_getnext
-        m._snmp_getnext = lambda ip, comm, oid, timeout=2.5: (
+        orig = _snmpmod._snmp_getnext
+        _snmpmod._snmp_getnext = lambda ip, comm, oid, timeout=2.5: (
             "1.3.6.1.2.1.2.2.1.2.9",
             0x04,
             None,
@@ -364,10 +365,10 @@ class SnmpWalkTest(unittest.TestCase):
             out = m.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", max_rows=64)
             self.assertEqual(len(out), 1)  # oid sama berulang -> stop
         finally:
-            m._snmp_getnext = orig
+            _snmpmod._snmp_getnext = orig
 
     def test_discover_join_descr_oper(self):
-        orig = m.snmp_walk
+        orig = _snmpmod.snmp_walk
 
         def fake_walk(ip, comm, base, max_rows=64):
             if base.endswith(".2"):
@@ -377,7 +378,7 @@ class SnmpWalkTest(unittest.TestCase):
                 ]
             return [(base + ".1", 0x02, 1, None), (base + ".2", 0x02, 2, None)]
 
-        m.snmp_walk = fake_walk
+        _snmpmod.snmp_walk = fake_walk
         try:
             out = m.discover_interfaces("1.2.3.4", "pub")
             self.assertEqual(
@@ -388,7 +389,7 @@ class SnmpWalkTest(unittest.TestCase):
                 ],
             )
         finally:
-            m.snmp_walk = orig
+            _snmpmod.snmp_walk = orig
 
 
 MT_IF_HOST = "10.99.99.23"
