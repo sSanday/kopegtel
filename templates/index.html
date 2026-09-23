@@ -510,18 +510,51 @@ body::after{
 .modal-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
 .close-btn{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s}
 .close-btn:hover{color:var(--t1)}
-.host-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:260px;overflow-y:auto}
+.host-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:300px;overflow-y:auto;padding-right:2px}
 .host-item{
-  display:flex;justify-content:space-between;align-items:flex-start;
-  background:rgba(0,0,0,0.3);padding:10px 12px;border-radius:6px;
-  border:1px solid var(--border2);font-family:var(--mono);font-size:.75rem;gap:8px;
+  display:flex;align-items:center;gap:12px;
+  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.32));
+  padding:10px 12px;border-radius:12px;
+  border:1px solid var(--border2);font-family:var(--mono);font-size:.75rem;
+  transition:.15s;
 }
-.host-item button{
-  color:rgba(255,68,68,0.7);background:rgba(255,68,68,0.08);
-  border:1px solid rgba(255,68,68,0.2);cursor:pointer;
-  padding:3px 8px;border-radius:3px;font-family:var(--mono);font-size:.65rem;transition:.15s;flex-shrink:0;
+.host-item:hover{border-color:rgba(0,255,136,.35);transform:translateX(2px)}
+.hi-avatar{
+  width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:.72rem;font-weight:700;color:#03121a;
+  box-shadow:0 2px 10px rgba(0,0,0,.4);
 }
-.host-item button:hover{background:rgba(255,68,68,0.2);color:#ff4444}
+.hi-info{flex:1;min-width:0}
+.hi-title{color:var(--t1);font-weight:700;font-size:.76rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hi-alias{color:var(--accent2);font-weight:400;font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.hi-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
+.hi-badge{
+  font-size:.58rem;font-weight:600;letter-spacing:.5px;
+  padding:2px 8px;border-radius:99px;border:1px solid var(--border2);
+  color:var(--t2);background:rgba(255,255,255,.02);
+  display:inline-flex;align-items:center;gap:5px;
+}
+.hi-badge.cat-network{color:#00a2ff;border-color:rgba(0,162,255,.4);background:rgba(0,162,255,.08)}
+.hi-badge.cat-hp{color:#c084fc;border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.08)}
+.hi-badge.cat-laptop{color:#ffaa00;border-color:rgba(255,170,0,.4);background:rgba(255,170,0,.08)}
+.hi-badge.snmp-on{color:var(--accent2);border-color:rgba(0,255,136,.3);background:rgba(0,255,136,.06)}
+.hi-badge.snmp-off{color:var(--t3)}
+.hi-badge.bk-ok{color:var(--accent2);border-color:rgba(0,255,136,.3)}
+.hi-badge.bk-fail{color:#ff6b6b;border-color:rgba(255,68,68,.4);background:rgba(255,68,68,.07)}
+.hi-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.hi-peek{background:none;border:none;cursor:pointer;color:inherit;padding:0;display:inline-flex;opacity:.7}
+.hi-peek:hover{opacity:1}
+.hi-actions{display:flex;gap:6px;flex-shrink:0}
+.hi-actions button{
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
+  padding:7px 10px;border-radius:8px;font-family:var(--mono);font-size:.6rem;font-weight:700;letter-spacing:1px;
+  transition:.15s;
+}
+.hi-edit{color:var(--accent);background:rgba(0,162,255,.08);border:1px solid rgba(0,162,255,.3)}
+.hi-edit:hover{background:rgba(0,162,255,.2);border-color:rgba(0,162,255,.55)}
+.hi-del{color:#ff6b6b;background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.3)}
+.hi-del:hover{background:rgba(255,68,68,.2);color:#ff4444;border-color:rgba(255,68,68,.55)}
 .add-host-form{display:flex;gap:6px;flex-wrap:wrap}
 .add-host-form input{
   flex:1;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);
@@ -535,6 +568,98 @@ body::after{
   color:#000;border:none;font-family:var(--mono);font-weight:700;font-size:.72rem;cursor:pointer;transition:.15s;
 }
 .add-host-form button:hover{opacity:.85}
+
+/* ── Hosts PRO ── */
+#hostModal .modal{
+  max-width:660px;
+  border:1px solid rgba(0,255,136,.2);
+  border-radius:14px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 24px 80px rgba(0,0,0,.65),0 0 60px rgba(0,255,136,.06);
+}
+#hostModal .modal-header{
+  padding:16px 20px;
+  background:linear-gradient(180deg,rgba(0,255,136,.07),rgba(0,0,0,.35));
+  border-bottom:1px solid var(--border2);gap:12px;
+}
+.hst-count{
+  margin-left:auto;flex-shrink:0;
+  font-family:var(--mono);font-size:.62rem;font-weight:700;
+  color:var(--accent2);background:rgba(0,255,136,.08);
+  border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:4px 12px;
+}
+.hst-search{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(0,0,0,.35);border:1px solid var(--border2);border-radius:8px;
+  padding:8px 12px;margin-bottom:10px;transition:.2s;
+}
+.hst-search:focus-within{border-color:rgba(0,255,136,.35);box-shadow:0 0 0 3px rgba(0,255,136,.07)}
+.hst-search input{background:transparent;border:none;outline:none;flex:1;color:var(--t1);font-family:var(--mono);font-size:.72rem}
+.hst-search input::placeholder{color:var(--t3)}
+.hst-sec{
+  background:rgba(0,0,0,.28);border:1px solid var(--border2);
+  border-radius:10px;overflow:hidden;margin-bottom:12px;
+}
+.hst-sec-h{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;
+  background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);
+  font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--t1);
+}
+.hst-sec-h span{margin-left:auto;font-size:.6rem;font-weight:400;color:var(--t3);text-transform:none;letter-spacing:0}
+.hst-sec-b{padding:14px;display:grid;gap:10px}
+.hst-grid-2{grid-template-columns:1fr 1fr}
+.hst-grid-3{grid-template-columns:1fr 1fr 1fr}
+.hst-field{margin:0}
+.hst-field>label{display:block;font-family:var(--mono);font-size:.6rem;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+.hst-field input,.hst-field select{
+  width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--border2);
+  background:rgba(0,0,0,.4);color:var(--t1);font-family:var(--mono);font-size:.74rem;
+  transition:.2s;outline:none;
+}
+.hst-field input:focus,.hst-field select:focus{border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.04)}
+.hst-field input::placeholder{color:var(--t3)}
+.hst-field select option{background:#0c1220}
+.hst-check{
+  display:flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:.68rem;color:var(--t2);
+  background:rgba(0,255,136,.05);border:1px dashed rgba(0,255,136,.25);
+  border-radius:7px;padding:9px 12px;cursor:pointer;user-select:none;
+}
+.hst-check input{accent-color:#00ff88;width:15px;height:15px;cursor:pointer}
+.hst-oid-toggle{margin:0;border:1px solid var(--border2);border-radius:10px;background:rgba(0,0,0,.2);overflow:hidden}
+.hst-oid-toggle summary{
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
+  padding:11px 14px;font-family:var(--mono);font-size:.66rem;color:var(--t2);
+}
+.hst-oid-toggle summary::-webkit-details-marker{display:none}
+.hst-oid-toggle summary:hover{color:var(--t1)}
+.hst-oid-body{padding:0 14px 14px;display:grid;gap:10px}
+.hst-oid-hint{font-family:var(--mono);font-size:.6rem;line-height:1.7;color:var(--t3)}
+.hst-oid-hint code{color:var(--accent);background:rgba(0,162,255,.08);padding:1px 6px;border-radius:4px;font-size:.6rem}
+#hostModal .modal-body{padding:18px 20px 0}
+.hst-foot{
+  position:sticky;bottom:0;display:flex;gap:10px;
+  padding:14px 20px;margin:0 -20px;
+  background:rgba(8,12,20,.96);backdrop-filter:blur(12px);
+  border-top:1px solid var(--border2);
+}
+.hst-foot .btn-ghost{
+  flex:1;padding:11px;border-radius:8px;background:transparent;color:var(--t2);
+  border:1px solid var(--border2);font-family:var(--mono);font-weight:600;font-size:.74rem;cursor:pointer;transition:.15s;
+}
+.hst-foot .btn-ghost:hover{color:var(--t1);border-color:rgba(255,255,255,.2)}
+.hst-foot .btn-add{
+  flex:2;padding:11px;border-radius:8px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#00ff88,#00a2ff);color:#03121a;
+  font-family:var(--mono);font-weight:700;font-size:.76rem;
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s;
+  box-shadow:0 4px 20px rgba(0,255,136,.2);
+}
+.hst-foot .btn-add:hover{filter:brightness(1.1);transform:translateY(-1px)}
+@media(max-width:640px){
+  #hostModal .modal{max-width:94vw}
+  .hst-grid-2,.hst-grid-3{grid-template-columns:1fr 1fr}
+}
+@media(max-width:440px){.hst-grid-2,.hst-grid-3{grid-template-columns:1fr}}
 .form-field{margin-bottom:12px}
 .form-label{display:block;font-family:var(--mono);font-size:.65rem;font-weight:600;color:var(--t3);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
 .form-input{
@@ -550,6 +675,116 @@ body::after{
   cursor:pointer;transition:.15s;margin-top:4px;
 }
 .btn-primary:hover{opacity:.85}
+
+/* ── System Settings PRO ── */
+#settingsModal .modal{
+  max-width:700px;
+  border:1px solid rgba(0,162,255,.22);
+  border-radius:14px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 24px 80px rgba(0,0,0,.65),0 0 60px rgba(0,162,255,.08);
+}
+#settingsModal .modal-header{
+  padding:16px 20px;
+  background:linear-gradient(180deg,rgba(0,162,255,.08),rgba(0,0,0,.35));
+  border-bottom:1px solid var(--border2);
+  gap:12px;
+}
+.set-head{display:flex;align-items:center;gap:12px;min-width:0}
+.set-ico{
+  width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,#00a2ff,#00ff88);
+  display:flex;align-items:center;justify-content:center;color:#03121a;
+  box-shadow:0 4px 18px rgba(0,162,255,.35);
+}
+.set-title{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--t1);letter-spacing:.5px}
+.set-sub{font-family:var(--mono);font-size:.62rem;color:var(--t2);margin-top:2px}
+.set-tag{
+  margin-left:auto;flex-shrink:0;
+  font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:1.2px;
+  color:var(--accent2);background:rgba(0,255,136,.08);
+  border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:4px 10px;
+  display:flex;align-items:center;gap:6px;
+}
+.set-tag i{width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:blink 1.4s step-end infinite}
+#settingsModal .modal-body{padding:18px 20px 0}
+.set-grid{display:grid;gap:12px;padding-bottom:16px}
+.set-card{
+  background:rgba(0,0,0,.28);
+  border:1px solid var(--border2);
+  border-radius:10px;
+  overflow:hidden;
+}
+.set-card-h{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 14px;
+  background:rgba(255,255,255,.02);
+  border-bottom:1px solid var(--border2);
+}
+.set-num{
+  font-family:var(--mono);font-size:.6rem;font-weight:700;color:#03121a;
+  background:linear-gradient(135deg,#00a2ff,#00ff88);
+  border-radius:6px;min-width:24px;height:24px;
+  display:flex;align-items:center;justify-content:center;padding:0 6px;
+}
+.set-card-h b{font-family:var(--mono);font-size:.68rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--t1)}
+.set-card-h span{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-left:auto}
+.set-card-b{padding:14px;display:grid;gap:10px}
+.set-cols-3{grid-template-columns:repeat(3,1fr)}
+.set-cols-2{grid-template-columns:repeat(2,1fr)}
+.set-field{margin:0}
+.set-field label{
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:.6rem;font-weight:600;
+  color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;
+}
+.set-field label em{font-style:normal;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0}
+.set-input{position:relative}
+.set-input .unit{
+  position:absolute;right:11px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:.62rem;color:var(--t3);pointer-events:none;
+}
+.set-input .form-input{padding-right:38px}
+.set-input.no-unit .form-input{padding-right:12px}
+.set-input .form-input.mono-sm{font-size:.68rem}
+.set-hint{
+  font-family:var(--mono);font-size:.6rem;color:var(--t2);
+  background:rgba(0,162,255,.06);border:1px dashed rgba(0,162,255,.25);
+  border-radius:6px;padding:7px 10px;line-height:1.6;
+}
+.set-hint b{color:var(--accent2)}
+.set-notes{
+  background:rgba(0,255,136,.04);
+  border:1px solid rgba(0,255,136,.14);
+  border-radius:10px;padding:12px 14px;
+  display:flex;flex-direction:column;gap:8px;
+  margin-bottom:16px;
+}
+.set-note{display:flex;gap:9px;font-family:var(--mono);font-size:.62rem;line-height:1.65;color:var(--t2)}
+.set-note svg{flex-shrink:0;margin-top:2px;color:var(--accent2)}
+.set-note b{color:var(--t1);font-weight:600}
+.set-foot{
+  position:sticky;bottom:0;
+  display:flex;gap:10px;align-items:center;
+  padding:14px 20px;margin:0 -20px;
+  background:rgba(8,12,20,.96);backdrop-filter:blur(12px);
+  border-top:1px solid var(--border2);
+}
+.set-foot .btn-ghost{
+  flex:1;padding:11px;border-radius:8px;
+  background:transparent;color:var(--t2);
+  border:1px solid var(--border2);
+  font-family:var(--mono);font-weight:600;font-size:.74rem;cursor:pointer;transition:.15s;
+}
+.set-foot .btn-ghost:hover{color:var(--t1);border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.03)}
+.set-foot .btn-primary{flex:2;margin-top:0;padding:11px;display:flex;align-items:center;justify-content:center;gap:8px;color:#03121a;border-radius:8px}
+@media(max-width:640px){
+  #settingsModal .modal{max-width:94vw}
+  .set-cols-3,.set-cols-2{grid-template-columns:1fr 1fr}
+  .set-tag{display:none}
+}
+@media(max-width:440px){
+  .set-cols-3,.set-cols-2{grid-template-columns:1fr}
+}
 
 /* Footer */
 .footer{
@@ -910,38 +1145,61 @@ a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
 <div class="modal-overlay" id="hostModal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">// hosts.config</div>
+      <div class="set-head">
+        <div class="set-ico" style="background:linear-gradient(135deg,#00ff88,#00a2ff)"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="3" width="13" height="8" rx="1.5"/><path d="M5 13.5h6M5.5 6.5h5M5.5 8.5h3"/></svg></div>
+        <div>
+          <div class="set-title">Hosts Config</div>
+          <div class="set-sub">// hosts.config — perangkat yang dipantau</div>
+        </div>
+      </div>
+      <div class="hst-count" id="hostCount">0 host</div>
       <button class="close-btn" onclick="closeHostModal()" aria-label="Tutup"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="modal-body">
+      <div class="hst-search">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+        <input type="text" id="hostFilter" placeholder="filter host / alias / kategori..." oninput="filterHostList()">
+      </div>
       <div class="host-list" id="hostList"><div style="color:var(--t3);font-family:var(--mono);font-size:.72rem">loading...</div></div>
-      <form class="add-host-form" onsubmit="addHost(event)" style="flex-wrap:wrap;">
-        <input type="text" id="newHostIp" placeholder="ip / domain" required>
-        <input type="text" id="newHostAlias" placeholder="alias / nama" title="Nama Perangkat">
-        <input type="text" id="newHostCategory" placeholder="kategori" title="Kategori Perangkat">
-        <input type="text" id="newHostSnmp" placeholder="snmp (opt)" title="SNMP Community">
-        <input type="number" id="newHostIfIndex" placeholder="ifIdx" value="1" style="width:65px;" title="SNMP Interface Index">
-        <select id="newHostProfile" title="Profil SNMP" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
-          <option value="auto">snmp: auto</option>
-          <option value="mikrotik">mikrotik</option>
-          <option value="generic">generic</option>
-        </select>
-        <input type="text" id="newHostSshUser" placeholder="ssh user (opt)" title="SSH user MikroTik (untuk backup konfigurasi)" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
-        <input type="password" id="newHostSshPass" placeholder="ssh pass (opt)" title="SSH password" autocomplete="new-password" style="flex:1;min-width:110px;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;">
-        <input type="number" id="newHostSshPort" placeholder="22" value="22" style="width:65px;" title="SSH port">
-        <label title="Backup konfigurasi otomatis tiap 02:00" style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.7rem;color:var(--t2)"><input type="checkbox" id="newHostBackup"> backup</label>
-        <button type="submit">+ add</button>
-      </form>
-      <details style="margin-top:8px;font-family:var(--mono);font-size:.68rem;color:var(--t3)">
-        <summary style="cursor:pointer">oid override (unit lama — isi dari /system/health/print oid)</summary>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
-          <input type="text" id="newHostCpuOid" placeholder="oid cpu" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
-          <input type="text" id="newHostMemOid" placeholder="oid memory" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
-          <input type="text" id="newHostStoOid" placeholder="oid storage" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
-          <input type="text" id="newHostTempOid" placeholder="oid suhu" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border2);background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.7rem;">
+      <form class="add-host-form" onsubmit="addHost(event)">
+        <div class="hst-sec" style="grid-column:1/-1;width:100%">
+          <div class="hst-sec-h"><span class="set-num">+</span>Tambah Host<span>IP wajib · lainnya opsional</span></div>
+          <div class="hst-sec-b">
+            <div class="hst-sec-b hst-grid-2" style="padding:0">
+              <div class="hst-field"><label>IP / Domain *</label><input type="text" id="newHostIp" placeholder="192.168.1.10" required></div>
+              <div class="hst-field"><label>Alias / Nama</label><input type="text" id="newHostAlias" placeholder="misal: Router Utama" title="Nama Perangkat"></div>
+              <div class="hst-field"><label>Kategori</label><input type="text" id="newHostCategory" placeholder="Network / Laptop / HP" title="Kategori Perangkat"></div>
+              <div class="hst-field"><label>SNMP Community</label><input type="text" id="newHostSnmp" placeholder="public (opsional)" title="SNMP Community"></div>
+              <div class="hst-field"><label>Interface Index</label><input type="number" id="newHostIfIndex" value="1" title="SNMP Interface Index"></div>
+              <div class="hst-field"><label>Profil SNMP</label><select id="newHostProfile" title="Profil SNMP">
+                <option value="auto">snmp: auto</option>
+                <option value="mikrotik">mikrotik</option>
+                <option value="generic">generic</option>
+              </select></div>
+            </div>
+            <div class="hst-sec-b hst-grid-3" style="padding:0">
+              <div class="hst-field"><label>SSH User</label><input type="text" id="newHostSshUser" placeholder="(opt)" title="SSH user MikroTik (untuk backup konfigurasi)"></div>
+              <div class="hst-field"><label>SSH Pass</label><input type="password" id="newHostSshPass" placeholder="(opt)" title="SSH password" autocomplete="new-password"></div>
+              <div class="hst-field"><label>SSH Port</label><input type="number" id="newHostSshPort" value="22" title="SSH port"></div>
+            </div>
+            <label class="hst-check" title="Backup konfigurasi otomatis tiap 02:00"><input type="checkbox" id="newHostBackup"> Backup otomatis 02:00 (butuh SSH user + pass)</label>
+          </div>
         </div>
-        <div style="margin-top:6px">Untuk host yang sudah ada, edit via API: <span style="color:var(--accent)">PATCH /api/hosts/&lt;ip&gt;/snmp</span> (termasuk ssh_user, ssh_pass, ssh_port, backup_enable).</div>
-      </details>
+        <details class="hst-oid-toggle" style="width:100%">
+          <summary><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4l-4 4 4 4M10 4l4 4-4 4"/></svg>oid override — unit lama (isi dari /system/health/print oid)</summary>
+          <div class="hst-oid-body hst-grid-2">
+            <div class="hst-field"><label>OID CPU</label><input type="text" id="newHostCpuOid" placeholder="1.3.6.1.4.1..."></div>
+            <div class="hst-field"><label>OID Memory</label><input type="text" id="newHostMemOid" placeholder="1.3.6.1.4.1..."></div>
+            <div class="hst-field"><label>OID Storage</label><input type="text" id="newHostStoOid" placeholder="1.3.6.1.4.1..."></div>
+            <div class="hst-field"><label>OID Suhu</label><input type="text" id="newHostTempOid" placeholder="1.3.6.1.4.1..."></div>
+            <div class="hst-oid-hint" style="grid-column:1/-1">Untuk host yang sudah ada, edit via API: <code>PATCH /api/hosts/&lt;ip&gt;/snmp</code> (termasuk ssh_user, ssh_pass, ssh_port, backup_enable).</div>
+          </div>
+        </details>
+        <div class="hst-foot" style="width:100%">
+          <button type="button" class="btn-ghost" onclick="closeHostModal()">Tutup</button>
+          <button type="submit" class="btn-add"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>add_host()</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -950,59 +1208,88 @@ a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">// system.settings</div>
+      <div class="set-head">
+        <div class="set-ico"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.2v1.9M8 12.9v1.9M1.2 8h1.9M12.9 8h1.9M3.2 3.2l1.3 1.3M11.5 11.5l1.3 1.3M3.2 12.8l1.3-1.3M11.5 4.5l1.3-1.3"/></svg></div>
+        <div>
+          <div class="set-title">System Settings</div>
+          <div class="set-sub">// system.settings — threshold alarm &amp; monitoring</div>
+        </div>
+      </div>
+      <div class="set-tag"><i></i>CONFIG</div>
       <button class="close-btn" onclick="closeSettingsModal()" aria-label="Tutup"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="modal-body">
       <form id="settingsForm" onsubmit="saveSettings(event)">
-        <div class="form-field">
-          <label class="form-label">cpu_threshold (%)</label>
-          <input type="number" id="cpuThreshold" class="form-input" step="0.1" min="1" max="100" required>
+        <div class="set-grid">
+          <!-- 01 Performance -->
+          <div class="set-card">
+            <div class="set-card-h"><span class="set-num">01</span><b>Performance Threshold</b><span>alarm CPU / RAM / Disk</span></div>
+            <div class="set-card-b set-cols-3">
+              <div class="form-field set-field">
+                <label>CPU <em>alarm &gt;</em></label>
+                <div class="set-input"><input type="number" id="cpuThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
+              </div>
+              <div class="form-field set-field">
+                <label>RAM <em>alarm &gt;</em></label>
+                <div class="set-input"><input type="number" id="ramThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
+              </div>
+              <div class="form-field set-field">
+                <label>Disk <em>alarm &gt;</em></label>
+                <div class="set-input"><input type="number" id="diskThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- 02 Fiber redaman -->
+          <div class="set-card">
+            <div class="set-card-h"><span class="set-num">02</span><b>Fiber Redaman</b><span>Rx / Tx · dBm</span></div>
+            <div class="set-card-b set-cols-2">
+              <div class="form-field set-field"><label>Rx overload <em>&gt; perlu peredam</em></label><div class="set-input"><input type="number" id="fiberOverload" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="form-field set-field"><label>Rx target <em>ideal</em></label><div class="set-input"><input type="number" id="fiberTarget" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="form-field set-field"><label>Rx warning <em>&lt;</em></label><div class="set-input"><input type="number" id="fiberWarn" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="form-field set-field"><label>Rx critical <em>&lt;</em></label><div class="set-input"><input type="number" id="fiberCrit" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="form-field set-field"><label>Tx min</label><div class="set-input"><input type="number" id="fiberTxMin" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="form-field set-field"><label>Tx max</label><div class="set-input"><input type="number" id="fiberTxMax" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
+              <div class="set-hint" style="grid-column:1/-1">Urutan wajib: <b>crit &lt; warn ≤ overload</b> · contoh <b>-27 &lt; -25 ≤ -8</b> · Rx &gt; overload = sinyal terlalu kuat.</div>
+            </div>
+          </div>
+          <!-- 03 Fiber analisis -->
+          <div class="set-card">
+            <div class="set-card-h"><span class="set-num">03</span><b>Fiber Analisis</b><span>degradasi · stale · flap</span></div>
+            <div class="set-card-b set-cols-2">
+              <div class="form-field set-field"><label>Degradasi <em>≥ dB</em></label><div class="set-input"><input type="number" id="fiberDegDb" class="form-input" step="0.1" min="0.5" max="10" required><span class="unit">dB</span></div></div>
+              <div class="form-field set-field"><label>Degradasi window</label><div class="set-input"><input type="number" id="fiberDegDays" class="form-input" step="1" min="1" max="30" required><span class="unit">hari</span></div></div>
+              <div class="form-field set-field"><label>Stale <em>≥ menit</em></label><div class="set-input"><input type="number" id="fiberStaleMin" class="form-input" step="1" min="10" max="10080" required><span class="unit">mnt</span></div></div>
+              <div class="form-field set-field"><label>Induk massal <em>≥ ONT</em></label><div class="set-input"><input type="number" id="fiberParentMin" class="form-input" step="1" min="2" max="50" required><span class="unit">ONT</span></div></div>
+              <div class="form-field set-field"><label>Flap <em>≥ flip</em></label><div class="set-input"><input type="number" id="fiberFlapFlips" class="form-input" step="1" min="2" max="20" required><span class="unit">flip</span></div></div>
+              <div class="form-field set-field"><label>Flap window</label><div class="set-input"><input type="number" id="fiberFlapHours" class="form-input" step="1" min="1" max="72" required><span class="unit">jam</span></div></div>
+            </div>
+          </div>
+          <!-- 04 Mikrotik -->
+          <div class="set-card">
+            <div class="set-card-h"><span class="set-num">04</span><b>MikroTik SNMP</b><span>suhu · OID · retensi</span></div>
+            <div class="set-card-b set-cols-2">
+              <div class="form-field set-field"><label>Suhu warning</label><div class="set-input"><input type="number" id="tempWarn" class="form-input" step="0.5" required><span class="unit">°C</span></div></div>
+              <div class="form-field set-field"><label>Suhu critical</label><div class="set-input"><input type="number" id="tempCrit" class="form-input" step="0.5" required><span class="unit">°C</span></div></div>
+              <div class="form-field set-field"><label>OID CPU</label><div class="set-input no-unit"><input type="text" id="mtCpuOid" class="form-input mono-sm"></div></div>
+              <div class="form-field set-field"><label>OID Memory</label><div class="set-input no-unit"><input type="text" id="mtMemOid" class="form-input mono-sm"></div></div>
+              <div class="form-field set-field"><label>OID Storage</label><div class="set-input no-unit"><input type="text" id="mtStoOid" class="form-input mono-sm"></div></div>
+              <div class="form-field set-field"><label>OID Suhu</label><div class="set-input no-unit"><input type="text" id="mtTempOid" class="form-input mono-sm"></div></div>
+              <div class="form-field set-field"><label>Pembagi suhu</label><div class="set-input"><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required><span class="unit">÷</span></div></div>
+              <div class="form-field set-field"><label>MT stale <em>3–1440</em></label><div class="set-input"><input type="number" id="mtStaleMin" class="form-input" step="1" min="3" max="1440" required><span class="unit">mnt</span></div></div>
+              <div class="form-field set-field" style="grid-column:1/-1"><label>Backup simpan versi <em>3–50</em></label><div class="set-input"><input type="number" id="mtBackupKeep" class="form-input" step="1" min="3" max="50" required><span class="unit">versi</span></div></div>
+            </div>
+          </div>
+          <div class="set-notes">
+            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v3.4M8 5v.2"/></svg><span><b>Hysteresis 5</b> — alarm saat &gt; batas, pulih saat ≤ batas−5 agar tidak flapping.</span></div>
+            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 1a5 5 0 015 5v3l1.5 2.5h-13L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg><span><b>Telegram DOWN</b> — maksimal 1×/10 menit per host saat flapping.</span></div>
+            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h3l2-4 3 8 2-4h2"/></svg><span><b>Fiber</b> — degradasi = Rx turun ≥ dB dalam N hari · stale = tanpa data baru ≥ N menit · flap = bolak-balik normal↔terganggu ≥ N flip.</span></div>
+            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="8" rx="1.5"/><path d="M5 13h6"/></svg><span><b>MikroTik</b> — suhu mentah SNMP dibagi pembagi (umumnya 10). OID beda per unit lama → override per host di menu hosts.</span></div>
+          </div>
         </div>
-        <div class="form-field">
-          <label class="form-label">ram_threshold (%)</label>
-          <input type="number" id="ramThreshold" class="form-input" step="0.1" min="1" max="100" required>
+        <div class="set-foot">
+          <button type="button" class="btn-ghost" onclick="closeSettingsModal()">Batal</button>
+          <button type="submit" class="btn-primary"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg>save_settings()</button>
         </div>
-        <div class="form-field">
-          <label class="form-label">disk_threshold (%)</label>
-          <input type="number" id="diskThreshold" class="form-input" step="0.1" min="1" max="100" required>
-        </div>
-        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">fiber_redaman (dBm)</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-field"><label class="form-label">rx overload &gt;</label><input type="number" id="fiberOverload" class="form-input" step="0.1" required></div>
-          <div class="form-field"><label class="form-label">rx target</label><input type="number" id="fiberTarget" class="form-input" step="0.1" required></div>
-          <div class="form-field"><label class="form-label">rx warning &lt;</label><input type="number" id="fiberWarn" class="form-input" step="0.1" required></div>
-          <div class="form-field"><label class="form-label">rx critical &lt;</label><input type="number" id="fiberCrit" class="form-input" step="0.1" required></div>
-          <div class="form-field"><label class="form-label">tx min</label><input type="number" id="fiberTxMin" class="form-input" step="0.1" required></div>
-          <div class="form-field"><label class="form-label">tx max</label><input type="number" id="fiberTxMax" class="form-input" step="0.1" required></div>
-        </div>
-        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">fiber_analisis (degradasi / stale / flap)</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-field"><label class="form-label">degradasi ≥ dB</label><input type="number" id="fiberDegDb" class="form-input" step="0.1" min="0.5" max="10" required></div>
-          <div class="form-field"><label class="form-label">degradasi hari</label><input type="number" id="fiberDegDays" class="form-input" step="1" min="1" max="30" required></div>
-          <div class="form-field"><label class="form-label">stale ≥ menit</label><input type="number" id="fiberStaleMin" class="form-input" step="1" min="10" max="10080" required></div>
-          <div class="form-field"><label class="form-label">flap ≥ flip</label><input type="number" id="fiberFlapFlips" class="form-input" step="1" min="2" max="20" required></div>
-          <div class="form-field"><label class="form-label">flap jam</label><input type="number" id="fiberFlapHours" class="form-input" step="1" min="1" max="72" required></div>
-          <div class="form-field"><label class="form-label">induk massal ≥ ONT</label><input type="number" id="fiberParentMin" class="form-input" step="1" min="2" max="50" required></div>
-        </div>
-        <div class="form-label" style="margin-top:14px;border-top:1px solid var(--border2);padding-top:12px">mikrotik_snmp</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-field"><label class="form-label">suhu warning (°C)</label><input type="number" id="tempWarn" class="form-input" step="0.5" required></div>
-          <div class="form-field"><label class="form-label">suhu critical (°C)</label><input type="number" id="tempCrit" class="form-input" step="0.5" required></div>
-        </div>
-        <div class="form-field"><label class="form-label">oid cpu</label><input type="text" id="mtCpuOid" class="form-input" style="font-size:.65rem"></div>
-        <div class="form-field"><label class="form-label">oid memory</label><input type="text" id="mtMemOid" class="form-input" style="font-size:.65rem"></div>
-        <div class="form-field"><label class="form-label">oid storage</label><input type="text" id="mtStoOid" class="form-input" style="font-size:.65rem"></div>
-        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-field"><label class="form-label">oid suhu</label><input type="text" id="mtTempOid" class="form-input" style="font-size:.65rem"></div>
-          <div class="form-field"><label class="form-label">pembagi suhu</label><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required></div>
-        </div>
-        <div class="form-field"><label class="form-label">mt stale ≥ menit (3-1440)</label><input type="number" id="mtStaleMin" class="form-input" step="1" min="3" max="1440" required></div>
-        <div class="form-field"><label class="form-label">backup simpan versi (3-50)</label><input type="number" id="mtBackupKeep" class="form-input" step="1" min="3" max="50" required></div>
-        <div class="form-field">
-          <div style="font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7;background:rgba(0,162,255,0.05);border:1px solid var(--border2);border-radius:6px;padding:8px 12px">ℹ alarm saat &gt; batas, pulih saat ≤ batas−5 (hysteresis anti-flapping).<br>ℹ notif Telegram DOWN max 1x/10 mnt per host saat flapping.<br>ℹ fiber: harus crit &lt; warn &le; overload (mis. -27 &lt; -25 &le; -8). Rx &gt; overload = perlu PEREDAM.<br>ℹ mikrotik: suhu mentah SNMP dibagi pembagi (umumnya 10). Unit lama yang OID-nya beda → override per host di menu hosts.<br>ℹ fiber_analisis: degradasi = Rx turun ≥ dB dalam sekian hari · stale = snmp/simulator tanpa data baru ≥ sekian menit · flap = bolak-balik normal↔terganggu ≥ sekian flip dalam sekian jam.</div>
-        </div>
-        <button type="submit" class="btn-primary">save_settings()</button>
       </form>
     </div>
   </div>
@@ -1722,8 +2009,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Host Management
-async function openHostModal(){document.getElementById('hostModal').classList.add('open');await loadHosts()}
+async function openHostModal(){document.getElementById('hostModal').classList.add('open');const f=document.getElementById('hostFilter');if(f)f.value='';await loadHosts()}
 function closeHostModal(){document.getElementById('hostModal').classList.remove('open')}
+function filterHostList(){
+  const q=(document.getElementById('hostFilter').value||'').toLowerCase();
+  document.querySelectorAll('#hostList .host-item').forEach(el=>{
+    el.style.display=el.textContent.toLowerCase().includes(q)?'':'none';
+  });
+}
+(function(){const lst=document.getElementById('hostList');if(!lst)return;const cnt=document.getElementById('hostCount');const upd=()=>{if(!cnt)return;const n=lst.querySelectorAll('.host-item').length;cnt.textContent=n+' host';};new MutationObserver(upd).observe(lst,{childList:true});upd();})();
 async function loadHosts(){
   try{
     const res=await fetch('/api/hosts');
@@ -1741,56 +2035,98 @@ async function loadHosts(){
 
         const div = document.createElement('div');
         div.className = 'host-item';
+        const cat = String(h.category || '').trim() || 'Uncategorized';
+        const alias = (h.alias || '').trim();
+        const catKey = cat.toLowerCase();
+        const avColors = {network:'linear-gradient(135deg,#00a2ff,#0066cc)',hp:'linear-gradient(135deg,#c084fc,#7c3aed)',laptop:'linear-gradient(135deg,#ffaa00,#cc6600)'};
+        const av = document.createElement('div');
+        av.className = 'hi-avatar';
+        av.style.background = avColors[catKey] || 'linear-gradient(135deg,#00ff88,#00a2ff)';
+        av.textContent = (alias || h.ip).charAt(0).toUpperCase();
+        av.title = cat;
         const info = document.createElement('div');
-        info.style.flex = '1';
+        info.className = 'hi-info';
         const title = document.createElement('div');
-        title.style.cssText = 'color:var(--t1);font-weight:600;margin-bottom:2px';
-        title.textContent = h.ip;
-        if (h.alias) {
+        title.className = 'hi-title';
+        title.appendChild(document.createTextNode(h.ip));
+        if (alias) {
           const aliasSpan = document.createElement('span');
-          aliasSpan.style.cssText = 'color:var(--accent2);font-weight:400';
-          aliasSpan.textContent = ' (' + h.alias + ')';
+          aliasSpan.className = 'hi-alias';
+          aliasSpan.textContent = alias;
           title.appendChild(aliasSpan);
         }
-        const sub = document.createElement('div');
-        sub.style.cssText = 'font-size:.65rem;color:var(--t3)';
+        const badges = document.createElement('div');
+        badges.className = 'hi-badges';
+        const catB = document.createElement('span');
+        catB.className = 'hi-badge ' + (catKey === 'network' ? 'cat-network' : catKey === 'hp' ? 'cat-hp' : catKey === 'laptop' ? 'cat-laptop' : '');
+        catB.textContent = cat;
+        badges.appendChild(catB);
+        const profB = document.createElement('span');
+        profB.className = 'hi-badge';
+        profB.title = 'Profil SNMP';
+        profB.textContent = h.snmp_profile || 'auto';
+        badges.appendChild(profB);
+        const ifB = document.createElement('span');
+        ifB.className = 'hi-badge';
+        ifB.title = 'SNMP Interface Index';
+        ifB.textContent = 'if:' + (h.if_index || 1);
+        badges.appendChild(ifB);
         const snmpVal = h.snmp_community || '';
+        const snmpB = document.createElement('span');
+        snmpB.className = 'hi-badge ' + (snmpVal ? 'snmp-on' : 'snmp-off');
+        const dot = document.createElement('span');
+        dot.className = 'hi-dot';
+        snmpB.appendChild(dot);
         const snmpMask = document.createElement('span');
-        snmpMask.textContent = snmpVal ? '••••' : '-';
-        snmpMask.title = snmpVal ? 'Klik untuk intip' : 'Tidak ada community';
-        sub.appendChild(document.createTextNode('SNMP: '));
-        sub.appendChild(snmpMask);
+        snmpMask.textContent = snmpVal ? '••••' : 'no snmp';
+        snmpMask.title = snmpVal ? 'Klik ikon mata untuk intip community' : 'Tidak ada community';
+        snmpB.appendChild(snmpMask);
         if(snmpVal){
           const peek = document.createElement('button');
+          peek.type = 'button';
+          peek.className = 'hi-peek';
           peek.innerHTML = ICON_EYE;
           peek.title = 'Intip community (klik lagi untuk sembunyikan)';
-          peek.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--t3);padding:0 2px';
           peek.setAttribute('aria-label', 'Tampilkan community SNMP');
-          peek.addEventListener('click', ()=>{
+          peek.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
             const shown = snmpMask.textContent !== '••••';
             snmpMask.textContent = shown ? '••••' : snmpVal;
             peek.innerHTML = shown ? ICON_EYE : ICON_EYE_OFF;
           });
-          sub.appendChild(document.createTextNode(' '));
-          sub.appendChild(peek);
+          snmpB.appendChild(peek);
         }
-        sub.appendChild(document.createTextNode(` | ifIndex: ${h.if_index} | Cat: ${h.category || 'Uncategorized'} | Prof: ${h.snmp_profile || 'auto'}`));
+        badges.appendChild(snmpB);
         if(h.backup_enable){
-          const bk=document.createElement('span');
-          const okTxt=h.backup_ok?`✓ ${h.backup_last||''}`:'✕ gagal';
-          bk.style.cssText=`color:${h.backup_ok?'var(--accent2)':'var(--danger)'}`;
-          bk.textContent=` | BK: ${okTxt}`;
-          bk.title='Backup konfigurasi otomatis (02:00)';
-          sub.appendChild(bk);
+          const bk = document.createElement('span');
+          bk.className = 'hi-badge ' + (h.backup_ok ? 'bk-ok' : 'bk-fail');
+          bk.title = 'Backup konfigurasi otomatis (02:00)' + (h.backup_last ? ' — ' + h.backup_last : '');
+          bk.textContent = h.backup_ok ? '✓ backup' : '✕ backup gagal';
+          badges.appendChild(bk);
         }
         info.appendChild(title);
-        info.appendChild(sub);
+        info.appendChild(badges);
+        const acts = document.createElement('div');
+        acts.className = 'hi-actions';
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'hi-edit';
+        editBtn.title = 'Ubah alias & kategori';
+        editBtn.setAttribute('aria-label', 'Ubah ' + h.ip);
+        editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13l-2.6.6L3 11z"/></svg>EDIT';
+        editBtn.addEventListener('click', ()=> openRenameModal(h.ip, alias || h.ip, cat));
         const delBtn = document.createElement('button');
-        delBtn.textContent = 'DEL';
+        delBtn.type = 'button';
+        delBtn.className = 'hi-del';
+        delBtn.title = 'Hapus host';
         delBtn.setAttribute('data-host', h.ip);
+        delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h12M6.5 4V2.5h3V4M4 4l.7 10h6.6L12 4"/></svg>DEL';
         delBtn.addEventListener('click', ()=> delHost(h.ip));
+        acts.appendChild(editBtn);
+        acts.appendChild(delBtn);
+        div.appendChild(av);
         div.appendChild(info);
-        div.appendChild(delBtn);
+        div.appendChild(acts);
         lst.appendChild(div);
       });
       buildExportMenu();
