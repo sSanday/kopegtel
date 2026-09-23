@@ -930,12 +930,20 @@ class SchedulerRefTest(unittest.TestCase):
         names = re.findall(r"scheduler\.add_job\(\s*func=([A-Za-z_][A-Za-z0-9_]*)", src)
         self.assertTrue(names)
         sched_pos = src.index("SCHEDULER_ENABLED = ")
+        pre = src[:sched_pos]
         for n in names:
             self.assertTrue(callable(getattr(m, n, None)), f"job {n} tidak terdefinisi")
-            self.assertLess(
-                src.index(f"def {n}("),
-                sched_pos,
-                f"job {n} didefinisikan setelah blok scheduler -> NameError produksi",
+            # Boleh def lokal ATAU impor dari nms.* — keduanya aman dari NameError
+            # saat blok scheduler dieksekusi (hasil refactor bertahap P3).
+            defined = f"def {n}(" in pre
+            imported = (
+                re.search(rf"from nms\.\w+ import \([^)]*?\b{n}\b", pre, re.S)
+                is not None
+            )
+            self.assertTrue(
+                defined or imported,
+                f"job {n} tidak terdefinisi/diimpor sebelum blok scheduler "
+                "-> NameError produksi",
             )
 
 
