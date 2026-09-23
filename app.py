@@ -64,6 +64,7 @@ from nms.db import (
     log_system_event,
 )
 from nms.notify import audit, send_telegram_alert
+from nms.crypto import decrypt_secret, encrypt_secret
 from nms.monitor import (
     FIBER_PARENT_MIN,
     _fiber_oltkey,
@@ -1404,7 +1405,10 @@ def _mt_backup_candidates():
                 "SELECT ip, ssh_user, ssh_pass, ssh_port FROM hosts "
                 "WHERE backup_enable=1"
             )
-            return [dict(r) for r in c.fetchall()]
+            rows = [dict(r) for r in c.fetchall()]
+            for h in rows:
+                h["ssh_pass"] = decrypt_secret(h.get("ssh_pass") or "")
+            return rows
         finally:
             conn.close()
     except Exception as e:
@@ -3394,12 +3398,14 @@ def _parse_ssh_fields(data):
     """Validasi kredensial SSH + flag backup. Hanya key yang ADA divalidasi.
 
     Kembalikan (dict, err). Password tak pernah dikembalikan ke UI.
+    ssh_pass langsung dienkripsi (nms.crypto) agar yang tersimpan di DB
+    tak pernah plaintext.
     """
     out = {}
     if "ssh_user" in data:
         out["ssh_user"] = str(data.get("ssh_user") or "").strip()[:64]
     if "ssh_pass" in data:
-        out["ssh_pass"] = str(data.get("ssh_pass") or "")[:128]
+        out["ssh_pass"] = encrypt_secret(str(data.get("ssh_pass") or "")[:128])
     if "ssh_port" in data:
         try:
             port = int(data.get("ssh_port", 22))
@@ -7369,7 +7375,11 @@ def _mt_backup_host_row(host):
             (host,),
         )
         row = c.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        out = dict(row)
+        out["ssh_pass"] = decrypt_secret(out.get("ssh_pass") or "")
+        return out
     finally:
         conn.close()
 
