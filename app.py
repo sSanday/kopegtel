@@ -1020,9 +1020,17 @@ def backup_database():
                 pass
 
     if backup_ok:
-        print(f"[BACKUP] Database berhasil dibackup ke {backup_path}")
+        print(f"[BACKUP] Database berhasil dibackup ke {backup_path}", flush=True)
     else:
-        print(f"[BACKUP] GAGAL membackup ke {backup_path}")
+        print(f"[BACKUP] GAGAL membackup ke {backup_path}", flush=True)
+        try:
+            send_telegram_alert(
+                f"❌ *Backup DB GAGAL*\n"
+                f"Waktu: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Target: `{backup_path}`"
+            )
+        except Exception as e:
+            print(f"[WARN] telegram backup-alert gagal: {e}")
 
 
 def send_telegram_alert(message):
@@ -4566,6 +4574,32 @@ if SCHEDULER_ENABLED:
         scheduler.start()
     except Exception as e:
         print(f"[WARN] scheduler gagal start: {e}")
+
+    def _startup_backup_catchup():
+        # Cron 00:05 ke-skip bila container mati pada jam itu (mis. restart pagi).
+        # Catch-up sekali saat startup bila file backup hari ini belum ada.
+        try:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            backup_path = os.path.join(
+                BASE_DIR, "backups", f"network_backup_{date_str}.db"
+            )
+            if os.path.exists(backup_path):
+                return
+            print(
+                f"[BACKUP] backup hari ini belum ada ({backup_path}), "
+                "catch-up saat startup.",
+                flush=True,
+            )
+            backup_database()
+        except Exception as e:
+            print(f"[BACKUP] catch-up gagal: {e}", flush=True)
+
+    try:
+        _catchup_timer = threading.Timer(30.0, _startup_backup_catchup)
+        _catchup_timer.daemon = True
+        _catchup_timer.start()
+    except Exception as e:
+        print(f"[WARN] jadwal catch-up backup gagal: {e}")
 
 
 if SCHEDULER_ENABLED:
