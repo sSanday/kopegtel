@@ -15,6 +15,7 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+from nms import monitor as _monmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -2764,10 +2765,16 @@ class FiberParentTest(unittest.TestCase):
         f1 = self._mk_ont(SN_PP1, OLT_PAR)
         f2 = self._mk_ont(SN_PP2, OLT_PAR)
         sent = []
-        real_ping, real_tg = m.ping_host, m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real_ping = _monmod.ping_host
+        real_tg_app = m.send_telegram_alert
+        real_tg_mon = _monmod.send_telegram_alert
+        # check_network pindah ke nms.monitor, route fiber tetap di app:
+        # fake telegram di KEDUA namespace agar "sent" menangkap semuanya.
+        _tg_fake = lambda msg: sent.append(msg)
+        m.send_telegram_alert = _tg_fake
+        _monmod.send_telegram_alert = _tg_fake
         down = {OLT_PAR_IP: True}
-        m.ping_host = lambda h: (-1.0, 100.0) if down.get(h) else (0.5, 0.0)
+        _monmod.ping_host = lambda h: (-1.0, 100.0) if down.get(h) else (0.5, 0.0)
         try:
             sent.clear()
             m.check_network()
@@ -2824,7 +2831,9 @@ class FiberParentTest(unittest.TestCase):
             rec = [s for s in sent if "PULIH" in s]
             self.assertEqual(len(rec), 2)
         finally:
-            m.ping_host, m.send_telegram_alert = real_ping, real_tg
+            _monmod.ping_host = real_ping
+            m.send_telegram_alert = real_tg_app
+            _monmod.send_telegram_alert = real_tg_mon
             for fid in (f1, f2):
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             self.client.delete(f"/api/hosts/{OLT_PAR_IP}", headers=XRW_HDR)

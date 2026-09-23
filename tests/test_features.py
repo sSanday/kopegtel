@@ -16,6 +16,7 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+from nms import monitor as _monmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -131,17 +132,17 @@ class MaintenanceTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201)
 
-        orig_ping = m.ping_host
-        orig_tg = m.send_telegram_alert
+        orig_ping = _monmod.ping_host
+        orig_tg = _monmod.send_telegram_alert
         sent = []
-        m.ping_host = lambda h: (-1, 100.0) if h == MAINT_HOST else (0.5, 0.0)
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _monmod.ping_host = lambda h: (-1, 100.0) if h == MAINT_HOST else (0.5, 0.0)
+        _monmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.status_memory[MAINT_HOST] = False
             m.check_network()
         finally:
-            m.ping_host = orig_ping
-            m.send_telegram_alert = orig_tg
+            _monmod.ping_host = orig_ping
+            _monmod.send_telegram_alert = orig_tg
 
         self.assertFalse(
             any(MAINT_HOST in msg for msg in sent),

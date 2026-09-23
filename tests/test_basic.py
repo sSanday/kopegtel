@@ -15,6 +15,7 @@ os.environ["AGENT_API_KEY"] = "test-agent-key"
 os.environ["NMS_DISABLE_SCHEDULER"] = "1"
 
 import app as m
+from nms import monitor as _monmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -124,12 +125,12 @@ class NmsTest(unittest.TestCase):
         conn.close()
         m.status_memory["10.99.99.99"] = False
         m.down_since.pop("10.99.99.99", None)
-        orig = m.ping_host
-        m.ping_host = lambda h: (-1, 100.0) if h == "10.99.99.99" else (0.5, 0.0)
+        orig = _monmod.ping_host
+        _monmod.ping_host = lambda h: (-1, 100.0) if h == "10.99.99.99" else (0.5, 0.0)
         try:
             m.check_network()
         finally:
-            m.ping_host = orig
+            _monmod.ping_host = orig
         conn, c = m.get_db()
         n = c.execute(
             "SELECT COUNT(*) FROM down_events WHERE host='10.99.99.99' "
