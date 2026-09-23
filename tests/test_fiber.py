@@ -936,9 +936,11 @@ class SchedulerRefTest(unittest.TestCase):
             # Boleh def lokal ATAU impor dari nms.* — keduanya aman dari NameError
             # saat blok scheduler dieksekusi (hasil refactor bertahap P3).
             defined = f"def {n}(" in pre
+            # Impor multi-baris (tanda kurung) maupun satu baris.
             imported = (
                 re.search(rf"from nms\.\w+ import \([^)]*?\b{n}\b", pre, re.S)
                 is not None
+                or re.search(rf"from nms\.\w+ import [^\n(]*\b{n}\b", pre) is not None
             )
             self.assertTrue(
                 defined or imported,
