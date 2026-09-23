@@ -18,7 +18,6 @@ from zoneinfo import ZoneInfo
 
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
-from dotenv import load_dotenv
 from flask import (
     Flask,
     Response,
@@ -37,12 +36,23 @@ from flask_login import (
     login_user,
     logout_user,
 )
-
-load_dotenv()
+from nms.config import (
+    AGENT_API_KEY,
+    BASE_DIR,
+    COOKIE_SECURE,
+    DASHBOARD_PASSWORD,
+    DASHBOARD_USERNAME,
+    DOWN_COOLDOWN_S,
+    HYSTERESIS,
+    LOGIN_FAIL_TTL_S,
+    MAX_HOSTS,
+    SECRET_KEY,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+)
 
 app = Flask(__name__)
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
     raise SystemExit(
         "[FATAL] SECRET_KEY belum diset. Buat .env berisi "
@@ -59,9 +69,8 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
-_cookie_secure = os.environ.get("COOKIE_SECURE", "0") == "1"
-app.config["SESSION_COOKIE_SECURE"] = _cookie_secure
-app.config["REMEMBER_COOKIE_SECURE"] = _cookie_secure
+app.config["SESSION_COOKIE_SECURE"] = COOKIE_SECURE
+app.config["REMEMBER_COOKIE_SECURE"] = COOKIE_SECURE
 app_start_time = datetime.now()
 
 
@@ -88,9 +97,6 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 login_manager.login_message = "Silakan login terlebih dahulu untuk mengakses dashboard."
 login_manager.login_message_category = "warning"
-
-DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
-DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")
 
 
 def _verify_admin(username, password):
@@ -245,21 +251,6 @@ def api_login_required(f):
     return decorated
 
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
-if not AGENT_API_KEY:
-    print(
-        "[WARN] AGENT_API_KEY kosong — /api/agent/report TERBUKA tanpa auth "
-        "(siapa pun bisa kirim metrik palsu). Set AGENT_API_KEY di .env untuk produksi."
-    )
-try:
-    MAX_HOSTS = max(1, int(os.environ.get("MAX_HOSTS", "200")))
-except (ValueError, TypeError):
-    MAX_HOSTS = 200
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 DB_PATH = os.environ.get("NMS_DB_PATH", os.path.join(BASE_DIR, "network.db"))
 
 
@@ -269,8 +260,6 @@ agent_status_memory = {}
 agent_offline_memory = {}
 
 
-HYSTERESIS = 5.0
-DOWN_COOLDOWN_S = 600
 last_down_telegram = {}
 
 
@@ -278,7 +267,6 @@ db_lock = threading.Lock()
 
 
 login_failures = {}
-LOGIN_FAIL_TTL_S = 600
 
 
 def _prune_login_failures(now_ts):
