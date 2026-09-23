@@ -1815,11 +1815,7 @@ def poll_snmp_bandwidth():
     now_time = time.time()
 
     # Filter hanya host yang punya SNMP community sebelum dispatch ke thread
-    candidates = [
-        (h, c_, idx, now_time)
-        for h, c_, idx in hosts
-        if (c_ or "").strip()
-    ]
+    candidates = [(h, c_, idx, now_time) for h, c_, idx in hosts if (c_ or "").strip()]
     if not candidates:
         return
 
@@ -1827,7 +1823,9 @@ def poll_snmp_bandwidth():
     max_workers = min(len(candidates), 20)
     raw_results = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {executor.submit(_snmp_poll_one, args): args[0] for args in candidates}
+        future_map = {
+            executor.submit(_snmp_poll_one, args): args[0] for args in candidates
+        }
         for future in as_completed(future_map):
             try:
                 host, in_b, out_b = future.result()
@@ -5162,7 +5160,13 @@ def api_update_host_snmp(ip):
         sets.append("if_index=?")
         params.append(idx)
     # Whitelist kolom yang boleh diupdate untuk mencegah SQL Injection
-    _ALLOWED_SNMP_COLS = {"snmp_profile", "cpu_oid", "mem_oid", "storage_oid", "temp_oid"}
+    _ALLOWED_SNMP_COLS = {
+        "snmp_profile",
+        "cpu_oid",
+        "mem_oid",
+        "storage_oid",
+        "temp_oid",
+    }
     _ALLOWED_SSH_COLS = {"ssh_user", "ssh_pass", "ssh_port", "backup_enable"}
     for key in _ALLOWED_SNMP_COLS:
         if key in data:

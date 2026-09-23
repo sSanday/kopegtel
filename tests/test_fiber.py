@@ -49,16 +49,28 @@ def _cleanup_sn():
 
 class FiberThresholdTest(unittest.TestCase):
     def test_rx_levels_default(self):
-        th = {"overload": -8.0, "warn": -25.0, "crit": -27.0, "target": -18.0,
-              "tx_min": 0.0, "tx_max": 5.0}
+        th = {
+            "overload": -8.0,
+            "warn": -25.0,
+            "crit": -27.0,
+            "target": -18.0,
+            "tx_min": 0.0,
+            "tx_max": 5.0,
+        }
         self.assertEqual(m.fiber_status_for_rx(-19.0, th)[0], "normal")
         self.assertEqual(m.fiber_status_for_rx(-26.0, th)[0], "warning")
         self.assertEqual(m.fiber_status_for_rx(-28.5, th)[0], "critical")
         self.assertEqual(m.fiber_status_for_rx(None, th)[0], "unknown")
 
     def test_overload_saran_peredam(self):
-        th = {"overload": -8.0, "warn": -25.0, "crit": -27.0, "target": -18.0,
-              "tx_min": 0.0, "tx_max": 5.0}
+        th = {
+            "overload": -8.0,
+            "warn": -25.0,
+            "crit": -27.0,
+            "target": -18.0,
+            "tx_min": 0.0,
+            "tx_max": 5.0,
+        }
         status, sev, advice, need = m.fiber_status_for_rx(-5.0, th)
         self.assertEqual(status, "overload")
         self.assertEqual(sev, "high")
@@ -66,8 +78,14 @@ class FiberThresholdTest(unittest.TestCase):
         self.assertGreater(need, 0)
 
     def test_tx_abnormal(self):
-        th = {"overload": -8.0, "warn": -25.0, "crit": -27.0, "target": -18.0,
-              "tx_min": 0.0, "tx_max": 5.0}
+        th = {
+            "overload": -8.0,
+            "warn": -25.0,
+            "crit": -27.0,
+            "target": -18.0,
+            "tx_min": 0.0,
+            "tx_max": 5.0,
+        }
         self.assertEqual(m.fiber_status_for_tx(2.1, th)[0], "tx_ok")
         self.assertEqual(m.fiber_status_for_tx(None, th)[0], "tx_unknown")
         st, sev, _adv = m.fiber_status_for_tx(7.5, th)
@@ -78,8 +96,14 @@ class FiberThresholdTest(unittest.TestCase):
         self.assertEqual(sev, "high")
 
     def test_eval_gabungan_rx_tx(self):
-        th = {"overload": -8.0, "warn": -25.0, "crit": -27.0, "target": -18.0,
-              "tx_min": 0.0, "tx_max": 5.0}
+        th = {
+            "overload": -8.0,
+            "warn": -25.0,
+            "crit": -27.0,
+            "target": -18.0,
+            "tx_min": 0.0,
+            "tx_max": 5.0,
+        }
         # rx normal + tx normal
         self.assertEqual(m.fiber_eval(-19.0, 2.0, th)[0], "normal")
         # rx normal + tx rusak -> warning ikut tx
@@ -115,8 +139,9 @@ class FiberApiTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_sn()
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -124,12 +149,20 @@ class FiberApiTest(unittest.TestCase):
         _cleanup_sn()
 
     def _create(self, sn, rx, tx=2.0, source="manual"):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": sn, "customer": "uji",
-                                   "olt_name": "OLT-UJI", "pon_port": "1/1/1",
-                                   "odp_name": "ODP-UJI", "rx_power": rx,
-                                   "tx_power": tx, "source": source},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": sn,
+                "customer": "uji",
+                "olt_name": "OLT-UJI",
+                "pon_port": "1/1/1",
+                "odp_name": "ODP-UJI",
+                "rx_power": rx,
+                "tx_power": tx,
+                "source": source,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         return r.get_json()["id"]
 
@@ -141,17 +174,22 @@ class FiberApiTest(unittest.TestCase):
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_NORMAL)
             self.assertEqual(item["calc_status"], "normal")
 
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_NORMAL, "rx_power": -26.0,
-                                      "tx_power": 2.0, "source": "manual"},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_NORMAL,
+                    "rx_power": -26.0,
+                    "tx_power": 2.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_NORMAL)
             self.assertEqual(item["calc_status"], "warning")
 
-            r = self.client.get(f"/api/fiber/{fid}/history?hours=24",
-                                headers=XRW_HDR)
+            r = self.client.get(f"/api/fiber/{fid}/history?hours=24", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200)
             self.assertGreaterEqual(r.get_json()["count"], 2)
 
@@ -169,11 +207,13 @@ class FiberApiTest(unittest.TestCase):
             m.fiber_alarm_memory.pop(fid, None)
 
     def test_validasi(self):
-        r = self.client.post("/api/fiber", json={"ont_sn": "x", "rx_power": -19},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber", json={"ont_sn": "x", "rx_power": -19}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/fiber", json={"ont_sn": SN_NORMAL, "rx_power": 99},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber", json={"ont_sn": SN_NORMAL, "rx_power": 99}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
 
     def test_overload_critical_masuk_triggers(self):
@@ -213,42 +253,58 @@ class FiberApiTest(unittest.TestCase):
         orig = r.get_json()
         try:
             # konsistensi ditolak
-            r = self.client.post("/api/settings",
-                                 json={"fiber_rx_crit": -20.0, "fiber_rx_warn": -25.0},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings",
+                json={"fiber_rx_crit": -20.0, "fiber_rx_warn": -25.0},
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 400)
-            r = self.client.post("/api/settings",
-                                 json={"fiber_tx_min": 6.0, "fiber_tx_max": 5.0},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings",
+                json={"fiber_tx_min": 6.0, "fiber_tx_max": 5.0},
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 400)
             # ubah warn jadi -20 -> rx -21 harusnya warning
-            r = self.client.post("/api/settings",
-                                 json={"fiber_rx_warn": -20.0},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings", json={"fiber_rx_warn": -20.0}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 200)
             th = m._fiber_thresholds()
             self.assertEqual(th["warn"], -20.0)
             self.assertEqual(m.fiber_status_for_rx(-21.0)[0], "warning")
         finally:
-            self.client.post("/api/settings",
-                             json={k: orig[k] for k in
-                                   ("fiber_rx_overload", "fiber_rx_warn", "fiber_rx_crit",
-                                    "fiber_rx_target", "fiber_tx_min", "fiber_tx_max")},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={
+                    k: orig[k]
+                    for k in (
+                        "fiber_rx_overload",
+                        "fiber_rx_warn",
+                        "fiber_rx_crit",
+                        "fiber_rx_target",
+                        "fiber_tx_min",
+                        "fiber_tx_max",
+                    )
+                },
+                headers=JSON_HDR,
+            )
 
     def test_poll_tidak_crash_dan_tidak_ubah_manual(self):
         fid = self._create(SN_NORMAL, -19.5, 2.1, source="manual")
         try:
             conn, c = m.get_db()
-            before = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
-                               (fid,)).fetchone()[0]
+            before = c.execute(
+                "SELECT COUNT(*) FROM fiber_history WHERE ont_id=?", (fid,)
+            ).fetchone()[0]
             conn.close()
             m.poll_fiber_monitor()
             conn, c = m.get_db()
             c.execute("SELECT rx_power, status FROM fiber_onts WHERE id=?", (fid,))
             row = c.fetchone()
-            after = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
-                              (fid,)).fetchone()[0]
+            after = c.execute(
+                "SELECT COUNT(*) FROM fiber_history WHERE ont_id=?", (fid,)
+            ).fetchone()[0]
             conn.close()
             self.assertAlmostEqual(row["rx_power"], -19.5)
             self.assertEqual(row["status"], "normal")
@@ -263,8 +319,9 @@ class FiberLinkBudgetTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_sn()
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -292,10 +349,17 @@ class FiberLinkBudgetTest(unittest.TestCase):
         self.assertEqual(v, "no_data")
 
     def test_api_tanpa_pembanding(self):
-        r = self.client.post("/api/fiber/link-budget",
-                             json={"tx_dbm": 3.0, "splitters": ["1:4", "1:8"],
-                                   "fiber_km": 2.0, "connectors": 4, "splices": 2},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber/link-budget",
+            json={
+                "tx_dbm": 3.0,
+                "splitters": ["1:4", "1:8"],
+                "fiber_km": 2.0,
+                "connectors": 4,
+                "splices": 2,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         j = r.get_json()
         self.assertAlmostEqual(j["expected_rx"], -17.6)
@@ -303,36 +367,57 @@ class FiberLinkBudgetTest(unittest.TestCase):
         self.assertIsNone(j["actual_rx"])
 
     def test_api_validasi(self):
-        r = self.client.post("/api/fiber/link-budget",
-                             json={"tx_dbm": 3.0, "splitters": ["1:64"],
-                                   "fiber_km": 2.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber/link-budget",
+            json={"tx_dbm": 3.0, "splitters": ["1:64"], "fiber_km": 2.0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/fiber/link-budget",
-                             json={"tx_dbm": 3.0, "splitters": [],
-                                   "fiber_km": 2.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber/link-budget",
+            json={"tx_dbm": 3.0, "splitters": [], "fiber_km": 2.0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/fiber/link-budget",
-                             json={"tx_dbm": 3.0, "splitters": ["1:8"],
-                                   "fiber_km": 2.0, "ont_id": 999999},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber/link-budget",
+            json={
+                "tx_dbm": 3.0,
+                "splitters": ["1:8"],
+                "fiber_km": 2.0,
+                "ont_id": 999999,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 404)
 
     def test_api_dengan_pembanding_ont(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_NORMAL, "customer": "uji",
-                                   "rx_power": -25.0, "tx_power": 2.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_NORMAL,
+                "customer": "uji",
+                "rx_power": -25.0,
+                "tx_power": 2.0,
+                "source": "manual",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/fiber/link-budget",
-                                 json={"tx_dbm": 3.0, "splitters": ["1:4", "1:8"],
-                                       "fiber_km": 2.0, "connectors": 4,
-                                       "splices": 2, "ont_id": fid},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber/link-budget",
+                json={
+                    "tx_dbm": 3.0,
+                    "splitters": ["1:4", "1:8"],
+                    "fiber_km": 2.0,
+                    "connectors": 4,
+                    "splices": 2,
+                    "ont_id": fid,
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             j = r.get_json()
             self.assertAlmostEqual(j["actual_rx"], -25.0)
@@ -367,8 +452,9 @@ class OdpApiTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_odp()
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -378,29 +464,41 @@ class OdpApiTest(unittest.TestCase):
     def test_validasi(self):
         r = self.client.post("/api/odps", json={"name": "x"}, headers=JSON_HDR)
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/odps",
-                             json={"name": ODP_NAME, "capacity": 999},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps", json={"name": ODP_NAME, "capacity": 999}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
 
     def test_crud_dan_agregasi(self):
-        r = self.client.post("/api/odps",
-                             json={"name": ODP_NAME, "olt_name": "OLT-UJI",
-                                   "capacity": 8, "location": "uji"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps",
+            json={
+                "name": ODP_NAME,
+                "olt_name": "OLT-UJI",
+                "capacity": 8,
+                "location": "uji",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
         # duplikat ditolak
-        r = self.client.post("/api/odps", json={"name": ODP_NAME},
-                             headers=JSON_HDR)
+        r = self.client.post("/api/odps", json={"name": ODP_NAME}, headers=JSON_HDR)
         self.assertEqual(r.status_code, 400)
         try:
             # ONT critical di ODP ini
-            r = self.client.post("/api/fiber",
-                                 json={"ont_sn": ODP_SN, "customer": "uji",
-                                       "odp_name": ODP_NAME, "rx_power": -29.0,
-                                       "tx_power": 2.0, "source": "manual"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": ODP_SN,
+                    "customer": "uji",
+                    "odp_name": ODP_NAME,
+                    "rx_power": -29.0,
+                    "tx_power": 2.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201)
             fid = r.get_json()["id"]
             try:
@@ -412,10 +510,11 @@ class OdpApiTest(unittest.TestCase):
                 self.assertEqual(item["worst"], "critical")
                 self.assertAlmostEqual(item["fill_pct"], 12.5)
                 # rename ODP memindahkan ONT
-                r = self.client.put(f"/api/odps/{oid}",
-                                    json={"name": ODP_NAME + "-R",
-                                          "capacity": 8},
-                                    headers=JSON_HDR)
+                r = self.client.put(
+                    f"/api/odps/{oid}",
+                    json={"name": ODP_NAME + "-R", "capacity": 8},
+                    headers=JSON_HDR,
+                )
                 self.assertEqual(r.status_code, 200)
                 r = self.client.get("/api/fiber", headers=XRW_HDR)
                 ont = next(o for o in r.get_json() if o["ont_sn"] == ODP_SN)
@@ -434,15 +533,22 @@ class OdpApiTest(unittest.TestCase):
             self.assertEqual(r.status_code, 404)
 
     def test_odp_case_insensitive(self):
-        r = self.client.post("/api/odps", json={"name": ODP_NAME, "capacity": 8},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps", json={"name": ODP_NAME, "capacity": 8}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 201)
         oid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/fiber",
-                                 json={"ont_sn": ODP_SN, "odp_name": ODP_NAME.lower(),
-                                       "rx_power": -19.0, "source": "manual"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": ODP_SN,
+                    "odp_name": ODP_NAME.lower(),
+                    "rx_power": -19.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201)
             fid = r.get_json()["id"]
             try:
@@ -455,10 +561,11 @@ class OdpApiTest(unittest.TestCase):
             self.client.delete(f"/api/odps/{oid}", headers=XRW_HDR)
 
     def test_ont_tanpa_odp_masuk_bucket(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": ODP_SN, "rx_power": -19.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": ODP_SN, "rx_power": -19.0, "source": "manual"},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
@@ -480,7 +587,15 @@ SN_SNMP = "TEST-FIBER-SNMP-01"
 
 
 def _cleanup_extra(client):
-    for sn in (SN_MUTE, SN_OVERRIDE, SN_MAINT, SN_SINGLE, SN_IMPORT_A, SN_IMPORT_B, SN_SNMP):
+    for sn in (
+        SN_MUTE,
+        SN_OVERRIDE,
+        SN_MAINT,
+        SN_SINGLE,
+        SN_IMPORT_A,
+        SN_IMPORT_B,
+        SN_SNMP,
+    ):
         try:
             conn, c = m.get_db()
             try:
@@ -513,8 +628,9 @@ class FiberMuteOverrideTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -522,26 +638,44 @@ class FiberMuteOverrideTest(unittest.TestCase):
         _cleanup_extra(cls.client)
 
     def test_mute_disembunyikan_dari_triggers(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_MUTE, "rx_power": -29.0,
-                                   "tx_power": 2.0, "mute_alarm": 1},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_MUTE,
+                "rx_power": -29.0,
+                "tx_power": 2.0,
+                "mute_alarm": 1,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [a for a in r.get_json()
-                   if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")]
+            fib = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")
+            ]
             self.assertEqual(fib, [])
             # unmute -> muncul lagi
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_MUTE, "rx_power": -29.0,
-                                      "tx_power": 2.0, "mute_alarm": 0},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_MUTE,
+                    "rx_power": -29.0,
+                    "tx_power": 2.0,
+                    "mute_alarm": 0,
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [a for a in r.get_json()
-                   if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")]
+            fib = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")
+            ]
             self.assertTrue(fib)
             self.assertEqual(fib[0]["severity"], "disaster")
         finally:
@@ -549,10 +683,17 @@ class FiberMuteOverrideTest(unittest.TestCase):
 
     def test_override_threshold_per_ont(self):
         # rx -21 globalnya normal (< -25 warn), tapi override warn -20 -> warning
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_OVERRIDE, "rx_power": -21.0,
-                                   "tx_power": 2.0, "rx_warn": -20.0, "rx_crit": -27.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_OVERRIDE,
+                "rx_power": -21.0,
+                "tx_power": 2.0,
+                "rx_warn": -20.0,
+                "rx_crit": -27.0,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
@@ -560,20 +701,27 @@ class FiberMuteOverrideTest(unittest.TestCase):
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_OVERRIDE)
             self.assertEqual(item["calc_status"], "warning")
             # validasi: crit >= warn ditolak
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_OVERRIDE, "rx_power": -21.0,
-                                      "rx_warn": -20.0, "rx_crit": -19.0},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_OVERRIDE,
+                    "rx_power": -21.0,
+                    "rx_warn": -20.0,
+                    "rx_crit": -19.0,
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 400)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_single_check_langsung_set_memory(self):
         # tanpa menunggu scheduler, memory langsung terisi setelah create
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_SINGLE, "rx_power": -29.0,
-                                   "tx_power": 2.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_SINGLE, "rx_power": -29.0, "tx_power": 2.0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
@@ -587,8 +735,9 @@ class FiberMaintenanceTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -597,28 +746,42 @@ class FiberMaintenanceTest(unittest.TestCase):
 
     def test_maintenance_suppress_fiber(self):
         from datetime import datetime, timedelta
+
         now = datetime.now()
         start = (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
         end = (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_MAINT, "rx_power": -29.0,
-                                   "tx_power": 2.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_MAINT, "rx_power": -29.0, "tx_power": 2.0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/maintenance",
-                                 json={"host": SN_MAINT, "start_at": start,
-                                       "end_at": end, "reason": "perbaikan jalur"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/maintenance",
+                json={
+                    "host": SN_MAINT,
+                    "start_at": start,
+                    "end_at": end,
+                    "reason": "perbaikan jalur",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             alarms = r.get_json()
-            fib = [a for a in alarms
-                   if a.get("category") == "fiber" and SN_MAINT in a.get("host", "")]
+            fib = [
+                a
+                for a in alarms
+                if a.get("category") == "fiber" and SN_MAINT in a.get("host", "")
+            ]
             self.assertEqual(fib, [])
-            maint = [a for a in alarms
-                     if a.get("category") == "maintenance" and SN_MAINT in a.get("host", "")]
+            maint = [
+                a
+                for a in alarms
+                if a.get("category") == "maintenance" and SN_MAINT in a.get("host", "")
+            ]
             self.assertTrue(maint)
             # poll tak mengirim telegram: memory tetap terset, tak ada ledakan
             before = dict(m.fiber_alarm_memory)
@@ -638,8 +801,9 @@ class FiberImportOltTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -648,19 +812,25 @@ class FiberImportOltTest(unittest.TestCase):
 
     def test_import_csv_duplikat_diskip(self):
         import io as _io
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_IMPORT_A, "rx_power": -19.0},
-                             headers=JSON_HDR)
+
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_IMPORT_A, "rx_power": -19.0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid_a = r.get_json()["id"]
         try:
-            csv_text = ("ont_sn,customer,olt_name,rx_power,tx_power,source\n"
-                        f"{SN_IMPORT_A},duplikat,, -19.0,2.0,manual\n"
-                        f"{SN_IMPORT_B},baru,, -26.0,2.0,manual\n")
-            r = self.client.post("/api/fiber/import",
-                                 data={"file": (_io.BytesIO(csv_text.encode()),
-                                                "ont.csv")},
-                                 headers=XRW_HDR)
+            csv_text = (
+                "ont_sn,customer,olt_name,rx_power,tx_power,source\n"
+                f"{SN_IMPORT_A},duplikat,, -19.0,2.0,manual\n"
+                f"{SN_IMPORT_B},baru,, -26.0,2.0,manual\n"
+            )
+            r = self.client.post(
+                "/api/fiber/import",
+                data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                headers=XRW_HDR,
+            )
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             j = r.get_json()
             self.assertEqual(j["created"], 1)
@@ -680,36 +850,50 @@ class FiberImportOltTest(unittest.TestCase):
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
         try:
-            r = self.client.post("/api/settings", json={"fiber_rx_target": 0.0},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings", json={"fiber_rx_target": 0.0}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 400)
         finally:
-            self.client.post("/api/settings",
-                             json={"fiber_rx_target": orig["fiber_rx_target"]},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={"fiber_rx_target": orig["fiber_rx_target"]},
+                headers=JSON_HDR,
+            )
 
     def test_olt_crud_dan_poll_snmp(self):
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_TEST, "ip": "bukan-ip"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts", json={"name": OLT_TEST, "ip": "bukan-ip"}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_TEST, "ip": "10.99.99.250",
-                                   "community": "public", "vendor": "zte",
-                                   "rx_base": "1.3.6.1.4.1.3902.1.1",
-                                   "tx_base": "1.3.6.1.4.1.3902.1.2",
-                                   "div": 100},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={
+                "name": OLT_TEST,
+                "ip": "10.99.99.250",
+                "community": "public",
+                "vendor": "zte",
+                "rx_base": "1.3.6.1.4.1.3902.1.1",
+                "tx_base": "1.3.6.1.4.1.3902.1.2",
+                "div": 100,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/olts", json={"name": OLT_TEST},
-                                 headers=JSON_HDR)
+            r = self.client.post("/api/olts", json={"name": OLT_TEST}, headers=JSON_HDR)
             self.assertEqual(r.status_code, 400)
-            r = self.client.post("/api/fiber",
-                                 json={"ont_sn": SN_SNMP, "olt_name": OLT_TEST,
-                                       "ont_index": "7", "source": "snmp"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": SN_SNMP,
+                    "olt_name": OLT_TEST,
+                    "ont_index": "7",
+                    "source": "snmp",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201)
             fid = r.get_json()["id"]
             try:
@@ -720,7 +904,9 @@ class FiberImportOltTest(unittest.TestCase):
                 finally:
                     m._snmp_get = real
                 conn, c = m.get_db()
-                c.execute("SELECT rx_power, tx_power FROM fiber_onts WHERE id=?", (fid,))
+                c.execute(
+                    "SELECT rx_power, tx_power FROM fiber_onts WHERE id=?", (fid,)
+                )
                 row = c.fetchone()
                 conn.close()
                 self.assertAlmostEqual(row["rx_power"], -19.95)
@@ -738,14 +924,19 @@ class SchedulerRefTest(unittest.TestCase):
         # Pastikan tiap func=... di blok scheduler ada sebagai callable,
         # dan didefinisikan SEBELUM blok scheduler (aman saat import).
         import re
+
         src = open(m.__file__).read()
-        names = re.findall(r"scheduler\.add_job\(func=([A-Za-z_][A-Za-z0-9_]*)", src)
+        # \s* agar tahan terhadap formatting (black menaruh func= di baris baru)
+        names = re.findall(r"scheduler\.add_job\(\s*func=([A-Za-z_][A-Za-z0-9_]*)", src)
         self.assertTrue(names)
         sched_pos = src.index("SCHEDULER_ENABLED = ")
         for n in names:
             self.assertTrue(callable(getattr(m, n, None)), f"job {n} tidak terdefinisi")
-            self.assertLess(src.index(f"def {n}("), sched_pos,
-                            f"job {n} didefinisikan setelah blok scheduler -> NameError produksi")
+            self.assertLess(
+                src.index(f"def {n}("),
+                sched_pos,
+                f"job {n} didefinisikan setelah blok scheduler -> NameError produksi",
+            )
 
 
 SN_MUTEEXP = "TEST-FIBER-MUTEEXP-01"
@@ -778,8 +969,10 @@ def _cleanup_new(client):
     try:
         conn, c = m.get_db()
         try:
-            c.execute("DELETE FROM maintenance_windows WHERE host IN (?, ?)",
-                      (f"ODP:{ODP_H}", f"OLT:{OLT_H}"))
+            c.execute(
+                "DELETE FROM maintenance_windows WHERE host IN (?, ?)",
+                (f"ODP:{ODP_H}", f"OLT:{OLT_H}"),
+            )
             c.execute("DELETE FROM odps WHERE name=?", (ODP_H,))
             c.execute("DELETE FROM olts WHERE name=?", (OLT_H,))
             conn.commit()
@@ -794,8 +987,9 @@ class FiberMuteExpiryTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -807,6 +1001,7 @@ class FiberMuteExpiryTest(unittest.TestCase):
         self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": ""}))
         self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": None}))
         from datetime import datetime, timedelta
+
         fut = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
         past = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
         self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": fut}))
@@ -814,13 +1009,21 @@ class FiberMuteExpiryTest(unittest.TestCase):
 
     def test_mute_kedaluawarsa_muncul_lagi_di_triggers(self):
         from datetime import datetime, timedelta
+
         fut = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
         past = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_MUTEEXP, "rx_power": -29.0,
-                                   "tx_power": 2.0, "mute_alarm": 1,
-                                   "mute_until": fut, "mute_reason": "tunggu teknisi"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_MUTEEXP,
+                "rx_power": -29.0,
+                "tx_power": 2.0,
+                "mute_alarm": 1,
+                "mute_until": fut,
+                "mute_reason": "tunggu teknisi",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         fid = r.get_json()["id"]
         try:
@@ -828,33 +1031,51 @@ class FiberMuteExpiryTest(unittest.TestCase):
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
             self.assertTrue(item["mute_active"])
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [a for a in r.get_json()
-                   if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")]
+            fib = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")
+            ]
             self.assertEqual(fib, [])
             # kedaluawarsa -> alarm aktif lagi
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_MUTEEXP, "rx_power": -29.0,
-                                      "tx_power": 2.0, "mute_alarm": 1,
-                                      "mute_until": past},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_MUTEEXP,
+                    "rx_power": -29.0,
+                    "tx_power": 2.0,
+                    "mute_alarm": 1,
+                    "mute_until": past,
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
             self.assertFalse(item["mute_active"])
             self.assertEqual(item["mute_alarm"], 1)
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [a for a in r.get_json()
-                   if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")]
+            fib = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")
+            ]
             self.assertTrue(fib)
             self.assertEqual(fib[0]["severity"], "disaster")
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_mute_until_format_invalid_ditolak(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_MUTEEXP, "rx_power": -19.0,
-                                   "mute_alarm": 1, "mute_until": "kapan-kapan"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_MUTEEXP,
+                "rx_power": -19.0,
+                "mute_alarm": 1,
+                "mute_until": "kapan-kapan",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
 
 
@@ -863,16 +1084,19 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
-        r = cls.client.post("/api/odps", json={"name": ODP_H, "capacity": 8},
-                            headers=JSON_HDR)
+        r = cls.client.post(
+            "/api/odps", json={"name": ODP_H, "capacity": 8}, headers=JSON_HDR
+        )
         assert r.status_code == 201, r.get_data(as_text=True)
-        r = cls.client.post("/api/olts",
-                            json={"name": OLT_H, "ip": "10.99.99.251",
-                                  "community": "public"},
-                            headers=JSON_HDR)
+        r = cls.client.post(
+            "/api/olts",
+            json={"name": OLT_H, "ip": "10.99.99.251", "community": "public"},
+            headers=JSON_HDR,
+        )
         assert r.status_code == 201, r.get_data(as_text=True)
 
     @classmethod
@@ -881,34 +1105,56 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
 
     def _window(self):
         from datetime import datetime, timedelta
+
         now = datetime.now()
-        return ((now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M"),
-                (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"))
+        return (
+            (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M"),
+            (now + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"),
+        )
 
     def test_maintenance_odp_mensuppress_ont(self):
         start, end = self._window()
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_HIER, "rx_power": -29.0,
-                                   "tx_power": 2.0, "odp_name": ODP_H,
-                                   "olt_name": OLT_H},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_HIER,
+                "rx_power": -29.0,
+                "tx_power": 2.0,
+                "odp_name": ODP_H,
+                "olt_name": OLT_H,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/maintenance",
-                                 json={"host": f"ODP:{ODP_H}", "start_at": start,
-                                       "end_at": end, "reason": "ganti splitter"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/maintenance",
+                json={
+                    "host": f"ODP:{ODP_H}",
+                    "start_at": start,
+                    "end_at": end,
+                    "reason": "ganti splitter",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             mid = r.get_json()["id"]
             try:
                 r = self.client.get("/api/triggers", headers=XRW_HDR)
                 alarms = r.get_json()
-                fib = [a for a in alarms
-                       if a.get("category") == "fiber" and SN_HIER in a.get("host", "")]
+                fib = [
+                    a
+                    for a in alarms
+                    if a.get("category") == "fiber" and SN_HIER in a.get("host", "")
+                ]
                 self.assertEqual(fib, [])
-                maint = [a for a in alarms
-                         if a.get("category") == "maintenance" and SN_HIER in a.get("host", "")]
+                maint = [
+                    a
+                    for a in alarms
+                    if a.get("category") == "maintenance"
+                    and SN_HIER in a.get("host", "")
+                ]
                 self.assertTrue(maint)
                 self.assertIn("ODP", maint[0]["message"])
             finally:
@@ -918,24 +1164,34 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
 
     def test_maintenance_olt_mensuppress_ont(self):
         start, end = self._window()
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_HIER, "rx_power": -29.0,
-                                   "olt_name": OLT_H},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_HIER, "rx_power": -29.0, "olt_name": OLT_H},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
-            r = self.client.post("/api/maintenance",
-                                 json={"host": f"olt:{OLT_H.lower()}", "start_at": start,
-                                       "end_at": end, "reason": "upgrade firmware"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/maintenance",
+                json={
+                    "host": f"olt:{OLT_H.lower()}",
+                    "start_at": start,
+                    "end_at": end,
+                    "reason": "upgrade firmware",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             mid = r.get_json()["id"]
             try:
                 r = self.client.get("/api/triggers", headers=XRW_HDR)
                 alarms = r.get_json()
-                fib = [a for a in alarms
-                       if a.get("category") == "fiber" and SN_HIER in a.get("host", "")]
+                fib = [
+                    a
+                    for a in alarms
+                    if a.get("category") == "fiber" and SN_HIER in a.get("host", "")
+                ]
                 self.assertEqual(fib, [])
             finally:
                 self.client.delete(f"/api/maintenance/{mid}", headers=XRW_HDR)
@@ -944,10 +1200,11 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
 
     def test_maintenance_odp_tidak_terdaftar_ditolak(self):
         start, end = self._window()
-        r = self.client.post("/api/maintenance",
-                             json={"host": "ODP:TIDAK-ADA-XYZ", "start_at": start,
-                                   "end_at": end},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/maintenance",
+            json={"host": "ODP:TIDAK-ADA-XYZ", "start_at": start, "end_at": end},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 404)
 
 
@@ -956,8 +1213,9 @@ class FiberImportUpsertTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -966,24 +1224,35 @@ class FiberImportUpsertTest(unittest.TestCase):
 
     def test_upsert_update_rx_tanpa_hapus_customer(self):
         import io as _io
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_UPSERT, "customer": "Bpk Uji",
-                                   "rx_power": -19.0, "tx_power": 2.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_UPSERT,
+                "customer": "Bpk Uji",
+                "rx_power": -19.0,
+                "tx_power": 2.0,
+                "source": "manual",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         fid = r.get_json()["id"]
         try:
             conn, c = m.get_db()
-            before = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
-                               (fid,)).fetchone()[0]
+            before = c.execute(
+                "SELECT COUNT(*) FROM fiber_history WHERE ont_id=?", (fid,)
+            ).fetchone()[0]
             conn.close()
             # CSV hanya berisi rx baru (tanpa customer/odp) -> merge, bukan wipe
-            csv_text = ("ont_sn,rx_power,tx_power,source\n"
-                        f"{SN_UPSERT},-26.0,2.0,manual\n")
-            r = self.client.post("/api/fiber/import?mode=upsert",
-                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
-                                 headers=XRW_HDR)
+            csv_text = (
+                "ont_sn,rx_power,tx_power,source\n" f"{SN_UPSERT},-26.0,2.0,manual\n"
+            )
+            r = self.client.post(
+                "/api/fiber/import?mode=upsert",
+                data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                headers=XRW_HDR,
+            )
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             j = r.get_json()
             self.assertEqual(j["created"], 0)
@@ -995,22 +1264,27 @@ class FiberImportUpsertTest(unittest.TestCase):
             self.assertEqual(item["calc_status"], "warning")
             self.assertEqual(item["customer"], "Bpk Uji")
             conn, c = m.get_db()
-            after = c.execute("SELECT COUNT(*) FROM fiber_history WHERE ont_id=?",
-                              (fid,)).fetchone()[0]
+            after = c.execute(
+                "SELECT COUNT(*) FROM fiber_history WHERE ont_id=?", (fid,)
+            ).fetchone()[0]
             conn.close()
             self.assertEqual(after, before + 1)
             # mode default tetap skip
-            r = self.client.post("/api/fiber/import",
-                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
-                                 headers=XRW_HDR)
+            r = self.client.post(
+                "/api/fiber/import",
+                data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                headers=XRW_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             j = r.get_json()
             self.assertEqual(j["skipped"], 1)
             self.assertEqual(j.get("updated", 0), 0)
             # mode invalid ditolak
-            r = self.client.post("/api/fiber/import?mode=bogus",
-                                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
-                                 headers=XRW_HDR)
+            r = self.client.post(
+                "/api/fiber/import?mode=bogus",
+                data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
+                headers=XRW_HDR,
+            )
             self.assertEqual(r.status_code, 400)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
@@ -1021,8 +1295,9 @@ class FiberStaleTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1031,6 +1306,7 @@ class FiberStaleTest(unittest.TestCase):
 
     def _age_last_seen(self, sn, hours):
         from datetime import datetime, timedelta
+
         old = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
         conn, c = m.get_db()
         c.execute("UPDATE fiber_onts SET last_seen=? WHERE ont_sn=?", (old, sn))
@@ -1039,32 +1315,55 @@ class FiberStaleTest(unittest.TestCase):
 
     def test_stale_info_helper(self):
         from datetime import datetime, timedelta
+
         old = (datetime.now() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # manual tak pernah stale walau data lama
-        self.assertEqual(m._fiber_stale_info(
-            {"source": "manual", "rx_power": -19.0, "last_seen": old})[0], False)
+        self.assertEqual(
+            m._fiber_stale_info(
+                {"source": "manual", "rx_power": -19.0, "last_seen": old}
+            )[0],
+            False,
+        )
         # snmp segar -> tidak stale
-        self.assertEqual(m._fiber_stale_info(
-            {"source": "snmp", "rx_power": -19.0, "last_seen": fresh})[0], False)
+        self.assertEqual(
+            m._fiber_stale_info(
+                {"source": "snmp", "rx_power": -19.0, "last_seen": fresh}
+            )[0],
+            False,
+        )
         # snmp 3 jam (ambang default 60 mnt) -> stale
         is_stale, age = m._fiber_stale_info(
-            {"source": "snmp", "rx_power": -19.0, "last_seen": old})
+            {"source": "snmp", "rx_power": -19.0, "last_seen": old}
+        )
         self.assertTrue(is_stale)
         self.assertIn("jam", age)
         # tanpa pengukuran / tanpa last_seen -> bukan stale
-        self.assertEqual(m._fiber_stale_info(
-            {"source": "snmp", "rx_power": None, "tx_power": None,
-             "last_seen": old})[0], False)
-        self.assertEqual(m._fiber_stale_info(
-            {"source": "snmp", "rx_power": -19.0, "last_seen": ""})[0], False)
+        self.assertEqual(
+            m._fiber_stale_info(
+                {"source": "snmp", "rx_power": None, "tx_power": None, "last_seen": old}
+            )[0],
+            False,
+        )
+        self.assertEqual(
+            m._fiber_stale_info({"source": "snmp", "rx_power": -19.0, "last_seen": ""})[
+                0
+            ],
+            False,
+        )
 
     def test_stale_overlay_di_list_dan_triggers(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_STALE, "rx_power": -19.0,
-                                   "tx_power": 2.0, "source": "snmp",
-                                   "ont_index": "9"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_STALE,
+                "rx_power": -19.0,
+                "tx_power": 2.0,
+                "source": "snmp",
+                "ont_index": "9",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         fid = r.get_json()["id"]
         try:
@@ -1079,17 +1378,26 @@ class FiberStaleTest(unittest.TestCase):
             self.assertTrue(item["stale"])
             self.assertIn("LOS", item["advice"])
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            stale = [a for a in r.get_json()
-                     if a.get("category") == "fiber" and SN_STALE in a.get("host", "")]
+            stale = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_STALE in a.get("host", "")
+            ]
             self.assertTrue(stale)
             self.assertEqual(stale[0]["severity"], "warning")
             self.assertIn("STALE", stale[0]["message"])
             # data segar masuk lagi -> kembali normal
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_STALE, "rx_power": -19.0,
-                                      "tx_power": 2.0, "source": "snmp",
-                                      "ont_index": "9"},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_STALE,
+                    "rx_power": -19.0,
+                    "tx_power": 2.0,
+                    "source": "snmp",
+                    "ont_index": "9",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_STALE)
@@ -1102,19 +1410,27 @@ class FiberStaleTest(unittest.TestCase):
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
         try:
-            r = self.client.post("/api/settings", json={"fiber_degrade_db": 0.1},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings", json={"fiber_degrade_db": 0.1}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 400)
-            r = self.client.post("/api/settings", json={"fiber_degrade_days": 99},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings", json={"fiber_degrade_days": 99}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 400)
-            r = self.client.post("/api/settings", json={"fiber_stale_min": 5},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings", json={"fiber_stale_min": 5}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 400)
-            r = self.client.post("/api/settings",
-                                 json={"fiber_degrade_db": 2.5, "fiber_degrade_days": 5,
-                                       "fiber_stale_min": 120},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings",
+                json={
+                    "fiber_degrade_db": 2.5,
+                    "fiber_degrade_days": 5,
+                    "fiber_stale_min": 120,
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             r = self.client.get("/api/settings", headers=XRW_HDR)
             j = r.get_json()
@@ -1122,11 +1438,18 @@ class FiberStaleTest(unittest.TestCase):
             self.assertEqual(int(j["fiber_degrade_days"]), 5)
             self.assertEqual(int(j["fiber_stale_min"]), 120)
         finally:
-            self.client.post("/api/settings",
-                             json={k: orig[k] for k in
-                                   ("fiber_degrade_db", "fiber_degrade_days",
-                                    "fiber_stale_min")},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={
+                    k: orig[k]
+                    for k in (
+                        "fiber_degrade_db",
+                        "fiber_degrade_days",
+                        "fiber_stale_min",
+                    )
+                },
+                headers=JSON_HDR,
+            )
 
 
 class FiberDegradationTest(unittest.TestCase):
@@ -1134,8 +1457,9 @@ class FiberDegradationTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1145,16 +1469,25 @@ class FiberDegradationTest(unittest.TestCase):
 
     def test_degradasi_terdeteksi_dan_masuk_triggers(self):
         from datetime import datetime, timedelta
+
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
-        self.client.post("/api/settings",
-                         json={"fiber_degrade_db": 3.0, "fiber_degrade_days": 7},
-                         headers=JSON_HDR)
+        self.client.post(
+            "/api/settings",
+            json={"fiber_degrade_db": 3.0, "fiber_degrade_days": 7},
+            headers=JSON_HDR,
+        )
         try:
-            r = self.client.post("/api/fiber",
-                                 json={"ont_sn": SN_DEG, "rx_power": -16.0,
-                                       "tx_power": 2.0, "source": "manual"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": SN_DEG,
+                    "rx_power": -16.0,
+                    "tx_power": 2.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             fid = r.get_json()["id"]
             try:
@@ -1162,16 +1495,27 @@ class FiberDegradationTest(unittest.TestCase):
                 degr, drop = m._fiber_degradation(fid, -16.0)
                 self.assertFalse(degr)
                 # tanam titik lama: 6 hari lalu Rx -16, kini -20 (turun 4 dB)
-                old_ts = (datetime.now() - timedelta(days=6)).strftime("%Y-%m-%d %H:%M:%S")
+                old_ts = (datetime.now() - timedelta(days=6)).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 conn, c = m.get_db()
-                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
-                          " VALUES (?, ?, ?, ?)", (fid, -16.0, 2.0, old_ts))
+                c.execute(
+                    "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                    " VALUES (?, ?, ?, ?)",
+                    (fid, -16.0, 2.0, old_ts),
+                )
                 conn.commit()
                 conn.close()
-                r = self.client.put(f"/api/fiber/{fid}",
-                                    json={"ont_sn": SN_DEG, "rx_power": -20.0,
-                                          "tx_power": 2.0, "source": "manual"},
-                                    headers=JSON_HDR)
+                r = self.client.put(
+                    f"/api/fiber/{fid}",
+                    json={
+                        "ont_sn": SN_DEG,
+                        "rx_power": -20.0,
+                        "tx_power": 2.0,
+                        "source": "manual",
+                    },
+                    headers=JSON_HDR,
+                )
                 self.assertEqual(r.status_code, 200)
                 degr, drop = m._fiber_degradation(fid, -20.0)
                 self.assertTrue(degr)
@@ -1186,19 +1530,27 @@ class FiberDegradationTest(unittest.TestCase):
                 self.assertTrue(item["degrading"])
                 self.assertAlmostEqual(item["degrade_drop_db"], 4.0)
                 r = self.client.get("/api/triggers", headers=XRW_HDR)
-                deg = [a for a in r.get_json()
-                       if a.get("category") == "fiber" and SN_DEG in a.get("host", "")
-                       and "DEGRADASI" in a.get("message", "")]
+                deg = [
+                    a
+                    for a in r.get_json()
+                    if a.get("category") == "fiber"
+                    and SN_DEG in a.get("host", "")
+                    and "DEGRADASI" in a.get("message", "")
+                ]
                 self.assertTrue(deg)
                 self.assertEqual(deg[0]["severity"], "warning")
             finally:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
                 m.fiber_degrade_memory.pop(fid, None)
         finally:
-            self.client.post("/api/settings",
-                             json={"fiber_degrade_db": orig["fiber_degrade_db"],
-                                   "fiber_degrade_days": orig["fiber_degrade_days"]},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={
+                    "fiber_degrade_db": orig["fiber_degrade_db"],
+                    "fiber_degrade_days": orig["fiber_degrade_days"],
+                },
+                headers=JSON_HDR,
+            )
 
 
 OLT_P = "TEST-OLT-PRESET"
@@ -1212,13 +1564,18 @@ def _cleanup_olt_p(client):
         conn, c = m.get_db()
         try:
             for _olt in (OLT_P, OLT_P2, OLT_T, OLT_D):
-                c.execute("SELECT id FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
+                c.execute(
+                    "SELECT id FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
+                    (_olt,),
+                )
                 for r in c.fetchall():
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (r["id"],))
                     c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (r["id"],))
                     m.fiber_alarm_memory.pop(r["id"], None)
                     m.fiber_degrade_memory.pop(r["id"], None)
-                c.execute("DELETE FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,))
+                c.execute(
+                    "DELETE FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?", (_olt,)
+                )
                 c.execute("DELETE FROM olts WHERE name=?", (_olt,))
             conn.commit()
         finally:
@@ -1232,8 +1589,9 @@ class FiberOltPresetTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_olt_p(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1259,60 +1617,87 @@ class FiberOltPresetTest(unittest.TestCase):
 
     def test_transform_helper(self):
         self.assertAlmostEqual(
-            m._olt_raw_to_dbm(5000, {"div": 1.0, "scale": 0.002, "offset": -30.0}), -20.0)
+            m._olt_raw_to_dbm(5000, {"div": 1.0, "scale": 0.002, "offset": -30.0}),
+            -20.0,
+        )
         self.assertAlmostEqual(
-            m._olt_raw_to_dbm(7500, {"div": 1.0, "scale": 0.01, "offset": -100.0}), -25.0)
+            m._olt_raw_to_dbm(7500, {"div": 1.0, "scale": 0.01, "offset": -100.0}),
+            -25.0,
+        )
         self.assertAlmostEqual(m._olt_raw_to_dbm(-1995, {"div": 100.0}), -19.95)
         self.assertIsNone(m._olt_raw_to_dbm("bukan-angka", {"div": 100.0}))
 
     def test_create_auto_preset_dan_validasi(self):
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_P, "ip": "10.99.99.252",
-                                   "community": "public", "vendor": "zte"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={
+                "name": OLT_P,
+                "ip": "10.99.99.252",
+                "community": "public",
+                "vendor": "zte",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         o = self._get_olt(OLT_P)
         self.assertIn("3902.1012.3.50.12.1.1.10", o["rx_base"])
         self.assertAlmostEqual(o["scale"], 0.002)
         self.assertAlmostEqual(o["offset"], -30.0)
         # kustomisasi eksplisit tak tertimpa preset
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_P2, "ip": "10.99.99.253",
-                                   "community": "public", "vendor": "zte",
-                                   "rx_base": "1.3.6.1.4.1.1", "div": 100},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={
+                "name": OLT_P2,
+                "ip": "10.99.99.253",
+                "community": "public",
+                "vendor": "zte",
+                "rx_base": "1.3.6.1.4.1.1",
+                "div": 100,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         o = self._get_olt(OLT_P2)
         self.assertEqual(o["rx_base"], "1.3.6.1.4.1.1")
         self.assertAlmostEqual(o["scale"], 1.0)
         # validasi scale/offset
-        r = self.client.post("/api/olts",
-                             json={"name": "TEST-OLT-X", "vendor": "zte",
-                                   "scale": 0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={"name": "TEST-OLT-X", "vendor": "zte", "scale": 0},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/olts",
-                             json={"name": "TEST-OLT-X", "vendor": "zte",
-                                   "offset": 99999},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={"name": "TEST-OLT-X", "vendor": "zte", "offset": 99999},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
 
     def test_olt_test_endpoint(self):
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_T, "ip": "10.99.99.253",
-                                   "community": "public", "vendor": "generic",
-                                   "rx_base": "1.3.6.1.4.1.9999.1",
-                                   "tx_base": "1.3.6.1.4.1.9999.2",
-                                   "div": 100},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={
+                "name": OLT_T,
+                "ip": "10.99.99.253",
+                "community": "public",
+                "vendor": "generic",
+                "rx_base": "1.3.6.1.4.1.9999.1",
+                "tx_base": "1.3.6.1.4.1.9999.2",
+                "div": 100,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
         real_get, real_next = m._snmp_get, m._snmp_getnext
         try:
             m._snmp_get = lambda ip, comm, oids, timeout=2.0: [360000]
             m._snmp_getnext = lambda ip, comm, base, timeout=2.5: (
-                (base + ".7", 0x02, -1995, None) if base.endswith(".1")
-                else (base + ".7", 0x02, 210, None))
+                (base + ".7", 0x02, -1995, None)
+                if base.endswith(".1")
+                else (base + ".7", 0x02, 210, None)
+            )
             r = self.client.post(f"/api/olts/{oid}/test", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             j = r.get_json()
@@ -1335,21 +1720,34 @@ class FiberOltPresetTest(unittest.TestCase):
             m._snmp_get, m._snmp_getnext = real_get, real_next
 
     def test_discover_bulk_upsert(self):
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_D, "ip": "10.99.99.252",
-                                   "community": "public", "vendor": "generic",
-                                   "rx_base": "1.3.6.1.4.1.9999.1",
-                                   "tx_base": "1.3.6.1.4.1.9999.2",
-                                   "div": 100},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={
+                "name": OLT_D,
+                "ip": "10.99.99.252",
+                "community": "public",
+                "vendor": "generic",
+                "rx_base": "1.3.6.1.4.1.9999.1",
+                "tx_base": "1.3.6.1.4.1.9999.2",
+                "div": 100,
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
         # baris manual dengan index sama -> harus dilewati, tak ditimpa
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": "TEST-MANUAL-DISC", "customer": "Jangan Timpa",
-                                   "olt_name": OLT_D, "ont_index": "1.1",
-                                   "rx_power": -18.0, "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": "TEST-MANUAL-DISC",
+                "customer": "Jangan Timpa",
+                "olt_name": OLT_D,
+                "ont_index": "1.1",
+                "rx_power": -18.0,
+                "source": "manual",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         real_get, real_walk = m._snmp_get, m.snmp_walk
         base = "1.3.6.1.4.1.9999.1"
@@ -1365,8 +1763,9 @@ class FiberOltPresetTest(unittest.TestCase):
                 return [210 if o.endswith(".1.1") else 215 for o in oids]
 
             m._snmp_get = _fake_get
-            r = self.client.post(f"/api/olts/{oid}/discover",
-                                 json={"limit": 10}, headers=JSON_HDR)
+            r = self.client.post(
+                f"/api/olts/{oid}/discover", json={"limit": 10}, headers=JSON_HDR
+            )
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
             j = r.get_json()
             self.assertEqual(j["walked"], 2)
@@ -1383,8 +1782,9 @@ class FiberOltPresetTest(unittest.TestCase):
             self.assertEqual(man["customer"], "Jangan Timpa")
             self.assertAlmostEqual(man["rx_power"], -18.0)
             # discover kedua -> update, bukan create
-            r = self.client.post(f"/api/olts/{oid}/discover",
-                                 json={"limit": 10}, headers=JSON_HDR)
+            r = self.client.post(
+                f"/api/olts/{oid}/discover", json={"limit": 10}, headers=JSON_HDR
+            )
             j = r.get_json()
             self.assertEqual(j["created"], 0)
             self.assertEqual(j["updated"], 1)
@@ -1392,7 +1792,9 @@ class FiberOltPresetTest(unittest.TestCase):
             m._snmp_get, m.snmp_walk = real_get, real_walk
             try:
                 conn, c = m.get_db()
-                c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", ("TEST-MANUAL-DISC",))
+                c.execute(
+                    "SELECT id FROM fiber_onts WHERE ont_sn=?", ("TEST-MANUAL-DISC",)
+                )
                 row = c.fetchone()
                 if row:
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
@@ -1439,15 +1841,23 @@ class FiberPagingSummaryTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_pg(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         for sn, rx in ((SN_PG_A, -19.0), (SN_PG_B, -26.0), (SN_PG_C, -29.0)):
-            r = cls.client.post("/api/fiber",
-                                json={"ont_sn": sn, "customer": "uji paging",
-                                      "olt_name": OLT_PG, "rx_power": rx,
-                                      "tx_power": 2.0, "source": "manual"},
-                                headers=JSON_HDR)
+            r = cls.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": sn,
+                    "customer": "uji paging",
+                    "olt_name": OLT_PG,
+                    "rx_power": rx,
+                    "tx_power": 2.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             assert r.status_code == 201, r.get_data(as_text=True)
 
     @classmethod
@@ -1472,12 +1882,14 @@ class FiberPagingSummaryTest(unittest.TestCase):
         r = self.client.get("/api/fiber?page=2&per_page=2", headers=XRW_HDR)
         self.assertEqual(r.get_json()["page"], 2)
         # sort rx terburuk dulu
-        r = self.client.get(f"/api/fiber?sort=rx_asc&olt={OLT_PG}&per_page=50",
-                            headers=XRW_HDR)
+        r = self.client.get(
+            f"/api/fiber?sort=rx_asc&olt={OLT_PG}&per_page=50", headers=XRW_HDR
+        )
         items = r.get_json()["items"]
         self.assertEqual([o["ont_sn"] for o in items], [SN_PG_C, SN_PG_B, SN_PG_A])
-        r = self.client.get(f"/api/fiber?sort=rx_desc&olt={OLT_PG}&per_page=50",
-                            headers=XRW_HDR)
+        r = self.client.get(
+            f"/api/fiber?sort=rx_desc&olt={OLT_PG}&per_page=50", headers=XRW_HDR
+        )
         items = r.get_json()["items"]
         self.assertEqual([o["ont_sn"] for o in items], [SN_PG_A, SN_PG_B, SN_PG_C])
         r = self.client.get("/api/fiber?sort=bogus", headers=XRW_HDR)
@@ -1505,7 +1917,9 @@ class FiberPagingSummaryTest(unittest.TestCase):
         self.assertGreaterEqual(j["counts"]["critical"], 1)
         sns = [o["ont_sn"] for o in j["worst_rx"]]
         self.assertIn(SN_PG_C, sns)
-        self.assertLess(sns.index(SN_PG_C), sns.index(SN_PG_A) if SN_PG_A in sns else len(sns))
+        self.assertLess(
+            sns.index(SN_PG_C), sns.index(SN_PG_A) if SN_PG_A in sns else len(sns)
+        )
         self.assertIn(OLT_PG, j["olt_names"])
         self.assertTrue(any(o["ont_sn"] == SN_PG_A for o in j["ont_options"]))
 
@@ -1514,7 +1928,9 @@ class FiberPagingSummaryTest(unittest.TestCase):
         c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (SN_PG_A,))
         fid = c.fetchone()["id"]
         conn.close()
-        r = self.client.get(f"/api/fiber/{fid}/history/export?hours=24", headers=XRW_HDR)
+        r = self.client.get(
+            f"/api/fiber/{fid}/history/export?hours=24", headers=XRW_HDR
+        )
         self.assertEqual(r.status_code, 200)
         body = r.get_data(as_text=True)
         self.assertIn("timestamp,rx_dbm,tx_dbm", body)
@@ -1531,8 +1947,9 @@ class FiberDailySummaryTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_pg(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1557,19 +1974,27 @@ class FiberDailySummaryTest(unittest.TestCase):
         real = m.send_telegram_alert
         m.send_telegram_alert = lambda msg: sent.append(msg)
         try:
-            with _mock.patch.object(m, "get_db",
-                                    return_value=(_EmptyConn(), _EmptyC())):
+            with _mock.patch.object(
+                m, "get_db", return_value=(_EmptyConn(), _EmptyC())
+            ):
                 m.send_fiber_summary()
         finally:
             m.send_telegram_alert = real
         self.assertEqual(sent, [])
 
     def test_isi_laporan(self):
-        for sn, rx, extra in ((SN_SUM_A, -29.0, {}),
-                              (SN_SUM_B, -19.0, {}),
-                              (SN_SUM_M, -30.0, {"mute_alarm": 1})):
-            body = {"ont_sn": sn, "customer": "uji ringkasan",
-                    "rx_power": rx, "tx_power": 2.0, "source": "manual"}
+        for sn, rx, extra in (
+            (SN_SUM_A, -29.0, {}),
+            (SN_SUM_B, -19.0, {}),
+            (SN_SUM_M, -30.0, {"mute_alarm": 1}),
+        ):
+            body = {
+                "ont_sn": sn,
+                "customer": "uji ringkasan",
+                "rx_power": rx,
+                "tx_power": 2.0,
+                "source": "manual",
+            }
             body.update(extra)
             r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
@@ -1611,8 +2036,7 @@ SN_DGW = "TEST-FIBER-DGW-01"
 
 
 def _cleanup_dt(client):
-    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C, SN_FLAP,
-               SN_DGN, SN_DGM, SN_DGW):
+    for sn in (SN_DT_A, SN_DT_B, SN_DT_W, SN_DT_C, SN_FLAP, SN_DGN, SN_DGM, SN_DGW):
         try:
             conn, c = m.get_db()
             try:
@@ -1638,8 +2062,9 @@ class FiberDowntimeTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1652,10 +2077,16 @@ class FiberDowntimeTest(unittest.TestCase):
         return r.get_json()
 
     def test_open_langsung_saat_create_critical(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
-                                   "tx_power": 2.0, "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_DT_A,
+                "rx_power": -29.0,
+                "tx_power": 2.0,
+                "source": "manual",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         fid = r.get_json()["id"]
         try:
@@ -1674,16 +2105,18 @@ class FiberDowntimeTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_close_saat_pulih_dengan_durasi(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_DT_A, "rx_power": -29.0, "source": "manual"},
+            headers=JSON_HDR,
+        )
         fid = r.get_json()["id"]
         try:
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_DT_A, "rx_power": -19.0,
-                                      "source": "manual"},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={"ont_sn": SN_DT_A, "rx_power": -19.0, "source": "manual"},
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             rows = self._downtime(fid)
             self.assertEqual(len(rows), 1)
@@ -1691,8 +2124,11 @@ class FiberDowntimeTest(unittest.TestCase):
             self.assertIsNotNone(rows[0]["duration_s"])
             # log pemulihan memuat durasi
             conn, c = m.get_db()
-            c.execute("SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_NORMAL'"
-                      " ORDER BY id DESC LIMIT 1", (SN_DT_A,))
+            c.execute(
+                "SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_NORMAL'"
+                " ORDER BY id DESC LIMIT 1",
+                (SN_DT_A,),
+            )
             log = c.fetchone()
             conn.close()
             self.assertIsNotNone(log)
@@ -1704,10 +2140,11 @@ class FiberDowntimeTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_warning_tidak_membuka_catatan(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_W, "rx_power": -26.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_DT_W, "rx_power": -26.0, "source": "manual"},
+            headers=JSON_HDR,
+        )
         fid = r.get_json()["id"]
         try:
             m.poll_fiber_monitor()
@@ -1717,10 +2154,17 @@ class FiberDowntimeTest(unittest.TestCase):
 
     def test_stale_membiarkan_catatan_terbuka(self):
         from datetime import datetime, timedelta
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_B, "rx_power": -29.0,
-                                   "source": "snmp", "ont_index": "5"},
-                             headers=JSON_HDR)
+
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": SN_DT_B,
+                "rx_power": -29.0,
+                "source": "snmp",
+                "ont_index": "5",
+            },
+            headers=JSON_HDR,
+        )
         fid = r.get_json()["id"]
         try:
             self.assertEqual(len(self._downtime(fid)), 1)
@@ -1738,10 +2182,16 @@ class FiberDowntimeTest(unittest.TestCase):
             rows = self._downtime(fid)
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["state"], "ongoing")
-            r = self.client.put(f"/api/fiber/{fid}",
-                                json={"ont_sn": SN_DT_B, "rx_power": -19.0,
-                                      "source": "snmp", "ont_index": "5"},
-                                headers=JSON_HDR)
+            r = self.client.put(
+                f"/api/fiber/{fid}",
+                json={
+                    "ont_sn": SN_DT_B,
+                    "rx_power": -19.0,
+                    "source": "snmp",
+                    "ont_index": "5",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             self.assertEqual(self._downtime(fid)[0]["state"], "resolved")
         finally:
@@ -1749,18 +2199,23 @@ class FiberDowntimeTest(unittest.TestCase):
 
     def test_sla_dan_validasi_days(self):
         from datetime import datetime, timedelta
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_A, "rx_power": -29.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_DT_A, "rx_power": -29.0, "source": "manual"},
+            headers=JSON_HDR,
+        )
         fid = r.get_json()["id"]
         try:
             now = datetime.now()
             start = (now - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
             end = (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
             conn, c = m.get_db()
-            c.execute("UPDATE fiber_downtime SET started_at=?, resolved_at=?,"
-                      " duration_s=3600 WHERE ont_id=? AND resolved_at IS NULL", (start, end, fid))
+            c.execute(
+                "UPDATE fiber_downtime SET started_at=?, resolved_at=?,"
+                " duration_s=3600 WHERE ont_id=? AND resolved_at IS NULL",
+                (start, end, fid),
+            )
             conn.commit()
             conn.close()
             r = self.client.get(f"/api/fiber/{fid}/sla?days=30", headers=XRW_HDR)
@@ -1768,7 +2223,9 @@ class FiberDowntimeTest(unittest.TestCase):
             j = r.get_json()
             self.assertEqual(j["incidents"], 1)
             self.assertEqual(j["total_downtime_s"], 3600)
-            self.assertAlmostEqual(j["uptime_pct"], round((30 * 86400 - 3600) / (30 * 86400) * 100, 2))
+            self.assertAlmostEqual(
+                j["uptime_pct"], round((30 * 86400 - 3600) / (30 * 86400) * 100, 2)
+            )
             r = self.client.get(f"/api/fiber/{fid}/sla?days=5", headers=XRW_HDR)
             self.assertEqual(r.status_code, 400)
             r = self.client.get("/api/fiber/999999/sla", headers=XRW_HDR)
@@ -1777,16 +2234,19 @@ class FiberDowntimeTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_delete_menghapus_riwayat_downtime(self):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": SN_DT_C, "rx_power": -29.0,
-                                   "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={"ont_sn": SN_DT_C, "rx_power": -29.0, "source": "manual"},
+            headers=JSON_HDR,
+        )
         fid = r.get_json()["id"]
         self.assertEqual(len(self._downtime(fid)), 1)
         r = self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
         self.assertEqual(r.status_code, 200)
         conn, c = m.get_db()
-        n = c.execute("SELECT COUNT(*) FROM fiber_downtime WHERE ont_id=?", (fid,)).fetchone()[0]
+        n = c.execute(
+            "SELECT COUNT(*) FROM fiber_downtime WHERE ont_id=?", (fid,)
+        ).fetchone()[0]
         conn.close()
         self.assertEqual(n, 0)
 
@@ -1796,8 +2256,9 @@ class FiberFlapTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -1806,17 +2267,30 @@ class FiberFlapTest(unittest.TestCase):
 
     def test_flap_terdeteksi_dan_masuk_triggers(self):
         from datetime import datetime, timedelta
+
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
-        self.client.post("/api/settings",
-                         json={"fiber_rx_warn": -25.0, "fiber_rx_crit": -27.0,
-                               "fiber_flap_flips": 4, "fiber_flap_hours": 24},
-                         headers=JSON_HDR)
+        self.client.post(
+            "/api/settings",
+            json={
+                "fiber_rx_warn": -25.0,
+                "fiber_rx_crit": -27.0,
+                "fiber_flap_flips": 4,
+                "fiber_flap_hours": 24,
+            },
+            headers=JSON_HDR,
+        )
         try:
-            r = self.client.post("/api/fiber",
-                                 json={"ont_sn": SN_FLAP, "rx_power": -19.0,
-                                       "tx_power": 2.0, "source": "manual"},
-                                 headers=JSON_HDR)
+            r = self.client.post(
+                "/api/fiber",
+                json={
+                    "ont_sn": SN_FLAP,
+                    "rx_power": -19.0,
+                    "tx_power": 2.0,
+                    "source": "manual",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             fid = r.get_json()["id"]
             try:
@@ -1827,17 +2301,31 @@ class FiberFlapTest(unittest.TestCase):
                 # tanam riwayat bolak-balik: -19,-26,-19,-26,-19 (4 flip)
                 now = datetime.now()
                 conn, c = m.get_db()
-                for h, rx in ((5, -19.0), (4, -26.0), (3, -19.0),
-                              (2, -26.0), (1, -19.0)):
+                for h, rx in (
+                    (5, -19.0),
+                    (4, -26.0),
+                    (3, -19.0),
+                    (2, -26.0),
+                    (1, -19.0),
+                ):
                     ts = (now - timedelta(hours=h)).strftime("%Y-%m-%d %H:%M:%S")
-                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
-                              " VALUES (?,?,?,?)", (fid, rx, 2.0, ts))
+                    c.execute(
+                        "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                        " VALUES (?,?,?,?)",
+                        (fid, rx, 2.0, ts),
+                    )
                 conn.commit()
                 conn.close()
-                r = self.client.put(f"/api/fiber/{fid}",
-                                    json={"ont_sn": SN_FLAP, "rx_power": -19.0,
-                                          "tx_power": 2.0, "source": "manual"},
-                                    headers=JSON_HDR)
+                r = self.client.put(
+                    f"/api/fiber/{fid}",
+                    json={
+                        "ont_sn": SN_FLAP,
+                        "rx_power": -19.0,
+                        "tx_power": 2.0,
+                        "source": "manual",
+                    },
+                    headers=JSON_HDR,
+                )
                 self.assertEqual(r.status_code, 200)
                 flapping, flips = m._fiber_flap(fid)
                 self.assertTrue(flapping)
@@ -1853,31 +2341,42 @@ class FiberFlapTest(unittest.TestCase):
                 r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
                 self.assertGreaterEqual(r.get_json()["counts"]["flapping"], 1)
                 r = self.client.get("/api/triggers", headers=XRW_HDR)
-                flap = [a for a in r.get_json()
-                        if a.get("category") == "fiber" and SN_FLAP in a.get("host", "")
-                        and "FLAPPING" in a.get("message", "")]
+                flap = [
+                    a
+                    for a in r.get_json()
+                    if a.get("category") == "fiber"
+                    and SN_FLAP in a.get("host", "")
+                    and "FLAPPING" in a.get("message", "")
+                ]
                 self.assertTrue(flap)
                 self.assertEqual(flap[0]["severity"], "warning")
             finally:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
                 m.fiber_flap_memory.pop(fid, None)
         finally:
-            self.client.post("/api/settings",
-                             json={"fiber_rx_warn": orig["fiber_rx_warn"],
-                                   "fiber_rx_crit": orig["fiber_rx_crit"],
-                                   "fiber_flap_flips": orig["fiber_flap_flips"],
-                                   "fiber_flap_hours": orig["fiber_flap_hours"]},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={
+                    "fiber_rx_warn": orig["fiber_rx_warn"],
+                    "fiber_rx_crit": orig["fiber_rx_crit"],
+                    "fiber_flap_flips": orig["fiber_flap_flips"],
+                    "fiber_flap_hours": orig["fiber_flap_hours"],
+                },
+                headers=JSON_HDR,
+            )
 
     def test_settings_flap_divalidasi(self):
-        r = self.client.post("/api/settings", json={"fiber_flap_flips": 1},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/settings", json={"fiber_flap_flips": 1}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/settings", json={"fiber_flap_hours": 0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/settings", json={"fiber_flap_hours": 0}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/settings", json={"fiber_flap_flips": 21},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/settings", json={"fiber_flap_flips": 21}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
 
 
@@ -1886,17 +2385,31 @@ class FiberDegradeNotifyTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         r = cls.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
-        cls._orig = {k: orig[k] for k in ("fiber_rx_warn", "fiber_rx_crit",
-                                          "fiber_degrade_db", "fiber_degrade_days")}
-        cls.client.post("/api/settings",
-                        json={"fiber_rx_warn": -25.0, "fiber_rx_crit": -27.0,
-                              "fiber_degrade_db": 3.0, "fiber_degrade_days": 7},
-                        headers=JSON_HDR)
+        cls._orig = {
+            k: orig[k]
+            for k in (
+                "fiber_rx_warn",
+                "fiber_rx_crit",
+                "fiber_degrade_db",
+                "fiber_degrade_days",
+            )
+        }
+        cls.client.post(
+            "/api/settings",
+            json={
+                "fiber_rx_warn": -25.0,
+                "fiber_rx_crit": -27.0,
+                "fiber_degrade_db": 3.0,
+                "fiber_degrade_days": 7,
+            },
+            headers=JSON_HDR,
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -1905,16 +2418,19 @@ class FiberDegradeNotifyTest(unittest.TestCase):
 
     def _make_degrading(self, sn, old_rx, new_rx, **kw):
         from datetime import datetime, timedelta
-        body = {"ont_sn": sn, "rx_power": old_rx, "tx_power": 2.0,
-                "source": "manual"}
+
+        body = {"ont_sn": sn, "rx_power": old_rx, "tx_power": 2.0, "source": "manual"}
         body.update(kw)
         r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         fid = r.get_json()["id"]
         old_ts = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
         conn, c = m.get_db()
-        c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
-                  " VALUES (?,?,?,?)", (fid, old_rx, 2.0, old_ts))
+        c.execute(
+            "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+            " VALUES (?,?,?,?)",
+            (fid, old_rx, 2.0, old_ts),
+        )
         conn.commit()
         conn.close()
         body["rx_power"] = new_rx
@@ -1936,6 +2452,7 @@ class FiberDegradeNotifyTest(unittest.TestCase):
 
     def test_notif_sekali_lalu_diam(self):
         import time as _t
+
         fid = self._make_degrading(SN_DGN, -16.0, -20.0)
         try:
             sent = self._poll_capturing()
@@ -1964,8 +2481,11 @@ class FiberDegradeNotifyTest(unittest.TestCase):
             sent = self._poll_capturing()
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
             conn, c = m.get_db()
-            c.execute("SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_MUTED'"
-                      " ORDER BY id DESC LIMIT 1", (SN_DGM,))
+            c.execute(
+                "SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_MUTED'"
+                " ORDER BY id DESC LIMIT 1",
+                (SN_DGM,),
+            )
             row = c.fetchone()
             conn.close()
             self.assertIsNotNone(row)
@@ -1983,8 +2503,11 @@ class FiberDegradeNotifyTest(unittest.TestCase):
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
             # warning-nya sendiri tetap tampil di triggers
             r = self.client.get("/api/triggers", headers=XRW_HDR)
-            warn = [a for a in r.get_json()
-                    if a.get("category") == "fiber" and SN_DGW in a.get("host", "")]
+            warn = [
+                a
+                for a in r.get_json()
+                if a.get("category") == "fiber" and SN_DGW in a.get("host", "")
+            ]
             self.assertTrue(warn)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
@@ -2034,8 +2557,9 @@ class FiberTopoTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_topo(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -2043,34 +2567,49 @@ class FiberTopoTest(unittest.TestCase):
         _cleanup_topo(cls.client)
 
     def _ensure_odp_olt(self):
-        r = self.client.post("/api/odps",
-                             json={"name": ODP_T, "olt_name": OLT_T,
-                                   "lat": -6.234567, "lon": 106.789012},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps",
+            json={
+                "name": ODP_T,
+                "olt_name": OLT_T,
+                "lat": -6.234567,
+                "lon": 106.789012,
+            },
+            headers=JSON_HDR,
+        )
         self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
-        r = self.client.post("/api/olts",
-                             json={"name": OLT_T, "vendor": "generic",
-                                   "lat": -6.2, "lon": 106.8},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/olts",
+            json={"name": OLT_T, "vendor": "generic", "lat": -6.2, "lon": 106.8},
+            headers=JSON_HDR,
+        )
         self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
 
     def test_koordinat_divalidasi(self):
-        r = self.client.post("/api/odps", json={"name": ODP_T, "lat": 999},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps", json={"name": ODP_T, "lat": 999}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/odps", json={"name": ODP_T, "lon": 107.0},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/odps", json={"name": ODP_T, "lon": 107.0}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
         self._ensure_odp_olt()
 
     def test_topology_tree(self):
         self._ensure_odp_olt()
-        for sn, rx, odp in ((SN_T1, -29.0, ODP_T),
-                            (SN_T2, -19.0, ""),
-                            (SN_T3, -19.0, "")):
-            body = {"ont_sn": sn, "rx_power": rx, "source": "manual",
-                    "olt_name": OLT_T if sn != SN_T3 else "",
-                    "odp_name": odp}
+        for sn, rx, odp in (
+            (SN_T1, -29.0, ODP_T),
+            (SN_T2, -19.0, ""),
+            (SN_T3, -19.0, ""),
+        ):
+            body = {
+                "ont_sn": sn,
+                "rx_power": rx,
+                "source": "manual",
+                "olt_name": OLT_T if sn != SN_T3 else "",
+                "odp_name": odp,
+            }
             r = self.client.post("/api/fiber", json=body, headers=JSON_HDR)
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         try:
@@ -2126,8 +2665,12 @@ def _cleanup_par(client):
                     c.execute("DELETE FROM fiber_history WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_downtime WHERE ont_id=?", (row["id"],))
                     c.execute("DELETE FROM fiber_onts WHERE id=?", (row["id"],))
-                    for _mem in (m.fiber_alarm_memory, m.fiber_degrade_memory,
-                                 m.fiber_flap_memory, m.fiber_degrade_tg):
+                    for _mem in (
+                        m.fiber_alarm_memory,
+                        m.fiber_degrade_memory,
+                        m.fiber_flap_memory,
+                        m.fiber_degrade_tg,
+                    ):
                         _mem.pop(row["id"], None)
                 conn.commit()
             finally:
@@ -2148,8 +2691,9 @@ def _cleanup_par(client):
         pass
     for _mem in (m.status_memory, m.down_since):
         _mem.pop(OLT_PAR_IP, None)
-    for _k in [k for k in list(m.fiber_parent_down)
-               if k in (OLT_PAR.lower(), OLT_SYN.lower())]:
+    for _k in [
+        k for k in list(m.fiber_parent_down) if k in (OLT_PAR.lower(), OLT_SYN.lower())
+    ]:
         m.fiber_parent_down.pop(_k, None)
 
 
@@ -2158,8 +2702,9 @@ class FiberParentTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         _cleanup_par(cls.client)
-        r = cls.client.post("/login",
-                            data={"username": "admin", "password": "admin12345"})
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
     @classmethod
@@ -2174,21 +2719,25 @@ class FiberParentTest(unittest.TestCase):
         self.assertIn(r.status_code, (201, 400), r.get_data(as_text=True))
 
     def _mk_ont(self, sn, olt, rx=-19.0):
-        r = self.client.post("/api/fiber",
-                             json={"ont_sn": sn, "olt_name": olt, "rx_power": rx,
-                                   "tx_power": 2.0, "source": "manual"},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/fiber",
+            json={
+                "ont_sn": sn,
+                "olt_name": olt,
+                "rx_power": rx,
+                "tx_power": 2.0,
+                "source": "manual",
+            },
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         return r.get_json()["id"]
 
     def _put_rx(self, fid, sn, rx, olt=""):
-        body = {"ont_sn": sn, "rx_power": rx, "tx_power": 2.0,
-                "source": "manual"}
+        body = {"ont_sn": sn, "rx_power": rx, "tx_power": 2.0, "source": "manual"}
         if olt:
             body["olt_name"] = olt
-        r = self.client.put(f"/api/fiber/{fid}",
-                            json=body,
-                            headers=JSON_HDR)
+        r = self.client.put(f"/api/fiber/{fid}", json=body, headers=JSON_HDR)
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
 
     def _fid(self, sn):
@@ -2223,22 +2772,35 @@ class FiberParentTest(unittest.TestCase):
             self._put_rx(f2, SN_PP2, -29.0, OLT_PAR)
             self.assertEqual([s for s in sent if "FIBER" in s], [])
             conn, c = m.get_db()
-            n = c.execute("SELECT COUNT(*) FROM system_logs WHERE event_type='FIBER_PARENT'"
-                          " AND host IN (?, ?)", (SN_PP1, SN_PP2)).fetchone()[0]
+            n = c.execute(
+                "SELECT COUNT(*) FROM system_logs WHERE event_type='FIBER_PARENT'"
+                " AND host IN (?, ?)",
+                (SN_PP1, SN_PP2),
+            ).fetchone()[0]
             conn.close()
             self.assertEqual(n, 2)
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             alarms = r.get_json()
-            par = [a for a in alarms if a.get("category") == "fiber"
-                   and OLT_PAR in a.get("host", "")]
+            par = [
+                a
+                for a in alarms
+                if a.get("category") == "fiber" and OLT_PAR in a.get("host", "")
+            ]
             self.assertTrue(par)
             self.assertEqual(par[0]["severity"], "disaster")
-            sup = [a for a in alarms if SN_PP1 in a.get("host", "")
-                   or SN_PP2 in a.get("host", "")]
+            sup = [
+                a
+                for a in alarms
+                if SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", "")
+            ]
             self.assertTrue(sup)
             self.assertTrue(all(a["category"] == "maintenance" for a in sup))
-            indiv = [a for a in alarms if a.get("category") == "fiber"
-                     and (SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", ""))]
+            indiv = [
+                a
+                for a in alarms
+                if a.get("category") == "fiber"
+                and (SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", ""))
+            ]
             self.assertEqual(indiv, [])
             # induk pulih -> perilaku normal kembali (recovery individual)
             down.clear()
@@ -2261,7 +2823,9 @@ class FiberParentTest(unittest.TestCase):
     def test_insiden_massal_otomatis(self):
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
-        self.client.post("/api/settings", json={"fiber_parent_min": 3}, headers=JSON_HDR)
+        self.client.post(
+            "/api/settings", json={"fiber_parent_min": 3}, headers=JSON_HDR
+        )
         self._mk_olt(OLT_SYN)
         fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_SY1, SN_SY2, SN_SY3)]
         sent = []
@@ -2288,29 +2852,39 @@ class FiberParentTest(unittest.TestCase):
             self.assertEqual(sent, [])
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             alarms = r.get_json()
-            self.assertTrue(any(a.get("category") == "fiber" and OLT_SYN in a.get("host", "")
-                                for a in alarms))
+            self.assertTrue(
+                any(
+                    a.get("category") == "fiber" and OLT_SYN in a.get("host", "")
+                    for a in alarms
+                )
+            )
             # pulihkan semua -> 1 telegram pulih induk, bukan 3 individual
             for fid, sn in zip(fids, (SN_SY1, SN_SY2, SN_SY3)):
                 self._put_rx(fid, sn, -19.0, OLT_SYN)
             sent.clear()
             m.poll_fiber_monitor()
             self.assertEqual(len([s for s in sent if "INSIDEN MASSAL PULIH" in s]), 1)
-            self.assertEqual([s for s in sent if "PULIH" in s and "INSIDEN" not in s], [])
+            self.assertEqual(
+                [s for s in sent if "PULIH" in s and "INSIDEN" not in s], []
+            )
             self.assertNotIn(OLT_SYN.lower(), m.fiber_parent_down)
         finally:
             m.send_telegram_alert = real_tg
             for fid in fids:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
-            self.client.post("/api/settings",
-                             json={"fiber_parent_min": orig["fiber_parent_min"]},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={"fiber_parent_min": orig["fiber_parent_min"]},
+                headers=JSON_HDR,
+            )
             _cleanup_par(self.client)
 
     def test_di_bawah_ambang_tetap_individual(self):
         r = self.client.get("/api/settings", headers=XRW_HDR)
         orig = r.get_json()
-        self.client.post("/api/settings", json={"fiber_parent_min": 5}, headers=JSON_HDR)
+        self.client.post(
+            "/api/settings", json={"fiber_parent_min": 5}, headers=JSON_HDR
+        )
         self._mk_olt(OLT_SYN)
         fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_BL1, SN_BL2)]
         sent = []
@@ -2332,17 +2906,21 @@ class FiberParentTest(unittest.TestCase):
             m.send_telegram_alert = real_tg
             for fid in fids:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
-            self.client.post("/api/settings",
-                             json={"fiber_parent_min": orig["fiber_parent_min"]},
-                             headers=JSON_HDR)
+            self.client.post(
+                "/api/settings",
+                json={"fiber_parent_min": orig["fiber_parent_min"]},
+                headers=JSON_HDR,
+            )
             _cleanup_par(self.client)
 
     def test_settings_parent_min_divalidasi(self):
-        r = self.client.post("/api/settings", json={"fiber_parent_min": 1},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/settings", json={"fiber_parent_min": 1}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
-        r = self.client.post("/api/settings", json={"fiber_parent_min": 51},
-                             headers=JSON_HDR)
+        r = self.client.post(
+            "/api/settings", json={"fiber_parent_min": 51}, headers=JSON_HDR
+        )
         self.assertEqual(r.status_code, 400)
 
 

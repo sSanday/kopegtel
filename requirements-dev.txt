@@ -1,0 +1,5 @@
+# Dev-only deps (test + format). Jangan masuk ke image produksi.
+# Cara pakai: python3 -m pip install --user --break-system-packages -r requirements-dev.txt
+pytest==9.1.1
+black==26.5.1
+pre-commit
