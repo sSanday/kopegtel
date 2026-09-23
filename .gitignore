@@ -11,5 +11,6 @@ network.db-shm
 network.db.corrupt-*
 *.bak
 backups/
+_refactor_wip/
 .vscode/
 agent-cron.log

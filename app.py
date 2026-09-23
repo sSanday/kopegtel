@@ -1,48 +1,69 @@
-from flask import Flask, jsonify, render_template, Response, request, redirect, url_for, session
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from apscheduler.schedulers.background import BackgroundScheduler
-import subprocess, re, csv, io
-import sqlite3
-import os
-import glob
-import time
-import hashlib
+import csv
 import difflib
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
-import requests
-from dotenv import load_dotenv
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-from functools import wraps
-import socket
+import glob
+import hashlib
+import io
 import ipaddress
+import os
+import re
+import socket
+import sqlite3
+import subprocess
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+from zoneinfo import ZoneInfo
+
+import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
 
 load_dotenv()
 
-app            = Flask(__name__)
+app = Flask(__name__)
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
     raise SystemExit(
         "[FATAL] SECRET_KEY belum diset. Buat .env berisi "
         "SECRET_KEY=<64 hex acak> (contoh: python3 -c "
-        "\"import secrets; print(secrets.token_hex(32))\") lalu restart."
+        '"import secrets; print(secrets.token_hex(32))") lalu restart.'
     )
 app.secret_key = SECRET_KEY
-app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)
-app.config['REMEMBER_COOKIE_HTTPONLY'] = True
-app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=7)
+app.config["REMEMBER_COOKIE_HTTPONLY"] = True
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
 _cookie_secure = os.environ.get("COOKIE_SECURE", "0") == "1"
-app.config['SESSION_COOKIE_SECURE'] = _cookie_secure
-app.config['REMEMBER_COOKIE_SECURE'] = _cookie_secure
+app.config["SESSION_COOKIE_SECURE"] = _cookie_secure
+app.config["REMEMBER_COOKIE_SECURE"] = _cookie_secure
 app_start_time = datetime.now()
+
 
 def _is_trusted_proxy():
     try:
@@ -64,12 +85,13 @@ def get_client_ip():
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view        = "login"
-login_manager.login_message     = "Silakan login terlebih dahulu untuk mengakses dashboard."
+login_manager.login_view = "login"
+login_manager.login_message = "Silakan login terlebih dahulu untuk mengakses dashboard."
 login_manager.login_message_category = "warning"
 
 DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")
+
 
 def _verify_admin(username, password):
     username = (username or "")[:50]
@@ -93,6 +115,7 @@ def _verify_admin(username, password):
             return False
         try:
             from werkzeug.security import check_password_hash
+
             return check_password_hash(db_hash, password)
         except Exception:
             return False
@@ -101,29 +124,41 @@ def _verify_admin(username, password):
         return False
 
     import hmac
-    return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(password, DASHBOARD_PASSWORD)
+
+    return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(
+        password, DASHBOARD_PASSWORD
+    )
+
 
 def _seed_admin_from_env():
     try:
         from werkzeug.security import generate_password_hash
+
         conn, c = get_db()
         try:
             c.execute("SELECT value FROM settings WHERE key='admin_pass_hash'")
             if c.fetchone():
                 return
-            c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_user', ?)", (DASHBOARD_USERNAME,))
-            c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
-                      (generate_password_hash(DASHBOARD_PASSWORD),))
+            c.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_user', ?)",
+                (DASHBOARD_USERNAME,),
+            )
+            c.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
+                (generate_password_hash(DASHBOARD_PASSWORD),),
+            )
             conn.commit()
         finally:
             conn.close()
     except Exception as e:
         print(f"[WARN] seed admin hash gagal: {e}")
 
+
 class AdminUser(UserMixin):
     def __init__(self, username=None):
         self.id = "admin"
         self.username = username or DASHBOARD_USERNAME
+
 
 def _get_session_version():
     try:
@@ -137,6 +172,7 @@ def _get_session_version():
     except Exception:
         return 0
 
+
 def _bump_session_version():
     try:
         conn, c = get_db()
@@ -145,13 +181,16 @@ def _bump_session_version():
                 cur = _get_session_version()
             except Exception:
                 cur = 0
-            c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_session_v', ?)",
-                      (str(cur + 1),))
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_session_v', ?)",
+                (str(cur + 1),),
+            )
             conn.commit()
         finally:
             conn.close()
     except Exception as e:
         print(f"[WARN] bump session version gagal: {e}")
+
 
 def _get_admin_username():
     try:
@@ -167,6 +206,7 @@ def _get_admin_username():
         pass
     return DASHBOARD_USERNAME
 
+
 @login_manager.user_loader
 def load_user(user_id):
     if user_id == "admin":
@@ -179,29 +219,40 @@ def load_user(user_id):
         return AdminUser(username=_get_admin_username())
     return None
 
+
 def api_login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not current_user.is_authenticated:
             return jsonify({"error": "Unauthorized. Silakan login."}), 401
 
-
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            is_json = (request.is_json or
-                       (request.content_type or "").startswith("application/json"))
+            is_json = request.is_json or (request.content_type or "").startswith(
+                "application/json"
+            )
             has_xrw = request.headers.get("X-Requested-With") == "XMLHttpRequest"
             if not (is_json or has_xrw):
-                return jsonify({"error": "CSRF check failed. Gunakan Content-Type: application/json atau X-Requested-With."}), 403
+                return (
+                    jsonify(
+                        {
+                            "error": "CSRF check failed. Gunakan Content-Type: application/json atau X-Requested-With."
+                        }
+                    ),
+                    403,
+                )
         return f(*args, **kwargs)
+
     return decorated
 
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
-AGENT_API_KEY      = os.environ.get("AGENT_API_KEY", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
 if not AGENT_API_KEY:
-    print("[WARN] AGENT_API_KEY kosong — /api/agent/report TERBUKA tanpa auth "
-          "(siapa pun bisa kirim metrik palsu). Set AGENT_API_KEY di .env untuk produksi.")
+    print(
+        "[WARN] AGENT_API_KEY kosong — /api/agent/report TERBUKA tanpa auth "
+        "(siapa pun bisa kirim metrik palsu). Set AGENT_API_KEY di .env untuk produksi."
+    )
 try:
     MAX_HOSTS = max(1, int(os.environ.get("MAX_HOSTS", "200")))
 except (ValueError, TypeError):
@@ -209,11 +260,11 @@ except (ValueError, TypeError):
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DB_PATH  = os.environ.get("NMS_DB_PATH", os.path.join(BASE_DIR, "network.db"))
+DB_PATH = os.environ.get("NMS_DB_PATH", os.path.join(BASE_DIR, "network.db"))
 
 
 status_memory = {}
-down_since    = {}
+down_since = {}
 agent_status_memory = {}
 agent_offline_memory = {}
 
@@ -242,7 +293,6 @@ def _prune_login_failures(now_ts):
                 if now_ts - last > LOGIN_FAIL_TTL_S:
                     login_failures.pop(ip, None)
 
-
         if len(login_failures) > 5000:
             idle = sorted(
                 ((ip, v[2]) for ip, v in login_failures.items() if not v[1]),
@@ -261,7 +311,6 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
 
-
     try:
         conn.execute("PRAGMA wal_autocheckpoint=1000")
         conn.execute("PRAGMA journal_size_limit=33554432")
@@ -269,6 +318,7 @@ def get_db():
         pass
     conn.row_factory = sqlite3.Row
     return conn, conn.cursor()
+
 
 def _commit_with_retry(conn, retries=5):
     for attempt in range(retries):
@@ -282,70 +332,120 @@ def _commit_with_retry(conn, retries=5):
             raise
     return False
 
+
 def _insert_system_log(c, event_type, host, message, timestamp=None):
     ts = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?, ?, ?, ?)",
-              (ts, event_type, host, message))
+    c.execute(
+        "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?, ?, ?, ?)",
+        (ts, event_type, host, message),
+    )
+
 
 def init_db():
     conn, c = get_db()
 
-    c.execute('''CREATE TABLE IF NOT EXISTS ping_logs (
+    c.execute("""CREATE TABLE IF NOT EXISTS ping_logs (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         host        TEXT    NOT NULL,
         latency     REAL    NOT NULL,
         packet_loss REAL    NOT NULL DEFAULT 0,
         timestamp   TEXT    NOT NULL
-    )''')
+    )""")
 
     try:
-        c.execute("ALTER TABLE ping_logs ADD COLUMN packet_loss REAL NOT NULL DEFAULT 0")
+        c.execute(
+            "ALTER TABLE ping_logs ADD COLUMN packet_loss REAL NOT NULL DEFAULT 0"
+        )
     except sqlite3.OperationalError:
         pass
 
-
-    c.execute('''CREATE TABLE IF NOT EXISTS settings (
+    c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
-    )''')
+    )""")
 
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ram_threshold', '90.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('disk_threshold', '90.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_overload', '-8.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_warn', '-25.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_crit', '-27.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_target', '-18.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_db', '3.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_days', '7')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_stale_min', '60')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_flips', '4')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_hours', '24')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_crit', '75.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_cpu_oid', '1.3.6.1.4.1.14988.1.1.3.11.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_mem_oid', '1.3.6.1.4.1.14988.1.1.3.12.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.4.1.14988.1.1.3.13.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_div', '10')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_stale_min', '15')"
+    )
 
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ram_threshold', '90.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('disk_threshold', '90.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_overload', '-8.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_warn', '-25.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_crit', '-27.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_target', '-18.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_db', '3.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_days', '7')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_stale_min', '60')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_flips', '4')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_hours', '24')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_min', '0.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_tx_max', '5.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_threshold', '60.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_crit', '75.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_cpu_oid', '1.3.6.1.4.1.14988.1.1.3.11.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_mem_oid', '1.3.6.1.4.1.14988.1.1.3.12.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.4.1.14988.1.1.3.13.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_div', '10')")
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_stale_min', '15')")
-
-    c.execute('''CREATE TABLE IF NOT EXISTS down_events (
+    c.execute("""CREATE TABLE IF NOT EXISTS down_events (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         host        TEXT    NOT NULL,
         started_at  TEXT    NOT NULL,
         resolved_at TEXT,
         duration_s  INTEGER
-    )''')
+    )""")
 
-    c.execute('''CREATE TABLE IF NOT EXISTS hosts (
+    c.execute("""CREATE TABLE IF NOT EXISTS hosts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT UNIQUE NOT NULL
-    )''')
+    )""")
     try:
         c.execute("ALTER TABLE hosts ADD COLUMN snmp_community TEXT DEFAULT ''")
         c.execute("ALTER TABLE hosts ADD COLUMN if_index INTEGER DEFAULT 1")
@@ -363,7 +463,9 @@ def init_db():
         c.execute("ALTER TABLE hosts ADD COLUMN snmp_profile TEXT DEFAULT 'auto'")
     except sqlite3.OperationalError:
         pass
-    for _col in ("cpu_oid", "mem_oid", "storage_oid", "temp_oid"):
+    # Whitelist kolom agar tidak terjadi SQL Injection melalui f-string
+    _ALLOWED_OID_COLS = {"cpu_oid", "mem_oid", "storage_oid", "temp_oid"}
+    for _col in _ALLOWED_OID_COLS:
         try:
             c.execute(f"ALTER TABLE hosts ADD COLUMN {_col} TEXT DEFAULT ''")
         except sqlite3.OperationalError:
@@ -372,17 +474,25 @@ def init_db():
         ("ssh_user", "ALTER TABLE hosts ADD COLUMN ssh_user TEXT DEFAULT ''"),
         ("ssh_pass", "ALTER TABLE hosts ADD COLUMN ssh_pass TEXT DEFAULT ''"),
         ("ssh_port", "ALTER TABLE hosts ADD COLUMN ssh_port INTEGER DEFAULT 22"),
-        ("backup_enable", "ALTER TABLE hosts ADD COLUMN backup_enable INTEGER NOT NULL DEFAULT 0"),
+        (
+            "backup_enable",
+            "ALTER TABLE hosts ADD COLUMN backup_enable INTEGER NOT NULL DEFAULT 0",
+        ),
         ("backup_last", "ALTER TABLE hosts ADD COLUMN backup_last TEXT DEFAULT ''"),
-        ("backup_ok", "ALTER TABLE hosts ADD COLUMN backup_ok INTEGER NOT NULL DEFAULT 0"),
+        (
+            "backup_ok",
+            "ALTER TABLE hosts ADD COLUMN backup_ok INTEGER NOT NULL DEFAULT 0",
+        ),
     ):
         try:
             c.execute(_ddl)
         except sqlite3.OperationalError:
             pass
-    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_backup_keep', '10')")
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_backup_keep', '10')"
+    )
 
-    c.execute('''CREATE TABLE IF NOT EXISTS mt_backups(
+    c.execute("""CREATE TABLE IF NOT EXISTS mt_backups(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
       taken_at TEXT NOT NULL,
@@ -390,11 +500,10 @@ def init_db():
       sha256 TEXT NOT NULL DEFAULT '',
       content TEXT NOT NULL DEFAULT '',
       changed INTEGER NOT NULL DEFAULT 0
-    )''')
+    )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_mt_backup ON mt_backups(host, id)")
 
-
-    c.execute('''CREATE TABLE IF NOT EXISTS agent_metrics (
+    c.execute("""CREATE TABLE IF NOT EXISTS agent_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         host TEXT NOT NULL,
         cpu_percent REAL,
@@ -404,10 +513,9 @@ def init_db():
         net_out REAL DEFAULT 0.0,
         timestamp TEXT NOT NULL,
         source TEXT DEFAULT 'agent'
-    )''')
+    )""")
 
-
-    c.execute('''CREATE TABLE IF NOT EXISTS services (
+    c.execute("""CREATE TABLE IF NOT EXISTS services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT NOT NULL,
         name TEXT NOT NULL,
@@ -417,8 +525,7 @@ def init_db():
         status TEXT DEFAULT 'PENDING',
         latency REAL,
         last_checked TEXT
-    )''')
-
+    )""")
 
     try:
         c.execute("ALTER TABLE agent_metrics ADD COLUMN disk_percent REAL DEFAULT 0.0")
@@ -430,34 +537,38 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-
     try:
         c.execute("ALTER TABLE agent_metrics ADD COLUMN source TEXT DEFAULT 'agent'")
     except sqlite3.OperationalError:
         pass
     try:
-        c.execute("UPDATE agent_metrics SET source='snmp' WHERE source IS NULL AND cpu_percent IS NULL")
+        c.execute(
+            "UPDATE agent_metrics SET source='snmp' WHERE source IS NULL AND cpu_percent IS NULL"
+        )
         c.execute("UPDATE agent_metrics SET source='agent' WHERE source IS NULL")
     except sqlite3.OperationalError:
         pass
 
-
-    c.execute('''CREATE TABLE IF NOT EXISTS system_logs (
+    c.execute("""CREATE TABLE IF NOT EXISTS system_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT NOT NULL,
         event_type TEXT NOT NULL,
         host TEXT NOT NULL,
         message TEXT NOT NULL
-    )''')
+    )""")
 
-
-    c.execute("CREATE INDEX IF NOT EXISTS idx_ping_host_clock ON ping_logs(host, timestamp)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_agent_host_clock ON agent_metrics(host, timestamp)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ping_host_clock ON ping_logs(host, timestamp)"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_host_clock ON agent_metrics(host, timestamp)"
+    )
     c.execute("CREATE INDEX IF NOT EXISTS idx_down_host ON down_events(host)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_syslog_type_host ON system_logs(event_type, host)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_syslog_type_host ON system_logs(event_type, host)"
+    )
 
-
-    c.execute('''CREATE TABLE IF NOT EXISTS inventory(
+    c.execute("""CREATE TABLE IF NOT EXISTS inventory(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       hostname TEXT NOT NULL, ip TEXT UNIQUE NOT NULL,
       device_type TEXT DEFAULT '', brand_model TEXT DEFAULT '',
@@ -465,10 +576,10 @@ def init_db():
       install_date TEXT DEFAULT '', asset_status TEXT DEFAULT 'aktif',
       asset_no TEXT DEFAULT '', notes TEXT DEFAULT '',
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    )''')
+    )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_inventory_ip ON inventory(ip)")
 
-    c.execute('''CREATE TABLE IF NOT EXISTS maintenance_windows(
+    c.execute("""CREATE TABLE IF NOT EXISTS maintenance_windows(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
       start_at TEXT NOT NULL,
@@ -476,17 +587,24 @@ def init_db():
       reason TEXT DEFAULT '',
       created_by TEXT DEFAULT '',
       created_at TEXT NOT NULL
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_maint_host_window ON maintenance_windows(host, start_at, end_at)")
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_maint_host_window ON maintenance_windows(host, start_at, end_at)"
+    )
     try:
-        c.execute("ALTER TABLE down_events ADD COLUMN is_maintenance INTEGER NOT NULL DEFAULT 0")
+        c.execute(
+            "ALTER TABLE down_events ADD COLUMN is_maintenance INTEGER NOT NULL DEFAULT 0"
+        )
     except sqlite3.OperationalError:
         pass
 
     for _col, _ddl in (
         ("ssl_expires_at", "ALTER TABLE services ADD COLUMN ssl_expires_at TEXT"),
         ("ssl_days_left", "ALTER TABLE services ADD COLUMN ssl_days_left INTEGER"),
-        ("ssl_last_alert", "ALTER TABLE services ADD COLUMN ssl_last_alert TEXT DEFAULT ''"),
+        (
+            "ssl_last_alert",
+            "ALTER TABLE services ADD COLUMN ssl_last_alert TEXT DEFAULT ''",
+        ),
         ("ssl_checked_at", "ALTER TABLE services ADD COLUMN ssl_checked_at TEXT"),
     ):
         try:
@@ -494,18 +612,19 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
-    c.execute('''CREATE TABLE IF NOT EXISTS service_history(
+    c.execute("""CREATE TABLE IF NOT EXISTS service_history(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       service_id INTEGER NOT NULL,
       status TEXT NOT NULL,
       latency REAL NOT NULL DEFAULT 0,
       timestamp TEXT NOT NULL
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)")
-
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)"
+    )
 
     # --- Fiber / Redaman (GPON ONT Rx/Tx power) ---
-    c.execute('''CREATE TABLE IF NOT EXISTS fiber_onts(
+    c.execute("""CREATE TABLE IF NOT EXISTS fiber_onts(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ont_sn TEXT UNIQUE NOT NULL,
       customer TEXT DEFAULT '',
@@ -519,17 +638,19 @@ def init_db():
       source TEXT DEFAULT 'manual',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS fiber_history(
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS fiber_history(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ont_id INTEGER NOT NULL,
       rx_power REAL,
       tx_power REAL,
       timestamp TEXT NOT NULL
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_hist ON fiber_history(ont_id, timestamp)")
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_fiber_hist ON fiber_history(ont_id, timestamp)"
+    )
     c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_sn ON fiber_onts(ont_sn)")
-    c.execute('''CREATE TABLE IF NOT EXISTS fiber_downtime(
+    c.execute("""CREATE TABLE IF NOT EXISTS fiber_downtime(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ont_id INTEGER NOT NULL,
       ont_sn TEXT NOT NULL DEFAULT '',
@@ -538,11 +659,13 @@ def init_db():
       started_at TEXT NOT NULL,
       resolved_at TEXT,
       duration_s INTEGER
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_fiber_down ON fiber_downtime(ont_id, resolved_at)")
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_fiber_down ON fiber_downtime(ont_id, resolved_at)"
+    )
 
     # --- MikroTik / SNMP device health (CPU/RAM/storage/suhu) ---
-    c.execute('''CREATE TABLE IF NOT EXISTS device_health(
+    c.execute("""CREATE TABLE IF NOT EXISTS device_health(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
       cpu REAL,
@@ -551,14 +674,16 @@ def init_db():
       temp_c REAL,
       timestamp TEXT NOT NULL,
       source TEXT DEFAULT 'snmp-mikrotik'
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_devhealth_host_clock ON device_health(host, timestamp)")
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_devhealth_host_clock ON device_health(host, timestamp)"
+    )
     try:
         c.execute("ALTER TABLE device_health ADD COLUMN uptime_s REAL")
     except sqlite3.OperationalError:
         pass
 
-    c.execute('''CREATE TABLE IF NOT EXISTS snmp_interfaces(
+    c.execute("""CREATE TABLE IF NOT EXISTS snmp_interfaces(
       host TEXT NOT NULL,
       if_index INTEGER NOT NULL,
       name TEXT DEFAULT '',
@@ -566,17 +691,19 @@ def init_db():
       monitor INTEGER NOT NULL DEFAULT 1,
       last_changed TEXT,
       PRIMARY KEY (host, if_index)
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS iface_traffic(
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS iface_traffic(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
       if_index INTEGER NOT NULL,
       net_in REAL DEFAULT 0.0,
       net_out REAL DEFAULT 0.0,
       timestamp TEXT NOT NULL
-    )''')
-    c.execute("CREATE INDEX IF NOT EXISTS idx_iface_host_idx_clock ON iface_traffic(host, if_index, timestamp)")
-    c.execute('''CREATE TABLE IF NOT EXISTS odps(
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_iface_host_idx_clock ON iface_traffic(host, if_index, timestamp)"
+    )
+    c.execute("""CREATE TABLE IF NOT EXISTS odps(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
       olt_name TEXT DEFAULT '',
@@ -586,7 +713,7 @@ def init_db():
       lon REAL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
-    )''')
+    )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_odp_name ON odps(name)")
     for _col, _ddl in (
         ("odp_lat", "ALTER TABLE odps ADD COLUMN lat REAL"),
@@ -603,9 +730,15 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     for _col, _ddl in (
-        ("mute_alarm", "ALTER TABLE fiber_onts ADD COLUMN mute_alarm INTEGER NOT NULL DEFAULT 0"),
+        (
+            "mute_alarm",
+            "ALTER TABLE fiber_onts ADD COLUMN mute_alarm INTEGER NOT NULL DEFAULT 0",
+        ),
         ("mute_until", "ALTER TABLE fiber_onts ADD COLUMN mute_until TEXT DEFAULT ''"),
-        ("mute_reason", "ALTER TABLE fiber_onts ADD COLUMN mute_reason TEXT DEFAULT ''"),
+        (
+            "mute_reason",
+            "ALTER TABLE fiber_onts ADD COLUMN mute_reason TEXT DEFAULT ''",
+        ),
         ("last_seen", "ALTER TABLE fiber_onts ADD COLUMN last_seen TEXT DEFAULT ''"),
         ("rx_warn", "ALTER TABLE fiber_onts ADD COLUMN rx_warn REAL"),
         ("rx_crit", "ALTER TABLE fiber_onts ADD COLUMN rx_crit REAL"),
@@ -618,13 +751,15 @@ def init_db():
     try:
         # backfill sekali: ONT yang sudah punya pengukuran dianggap terpantau
         # pada cek terakhir (agar tak langsung 'stale' setelah upgrade)
-        c.execute("UPDATE fiber_onts SET last_seen=COALESCE(NULLIF(last_checked, ''), updated_at) "
-                  "WHERE (last_seen IS NULL OR last_seen='') "
-                  "AND (rx_power IS NOT NULL OR tx_power IS NOT NULL)")
+        c.execute(
+            "UPDATE fiber_onts SET last_seen=COALESCE(NULLIF(last_checked, ''), updated_at) "
+            "WHERE (last_seen IS NULL OR last_seen='') "
+            "AND (rx_power IS NOT NULL OR tx_power IS NOT NULL)"
+        )
     except sqlite3.OperationalError:
         pass
 
-    c.execute('''CREATE TABLE IF NOT EXISTS olts(
+    c.execute("""CREATE TABLE IF NOT EXISTS olts(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
       ip TEXT NOT NULL DEFAULT '',
@@ -642,13 +777,16 @@ def init_db():
       last_test_msg TEXT DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
-    )''')
+    )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_olt_name ON olts(name)")
     for _col, _ddl in (
         ("scale", "ALTER TABLE olts ADD COLUMN scale REAL NOT NULL DEFAULT 1.0"),
         ("offset", "ALTER TABLE olts ADD COLUMN offset REAL NOT NULL DEFAULT 0.0"),
         ("last_tested", "ALTER TABLE olts ADD COLUMN last_tested TEXT DEFAULT ''"),
-        ("last_test_ok", "ALTER TABLE olts ADD COLUMN last_test_ok INTEGER NOT NULL DEFAULT 0"),
+        (
+            "last_test_ok",
+            "ALTER TABLE olts ADD COLUMN last_test_ok INTEGER NOT NULL DEFAULT 0",
+        ),
         ("last_test_msg", "ALTER TABLE olts ADD COLUMN last_test_msg TEXT DEFAULT ''"),
     ):
         try:
@@ -664,6 +802,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def get_target_hosts():
     conn, c = get_db()
     try:
@@ -672,6 +811,7 @@ def get_target_hosts():
     finally:
         conn.close()
     return hosts
+
 
 def get_setting(key, default_value, type_cast=float):
     conn, c = get_db()
@@ -687,7 +827,14 @@ def get_setting(key, default_value, type_cast=float):
             pass
     return default_value
 
-_MAINT_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d")
+
+_MAINT_TIME_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%d",
+)
+
 
 def _parse_maint_time(s):
     s = (s or "").strip()[:19]
@@ -700,8 +847,10 @@ def _parse_maint_time(s):
             continue
     return None
 
+
 def _fmt_maint_time(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 
 def get_active_maintenance_map(now=None):
     try:
@@ -722,62 +871,83 @@ def get_active_maintenance_map(now=None):
     except Exception:
         return {}
 
+
 def cleanup_old_data():
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("DELETE FROM ping_logs WHERE timestamp < datetime('now', 'localtime', '-7 days')")
+            c.execute(
+                "DELETE FROM ping_logs WHERE timestamp < datetime('now', 'localtime', '-7 days')"
+            )
             deleted = c.rowcount
             try:
-                c.execute("DELETE FROM agent_metrics WHERE timestamp < datetime('now', 'localtime', '-30 days')")
+                c.execute(
+                    "DELETE FROM agent_metrics WHERE timestamp < datetime('now', 'localtime', '-30 days')"
+                )
                 deleted_agent = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] agent_metrics gagal: {e}")
                 deleted_agent = 0
             try:
-                c.execute("DELETE FROM system_logs WHERE timestamp < datetime('now', 'localtime', '-90 days')")
+                c.execute(
+                    "DELETE FROM system_logs WHERE timestamp < datetime('now', 'localtime', '-90 days')"
+                )
                 deleted_logs = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] system_logs gagal: {e}")
                 deleted_logs = 0
             try:
-                c.execute("DELETE FROM down_events WHERE resolved_at IS NOT NULL AND resolved_at < datetime('now', 'localtime', '-90 days')")
+                c.execute(
+                    "DELETE FROM down_events WHERE resolved_at IS NOT NULL AND resolved_at < datetime('now', 'localtime', '-90 days')"
+                )
                 deleted_events = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] down_events gagal: {e}")
                 deleted_events = 0
             try:
-                c.execute("DELETE FROM maintenance_windows WHERE end_at < datetime('now', 'localtime', '-90 days')")
+                c.execute(
+                    "DELETE FROM maintenance_windows WHERE end_at < datetime('now', 'localtime', '-90 days')"
+                )
                 deleted_maint = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] maintenance gagal: {e}")
                 deleted_maint = 0
             try:
-                c.execute("DELETE FROM service_history WHERE timestamp < datetime('now', 'localtime', '-7 days')")
+                c.execute(
+                    "DELETE FROM service_history WHERE timestamp < datetime('now', 'localtime', '-7 days')"
+                )
                 deleted_svc_hist = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] service_history gagal: {e}")
                 deleted_svc_hist = 0
             try:
-                c.execute("DELETE FROM fiber_history WHERE timestamp < datetime('now', 'localtime', '-30 days')")
+                c.execute(
+                    "DELETE FROM fiber_history WHERE timestamp < datetime('now', 'localtime', '-30 days')"
+                )
                 deleted_fiber = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] fiber_history gagal: {e}")
                 deleted_fiber = 0
             try:
-                c.execute("DELETE FROM fiber_downtime WHERE resolved_at IS NOT NULL AND resolved_at < datetime('now', 'localtime', '-90 days')")
+                c.execute(
+                    "DELETE FROM fiber_downtime WHERE resolved_at IS NOT NULL AND resolved_at < datetime('now', 'localtime', '-90 days')"
+                )
                 deleted_fiber_down = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] fiber_downtime gagal: {e}")
                 deleted_fiber_down = 0
             try:
-                c.execute("DELETE FROM device_health WHERE timestamp < datetime('now', 'localtime', '-14 days')")
+                c.execute(
+                    "DELETE FROM device_health WHERE timestamp < datetime('now', 'localtime', '-14 days')"
+                )
                 deleted_mt = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] device_health gagal: {e}")
                 deleted_mt = 0
             try:
-                c.execute("DELETE FROM iface_traffic WHERE timestamp < datetime('now', 'localtime', '-14 days')")
+                c.execute(
+                    "DELETE FROM iface_traffic WHERE timestamp < datetime('now', 'localtime', '-14 days')"
+                )
                 deleted_iface = c.rowcount
             except Exception as e:
                 print(f"[CLEANUP] iface_traffic gagal: {e}")
@@ -793,7 +963,6 @@ def cleanup_old_data():
         finally:
             conn.close()
 
-
     if datetime.now().weekday() == 0:
         try:
             chk = sqlite3.connect(DB_PATH, timeout=30)
@@ -801,14 +970,16 @@ def cleanup_old_data():
             chk.close()
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
-    print(f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus.")
+    print(
+        f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus."
+    )
+
 
 def backup_database():
     backup_dir = os.path.join(BASE_DIR, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     date_str = datetime.now().strftime("%Y-%m-%d")
     backup_path = os.path.join(backup_dir, f"network_backup_{date_str}.db")
-
 
     backup_ok = False
     if os.path.exists(DB_PATH):
@@ -840,7 +1011,6 @@ def backup_database():
             except Exception:
                 pass
 
-
     backups = sorted(glob.glob(os.path.join(backup_dir, "network_backup_*.db")))
     if len(backups) > 30:
         for old_backup in backups[:-30]:
@@ -859,7 +1029,7 @@ def send_telegram_alert(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[WARN] Token/Chat ID Telegram belum dikonfigurasi.")
         return
-    url     = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
         resp = requests.post(url, json=payload, timeout=5)
@@ -867,13 +1037,16 @@ def send_telegram_alert(message):
     except requests.RequestException as e:
         print(f"[ERROR] Gagal kirim Telegram: {e}")
 
+
 def log_system_event(event_type, host, message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?, ?, ?, ?)",
-                      (timestamp, event_type, host, message))
+            c.execute(
+                "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?, ?, ?, ?)",
+                (timestamp, event_type, host, message),
+            )
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] log_system_event gagal: {e}")
@@ -884,15 +1057,17 @@ def log_system_event(event_type, host, message):
         finally:
             conn.close()
 
+
 def audit(username, action, detail=""):
     try:
         log_system_event("AUDIT", username, f"{action} {detail}".strip())
     except Exception:
         pass
 
+
 def send_startup_alert():
     targets = get_target_hosts()
-    now   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     hosts = "\n".join([f"  • `{h}`" for h in targets])
     send_telegram_alert(
         f"🟢 *NMS Dashboard AKTIF*\n"
@@ -900,15 +1075,17 @@ def send_startup_alert():
         f"Memantau {len(targets)} host:\n{hosts}"
     )
 
+
 def send_heartbeat():
     targets = get_target_hosts()
-    now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = []
 
     conn, c = get_db()
     try:
         for host in targets:
-            c.execute("""
+            c.execute(
+                """
                 SELECT
                     COUNT(*)                                           AS total,
                     SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END)     AS up_count,
@@ -916,28 +1093,38 @@ def send_heartbeat():
                     AVG(CASE WHEN latency != -1 THEN packet_loss END)  AS avg_loss
                 FROM ping_logs
                 WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
-            """, (host,))
+            """,
+                (host,),
+            )
             r = c.fetchone()
             total = r["total"] or 0
             up_count = r["up_count"] or 0
             uptime_pct = round((up_count / total * 100) if total else 0, 1)
             avg_ms = round(r["avg_ms"] or 0, 1)
 
-            status_icon = "✅" if uptime_pct >= 99 else ("⚠️" if uptime_pct >= 95 else "❌")
-            lines.append(f"{status_icon} `{host}` — Uptime: *{uptime_pct}%* ({avg_ms} ms)")
+            status_icon = (
+                "✅" if uptime_pct >= 99 else ("⚠️" if uptime_pct >= 95 else "❌")
+            )
+            lines.append(
+                f"{status_icon} `{host}` — Uptime: *{uptime_pct}%* ({avg_ms} ms)"
+            )
     finally:
         conn.close()
 
     body = "\n".join(lines)
     send_telegram_alert(
-        f"📊 *Laporan Harian NMS (24 Jam Terakhir)*\n"
-        f"Waktu : {now}\n\n"
-        f"{body}"
+        f"📊 *Laporan Harian NMS (24 Jam Terakhir)*\n" f"Waktu : {now}\n\n" f"{body}"
     )
 
 
-_FIBER_SUMMARY_ICON = {"overload": "🔊", "critical": "🔴", "warning": "🟡",
-                       "stale": "🟣", "unknown": "⚪", "normal": "🟢"}
+_FIBER_SUMMARY_ICON = {
+    "overload": "🔊",
+    "critical": "🔴",
+    "warning": "🟡",
+    "stale": "🟣",
+    "unknown": "⚪",
+    "normal": "🟢",
+}
 _FIBER_SUMMARY_RANK = {"overload": 0, "critical": 1, "warning": 2, "stale": 3}
 
 
@@ -967,9 +1154,19 @@ def send_fiber_summary():
         return
     maint_map = get_active_maintenance_map()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    counts = {"total": len(rows), "normal": 0, "warning": 0, "critical": 0,
-              "overload": 0, "stale": 0, "unknown": 0,
-              "degrading": 0, "muted": 0, "maintenance": 0, "flapping": 0}
+    counts = {
+        "total": len(rows),
+        "normal": 0,
+        "warning": 0,
+        "critical": 0,
+        "overload": 0,
+        "stale": 0,
+        "unknown": 0,
+        "degrading": 0,
+        "muted": 0,
+        "maintenance": 0,
+        "flapping": 0,
+    }
     attention, degrading, flapping = [], [], []
     _pbuckets = {}
     for o in rows:
@@ -995,7 +1192,9 @@ def send_fiber_summary():
             continue
         if severity:
             try:
-                rx_sort = float(o["rx_power"]) if o.get("rx_power") is not None else 99.0
+                rx_sort = (
+                    float(o["rx_power"]) if o.get("rx_power") is not None else 99.0
+                )
             except (ValueError, TypeError):
                 rx_sort = 99.0
             attention.append((_FIBER_SUMMARY_RANK.get(status, 9), rx_sort, o, status))
@@ -1015,9 +1214,11 @@ def send_fiber_summary():
     for _pkey, _pb in _pbuckets.items():
         if not _pb["n"]:
             continue
-        _nm = ((_pb["ent"] or {}).get("name") or _pkey)
-        lines.append(f"🔌 `{_nm}` — induk bermasalah, {_pb['n']} ONT "
-                     f"({_pb['crit']} kritis/overload) disuppress")
+        _nm = (_pb["ent"] or {}).get("name") or _pkey
+        lines.append(
+            f"🔌 `{_nm}` — induk bermasalah, {_pb['n']} ONT "
+            f"({_pb['crit']} kritis/overload) disuppress"
+        )
     for _rank, _rx, o, status in top:
         icon = _FIBER_SUMMARY_ICON.get(status, "•")
         cust = _fiber_summary_clean(o.get("customer"))
@@ -1025,7 +1226,9 @@ def send_fiber_summary():
         rx_txt = f"{o['rx_power']} dBm" if o.get("rx_power") is not None else "—"
         extra = f" ({cust})" if cust else ""
         loc_txt = f" [{_fiber_summary_clean(loc)}]" if loc else ""
-        lines.append(f"{icon} `{o['ont_sn']}`{extra} — {status.upper()} Rx {rx_txt}{loc_txt}")
+        lines.append(
+            f"{icon} `{o['ont_sn']}`{extra} — {status.upper()} Rx {rx_txt}{loc_txt}"
+        )
     if rest > 0:
         lines.append(f"  … +{rest} lainnya — lihat dashboard /triggers?cat=fiber")
     for o, drop in degrading[:5]:
@@ -1042,7 +1245,9 @@ def send_fiber_summary():
             continue
         cust = _fiber_summary_clean(o.get("customer"))
         extra = f" ({cust})" if cust else ""
-        lines.append(f"↔ `{o['ont_sn']}`{extra} — flapping {flips}x/{_fh} jam, cek konektor/ODP")
+        lines.append(
+            f"↔ `{o['ont_sn']}`{extra} — flapping {flips}x/{_fh} jam, cek konektor/ODP"
+        )
     if not lines:
         lines.append("✅ Semua ONT terpantau normal.")
     try:
@@ -1066,20 +1271,24 @@ _PING_RTT_RES = (
     re.compile(r"round-trip min/avg/max(?:/stddev)? = [\d.]+/([\d.]+)/"),
 )
 
+
 def ping_host(host):
     host = (host or "").strip()
-
 
     if not host or host.startswith("-") or not _PING_TARGET_RE.match(host):
         return -1, 100.0
     try:
         result = subprocess.run(
             ["ping", "-c", "3", "-W", "2", "-i", "0.5", host],
-            capture_output=True, text=True, timeout=12
+            capture_output=True,
+            text=True,
+            timeout=12,
         )
         out = result.stdout or ""
-        loss_match = re.search(r"(\d+(?:\.\d+)?)%\s*(?:packet\s+)?loss", out, re.IGNORECASE)
-        loss_pct   = float(loss_match.group(1)) if loss_match else 100.0
+        loss_match = re.search(
+            r"(\d+(?:\.\d+)?)%\s*(?:packet\s+)?loss", out, re.IGNORECASE
+        )
+        loss_pct = float(loss_match.group(1)) if loss_match else 100.0
 
         avg = None
         for rx in _PING_RTT_RES:
@@ -1093,11 +1302,13 @@ def ping_host(host):
     except Exception:
         return -1, 100.0
 
+
 def check_host(host):
     latency, packet_loss = ping_host(host)
     return host, latency, packet_loss
+
+
 def check_agent_heartbeat():
-    global agent_offline_memory
     targets = get_target_hosts()
 
     conn, c = get_db()
@@ -1105,16 +1316,17 @@ def check_agent_heartbeat():
         last_map = {}
         for host in targets:
 
-
-            c.execute('''
+            c.execute(
+                """
                 SELECT timestamp FROM agent_metrics 
                 WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1
-            ''', (host,))
+            """,
+                (host,),
+            )
             row = c.fetchone()
             last_map[host] = row["timestamp"] if row else None
     finally:
         conn.close()
-
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     newly_offline = []
@@ -1129,7 +1341,6 @@ def check_agent_heartbeat():
                 continue
             diff = (datetime.now() - last_time).total_seconds()
 
-
             if diff > 120 and not agent_offline_memory.get(host, False):
 
                 agent_offline_memory[host] = True
@@ -1141,22 +1352,31 @@ def check_agent_heartbeat():
         except Exception as e:
             print(f"[WARN] telegram offline-alert gagal: {e}")
         try:
-            log_system_event("AGENT_OFFLINE", host, "Agent berhenti merespon (Heartbeat hilang)")
+            log_system_event(
+                "AGENT_OFFLINE", host, "Agent berhenti merespon (Heartbeat hilang)"
+            )
         except Exception as e:
             print(f"[WARN] log AGENT_OFFLINE gagal: {e}")
 
 
 snmp_state = {}
 
-def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xa0):
+
+def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xA0):
     def encode_oid(oid):
         try:
-            parts = [int(x) for x in str(oid).split('.') if x != ""]
+            parts = [int(x) for x in str(oid).split(".") if x != ""]
         except (ValueError, TypeError):
             raise ValueError(f"OID tidak valid: {oid!r}")
-        if len(parts) < 2 or parts[0] < 0 or parts[0] > 2 or parts[1] < 0 or any(p < 0 for p in parts):
+        if (
+            len(parts) < 2
+            or parts[0] < 0
+            or parts[0] > 2
+            or parts[1] < 0
+            or any(p < 0 for p in parts)
+        ):
             raise ValueError(f"OID tidak valid: {oid!r}")
-        first = parts[0]*40 + parts[1]
+        first = parts[0] * 40 + parts[1]
         encoded = bytes([first])
         for p in parts[2:]:
             if p == 0:
@@ -1164,12 +1384,12 @@ def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xa0):
             else:
                 segs = []
                 while p > 0:
-                    segs.append(p & 0x7f)
+                    segs.append(p & 0x7F)
                     p >>= 7
                 segs.reverse()
                 for i, s in enumerate(segs):
-                    encoded += bytes([s | (0x80 if i < len(segs)-1 else 0)])
-        return b'\x06' + _encode_len(len(encoded)) + encoded
+                    encoded += bytes([s | (0x80 if i < len(segs) - 1 else 0)])
+        return b"\x06" + _encode_len(len(encoded)) + encoded
 
     def _encode_len(n):
         if n < 0:
@@ -1184,17 +1404,18 @@ def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xa0):
     def encode_tlv(tag, value):
         return bytes([tag]) + _encode_len(len(value)) + value
 
-    req_id = b'\x02\x01\x01'
-    varbinds = b''
+    req_id = b"\x02\x01\x01"
+    varbinds = b""
     for oid in oid_list:
         oid_enc = encode_oid(oid)
-        varbinds += encode_tlv(0x30, oid_enc + b'\x05\x00')
+        varbinds += encode_tlv(0x30, oid_enc + b"\x05\x00")
     varbind_list = encode_tlv(0x30, varbinds)
-    pdu = encode_tlv(_pdu_tag, req_id + b'\x02\x01\x00\x02\x01\x00' + varbind_list)
+    pdu = encode_tlv(_pdu_tag, req_id + b"\x02\x01\x00\x02\x01\x00" + varbind_list)
     comm_bytes = str(community or "")[:128].encode()
 
-
-    _ver = 1 if os.environ.get("SNMP_VERSION", "1").strip().lower() in ("2", "2c") else 0
+    _ver = (
+        1 if os.environ.get("SNMP_VERSION", "1").strip().lower() in ("2", "2c") else 0
+    )
     version = bytes([0x02, 0x01, _ver])
     comm_tlv = encode_tlv(0x04, comm_bytes)
     return encode_tlv(0x30, version + comm_tlv + pdu)
@@ -1209,19 +1430,21 @@ def _ber_read_tlv(data, pos):
         if first < 128:
             ln, hdr = first, 2
         else:
-            n = first & 0x7f
+            n = first & 0x7F
             if n == 0 or n > 4 or pos + 2 + n > len(data):
                 return None
-            ln = int.from_bytes(data[pos + 2:pos + 2 + n], "big")
+            ln = int.from_bytes(data[pos + 2 : pos + 2 + n], "big")
             hdr = 2 + n
         end = pos + hdr + ln
         if ln < 0 or end > len(data):
             return None
-        return tag, bytes(data[pos + hdr:end]), end
+        return tag, bytes(data[pos + hdr : end]), end
     except Exception:
         return None
 
+
 _SNMP_VALUE_TAGS = (0x02, 0x41, 0x42, 0x43, 0x46)
+
 
 def _extract_snmp_values(resp):
     found = []
@@ -1261,7 +1484,7 @@ def _decode_oid(raw):
         arcs = [raw[0] // 40, raw[0] % 40]
         val, complete = 0, True
         for byte in raw[1:]:
-            val = (val << 7) | (byte & 0x7f)
+            val = (val << 7) | (byte & 0x7F)
             if byte & 0x80:
                 complete = False
             else:
@@ -1340,7 +1563,7 @@ def _snmp_getnext(ip, community, oid, timeout=2.5):
     """Satu GETNEXT. Kembalikan (oid_str, tag, ival, sval) atau (None, None, None, None)."""
     sock = None
     try:
-        pkt = _encode_snmp_v1_get(community, [oid], _pdu_tag=0xa1)
+        pkt = _encode_snmp_v1_get(community, [oid], _pdu_tag=0xA1)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
         sock.sendto(pkt, (ip, 161))
@@ -1381,7 +1604,9 @@ def snmp_walk(ip, community, base, max_rows=64):
 
 IF_DESCR_BASE = "1.3.6.1.2.1.2.2.1.2"
 IF_OPER_BASE = "1.3.6.1.2.1.2.2.1.8"
-DISCOVER_MAX_IF = 128  # batas interface per discover (walk berhenti sendiri di ujung tabel)
+DISCOVER_MAX_IF = (
+    128  # batas interface per discover (walk berhenti sendiri di ujung tabel)
+)
 
 
 def discover_interfaces(ip, community, max_if=DISCOVER_MAX_IF):
@@ -1395,7 +1620,7 @@ def discover_interfaces(ip, community, max_if=DISCOVER_MAX_IF):
 
     def _idx(oid, base):
         try:
-            suffix = oid.strip().strip(".")[len(base.strip().strip(".")) + 1:]
+            suffix = oid.strip().strip(".")[len(base.strip().strip(".")) + 1 :]
             i = int(suffix)
             return i if i >= 1 else None
         except (ValueError, TypeError, IndexError):
@@ -1415,9 +1640,11 @@ def discover_interfaces(ip, community, max_if=DISCOVER_MAX_IF):
         opermap[i] = iv
     out = []
     for i in sorted(set(names) | set(opermap))[:max_if]:
-        out.append({"if_index": i, "name": names.get(i, f"if{i}"),
-                    "oper": opermap.get(i)})
+        out.append(
+            {"if_index": i, "name": names.get(i, f"if{i}"), "oper": opermap.get(i)}
+        )
     return out
+
 
 _OID_RE = re.compile(r"^\.?([0-9]+\.)+[0-9]+$")
 
@@ -1476,38 +1703,49 @@ def get_snmp_bandwidth(ip, community, if_index):
     if if_index < 1:
         return None, None
     # 64-bit dulu (IF-MIB HC, anti-wrap di link cepat), fallback 32-bit
-    vals = _snmp_get(ip, community,
-                     [f'1.3.6.1.2.1.31.1.1.1.6.{if_index}',
-                      f'1.3.6.1.2.1.31.1.1.1.10.{if_index}'])
+    vals = _snmp_get(
+        ip,
+        community,
+        [f"1.3.6.1.2.1.31.1.1.1.6.{if_index}", f"1.3.6.1.2.1.31.1.1.1.10.{if_index}"],
+    )
     if len(vals) == 2 and vals[0] is not None and vals[1] is not None:
         return vals[0], vals[1]
-    vals = _snmp_get(ip, community,
-                     [f'1.3.6.1.2.1.2.2.1.10.{if_index}',
-                      f'1.3.6.1.2.1.2.2.1.16.{if_index}'])
+    vals = _snmp_get(
+        ip,
+        community,
+        [f"1.3.6.1.2.1.2.2.1.10.{if_index}", f"1.3.6.1.2.1.2.2.1.16.{if_index}"],
+    )
     if len(vals) == 2 and vals[0] is not None and vals[1] is not None:
         return vals[0], vals[1]
     return None, None
 
 
 MT_DEFAULT_OIDS = {
-    "cpu": '1.3.6.1.4.1.14988.1.1.3.11.0',
-    "mem": '1.3.6.1.4.1.14988.1.1.3.12.0',
-    "storage": '1.3.6.1.4.1.14988.1.1.3.13.0',
-    "temp": '1.3.6.1.4.1.14988.1.1.3.10.0',
+    "cpu": "1.3.6.1.4.1.14988.1.1.3.11.0",
+    "mem": "1.3.6.1.4.1.14988.1.1.3.12.0",
+    "storage": "1.3.6.1.4.1.14988.1.1.3.13.0",
+    "temp": "1.3.6.1.4.1.14988.1.1.3.10.0",
 }
 
 
 def resolve_mt_oids(host_row):
     """OID per host (override) atau default global. Kembalikan dict key->oid/None."""
     out = {}
-    for key, setting_key in (("cpu", "mt_cpu_oid"), ("mem", "mt_mem_oid"),
-                             ("storage", "mt_storage_oid"), ("temp", "mt_temp_oid")):
+    for key, setting_key in (
+        ("cpu", "mt_cpu_oid"),
+        ("mem", "mt_mem_oid"),
+        ("storage", "mt_storage_oid"),
+        ("temp", "mt_temp_oid"),
+    ):
         try:
             custom = (host_row[key + "_oid"] or "").strip()
         except (KeyError, IndexError, TypeError, AttributeError):
             custom = ""
-        out[key] = _valid_oid(custom) or _valid_oid(
-            get_setting(setting_key, MT_DEFAULT_OIDS[key], type_cast=str)) or MT_DEFAULT_OIDS[key]
+        out[key] = (
+            _valid_oid(custom)
+            or _valid_oid(get_setting(setting_key, MT_DEFAULT_OIDS[key], type_cast=str))
+            or MT_DEFAULT_OIDS[key]
+        )
     return out
 
 
@@ -1536,9 +1774,24 @@ def get_mikrotik_health(ip, community, oids):
             res[k] = f
     return res
 
-def poll_snmp_bandwidth():
-    global snmp_state
 
+def _snmp_poll_one(args):
+    """Helper untuk polling SNMP satu host — dijalankan secara paralel."""
+    host, community, if_index, now_time = args
+    community = community or ""
+    if_index = if_index or 1
+    if not community or community.strip() == "":
+        return host, None, None
+    try:
+        in_bytes, out_bytes = get_snmp_bandwidth(host, community, if_index)
+        return host, in_bytes, out_bytes
+    except Exception as e:
+        print(f"[SNMP] poll error {host}: {e}")
+        return host, None, None
+
+
+def poll_snmp_bandwidth():
+    """Poll bandwidth SNMP semua host secara paralel menggunakan ThreadPoolExecutor."""
     conn, c = get_db()
     try:
         c.execute("SELECT ip, snmp_community, if_index FROM hosts ORDER BY id ASC")
@@ -1547,61 +1800,84 @@ def poll_snmp_bandwidth():
     finally:
         conn.close()
 
+    if not hosts:
+        return
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     now_time = time.time()
 
+    # Filter hanya host yang punya SNMP community sebelum dispatch ke thread
+    candidates = [
+        (h, c_, idx, now_time)
+        for h, c_, idx in hosts
+        if (c_ or "").strip()
+    ]
+    if not candidates:
+        return
+
+    # Jalankan semua SNMP GET secara paralel — max 20 thread untuk menghindari overload
+    max_workers = min(len(candidates), 20)
+    raw_results = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {executor.submit(_snmp_poll_one, args): args[0] for args in candidates}
+        for future in as_completed(future_map):
+            try:
+                host, in_b, out_b = future.result()
+                raw_results[host] = (in_b, out_b)
+            except Exception as e:
+                h = future_map.get(future, "?")
+                print(f"[SNMP] future error {h}: {e}")
 
     pending_inserts = []
-    for host, community, if_index in hosts:
-        community = community or ""
-        if_index = if_index or 1
-
-        if not community or community.strip() == "":
-            continue
-
-        in_bytes, out_bytes = get_snmp_bandwidth(host, community, if_index)
+    for host, community, if_index, _ in candidates:
+        in_bytes, out_bytes = raw_results.get(host, (None, None))
         if in_bytes is not None and out_bytes is not None:
             if host in snmp_state:
                 prev = snmp_state[host]
-                time_diff = now_time - prev['time']
+                time_diff = now_time - prev["time"]
 
-                diff_in = in_bytes - prev['in_bytes']
-                diff_out = out_bytes - prev['out_bytes']
-
+                diff_in = in_bytes - prev["in_bytes"]
+                diff_out = out_bytes - prev["out_bytes"]
 
                 if diff_in < 0 or diff_out < 0:
                     snmp_state[host] = {
-                        'in_bytes': in_bytes,
-                        'out_bytes': out_bytes,
-                        'time': now_time
+                        "in_bytes": in_bytes,
+                        "out_bytes": out_bytes,
+                        "time": now_time,
                     }
                     continue
-
 
                 if time_diff > 0:
                     net_in = (diff_in * 8) / (1024 * 1024 * time_diff)
                     net_out = (diff_out * 8) / (1024 * 1024 * time_diff)
                     if net_in > 100000 or net_out > 100000:
                         snmp_state[host] = {
-                            'in_bytes': in_bytes,
-                            'out_bytes': out_bytes,
-                            'time': now_time
+                            "in_bytes": in_bytes,
+                            "out_bytes": out_bytes,
+                            "time": now_time,
                         }
                         continue
                 else:
                     net_in, net_out = 0.0, 0.0
 
-
                 pending_inserts.append(
-                    (host, None, None, None, round(net_in, 2), round(net_out, 2), timestamp, 'snmp')
+                    (
+                        host,
+                        None,
+                        None,
+                        None,
+                        round(net_in, 2),
+                        round(net_out, 2),
+                        timestamp,
+                        "snmp",
+                    )
                 )
 
             snmp_state[host] = {
-                'in_bytes': in_bytes,
-                'out_bytes': out_bytes,
-                'time': now_time
+                "in_bytes": in_bytes,
+                "out_bytes": out_bytes,
+                "time": now_time,
             }
-
 
     if not pending_inserts:
         return
@@ -1621,6 +1897,7 @@ def poll_snmp_bandwidth():
                 pass
         finally:
             conn.close()
+
 
 # ============================================================
 # MIKROTIK HEALTH via SNMP (CPU/RAM/storage/suhu, tanpa agent)
@@ -1647,7 +1924,7 @@ IF_HC_OUT_OID = "1.3.6.1.2.1.31.1.1.1.10"
 REBOOT_ALARM_WINDOW_S = 900  # reboot <15 mnt lalu masih tampil di triggers
 # TimeTicks 32-bit melimpah tiap ~497 hari; bila uptime sebelumnya dekat
 # batas dan yang baru kecil, kemungkinan wrap (bukan reboot beneran).
-_MT_TICK_MAX_S = 2 ** 32 / 100.0
+_MT_TICK_MAX_S = 2**32 / 100.0
 _MT_WRAP_NEAR_S = 30 * 86400
 _MT_WRAP_FRESH_S = 86400
 # Stale: tanpa device_health baru lebih lama dari ini -> tak terpantau.
@@ -1711,12 +1988,13 @@ def _mt_check_one(args):
 
 
 def poll_mikrotik_health():
-    global mt_alarm_memory, mt_is_mikrotik
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT ip, snmp_community, snmp_profile, cpu_oid, mem_oid,"
-                      " storage_oid, temp_oid FROM hosts ORDER BY id ASC")
+            c.execute(
+                "SELECT ip, snmp_community, snmp_profile, cpu_oid, mem_oid,"
+                " storage_oid, temp_oid FROM hosts ORDER BY id ASC"
+            )
             hosts = [dict(r) for r in c.fetchall()]
         finally:
             conn.close()
@@ -1747,8 +2025,14 @@ def poll_mikrotik_health():
         st_thresh = get_setting("disk_threshold", 90.0)
         temp_div = get_setting("mt_temp_div", 10, type_cast=float) or 10
     except Exception:
-        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh, temp_div = \
-            60.0, 75.0, 85.0, 90.0, 90.0, 10
+        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh, temp_div = (
+            60.0,
+            75.0,
+            85.0,
+            90.0,
+            90.0,
+            10,
+        )
     cpu_clear = max(cpu_thresh - HYSTERESIS, 0)
     mem_clear = max(mem_thresh - HYSTERESIS, 0)
     st_clear = max(st_thresh - HYSTERESIS, 0)
@@ -1760,8 +2044,11 @@ def poll_mikrotik_health():
         try:
             for host, (res, sysup) in results.items():
                 cpu, mem, sto = res.get("cpu"), res.get("mem"), res.get("storage")
-                temp = (res["temp_raw"] / temp_div
-                        if res.get("temp_raw") is not None and temp_div else None)
+                temp = (
+                    res["temp_raw"] / temp_div
+                    if res.get("temp_raw") is not None and temp_div
+                    else None
+                )
                 if temp is not None:
                     temp = round(temp, 1)
                 if cpu is None and mem is None and sto is None and temp is None:
@@ -1771,34 +2058,50 @@ def poll_mikrotik_health():
                 # deteksi reboot: sysUpTime turun dari poll sebelumnya
                 prev_up = mt_sysup.get(host)
                 if sysup is not None:
-                    _kind = _mt_reboot_kind(prev_up, sysup) if prev_up is not None else None
+                    _kind = (
+                        _mt_reboot_kind(prev_up, sysup) if prev_up is not None else None
+                    )
                     if _kind:
                         if _kind == "wrap":
                             tg_queue.append(
                                 f"ℹ️ *MIKROTIK UPTIME WRAP?*\nHost: `{host}`\n"
                                 f"Uptime sebelumnya: {_fmt_duration(int(prev_up or 0))} → sekarang: {_fmt_duration(int(sysup or 0))}\n"
                                 f"Kemungkinan wrap counter TimeTicks (>467 hari), bukan reboot beneran — verifikasi uptime.\n"
-                                f"Waktu: {timestamp}")
+                                f"Waktu: {timestamp}"
+                            )
                             try:
-                                _insert_system_log(c, "MT_REBOOT", host,
-                                                   f"kemungkinan wrap (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)", timestamp)
+                                _insert_system_log(
+                                    c,
+                                    "MT_REBOOT",
+                                    host,
+                                    f"kemungkinan wrap (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)",
+                                    timestamp,
+                                )
                             except Exception:
                                 pass
                         else:
                             tg_queue.append(
                                 f"🔄 *MIKROTIK REBOOT TERDETEKSI*\nHost: `{host}`\n"
                                 f"Uptime sebelumnya: {_fmt_duration(int(prev_up or 0))} → sekarang: {_fmt_duration(int(sysup or 0))}\n"
-                                f"Waktu: {timestamp}")
+                                f"Waktu: {timestamp}"
+                            )
                             try:
-                                _insert_system_log(c, "MT_REBOOT", host,
-                                                   f"reboot (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)", timestamp)
+                                _insert_system_log(
+                                    c,
+                                    "MT_REBOOT",
+                                    host,
+                                    f"reboot (uptime {int(prev_up or 0)}s -> {int(sysup or 0)}s)",
+                                    timestamp,
+                                )
                             except Exception:
                                 pass
                     mt_sysup[host] = sysup
                 try:
-                    c.execute("INSERT INTO device_health (host, cpu, mem_used, storage_used,"
-                              " temp_c, uptime_s, timestamp, source) VALUES (?,?,?,?,?,?,?,'snmp-mikrotik')",
-                              (host, cpu, mem, sto, temp, sysup, timestamp))
+                    c.execute(
+                        "INSERT INTO device_health (host, cpu, mem_used, storage_used,"
+                        " temp_c, uptime_s, timestamp, source) VALUES (?,?,?,?,?,?,?,'snmp-mikrotik')",
+                        (host, cpu, mem, sto, temp, sysup, timestamp),
+                    )
                 except sqlite3.OperationalError as e:
                     print(f"[DB LOCK] device_health {host} gagal: {e}")
                     continue
@@ -1813,31 +2116,72 @@ def poll_mikrotik_health():
                         cur[key] = True
                         tg_queue.append(
                             f"⚠️ *MIKROTIK {name} TINGGI*\nHost: `{host}`\n"
-                            f"{name}: *{val}{unit}* (batas: {thresh}{unit})\nWaktu: {timestamp}")
-                        log_queue.append((f"MT_{key.upper()}", f"{val}{unit} (batas {thresh}{unit})"))
+                            f"{name}: *{val}{unit}* (batas: {thresh}{unit})\nWaktu: {timestamp}"
+                        )
+                        log_queue.append(
+                            (f"MT_{key.upper()}", f"{val}{unit} (batas {thresh}{unit})")
+                        )
                     elif is_clear and prev.get(key):
                         cur[key] = False
                         tg_queue.append(
                             f"✅ *MIKROTIK {name} NORMAL*\nHost: `{host}`\n"
-                            f"{name}: {val}{unit}\nWaktu: {timestamp}")
-                        log_queue.append((f"MT_{key.upper()}_OK", f"pulih: {val}{unit}"))
+                            f"{name}: {val}{unit}\nWaktu: {timestamp}"
+                        )
+                        log_queue.append(
+                            (f"MT_{key.upper()}_OK", f"pulih: {val}{unit}")
+                        )
 
                 log_queue = []
-                _flip("cpu", cpu is not None and cpu > cpu_thresh,
-                      cpu is not None and cpu <= cpu_clear,
-                      "CPU", "%", cpu, cpu_thresh, "warning")
-                _flip("mem", mem is not None and mem > mem_thresh,
-                      mem is not None and mem <= mem_clear,
-                      "Memory", "%", mem, mem_thresh, "warning")
-                _flip("storage", sto is not None and sto > st_thresh,
-                      sto is not None and sto <= st_clear,
-                      "Storage", "%", sto, st_thresh, "warning")
-                _flip("temp_warn", temp is not None and temp >= temp_warn,
-                      temp is not None and temp <= temp_warn - MT_TEMP_HYST,
-                      "Suhu", "°C", temp, temp_warn, "warning")
-                _flip("temp_crit", temp is not None and temp >= temp_crit,
-                      temp is not None and temp <= temp_crit - MT_TEMP_HYST,
-                      "Suhu KRITIS", "°C", temp, temp_crit, "high")
+                _flip(
+                    "cpu",
+                    cpu is not None and cpu > cpu_thresh,
+                    cpu is not None and cpu <= cpu_clear,
+                    "CPU",
+                    "%",
+                    cpu,
+                    cpu_thresh,
+                    "warning",
+                )
+                _flip(
+                    "mem",
+                    mem is not None and mem > mem_thresh,
+                    mem is not None and mem <= mem_clear,
+                    "Memory",
+                    "%",
+                    mem,
+                    mem_thresh,
+                    "warning",
+                )
+                _flip(
+                    "storage",
+                    sto is not None and sto > st_thresh,
+                    sto is not None and sto <= st_clear,
+                    "Storage",
+                    "%",
+                    sto,
+                    st_thresh,
+                    "warning",
+                )
+                _flip(
+                    "temp_warn",
+                    temp is not None and temp >= temp_warn,
+                    temp is not None and temp <= temp_warn - MT_TEMP_HYST,
+                    "Suhu",
+                    "°C",
+                    temp,
+                    temp_warn,
+                    "warning",
+                )
+                _flip(
+                    "temp_crit",
+                    temp is not None and temp >= temp_crit,
+                    temp is not None and temp <= temp_crit - MT_TEMP_HYST,
+                    "Suhu KRITIS",
+                    "°C",
+                    temp,
+                    temp_crit,
+                    "high",
+                )
                 mt_alarm_memory[host] = cur
                 for ev, msg in log_queue:
                     try:
@@ -1866,8 +2210,9 @@ def _mt_iface_check_one(args):
     out = {"opers": {}, "counters": {}}
     try:
         if indices:
-            vals = _snmp_get(host, community,
-                             [f"{IF_OPER_OID}.{i}" for i in indices], timeout=3.0)
+            vals = _snmp_get(
+                host, community, [f"{IF_OPER_OID}.{i}" for i in indices], timeout=3.0
+            )
             for i, v in zip(indices, vals):
                 out["opers"][i] = v
             oids, order = [], []
@@ -1885,14 +2230,15 @@ def _mt_iface_check_one(args):
 
 def poll_mikrotik_ifaces():
     """Traffic + oper-status per interface termonitor (tiap 60 dtk)."""
-    global mt_iface_oper, iface_state, mt_iface_tg, mt_iface_flaps
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT h.ip, h.snmp_community, h.snmp_profile,"
-                      " i.if_index, i.name FROM snmp_interfaces i"
-                      " JOIN hosts h ON h.ip = i.host"
-                      " WHERE i.monitor=1 ORDER BY h.ip ASC, i.if_index ASC")
+            c.execute(
+                "SELECT h.ip, h.snmp_community, h.snmp_profile,"
+                " i.if_index, i.name FROM snmp_interfaces i"
+                " JOIN hosts h ON h.ip = i.host"
+                " WHERE i.monitor=1 ORDER BY h.ip ASC, i.if_index ASC"
+            )
             rows = [dict(r) for r in c.fetchall()]
         finally:
             conn.close()
@@ -1909,8 +2255,9 @@ def poll_mikrotik_ifaces():
             idx = int(r["if_index"])
         except (ValueError, TypeError):
             continue
-        by_host.setdefault(r["ip"], {"community": r["snmp_community"],
-                                     "indices": [], "names": {}})
+        by_host.setdefault(
+            r["ip"], {"community": r["snmp_community"], "indices": [], "names": {}}
+        )
         by_host[r["ip"]]["indices"].append(idx)
         by_host[r["ip"]]["names"][idx] = r["name"] or f"if{idx}"
     if not by_host:
@@ -1918,8 +2265,10 @@ def poll_mikrotik_ifaces():
 
     results = {}
     with ThreadPoolExecutor(max_workers=min(len(by_host), 10)) as ex:
-        futs = {ex.submit(_mt_iface_check_one,
-                          (h, v["community"], v["indices"])): h for h, v in by_host.items()}
+        futs = {
+            ex.submit(_mt_iface_check_one, (h, v["community"], v["indices"])): h
+            for h, v in by_host.items()
+        }
         for fut in as_completed(futs):
             try:
                 host, out = fut.result()
@@ -1946,9 +2295,11 @@ def poll_mikrotik_ifaces():
                         elif oper != prev_oper:
                             mt_iface_oper[key] = oper
                             try:
-                                c.execute("UPDATE snmp_interfaces SET oper=?, last_changed=?"
-                                          " WHERE host=? AND if_index=?",
-                                          (oper, timestamp, host, idx))
+                                c.execute(
+                                    "UPDATE snmp_interfaces SET oper=?, last_changed=?"
+                                    " WHERE host=? AND if_index=?",
+                                    (oper, timestamp, host, idx),
+                                )
                             except sqlite3.OperationalError:
                                 pass
                             # cooldown anti-spam port flapping (DB oper + log tetap dicatat)
@@ -1956,37 +2307,56 @@ def poll_mikrotik_ifaces():
                             if now_time - _last_tg < MT_IFACE_TG_COOLDOWN_S:
                                 _n = mt_iface_flaps.get(key, 0) + 1
                                 mt_iface_flaps[key] = _n
-                                print(f"[MT-IFACE] {host} if{idx} "
-                                      f"{'down' if oper == 2 else 'up'} disuppress "
-                                      f"(cooldown, flap x{_n})")
+                                print(
+                                    f"[MT-IFACE] {host} if{idx} "
+                                    f"{'down' if oper == 2 else 'up'} disuppress "
+                                    f"(cooldown, flap x{_n})"
+                                )
                                 try:
                                     _insert_system_log(
-                                        c, "MT_PORT_DOWN" if oper == 2 else "MT_PORT_UP",
-                                        host, f"{name} (ifIndex {idx}) "
+                                        c,
+                                        "MT_PORT_DOWN" if oper == 2 else "MT_PORT_UP",
+                                        host,
+                                        f"{name} (ifIndex {idx}) "
                                         f"{'down' if oper == 2 else 'up'} (telegram disuppress, flap x{_n})",
-                                        timestamp)
+                                        timestamp,
+                                    )
                                 except Exception:
                                     pass
                             else:
                                 mt_iface_tg[key] = now_time
                                 _flaps = mt_iface_flaps.pop(key, 0)
-                                _note = f" (flapping {_flaps}x/10 mnt)" if _flaps else ""
+                                _note = (
+                                    f" (flapping {_flaps}x/10 mnt)" if _flaps else ""
+                                )
                                 if oper == 2:
                                     tg_queue.append(
                                         f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"
-                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}")
+                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}"
+                                    )
                                     try:
-                                        _insert_system_log(c, "MT_PORT_DOWN", host,
-                                                           f"{name} (ifIndex {idx}) down{_note}", timestamp)
+                                        _insert_system_log(
+                                            c,
+                                            "MT_PORT_DOWN",
+                                            host,
+                                            f"{name} (ifIndex {idx}) down{_note}",
+                                            timestamp,
+                                        )
                                     except Exception:
                                         pass
                                 else:
                                     tg_queue.append(
                                         f"✅ *MIKROTIK PORT UP*\nHost: `{host}`\n"
-                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}")
+                                        f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}"
+                                    )
                                     try:
-                                        _insert_system_log(c, "MT_PORT_UP", host,
-                                                           f"{name} (ifIndex {idx}) up{_note}", timestamp)
+                                        _insert_system_log(
+                                            c,
+                                            "MT_PORT_UP",
+                                            host,
+                                            f"{name} (ifIndex {idx}) up{_note}",
+                                            timestamp,
+                                        )
                                     except Exception:
                                         pass
                     cnt = out["counters"].get(idx, {})
@@ -1994,22 +2364,39 @@ def poll_mikrotik_ifaces():
                     if in_b is not None and out_b is not None:
                         st = iface_state.get(key)
                         if st is None:
-                            iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+                            iface_state[key] = {
+                                "in": in_b,
+                                "out": out_b,
+                                "time": now_time,
+                            }
                         else:
                             dt = now_time - st["time"]
                             di, do = in_b - st["in"], out_b - st["out"]
                             if di < 0 or do < 0 or dt <= 0:
-                                iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+                                iface_state[key] = {
+                                    "in": in_b,
+                                    "out": out_b,
+                                    "time": now_time,
+                                }
                             else:
                                 net_in = round((di * 8) / (1024 * 1024 * dt), 2)
                                 net_out = round((do * 8) / (1024 * 1024 * dt), 2)
                                 if net_in <= 100000 and net_out <= 100000:
-                                    traffic_rows.append((host, idx, net_in, net_out, timestamp))
-                                iface_state[key] = {"in": in_b, "out": out_b, "time": now_time}
+                                    traffic_rows.append(
+                                        (host, idx, net_in, net_out, timestamp)
+                                    )
+                                iface_state[key] = {
+                                    "in": in_b,
+                                    "out": out_b,
+                                    "time": now_time,
+                                }
             if traffic_rows:
                 try:
-                    c.executemany("INSERT INTO iface_traffic (host, if_index, net_in, net_out, timestamp)"
-                                  " VALUES (?,?,?,?,?)", traffic_rows)
+                    c.executemany(
+                        "INSERT INTO iface_traffic (host, if_index, net_in, net_out, timestamp)"
+                        " VALUES (?,?,?,?,?)",
+                        traffic_rows,
+                    )
                 except sqlite3.OperationalError as e:
                     print(f"[DB LOCK] iface_traffic gagal: {e}")
             _commit_with_retry(conn)
@@ -2061,10 +2448,17 @@ def fetch_mikrotik_config(host, username, password, port=22, timeout=20):
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(host, port=port, username=username, password=password,
-                       timeout=timeout, banner_timeout=timeout,
-                       auth_timeout=timeout, look_for_keys=False,
-                       allow_agent=False)
+        client.connect(
+            host,
+            port=port,
+            username=username,
+            password=password,
+            timeout=timeout,
+            banner_timeout=timeout,
+            auth_timeout=timeout,
+            look_for_keys=False,
+            allow_agent=False,
+        )
         _in, _out, _err = client.exec_command("/export", timeout=timeout)
         raw = _out.read()
         try:
@@ -2092,76 +2486,98 @@ def _store_mt_backup(c, host, ok, payload, timestamp):
     """
     if not ok:
         try:
-            c.execute("UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
-                      (timestamp, host))
-            _insert_system_log(c, "MT_BACKUP_FAIL", host, str(payload)[:200],
-                               timestamp)
+            c.execute(
+                "UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
+                (timestamp, host),
+            )
+            _insert_system_log(c, "MT_BACKUP_FAIL", host, str(payload)[:200], timestamp)
         except sqlite3.OperationalError:
             pass
         return None
     text = payload if isinstance(payload, str) else ""
     if len(text.encode("utf-8")) > MT_BACKUP_MAX_BYTES:
         try:
-            c.execute("UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
-                      (timestamp, host))
-            _insert_system_log(c, "MT_BACKUP_FAIL", host,
-                               "export >2MB, dilewati", timestamp)
+            c.execute(
+                "UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
+                (timestamp, host),
+            )
+            _insert_system_log(
+                c, "MT_BACKUP_FAIL", host, "export >2MB, dilewati", timestamp
+            )
         except sqlite3.OperationalError:
             pass
         return None
     sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
     try:
-        c.execute("SELECT id, sha256, content FROM mt_backups WHERE host=? "
-                  "ORDER BY id DESC LIMIT 1", (host,))
+        c.execute(
+            "SELECT id, sha256, content FROM mt_backups WHERE host=? "
+            "ORDER BY id DESC LIMIT 1",
+            (host,),
+        )
         prev = c.fetchone()
     except sqlite3.OperationalError:
         return None
     if prev and prev["sha256"] == sha:
         try:
-            c.execute("UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?",
-                      (timestamp, host))
+            c.execute(
+                "UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?",
+                (timestamp, host),
+            )
         except sqlite3.OperationalError:
             pass
         return None
     added = removed = 0
     if prev and prev["content"] is not None:
-        for line in difflib.unified_diff((prev["content"] or "").splitlines(),
-                                         text.splitlines(), n=0):
+        for line in difflib.unified_diff(
+            (prev["content"] or "").splitlines(), text.splitlines(), n=0
+        ):
             if line.startswith("+") and not line.startswith("+++"):
                 added += 1
             elif line.startswith("-") and not line.startswith("---"):
                 removed += 1
     try:
-        c.execute("INSERT INTO mt_backups (host, taken_at, size, sha256, content, changed)"
-                  " VALUES (?,?,?,?,?,?)",
-                  (host, timestamp, len(text.encode("utf-8")), sha, text,
-                   1 if prev else 0))
+        c.execute(
+            "INSERT INTO mt_backups (host, taken_at, size, sha256, content, changed)"
+            " VALUES (?,?,?,?,?,?)",
+            (host, timestamp, len(text.encode("utf-8")), sha, text, 1 if prev else 0),
+        )
         keep = _mt_backup_keep()
-        c.execute("DELETE FROM mt_backups WHERE host=? AND id NOT IN "
-                  "(SELECT id FROM mt_backups WHERE host=? ORDER BY id DESC LIMIT ?)",
-                  (host, host, keep))
-        c.execute("UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?",
-                  (timestamp, host))
-        _insert_system_log(c, "MT_BACKUP", host,
-                           f"tersimpan {len(text.encode('utf-8')) // 1024} KB"
-                           + (f" (+{added}/-{removed})" if prev else " (baseline)"),
-                           timestamp)
+        c.execute(
+            "DELETE FROM mt_backups WHERE host=? AND id NOT IN "
+            "(SELECT id FROM mt_backups WHERE host=? ORDER BY id DESC LIMIT ?)",
+            (host, host, keep),
+        )
+        c.execute(
+            "UPDATE hosts SET backup_last=?, backup_ok=1 WHERE ip=?", (timestamp, host)
+        )
+        _insert_system_log(
+            c,
+            "MT_BACKUP",
+            host,
+            f"tersimpan {len(text.encode('utf-8')) // 1024} KB"
+            + (f" (+{added}/-{removed})" if prev else " (baseline)"),
+            timestamp,
+        )
     except sqlite3.OperationalError as e:
         print(f"[MT-BACKUP] simpan {host} gagal: {e}")
         return None
     if not prev:
         return None
-    return (f"💾 *MIKROTIK BACKUP BERUBAH*\nHost: `{host}`\n"
-            f"Ukuran: {len(text.encode('utf-8')) // 1024} KB · +{added}/-{removed} baris\n"
-            f"Waktu: {timestamp}\nLihat diff di halaman mikrotik.")
+    return (
+        f"💾 *MIKROTIK BACKUP BERUBAH*\nHost: `{host}`\n"
+        f"Ukuran: {len(text.encode('utf-8')) // 1024} KB · +{added}/-{removed} baris\n"
+        f"Waktu: {timestamp}\nLihat diff di halaman mikrotik."
+    )
 
 
 def _mt_backup_candidates():
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT ip, ssh_user, ssh_pass, ssh_port FROM hosts "
-                      "WHERE backup_enable=1")
+            c.execute(
+                "SELECT ip, ssh_user, ssh_pass, ssh_port FROM hosts "
+                "WHERE backup_enable=1"
+            )
             return [dict(r) for r in c.fetchall()]
         finally:
             conn.close()
@@ -2180,8 +2596,11 @@ def poll_mt_backups():
     def _one(h):
         try:
             return h["ip"], fetch_mikrotik_config(
-                h["ip"], h.get("ssh_user") or "", h.get("ssh_pass") or "",
-                h.get("ssh_port") or 22)
+                h["ip"],
+                h.get("ssh_user") or "",
+                h.get("ssh_pass") or "",
+                h.get("ssh_port") or 22,
+            )
         except Exception as e:
             return h["ip"], (False, f"fetch gagal: {e}"[:200])
 
@@ -2218,18 +2637,15 @@ def poll_mt_backups():
 
 
 def check_network():
-    global status_memory, down_since
     targets = get_target_hosts()
     if not targets:
         return
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
     for t in targets:
         if t not in status_memory:
             status_memory[t] = False
-
 
     max_workers = min(len(targets), 20)
     results = {}
@@ -2243,7 +2659,6 @@ def check_network():
                 h = future_map.get(future, "?")
                 print(f"[WARN] ping {h} gagal: {e}")
 
-
     telegram_queue = []
     maint_map = get_active_maintenance_map()
     with db_lock:
@@ -2254,14 +2669,14 @@ def check_network():
                     continue
                 try:
                     latency, packet_loss = results[host]
-                    host_is_down = (latency == -1)
+                    host_is_down = latency == -1
                     was_down = status_memory.get(host, False)
                     in_maint = host in maint_map
 
                     if host_is_down and not was_down:
 
                         status_memory[host] = True
-                        down_since[host]    = datetime.now()
+                        down_since[host] = datetime.now()
                         c.execute(
                             "SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1",
                             (host,),
@@ -2269,91 +2684,138 @@ def check_network():
                         if c.fetchone() is None:
                             c.execute(
                                 "INSERT INTO down_events (host, started_at, is_maintenance) VALUES (?, ?, ?)",
-                                (host, timestamp, 1 if in_maint else 0)
+                                (host, timestamp, 1 if in_maint else 0),
                             )
                         if in_maint:
                             reason = (maint_map[host].get("reason") or "").strip()[:200]
-                            _insert_system_log(c, "MAINTENANCE_DOWN", host,
-                                               f"DOWN dalam maintenance{(' - ' + reason) if reason else ''}", timestamp)
-                            print(f"[MAINT] Telegram DOWN {host} disuppress (maintenance)")
+                            _insert_system_log(
+                                c,
+                                "MAINTENANCE_DOWN",
+                                host,
+                                f"DOWN dalam maintenance{(' - ' + reason) if reason else ''}",
+                                timestamp,
+                            )
+                            print(
+                                f"[MAINT] Telegram DOWN {host} disuppress (maintenance)"
+                            )
                         else:
-                            _insert_system_log(c, "NETWORK_DOWN", host, "Ping timeout/RTO", timestamp)
-
+                            _insert_system_log(
+                                c, "NETWORK_DOWN", host, "Ping timeout/RTO", timestamp
+                            )
 
                             now_dt = datetime.now()
                             last_tg = last_down_telegram.get(host)
-                            if last_tg is None or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S:
+                            if (
+                                last_tg is None
+                                or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S
+                            ):
                                 last_down_telegram[host] = now_dt
                                 # korelasi induk fiber: OLT ber-IP ini -> alarm ONT disuppress
-                                _aff, _onames = _fiber_parent_register(host, timestamp, c)
-                                _impact = (f"\nOLT: `{', '.join(_onames)}` "
-                                           f"(~{_aff} ONT, alarm ONT disuppress)") if _aff else ""
+                                _aff, _onames = _fiber_parent_register(
+                                    host, timestamp, c
+                                )
+                                _impact = (
+                                    (
+                                        f"\nOLT: `{', '.join(_onames)}` "
+                                        f"(~{_aff} ONT, alarm ONT disuppress)"
+                                    )
+                                    if _aff
+                                    else ""
+                                )
                                 telegram_queue.append(
                                     f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}"
                                 )
                             else:
-                                print(f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)")
+                                print(
+                                    f"[COOLDOWN] Telegram DOWN {host} ditahan (flapping?)"
+                                )
 
                     elif not host_is_down and was_down:
 
                         status_memory[host] = False
                         duration_str = ""
-                        duration_s   = None
+                        duration_s = None
                         was_maint_event = False
                         if host in down_since:
-                            delta      = datetime.now() - down_since.pop(host)
+                            delta = datetime.now() - down_since.pop(host)
                             duration_s = int(delta.total_seconds())
                         else:
 
-
                             try:
-                                c.execute("SELECT started_at FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
-                                          (host,))
+                                c.execute(
+                                    "SELECT started_at FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+                                    (host,),
+                                )
                                 orow = c.fetchone()
                                 if orow and orow["started_at"]:
-                                    started = datetime.strptime(orow["started_at"], "%Y-%m-%d %H:%M:%S")
-                                    duration_s = max(0, int((datetime.now() - started).total_seconds()))
+                                    started = datetime.strptime(
+                                        orow["started_at"], "%Y-%m-%d %H:%M:%S"
+                                    )
+                                    duration_s = max(
+                                        0,
+                                        int((datetime.now() - started).total_seconds()),
+                                    )
                             except Exception:
                                 pass
                         try:
-                            c.execute("SELECT is_maintenance FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
-                                      (host,))
+                            c.execute(
+                                "SELECT is_maintenance FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+                                (host,),
+                            )
                             mrow = c.fetchone()
                             was_maint_event = bool(mrow and mrow["is_maintenance"])
                         except Exception:
                             was_maint_event = False
                         if duration_s is not None:
-                            m, s       = divmod(duration_s, 60)
+                            m, s = divmod(duration_s, 60)
                             duration_str = f"\nDurasi DOWN : {m} menit {s} detik"
                         c.execute(
                             "UPDATE down_events SET resolved_at=?, duration_s=? WHERE host=? AND resolved_at IS NULL",
-                            (timestamp, duration_s, host)
+                            (timestamp, duration_s, host),
                         )
                         if in_maint or was_maint_event:
-                            _insert_system_log(c, "MAINTENANCE_UP", host,
-                                               f"Pulih dalam maintenance{ duration_str.replace(chr(10), '')}", timestamp)
-                            print(f"[MAINT] Telegram PULIH {host} disuppress (maintenance)")
+                            _insert_system_log(
+                                c,
+                                "MAINTENANCE_UP",
+                                host,
+                                f"Pulih dalam maintenance{ duration_str.replace(chr(10), '')}",
+                                timestamp,
+                            )
+                            print(
+                                f"[MAINT] Telegram PULIH {host} disuppress (maintenance)"
+                            )
                         else:
-                            _insert_system_log(c, "NETWORK_UP", host,
-                                               f"Pulih setelah {duration_str.replace(chr(10), '')}", timestamp)
+                            _insert_system_log(
+                                c,
+                                "NETWORK_UP",
+                                host,
+                                f"Pulih setelah {duration_str.replace(chr(10), '')}",
+                                timestamp,
+                            )
                             telegram_queue.append(
                                 f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
                             )
                             # induk ping pulih -> lepas supresi fiber OLT ini
                             try:
-                                for _k in [k for k, v in list(fiber_parent_down.items())
-                                           if not (v or {}).get("synthetic")
-                                           and (v or {}).get("ip") == host]:
+                                for _k in [
+                                    k
+                                    for k, v in list(fiber_parent_down.items())
+                                    if not (v or {}).get("synthetic")
+                                    and (v or {}).get("ip") == host
+                                ]:
                                     fiber_parent_down.pop(_k, None)
                             except Exception:
                                 pass
-
 
                     c.execute(
                         "INSERT INTO ping_logs (host, latency, packet_loss, timestamp) VALUES (?, ?, ?, ?)",
                         (host, latency, packet_loss, timestamp),
                     )
-                    label = f"{latency:.2f} ms | loss {packet_loss:.0f}%" if not host_is_down else "DOWN"
+                    label = (
+                        f"{latency:.2f} ms | loss {packet_loss:.0f}%"
+                        if not host_is_down
+                        else "DOWN"
+                    )
                     print(f"[LOG] {timestamp} | {host:<16} | {label}")
                 except Exception as e:
                     print(f"[WARN] proses hasil {host} gagal (tetap lanjut): {e}")
@@ -2369,15 +2831,16 @@ def check_network():
         finally:
             conn.close()
 
-
     for msg in telegram_queue:
         try:
             send_telegram_alert(msg)
         except Exception as e:
             print(f"[WARN] telegram gagal: {e}")
 
+
 def _is_url_allowed_for_monitoring(url):
     from urllib.parse import urlparse
+
     try:
         parsed = urlparse(url or "")
     except Exception:
@@ -2392,8 +2855,11 @@ def _is_url_allowed_for_monitoring(url):
         return False
     if not host_part:
         return False
-    if host_part in ("169.254.169.254", "metadata.google.internal",
-                     "metadata.google.internal."):
+    if host_part in (
+        "169.254.169.254",
+        "metadata.google.internal",
+        "metadata.google.internal.",
+    ):
         return False
     try:
         port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
@@ -2405,8 +2871,13 @@ def _is_url_allowed_for_monitoring(url):
     try:
         for info in infos:
             ip = ipaddress.ip_address(info[4][0])
-            if (ip.is_loopback or ip.is_link_local or ip.is_multicast
-                    or ip.is_reserved or ip.is_unspecified):
+            if (
+                ip.is_loopback
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
                 return False
     except ValueError:
         return False
@@ -2418,7 +2889,7 @@ def check_single_service(svc):
     start_time = time.time()
     status = "OFFLINE"
 
-    if svc_type == 'tcp':
+    if svc_type == "tcp":
         try:
             port_int = int(port)
             if not 1 <= port_int <= 65535:
@@ -2427,17 +2898,21 @@ def check_single_service(svc):
                 status = "ONLINE"
         except Exception:
             pass
-    elif svc_type == 'http':
+    elif svc_type == "http":
         try:
             if not _is_url_allowed_for_monitoring(url):
                 status = "OFFLINE"
             else:
                 import urllib3
+
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
-                r = requests.get(url, timeout=5, verify=False,
-                                 headers={"User-Agent": "NMS-KOPEGTEL/1.0"})
+                r = requests.get(
+                    url,
+                    timeout=5,
+                    verify=False,
+                    headers={"User-Agent": "NMS-KOPEGTEL/1.0"},
+                )
                 if r.status_code < 400:
                     status = "ONLINE"
         except Exception:
@@ -2447,11 +2922,14 @@ def check_single_service(svc):
         status = "PENDING"
 
     latency = (time.time() - start_time) * 1000
-    if status == "OFFLINE": latency = 0
+    if status == "OFFLINE":
+        latency = 0
     return svc_id, status, latency
+
 
 SSL_WARN_DAYS = 30
 SSL_HIGH_DAYS = 7
+
 
 def _ssl_level(days_left):
     if days_left is None:
@@ -2468,9 +2946,11 @@ def _ssl_level(days_left):
         return "warning"
     return None
 
+
 def get_ssl_expiry(url, timeout=5):
-    from urllib.parse import urlparse
     import ssl as _ssl
+    from urllib.parse import urlparse
+
     try:
         parsed = urlparse(url or "")
         if (parsed.scheme or "").lower() != "https":
@@ -2506,12 +2986,15 @@ def get_ssl_expiry(url, timeout=5):
         print(f"[SSL] {url}: {e}")
         return None, None
 
+
 def check_ssl_expiry():
     try:
         conn, c = get_db()
         try:
             try:
-                c.execute("SELECT id, ip, name, url, ssl_days_left, ssl_last_alert FROM services WHERE type='http' AND url LIKE 'https://%'")
+                c.execute(
+                    "SELECT id, ip, name, url, ssl_days_left, ssl_last_alert FROM services WHERE type='http' AND url LIKE 'https://%'"
+                )
             except sqlite3.OperationalError:
                 return
             rows = [dict(r) for r in c.fetchall()]
@@ -2534,8 +3017,11 @@ def check_ssl_expiry():
         level = _ssl_level(days)
         prev_level = (s.get("ssl_last_alert") or "") or None
         order = {"warning": 1, "high": 2, "expired": 3}
-        escalated = bool(level and level != prev_level
-                         and (not prev_level or order.get(level, 0) > order.get(prev_level, 0)))
+        escalated = bool(
+            level
+            and level != prev_level
+            and (not prev_level or order.get(level, 0) > order.get(prev_level, 0))
+        )
         with db_lock:
             conn, c = get_db()
             try:
@@ -2553,8 +3039,13 @@ def check_ssl_expiry():
                     continue
                 if level:
                     try:
-                        _insert_system_log(c, "SSL_EXPIRY" if level != "expired" else "SSL_EXPIRED",
-                                           s.get("ip") or "-", f"{s.get('name')} {url} sisa {days} hari (exp {exp_str})", timestamp)
+                        _insert_system_log(
+                            c,
+                            "SSL_EXPIRY" if level != "expired" else "SSL_EXPIRED",
+                            s.get("ip") or "-",
+                            f"{s.get('name')} {url} sisa {days} hari (exp {exp_str})",
+                            timestamp,
+                        )
                     except Exception:
                         pass
                 _commit_with_retry(conn)
@@ -2580,8 +3071,10 @@ def check_ssl_expiry():
             except Exception as e:
                 print(f"[WARN] telegram ssl gagal: {e}")
 
+
 def trigger_async_ssl_check():
     threading.Thread(target=check_ssl_expiry, daemon=True).start()
+
 
 def check_services():
     try:
@@ -2595,7 +3088,13 @@ def check_services():
 
         results = []
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(check_single_service, (s["id"], s["ip"], s["name"], s["type"], s["port"], s["url"])) for s in services]
+            futures = [
+                executor.submit(
+                    check_single_service,
+                    (s["id"], s["ip"], s["name"], s["type"], s["port"], s["url"]),
+                )
+                for s in services
+            ]
             for future in as_completed(futures):
                 try:
                     results.append(future.result())
@@ -2609,7 +3108,10 @@ def check_services():
             conn, c = get_db()
             try:
                 for svc_id, status, latency in results:
-                    c.execute("UPDATE services SET status=?, latency=?, last_checked=? WHERE id=?", (status, latency, timestamp, svc_id))
+                    c.execute(
+                        "UPDATE services SET status=?, latency=?, last_checked=? WHERE id=?",
+                        (status, latency, timestamp, svc_id),
+                    )
                 try:
                     c.executemany(
                         "INSERT INTO service_history (service_id, status, latency, timestamp) VALUES (?, ?, ?, ?)",
@@ -2692,14 +3194,16 @@ def refresh_fiber_parent_map():
     single check; check_network juga register/unregister langsung agar
     tak ada jeda ras.
     """
-    global fiber_parent_down
     try:
         down_ips = {h for h, d in list(status_memory.items()) if d}
     except Exception:
         down_ips = set()
     if not down_ips:
-        for k in [k for k, v in list(fiber_parent_down.items())
-                  if not (v or {}).get("synthetic")]:
+        for k in [
+            k
+            for k, v in list(fiber_parent_down.items())
+            if not (v or {}).get("synthetic")
+        ]:
             fiber_parent_down.pop(k, None)
         return fiber_parent_down
     try:
@@ -2724,12 +3228,26 @@ def refresh_fiber_parent_map():
                 continue
             live.add(key)
             if key not in fiber_parent_down:
-                reg = next((o.get("name") for o in olts
-                            if (o.get("name") or "").strip().lower() == key), "")
-                fiber_parent_down[key] = {"ip": ip, "since": now, "name": reg or key,
-                                          "synthetic": False, "count": 0}
-    for k in [k for k, v in list(fiber_parent_down.items())
-              if not (v or {}).get("synthetic") and k not in live]:
+                reg = next(
+                    (
+                        o.get("name")
+                        for o in olts
+                        if (o.get("name") or "").strip().lower() == key
+                    ),
+                    "",
+                )
+                fiber_parent_down[key] = {
+                    "ip": ip,
+                    "since": now,
+                    "name": reg or key,
+                    "synthetic": False,
+                    "count": 0,
+                }
+    for k in [
+        k
+        for k, v in list(fiber_parent_down.items())
+        if not (v or {}).get("synthetic") and k not in live
+    ]:
         fiber_parent_down.pop(k, None)
     return fiber_parent_down
 
@@ -2742,20 +3260,27 @@ def _fiber_parent_register(host_ip, timestamp, c):
     """
     try:
         c.execute("SELECT name FROM olts WHERE ip=?", (host_ip,))
-        names = [(r["name"] or "").strip() for r in c.fetchall()
-                 if (r["name"] or "").strip()]
+        names = [
+            (r["name"] or "").strip() for r in c.fetchall() if (r["name"] or "").strip()
+        ]
     except sqlite3.OperationalError:
         return 0, []
     affected = 0
     for name in names:
         key = name.lower()
         if key and key not in fiber_parent_down:
-            fiber_parent_down[key] = {"ip": host_ip, "since": timestamp,
-                                      "name": name, "synthetic": False, "count": 0}
+            fiber_parent_down[key] = {
+                "ip": host_ip,
+                "since": timestamp,
+                "name": name,
+                "synthetic": False,
+                "count": 0,
+            }
         try:
             affected += c.execute(
                 "SELECT COUNT(*) FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
-                (name,)).fetchone()[0]
+                (name,),
+            ).fetchone()[0]
         except sqlite3.OperationalError:
             pass
     return affected, names
@@ -2820,17 +3345,29 @@ def fiber_status_for_rx(rx, th=None):
             rec = "10dB"
         else:
             rec = "15dB"
-        return ("overload", "high",
-                f"Rx overload ({rx} dBm). Pasang PEREDAM/attenuator {rec} "
-                f"(kebutuhan hitung ±{need} dB agar ke ~{th['target']} dBm).", need)
+        return (
+            "overload",
+            "high",
+            f"Rx overload ({rx} dBm). Pasang PEREDAM/attenuator {rec} "
+            f"(kebutuhan hitung ±{need} dB agar ke ~{th['target']} dBm).",
+            need,
+        )
     if rx < th["crit"]:
-        return ("critical", "disaster",
-                f"Redaman tinggi! Rx {rx} dBm (< {th['crit']} dBm). "
-                "Cek bending, konektor kotor, splicing, ODP/ODC.", 0)
+        return (
+            "critical",
+            "disaster",
+            f"Redaman tinggi! Rx {rx} dBm (< {th['crit']} dBm). "
+            "Cek bending, konektor kotor, splicing, ODP/ODC.",
+            0,
+        )
     if rx < th["warn"]:
-        return ("warning", "warning",
-                f"Rx {rx} dBm mendekati batas ({th['warn']} dBm). "
-                "Jadwalkan cek jalur fiber.", 0)
+        return (
+            "warning",
+            "warning",
+            f"Rx {rx} dBm mendekati batas ({th['warn']} dBm). "
+            "Jadwalkan cek jalur fiber.",
+            0,
+        )
     return ("normal", None, f"Rx {rx} dBm normal.", 0)
 
 
@@ -2845,12 +3382,18 @@ def fiber_status_for_tx(tx, th=None):
         return "tx_unknown", None, ""
     if tx < th["tx_min"] or tx > th["tx_max"]:
         if tx <= -5:
-            return ("tx_abnormal", "high",
-                    f"Tx {tx} dBm di luar batas ({th['tx_min']}..{th['tx_max']} dBm). "
-                    "Laser ONT kemungkinan mati/hang — cek ONT.")
-        return ("tx_abnormal", "warning",
-                f"Tx {tx} dBm di luar batas normal ({th['tx_min']}..{th['tx_max']} dBm). "
-                "Cek ONT/SFP.")
+            return (
+                "tx_abnormal",
+                "high",
+                f"Tx {tx} dBm di luar batas ({th['tx_min']}..{th['tx_max']} dBm). "
+                "Laser ONT kemungkinan mati/hang — cek ONT.",
+            )
+        return (
+            "tx_abnormal",
+            "warning",
+            f"Tx {tx} dBm di luar batas normal ({th['tx_min']}..{th['tx_max']} dBm). "
+            "Cek ONT/SFP.",
+        )
     return "tx_ok", None, ""
 
 
@@ -2884,9 +3427,9 @@ def fiber_eval(rx, tx=None, th=None):
 
 # Rugi-rugi tipikal jalur FTTH (dB) untuk kalkulator link budget
 FIBER_SPLITTER_LOSS = {"1:2": 3.5, "1:4": 7.2, "1:8": 10.5, "1:16": 13.8, "1:32": 17.1}
-FIBER_PER_KM_DB = 0.35      # serat G.652 @1310nm
-FIBER_CONNECTOR_DB = 0.5    # per konektor
-FIBER_SPLICE_DB = 0.1       # per fusion splice
+FIBER_PER_KM_DB = 0.35  # serat G.652 @1310nm
+FIBER_CONNECTOR_DB = 0.5  # per konektor
+FIBER_SPLICE_DB = 0.1  # per fusion splice
 FIBER_BUDGET_TOLERANCE_DB = 3.0  # selisih wajar aktual vs teori
 
 
@@ -2902,9 +3445,14 @@ def fiber_link_budget(tx_dbm, splitters, fiber_km, connectors, splices, margin_d
     total = round(splitter_db + fiber_db + conn_db + splice_db + margin_db, 2)
     return {
         "tx_dbm": round(tx_dbm, 2),
-        "losses": {"splitter_db": splitter_db, "fiber_db": fiber_db,
-                   "connector_db": conn_db, "splice_db": splice_db,
-                   "margin_db": round(margin_db, 2), "total_db": total},
+        "losses": {
+            "splitter_db": splitter_db,
+            "fiber_db": fiber_db,
+            "connector_db": conn_db,
+            "splice_db": splice_db,
+            "margin_db": round(margin_db, 2),
+            "total_db": total,
+        },
         "expected_rx": round(tx_dbm - total, 2),
     }
 
@@ -2912,17 +3460,31 @@ def fiber_link_budget(tx_dbm, splitters, fiber_km, connectors, splices, margin_d
 def fiber_budget_verdict(expected_rx, actual_rx):
     """Bandingkan Rx teori vs aktual. Kembalikan (verdict, severity, saran)."""
     if actual_rx is None:
-        return "no_data", None, "Pilih ONT yang sudah ada pengukuran Rx untuk pembanding."
+        return (
+            "no_data",
+            None,
+            "Pilih ONT yang sudah ada pengukuran Rx untuk pembanding.",
+        )
     delta = round(actual_rx - expected_rx, 2)  # negatif = redaman berlebih
     if delta <= -FIBER_BUDGET_TOLERANCE_DB:
-        return ("over_budget", "high",
-                f"Redaman berlebih {abs(delta)} dB dari budget! "
-                "Cek bending, konektor kotor, splice ulang, atau ODP basah/rusak.")
+        return (
+            "over_budget",
+            "high",
+            f"Redaman berlebih {abs(delta)} dB dari budget! "
+            "Cek bending, konektor kotor, splice ulang, atau ODP basah/rusak.",
+        )
     if delta >= FIBER_BUDGET_TOLERANCE_DB:
-        return ("under_budget", "warning",
-                f"Rx aktual {abs(delta)} dB lebih bagus dari teori. "
-                "Cek ulang input budget (mungkin splitter/jarak salah catat).")
-    return ("ok", None, f"Selisih {delta} dB masih dalam toleransi ±{FIBER_BUDGET_TOLERANCE_DB} dB. Jalur sehat.")
+        return (
+            "under_budget",
+            "warning",
+            f"Rx aktual {abs(delta)} dB lebih bagus dari teori. "
+            "Cek ulang input budget (mungkin splitter/jarak salah catat).",
+        )
+    return (
+        "ok",
+        None,
+        f"Selisih {delta} dB masih dalam toleransi ±{FIBER_BUDGET_TOLERANCE_DB} dB. Jalur sehat.",
+    )
 
 
 def get_ont_optical_power_snmp(olt_ip, community, ont_index, vendor="zte"):
@@ -2950,7 +3512,11 @@ def _is_mute_active(o, now=None):
             return False
     except (AttributeError, TypeError):
         return False
-    until_raw = (o.get("mute_until") or "").strip() if isinstance(o.get("mute_until"), str) else o.get("mute_until")
+    until_raw = (
+        (o.get("mute_until") or "").strip()
+        if isinstance(o.get("mute_until"), str)
+        else o.get("mute_until")
+    )
     if not until_raw:
         return True
     try:
@@ -3057,10 +3623,12 @@ def _fiber_stale_info(o, now=None):
 def _fiber_stale_advice(o, age_txt):
     rx = o.get("rx_power")
     rx_txt = f"{rx} dBm" if rx is not None else "—"
-    seen = (o.get("last_seen") or "—")
-    return (f"Data tidak segar sejak {age_txt} (terakhir {seen}). "
-            f"Rx terakhir {rx_txt}. Kemungkinan ONT LOS/mati atau SNMP OLT gagal — "
-            "cek OLT, ONT, dan jalur fiber.")
+    seen = o.get("last_seen") or "—"
+    return (
+        f"Data tidak segar sejak {age_txt} (terakhir {seen}). "
+        f"Rx terakhir {rx_txt}. Kemungkinan ONT LOS/mati atau SNMP OLT gagal — "
+        "cek OLT, ONT, dan jalur fiber."
+    )
 
 
 def _fiber_degradation(fid, current_rx, now=None):
@@ -3079,9 +3647,12 @@ def _fiber_degradation(fid, current_rx, now=None):
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT rx_power, timestamp FROM fiber_history WHERE ont_id=? "
-                      "AND rx_power IS NOT NULL AND timestamp >= ? "
-                      "ORDER BY timestamp ASC, id ASC LIMIT 1", (fid, start))
+            c.execute(
+                "SELECT rx_power, timestamp FROM fiber_history WHERE ont_id=? "
+                "AND rx_power IS NOT NULL AND timestamp >= ? "
+                "ORDER BY timestamp ASC, id ASC LIMIT 1",
+                (fid, start),
+            )
             first = c.fetchone()
         finally:
             conn.close()
@@ -3128,9 +3699,11 @@ def _fiber_flap(fid, now=None):
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT rx_power, tx_power FROM fiber_history WHERE ont_id=? "
-                      "AND timestamp >= ? ORDER BY timestamp ASC, id ASC LIMIT 20000",
-                      (fid, start))
+            c.execute(
+                "SELECT rx_power, tx_power FROM fiber_history WHERE ont_id=? "
+                "AND timestamp >= ? ORDER BY timestamp ASC, id ASC LIMIT 20000",
+                (fid, start),
+            )
             pts = c.fetchall()
         finally:
             conn.close()
@@ -3172,9 +3745,11 @@ def _fiber_downtime_transition(c, fid, ont_sn, status, rx, timestamp):
     saja tertutup, else None. c = cursor aktif.
     """
     try:
-        c.execute("SELECT id, status, started_at FROM fiber_downtime "
-                  "WHERE ont_id=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
-                  (fid,))
+        c.execute(
+            "SELECT id, status, started_at FROM fiber_downtime "
+            "WHERE ont_id=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+            (fid,),
+        )
         open_row = c.fetchone()
     except sqlite3.OperationalError:
         return None
@@ -3182,14 +3757,19 @@ def _fiber_downtime_transition(c, fid, ont_sn, status, rx, timestamp):
         if open_row:
             if open_row["status"] != status:
                 try:
-                    c.execute("UPDATE fiber_downtime SET status=? WHERE id=?",
-                              (status, open_row["id"]))
+                    c.execute(
+                        "UPDATE fiber_downtime SET status=? WHERE id=?",
+                        (status, open_row["id"]),
+                    )
                 except sqlite3.OperationalError:
                     pass
             return None
         try:
-            c.execute("INSERT INTO fiber_downtime (ont_id, ont_sn, status, rx_dbm, started_at)"
-                      " VALUES (?,?,?,?,?)", (fid, ont_sn, status, rx, timestamp))
+            c.execute(
+                "INSERT INTO fiber_downtime (ont_id, ont_sn, status, rx_dbm, started_at)"
+                " VALUES (?,?,?,?,?)",
+                (fid, ont_sn, status, rx, timestamp),
+            )
         except sqlite3.OperationalError:
             pass
         return None
@@ -3202,16 +3782,24 @@ def _fiber_downtime_transition(c, fid, ont_sn, status, rx, timestamp):
     except (ValueError, TypeError):
         dur = 0
     try:
-        c.execute("UPDATE fiber_downtime SET resolved_at=?, duration_s=? WHERE id=?",
-                  (timestamp, dur, open_row["id"]))
+        c.execute(
+            "UPDATE fiber_downtime SET resolved_at=?, duration_s=? WHERE id=?",
+            (timestamp, dur, open_row["id"]),
+        )
     except sqlite3.OperationalError:
         return None
     return dur
 
 
 # Tipe log yang boleh disuppress induk (mute/maintenance eksplisit selalu menang).
-_FIBER_PARENT_LOGS = {"FIBER_CRITICAL", "FIBER_WARNING", "FIBER_OVERLOAD",
-                      "FIBER_NORMAL", "FIBER_STALE", "FIBER_DEGRADE"}
+_FIBER_PARENT_LOGS = {
+    "FIBER_CRITICAL",
+    "FIBER_WARNING",
+    "FIBER_OVERLOAD",
+    "FIBER_NORMAL",
+    "FIBER_STALE",
+    "FIBER_DEGRADE",
+}
 
 
 def _fiber_parent_of(o):
@@ -3235,10 +3823,12 @@ def _fiber_emit(c, o, rx, dec, log, tg, timestamp, tg_queue, closed_dur=None):
         if closed_dur is not None and etype == "FIBER_NORMAL":
             emsg = f"{emsg} Durasi gangguan: {_fmt_duration(closed_dur)}."
         if parent and etype in _FIBER_PARENT_LOGS:
-            pname = (parent.get("name") or _fiber_oltkey(o) or "?")
+            pname = parent.get("name") or _fiber_oltkey(o) or "?"
             etype = "FIBER_PARENT"
-            emsg = (f"{dec['status'].upper()} Rx {rx} Tx {o.get('tx_power')} — "
-                    f"telegram disuppress (induk OLT '{pname}' bermasalah)")
+            emsg = (
+                f"{dec['status'].upper()} Rx {rx} Tx {o.get('tx_power')} — "
+                f"telegram disuppress (induk OLT '{pname}' bermasalah)"
+            )
         try:
             _insert_system_log(c, etype, ehost, emsg, timestamp)
         except Exception:
@@ -3255,7 +3845,9 @@ def _fiber_decide(o, th, prev, maint_map, timestamp):
     tg_msg None bila tak perlu kirim (belum berubah / mute / maintenance).
     log = (event_type, host, message) atau None. mem = nilai memory baru.
     """
-    status, severity, advice, need = fiber_eval(o.get("rx_power"), o.get("tx_power"), th)
+    status, severity, advice, need = fiber_eval(
+        o.get("rx_power"), o.get("tx_power"), th
+    )
     muted = _is_mute_active(o)
     in_maint, maint_reason, maint_scope = _fiber_maintenance_info(o, maint_map)
     stale, stale_age = _fiber_stale_info(o)
@@ -3284,10 +3876,17 @@ def _fiber_decide(o, th, prev, maint_map, timestamp):
                 f"Rx: *{rx} dBm* · {tx_txt}\n{advice}\nWaktu: {timestamp}"
             )
         if in_maint:
-            scope_txt = f" ({maint_scope.upper()} {(o.get('odp_name') or o.get('olt_name') or o['ont_sn'])})" if maint_scope and maint_scope != "ont" else ""
-            log = ("FIBER_MAINT", o["ont_sn"],
-                   f"Rx {rx} dBm Tx {tx} dalam maintenance{scope_txt} — telegram disuppress"
-                   f"{(' - ' + maint_reason) if maint_reason else ''}")
+            scope_txt = (
+                f" ({maint_scope.upper()} {(o.get('odp_name') or o.get('olt_name') or o['ont_sn'])})"
+                if maint_scope and maint_scope != "ont"
+                else ""
+            )
+            log = (
+                "FIBER_MAINT",
+                o["ont_sn"],
+                f"Rx {rx} dBm Tx {tx} dalam maintenance{scope_txt} — telegram disuppress"
+                f"{(' - ' + maint_reason) if maint_reason else ''}",
+            )
             tg_msg = None
         elif muted:
             mute_note = ""
@@ -3298,11 +3897,18 @@ def _fiber_decide(o, th, prev, maint_map, timestamp):
                     mute_note += f" ({(o.get('mute_reason') or '').strip()[:100]})"
             except Exception:
                 pass
-            log = ("FIBER_MUTED", o["ont_sn"], f"Rx {rx} dBm Tx {tx} — alarm dimute{mute_note}")
+            log = (
+                "FIBER_MUTED",
+                o["ont_sn"],
+                f"Rx {rx} dBm Tx {tx} — alarm dimute{mute_note}",
+            )
             tg_msg = None
         else:
-            log = ("FIBER_" + status.upper(), o["ont_sn"],
-                   f"Rx {rx} dBm Tx {tx} — {advice}")
+            log = (
+                "FIBER_" + status.upper(),
+                o["ont_sn"],
+                f"Rx {rx} dBm Tx {tx} — {advice}",
+            )
     elif status == "normal":
         if prev not in (None, "normal"):
             if prev == "stale":
@@ -3310,28 +3916,47 @@ def _fiber_decide(o, th, prev, maint_map, timestamp):
             else:
                 log = ("FIBER_NORMAL", o["ont_sn"], f"Rx kembali normal ({rx} dBm)")
             if not muted and not in_maint:
-                tg_msg = (f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\n"
-                          f"Rx: {rx} dBm\nWaktu: {timestamp}")
+                tg_msg = (
+                    f"✅ *FIBER PULIH*\nONT: `{o['ont_sn']}`\n"
+                    f"Rx: {rx} dBm\nWaktu: {timestamp}"
+                )
         mem = "normal"
     elif status == "stale":
         mem = "stale"
         if prev != "stale":
             if in_maint:
-                log = ("FIBER_MAINT", o["ont_sn"],
-                       "Stale dalam maintenance — telegram disuppress"
-                       f"{(' - ' + maint_reason) if maint_reason else ''}")
+                log = (
+                    "FIBER_MAINT",
+                    o["ont_sn"],
+                    "Stale dalam maintenance — telegram disuppress"
+                    f"{(' - ' + maint_reason) if maint_reason else ''}",
+                )
             elif muted:
                 log = ("FIBER_MUTED", o["ont_sn"], "Stale — alarm dimute")
             else:
-                log = ("FIBER_STALE", o["ont_sn"],
-                       f"Tak terpantau sejak {stale_age} — {advice}")
-                tg_msg = (f"⚠️ *FIBER TAK TERPANTAU (STALE)*\nONT: `{o['ont_sn']}` ({label})\n"
-                          f"{advice}\nWaktu: {timestamp}")
+                log = (
+                    "FIBER_STALE",
+                    o["ont_sn"],
+                    f"Tak terpantau sejak {stale_age} — {advice}",
+                )
+                tg_msg = (
+                    f"⚠️ *FIBER TAK TERPANTAU (STALE)*\nONT: `{o['ont_sn']}` ({label})\n"
+                    f"{advice}\nWaktu: {timestamp}"
+                )
     elif status == "unknown":
         mem = "unknown"
-    return {"status": status, "severity": severity, "advice": advice, "need": need,
-            "muted": muted, "in_maint": in_maint, "stale": stale,
-            "tg_msg": tg_msg, "log": log, "mem": mem}
+    return {
+        "status": status,
+        "severity": severity,
+        "advice": advice,
+        "need": need,
+        "muted": muted,
+        "in_maint": in_maint,
+        "stale": stale,
+        "tg_msg": tg_msg,
+        "log": log,
+        "mem": mem,
+    }
 
 
 def _fiber_single_check(fid):
@@ -3359,23 +3984,40 @@ def _fiber_single_check(fid):
         refresh_fiber_parent_map()
     except Exception as e:
         print(f"[FIBER] parent refresh gagal: {e}")
-    dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(fid),
-                        get_active_maintenance_map(), timestamp)
+    dec = _fiber_decide(
+        o,
+        _th_for_ont(o),
+        fiber_alarm_memory.get(fid),
+        get_active_maintenance_map(),
+        timestamp,
+    )
     closed_dur = None
     tg_out = []
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
-                      (dec["status"], timestamp, fid))
+            c.execute(
+                "UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
+                (dec["status"], timestamp, fid),
+            )
             try:
                 closed_dur = _fiber_downtime_transition(
-                    c, fid, o["ont_sn"], dec["status"], o.get("rx_power"), timestamp)
+                    c, fid, o["ont_sn"], dec["status"], o.get("rx_power"), timestamp
+                )
             except Exception as e:
                 print(f"[FIBER] downtime single check gagal: {e}")
                 closed_dur = None
-            _fiber_emit(c, o, o.get("rx_power"), dec, dec["log"], dec["tg_msg"],
-                        timestamp, tg_out, closed_dur)
+            _fiber_emit(
+                c,
+                o,
+                o.get("rx_power"),
+                dec,
+                dec["log"],
+                dec["tg_msg"],
+                timestamp,
+                tg_out,
+                closed_dur,
+            )
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] fiber single check gagal: {e}")
@@ -3391,6 +4033,8 @@ def _fiber_single_check(fid):
             send_telegram_alert(tmsg)
         except Exception as e:
             print(f"[WARN] telegram fiber gagal: {e}")
+
+
 def poll_fiber_monitor():
     """Job scheduler: snapshot history semua ONT + cek threshold.
 
@@ -3406,6 +4050,7 @@ def poll_fiber_monitor():
     supresi induk (alarm individual dibuang, log FIBER_PARENT).
     """
     import random
+
     try:
         conn, c = get_db()
         try:
@@ -3450,9 +4095,13 @@ def poll_fiber_monitor():
                     except (ValueError, TypeError):
                         base = -19.0
                     # clamp zona normal -22..-16 (di dalam -25..-8)
-                    rx = max(-22.0, min(-16.0, round(base + random.uniform(-0.6, 0.6), 2)))
-                    c.execute("UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=?, last_seen=? WHERE id=?",
-                              (rx, timestamp, timestamp, timestamp, oid))
+                    rx = max(
+                        -22.0, min(-16.0, round(base + random.uniform(-0.6, 0.6), 2))
+                    )
+                    c.execute(
+                        "UPDATE fiber_onts SET rx_power=?, last_checked=?, updated_at=?, last_seen=? WHERE id=?",
+                        (rx, timestamp, timestamp, timestamp, oid),
+                    )
                     o["rx_power"] = rx
                 # lewati ONT tanpa data sama sekali (hemat DB, grafik tetap kosong wajar)
                 if rx is None and tx is None:
@@ -3460,16 +4109,21 @@ def poll_fiber_monitor():
                 # snapshot history tiap poll agar grafik terisi
                 # (720 titik/hari/ONT @120s, dibersihkan retensi 30 hari)
                 try:
-                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?, ?, ?, ?)",
-                              (oid, rx, tx, timestamp))
+                    c.execute(
+                        "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?, ?, ?, ?)",
+                        (oid, rx, tx, timestamp),
+                    )
                 except sqlite3.OperationalError:
                     pass
                 o["rx_power"], o["tx_power"] = rx, tx
-                dec = _fiber_decide(o, _th_for_ont(o), fiber_alarm_memory.get(oid),
-                                    maint_map, timestamp)
+                dec = _fiber_decide(
+                    o, _th_for_ont(o), fiber_alarm_memory.get(oid), maint_map, timestamp
+                )
                 fiber_alarm_memory[oid] = dec["mem"]
                 try:
-                    _was_degr = bool((fiber_degrade_memory.get(oid) or {}).get("degrading"))
+                    _was_degr = bool(
+                        (fiber_degrade_memory.get(oid) or {}).get("degrading")
+                    )
                     _degr, _drop = _fiber_degradation(oid, rx)
                     fiber_degrade_memory[oid] = {"degrading": _degr, "drop_db": _drop}
                 except Exception as e:
@@ -3486,36 +4140,60 @@ def poll_fiber_monitor():
             # sudah habis dibersihkan + telegram pulih.
             try:
                 bad_by_olt = {}
-                for (_o, _oid, _rx, _tx, _dec, _w, _d, _dr) in computed:
-                    if _dec["status"] in ("critical", "overload") \
-                            and not _dec.get("muted") and not _dec.get("in_maint"):
+                for _o, _oid, _rx, _tx, _dec, _w, _d, _dr in computed:
+                    if (
+                        _dec["status"] in ("critical", "overload")
+                        and not _dec.get("muted")
+                        and not _dec.get("in_maint")
+                    ):
                         bad_by_olt.setdefault(_fiber_oltkey(_o), []).append(_o)
                 for _oltkey, _members in bad_by_olt.items():
-                    if not _oltkey or _oltkey in fiber_parent_down \
-                            or len(_members) < parent_min:
+                    if (
+                        not _oltkey
+                        or _oltkey in fiber_parent_down
+                        or len(_members) < parent_min
+                    ):
                         continue
-                    _name = next(((m.get("olt_name") or "").strip() for m in _members
-                                  if (m.get("olt_name") or "").strip()), _oltkey)
-                    fiber_parent_down[_oltkey] = {"ip": None, "since": timestamp,
-                                                  "name": _name, "synthetic": True,
-                                                  "count": len(_members)}
+                    _name = next(
+                        (
+                            (m.get("olt_name") or "").strip()
+                            for m in _members
+                            if (m.get("olt_name") or "").strip()
+                        ),
+                        _oltkey,
+                    )
+                    fiber_parent_down[_oltkey] = {
+                        "ip": None,
+                        "since": timestamp,
+                        "name": _name,
+                        "synthetic": True,
+                        "count": len(_members),
+                    }
                     tg_queue.append(
                         f"🔌 *INSIDEN MASSAL OLT*\nOLT: `{_name}`\n"
                         f"{len(_members)} ONT kritis/overload (ambang {parent_min}). "
                         f"Alarm individual disuppress mulai kini.\n"
-                        f"Cek OLT/power/PON uplink!\nWaktu: {timestamp}")
+                        f"Cek OLT/power/PON uplink!\nWaktu: {timestamp}"
+                    )
                     try:
-                        _insert_system_log(c, "FIBER_PARENT", _name,
-                                           f"insiden massal: {len(_members)} ONT kritis/overload",
-                                           timestamp)
+                        _insert_system_log(
+                            c,
+                            "FIBER_PARENT",
+                            _name,
+                            f"insiden massal: {len(_members)} ONT kritis/overload",
+                            timestamp,
+                        )
                     except Exception:
                         pass
                 for _key, _ent in list(fiber_parent_down.items()):
                     if not (_ent or {}).get("synthetic"):
                         continue
-                    _still = sum(1 for (_o, _oid, _rx, _tx, _dec, _w, _d, _dr) in computed
-                                 if _fiber_oltkey(_o) == _key
-                                 and _dec["status"] in ("critical", "overload"))
+                    _still = sum(
+                        1
+                        for (_o, _oid, _rx, _tx, _dec, _w, _d, _dr) in computed
+                        if _fiber_oltkey(_o) == _key
+                        and _dec["status"] in ("critical", "overload")
+                    )
                     (_ent or {}).update({"count": _still})
                     if not _still:
                         # ditandai dulu, di-pop setelah pass 2 agar recovery
@@ -3525,16 +4203,22 @@ def poll_fiber_monitor():
                         _pname = (_ent or {}).get("name") or _key
                         tg_queue.append(
                             f"✅ *INSIDEN MASSAL PULIH*\nOLT: `{_pname}`\n"
-                            f"Seluruh ONT kembali normal.\nWaktu: {timestamp}")
+                            f"Seluruh ONT kembali normal.\nWaktu: {timestamp}"
+                        )
                         try:
-                            _insert_system_log(c, "FIBER_PARENT", _pname,
-                                               "insiden massal pulih", timestamp)
+                            _insert_system_log(
+                                c,
+                                "FIBER_PARENT",
+                                _pname,
+                                "insiden massal pulih",
+                                timestamp,
+                            )
                         except Exception:
                             pass
             except Exception as e:
                 print(f"[FIBER] korelasi induk gagal: {e}")
             # PASS 2: terapkan (downtime, log, telegram dengan supresi induk, status)
-            for (o, oid, rx, tx, dec, _was_degr, _degr, _drop) in computed:
+            for o, oid, rx, tx, dec, _was_degr, _degr, _drop in computed:
                 # notifikasi degradasi baru (hanya status normal; cooldown 24 jam)
                 _dlog, _dtg = None, None
                 if _degr and not _was_degr and dec["status"] == "normal":
@@ -3542,18 +4226,30 @@ def poll_fiber_monitor():
                         _dth, _dd = _fiber_degrade_settings()
                     except Exception:
                         _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
-                    if time.time() - fiber_degrade_tg.get(oid, 0) >= FIBER_DEGRADE_TG_COOLDOWN_S:
+                    if (
+                        time.time() - fiber_degrade_tg.get(oid, 0)
+                        >= FIBER_DEGRADE_TG_COOLDOWN_S
+                    ):
                         fiber_degrade_tg[oid] = time.time()
                         _label = o.get("customer") or o.get("ont_sn")
                         if dec.get("in_maint"):
-                            _dlog = ("FIBER_MAINT", o["ont_sn"],
-                                     f"Degradasi {_drop} dB dalam maintenance — telegram disuppress")
+                            _dlog = (
+                                "FIBER_MAINT",
+                                o["ont_sn"],
+                                f"Degradasi {_drop} dB dalam maintenance — telegram disuppress",
+                            )
                         elif dec.get("muted"):
-                            _dlog = ("FIBER_MUTED", o["ont_sn"],
-                                     f"Degradasi {_drop} dB — alarm dimute")
+                            _dlog = (
+                                "FIBER_MUTED",
+                                o["ont_sn"],
+                                f"Degradasi {_drop} dB — alarm dimute",
+                            )
                         else:
-                            _dlog = ("FIBER_DEGRADE", o["ont_sn"],
-                                     f"Rx turun {_drop} dB dalam {_dd} hari (kini {rx} dBm)")
+                            _dlog = (
+                                "FIBER_DEGRADE",
+                                o["ont_sn"],
+                                f"Rx turun {_drop} dB dalam {_dd} hari (kini {rx} dBm)",
+                            )
                             _dtg = (
                                 f"📉 *FIBER DEGRADASI TERDETEKSI*\nONT: `{o['ont_sn']}` ({_label})\n"
                                 f"Rx turun *{_drop} dB* dalam {_dd} hari "
@@ -3562,15 +4258,27 @@ def poll_fiber_monitor():
                             )
                 try:
                     closed_dur = _fiber_downtime_transition(
-                        c, oid, o["ont_sn"], dec["status"], rx, timestamp)
+                        c, oid, o["ont_sn"], dec["status"], rx, timestamp
+                    )
                 except Exception as e:
                     print(f"[FIBER] downtime {oid} gagal: {e}")
                     closed_dur = None
-                _fiber_emit(c, o, rx, dec, dec["log"], dec["tg_msg"],
-                            timestamp, tg_queue, closed_dur)
+                _fiber_emit(
+                    c,
+                    o,
+                    rx,
+                    dec,
+                    dec["log"],
+                    dec["tg_msg"],
+                    timestamp,
+                    tg_queue,
+                    closed_dur,
+                )
                 _fiber_emit(c, o, rx, dec, _dlog, _dtg, timestamp, tg_queue)
-                c.execute("UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
-                          (dec["status"], timestamp, oid))
+                c.execute(
+                    "UPDATE fiber_onts SET status=?, last_checked=? WHERE id=?",
+                    (dec["status"], timestamp, oid),
+                )
             for _ckey in _clearing:
                 fiber_parent_down.pop(_ckey, None)
             _commit_with_retry(conn)
@@ -3608,8 +4316,10 @@ def poll_fiber_snmp():
             except sqlite3.OperationalError:
                 return
             try:
-                c.execute("SELECT id, ont_sn, olt_name, ont_index, rx_power, tx_power"
-                          " FROM fiber_onts WHERE source='snmp'")
+                c.execute(
+                    "SELECT id, ont_sn, olt_name, ont_index, rx_power, tx_power"
+                    " FROM fiber_onts WHERE source='snmp'"
+                )
                 onts = [dict(r) for r in c.fetchall()]
             except sqlite3.OperationalError:
                 return
@@ -3626,7 +4336,12 @@ def poll_fiber_snmp():
     for t in onts:
         idx = (t.get("ont_index") or "").strip()
         olt = by_name.get((t.get("olt_name") or "").strip())
-        if not idx or not olt or not (olt.get("community") or "").strip() or not olt.get("ip"):
+        if (
+            not idx
+            or not olt
+            or not (olt.get("community") or "").strip()
+            or not olt.get("ip")
+        ):
             continue
         oids, kinds = [], []
         if _valid_oid(olt.get("rx_base") or ""):
@@ -3665,8 +4380,11 @@ def poll_fiber_snmp():
     with db_lock:
         conn, c = get_db()
         try:
-            c.executemany("UPDATE fiber_onts SET rx_power=?, tx_power=?,"
-                          " last_seen=?, last_checked=? WHERE id=?", updates)
+            c.executemany(
+                "UPDATE fiber_onts SET rx_power=?, tx_power=?,"
+                " last_seen=?, last_checked=? WHERE id=?",
+                updates,
+            )
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] poll_fiber_snmp gagal: {e}")
@@ -3682,8 +4400,8 @@ def poll_fiber_snmp():
 init_db()
 _seed_admin_from_env()
 
+
 def rebuild_alarm_memory():
-    global status_memory, down_since, agent_status_memory, agent_offline_memory, fiber_alarm_memory
     try:
         conn, c = get_db()
         try:
@@ -3692,14 +4410,18 @@ def rebuild_alarm_memory():
             valid_set = set(valid)
 
             try:
-                c.execute("SELECT host, started_at FROM down_events WHERE resolved_at IS NULL")
+                c.execute(
+                    "SELECT host, started_at FROM down_events WHERE resolved_at IS NULL"
+                )
                 for r in c.fetchall():
                     h = r["host"]
                     if h not in valid_set:
                         continue
                     status_memory[h] = True
                     try:
-                        down_since[h] = datetime.strptime(r["started_at"], "%Y-%m-%d %H:%M:%S")
+                        down_since[h] = datetime.strptime(
+                            r["started_at"], "%Y-%m-%d %H:%M:%S"
+                        )
                     except Exception:
                         down_since[h] = datetime.now()
             except Exception as e:
@@ -3731,19 +4453,32 @@ def rebuild_alarm_memory():
             for h in valid:
                 try:
 
-
-                    c.execute("SELECT cpu_percent, ram_percent, disk_percent, timestamp FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1", (h,))
+                    c.execute(
+                        "SELECT cpu_percent, ram_percent, disk_percent, timestamp FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1",
+                        (h,),
+                    )
                     last = c.fetchone()
                     if not last:
                         continue
                     agent_status_memory[h] = {
-                        "cpu": bool(last["cpu_percent"] is not None and last["cpu_percent"] > cpu_thresh),
-                        "ram": bool(last["ram_percent"] is not None and last["ram_percent"] > ram_thresh),
-                        "disk": bool(last["disk_percent"] is not None and last["disk_percent"] > disk_thresh),
+                        "cpu": bool(
+                            last["cpu_percent"] is not None
+                            and last["cpu_percent"] > cpu_thresh
+                        ),
+                        "ram": bool(
+                            last["ram_percent"] is not None
+                            and last["ram_percent"] > ram_thresh
+                        ),
+                        "disk": bool(
+                            last["disk_percent"] is not None
+                            and last["disk_percent"] > disk_thresh
+                        ),
                     }
 
                     try:
-                        last_time = datetime.strptime(last["timestamp"], "%Y-%m-%d %H:%M:%S")
+                        last_time = datetime.strptime(
+                            last["timestamp"], "%Y-%m-%d %H:%M:%S"
+                        )
                         if (now - last_time).total_seconds() > 120:
                             agent_offline_memory[h] = True
                     except Exception:
@@ -3756,7 +4491,14 @@ def rebuild_alarm_memory():
                 c.execute("SELECT id, status FROM fiber_onts")
                 for r in c.fetchall():
                     st = (r["status"] or "").strip().lower()
-                    if st in ("normal", "warning", "critical", "overload", "unknown", "stale"):
+                    if st in (
+                        "normal",
+                        "warning",
+                        "critical",
+                        "overload",
+                        "unknown",
+                        "stale",
+                    ):
                         fiber_alarm_memory[r["id"]] = st
             except Exception as e:
                 print(f"[REBUILD] fiber gagal: {e}")
@@ -3764,6 +4506,7 @@ def rebuild_alarm_memory():
             conn.close()
     except Exception as e:
         print(f"[REBUILD] gagal: {e}")
+
 
 rebuild_alarm_memory()
 
@@ -3777,20 +4520,48 @@ except Exception:
 scheduler = BackgroundScheduler(timezone=LOCAL_TZ)
 if SCHEDULER_ENABLED:
     _job_defaults = {"max_instances": 1, "coalesce": True, "misfire_grace_time": 120}
-    scheduler.add_job(func=check_network,          trigger="interval", seconds=30, **_job_defaults)
-    scheduler.add_job(func=check_services,         trigger="interval", seconds=30, **_job_defaults)
-    scheduler.add_job(func=check_agent_heartbeat,  trigger="interval", seconds=60, **_job_defaults)
-    scheduler.add_job(func=poll_snmp_bandwidth,    trigger="interval", seconds=30, **_job_defaults)
-    scheduler.add_job(func=poll_mikrotik_health,   trigger="interval", seconds=60, **_job_defaults)
-    scheduler.add_job(func=poll_mikrotik_ifaces,    trigger="interval", seconds=60, **_job_defaults)
-    scheduler.add_job(func=poll_fiber_monitor,     trigger="interval", seconds=120, **_job_defaults)
-    scheduler.add_job(func=poll_fiber_snmp,        trigger="interval", seconds=300, **_job_defaults)
-    scheduler.add_job(func=check_ssl_expiry,       trigger="interval", hours=6, **_job_defaults)
-    scheduler.add_job(func=send_heartbeat,         trigger="cron",     hour=8, minute=0, **_job_defaults)
-    scheduler.add_job(func=send_fiber_summary,    trigger="cron",     hour=8, minute=5, **_job_defaults)
-    scheduler.add_job(func=poll_mt_backups,       trigger="cron",     hour=2, minute=0, **_job_defaults)
-    scheduler.add_job(func=cleanup_old_data,       trigger="cron",     hour=0, minute=0, **_job_defaults)
-    scheduler.add_job(func=backup_database,        trigger="cron",     hour=0, minute=5, **_job_defaults)
+    scheduler.add_job(
+        func=check_network, trigger="interval", seconds=30, **_job_defaults
+    )
+    scheduler.add_job(
+        func=check_services, trigger="interval", seconds=30, **_job_defaults
+    )
+    scheduler.add_job(
+        func=check_agent_heartbeat, trigger="interval", seconds=60, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_snmp_bandwidth, trigger="interval", seconds=30, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_mikrotik_health, trigger="interval", seconds=60, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_mikrotik_ifaces, trigger="interval", seconds=60, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_fiber_monitor, trigger="interval", seconds=120, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_fiber_snmp, trigger="interval", seconds=300, **_job_defaults
+    )
+    scheduler.add_job(
+        func=check_ssl_expiry, trigger="interval", hours=6, **_job_defaults
+    )
+    scheduler.add_job(
+        func=send_heartbeat, trigger="cron", hour=8, minute=0, **_job_defaults
+    )
+    scheduler.add_job(
+        func=send_fiber_summary, trigger="cron", hour=8, minute=5, **_job_defaults
+    )
+    scheduler.add_job(
+        func=poll_mt_backups, trigger="cron", hour=2, minute=0, **_job_defaults
+    )
+    scheduler.add_job(
+        func=cleanup_old_data, trigger="cron", hour=0, minute=0, **_job_defaults
+    )
+    scheduler.add_job(
+        func=backup_database, trigger="cron", hour=0, minute=5, **_job_defaults
+    )
     try:
         scheduler.start()
     except Exception as e:
@@ -3803,6 +4574,7 @@ if SCHEDULER_ENABLED:
 
 _manual_svc_lock = threading.Lock()
 _last_manual_svc = 0.0
+
 
 def trigger_manual_service_check():
     global _last_manual_svc
@@ -3840,15 +4612,22 @@ def login():
                 pass
             next_page = request.args.get("next")
 
-
-            if not next_page or not next_page.startswith("/") or next_page.startswith("//") or "\\" in next_page:
+            if (
+                not next_page
+                or not next_page.startswith("/")
+                or next_page.startswith("//")
+                or "\\" in next_page
+            ):
                 next_page = None
             return redirect(next_page or url_for("index"))
         else:
             fails += 1
             try:
-                log_system_event("AUDIT", username or "unknown",
-                                 f"auth.failed from {client_ip} ({fails}x)")
+                log_system_event(
+                    "AUDIT",
+                    username or "unknown",
+                    f"auth.failed from {client_ip} ({fails}x)",
+                )
             except Exception:
                 pass
             if fails >= 5:
@@ -3858,6 +4637,7 @@ def login():
                 login_failures[client_ip] = (fails, 0, now_ts)
                 error = "Username atau password salah."
     return render_template("login.html", error=error)
+
 
 @app.route("/logout", methods=["POST"])
 @login_required
@@ -3903,7 +4683,9 @@ def host_detail(ip):
     conn.close()
     if not row:
         return redirect(url_for("index"))
-    return render_template("host_detail.html", host_ip=row["ip"], host_alias=row["alias"] or row["ip"])
+    return render_template(
+        "host_detail.html", host_ip=row["ip"], host_alias=row["alias"] or row["ip"]
+    )
 
 
 @app.route("/api/host/<path:ip>/history")
@@ -3922,28 +4704,42 @@ def api_host_history(ip):
         c.execute(
             "SELECT timestamp, latency as val FROM ping_logs "
             "WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
-            (ip, f"-{hours} hours")
+            (ip, f"-{hours} hours"),
         )
         rows = c.fetchall()
         labels = [r["timestamp"] for r in rows]
-        values = [round(r["val"], 2) if r["val"] is not None and r["val"] != -1 else None for r in rows]
+        values = [
+            round(r["val"], 2) if r["val"] is not None and r["val"] != -1 else None
+            for r in rows
+        ]
     else:
-        valid_metrics = {"cpu": "cpu_percent", "ram": "ram_percent", "disk": "disk_percent",
-                         "net_in": "net_in", "net_out": "net_out"}
+        valid_metrics = {
+            "cpu": "cpu_percent",
+            "ram": "ram_percent",
+            "disk": "disk_percent",
+            "net_in": "net_in",
+            "net_out": "net_out",
+        }
         col = valid_metrics.get(metric, "cpu_percent")
 
-        extra = " AND cpu_percent IS NOT NULL" if col in ("cpu_percent", "ram_percent", "disk_percent") else ""
+        extra = (
+            " AND cpu_percent IS NOT NULL"
+            if col in ("cpu_percent", "ram_percent", "disk_percent")
+            else ""
+        )
         c.execute(
             f"SELECT timestamp, {col} as val FROM agent_metrics "
             f"WHERE host=? AND timestamp > datetime('now','localtime','-{hours} hours'){extra} ORDER BY id ASC",
-            (ip,)
+            (ip,),
         )
         rows = c.fetchall()
         labels = [r["timestamp"] for r in rows]
         values = [round(r["val"] or 0, 2) for r in rows]
 
     conn.close()
-    return jsonify({"labels": labels, "values": values, "metric": metric, "hours": hours})
+    return jsonify(
+        {"labels": labels, "values": values, "metric": metric, "hours": hours}
+    )
 
 
 @app.route("/api/host/<path:ip>/stats")
@@ -3951,8 +4747,8 @@ def api_host_history(ip):
 def api_host_stats(ip):
     conn, c = get_db()
 
-
-    c.execute("""
+    c.execute(
+        """
         SELECT
             COUNT(*) AS total,
             SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
@@ -3962,59 +4758,85 @@ def api_host_stats(ip):
             AVG(packet_loss) AS avg_loss
         FROM ping_logs
         WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
-    """, (ip,))
+    """,
+        (ip,),
+    )
     pr = c.fetchone()
 
-
-    c.execute("SELECT latency FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
+    c.execute(
+        "SELECT latency FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1", (ip,)
+    )
     latest = c.fetchone()
 
-
-    c.execute("""
+    c.execute(
+        """
         SELECT cpu_percent, ram_percent, disk_percent, net_in, net_out, timestamp
         FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1
-    """, (ip,))
+    """,
+        (ip,),
+    )
     ag = c.fetchone()
 
     net_row = None
     if ag is None:
-        c.execute("""
+        c.execute(
+            """
             SELECT net_in, net_out, timestamp FROM agent_metrics
             WHERE host=? ORDER BY id DESC LIMIT 1
-        """, (ip,))
+        """,
+            (ip,),
+        )
         net_row = c.fetchone()
 
     conn.close()
     total = pr["total"] or 0
     up_count = pr["up_count"] or 0
-    is_pending = (total == 0 and latest is None)
+    is_pending = total == 0 and latest is None
     has_latest = latest is not None and latest["latency"] is not None
     is_up = bool(has_latest and latest["latency"] != -1)
-    return jsonify({
-        "ip": ip,
-        "uptime_pct": round((up_count / total * 100), 1) if total else None,
-        "avg_ms": round(pr["avg_ms"], 2) if pr["avg_ms"] is not None else None,
-        "min_ms": round(pr["min_ms"], 2) if pr["min_ms"] is not None else None,
-        "max_ms": round(pr["max_ms"], 2) if pr["max_ms"] is not None else None,
-        "avg_loss": round(pr["avg_loss"], 1) if pr["avg_loss"] is not None else None,
-        "latest_ms": round(latest["latency"], 2) if has_latest and latest["latency"] != -1 else None,
-        "is_up": is_up,
-        "is_pending": is_pending,
-        "agent": {
-            "cpu": round(ag["cpu_percent"] or 0, 1),
-            "ram": round(ag["ram_percent"] or 0, 1),
-            "disk": round(ag["disk_percent"] or 0, 1),
-            "net_in": round(ag["net_in"] or 0, 2),
-            "net_out": round(ag["net_out"] or 0, 2),
-            "last_seen": ag["timestamp"]
-        } if ag else ({
-            "cpu": 0, "ram": 0, "disk": 0,
-            "net_in": round(net_row["net_in"] or 0, 2),
-            "net_out": round(net_row["net_out"] or 0, 2),
-            "last_seen": net_row["timestamp"],
-            "snmp_only": True
-        } if net_row else None)
-    })
+    return jsonify(
+        {
+            "ip": ip,
+            "uptime_pct": round((up_count / total * 100), 1) if total else None,
+            "avg_ms": round(pr["avg_ms"], 2) if pr["avg_ms"] is not None else None,
+            "min_ms": round(pr["min_ms"], 2) if pr["min_ms"] is not None else None,
+            "max_ms": round(pr["max_ms"], 2) if pr["max_ms"] is not None else None,
+            "avg_loss": (
+                round(pr["avg_loss"], 1) if pr["avg_loss"] is not None else None
+            ),
+            "latest_ms": (
+                round(latest["latency"], 2)
+                if has_latest and latest["latency"] != -1
+                else None
+            ),
+            "is_up": is_up,
+            "is_pending": is_pending,
+            "agent": (
+                {
+                    "cpu": round(ag["cpu_percent"] or 0, 1),
+                    "ram": round(ag["ram_percent"] or 0, 1),
+                    "disk": round(ag["disk_percent"] or 0, 1),
+                    "net_in": round(ag["net_in"] or 0, 2),
+                    "net_out": round(ag["net_out"] or 0, 2),
+                    "last_seen": ag["timestamp"],
+                }
+                if ag
+                else (
+                    {
+                        "cpu": 0,
+                        "ram": 0,
+                        "disk": 0,
+                        "net_in": round(net_row["net_in"] or 0, 2),
+                        "net_out": round(net_row["net_out"] or 0, 2),
+                        "last_seen": net_row["timestamp"],
+                        "snmp_only": True,
+                    }
+                    if net_row
+                    else None
+                )
+            ),
+        }
+    )
 
 
 SNMP_PROFILES = ("auto", "mikrotik", "generic")
@@ -4064,30 +4886,43 @@ def _parse_ssh_fields(data):
 @api_login_required
 def api_get_hosts():
     conn, c = get_db()
-    c.execute("SELECT id, ip, snmp_community, if_index, alias, category,"
-              " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
-              " ssh_user, ssh_port, backup_enable, backup_last, backup_ok,"
-              " CASE WHEN ssh_pass IS NOT NULL AND ssh_pass != '' THEN 1 ELSE 0 END AS ssh_pass_set"
-              " FROM hosts ORDER BY id ASC")
+    c.execute(
+        "SELECT id, ip, snmp_community, if_index, alias, category,"
+        " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
+        " ssh_user, ssh_port, backup_enable, backup_last, backup_ok,"
+        " CASE WHEN ssh_pass IS NOT NULL AND ssh_pass != '' THEN 1 ELSE 0 END AS ssh_pass_set"
+        " FROM hosts ORDER BY id ASC"
+    )
     hosts = []
     for r in c.fetchall():
-        hosts.append({"id": r["id"], "ip": r["ip"],
-                      "snmp_community": r["snmp_community"] or "",
-                      "if_index": r["if_index"] or 1,
-                      "alias": r["alias"] or "",
-                      "category": r["category"] or "Uncategorized",
-                      "snmp_profile": (r["snmp_profile"] or "auto")
-                      if (r["snmp_profile"] or "auto") in SNMP_PROFILES else "auto",
-                      "cpu_oid": r["cpu_oid"] or "", "mem_oid": r["mem_oid"] or "",
-                      "storage_oid": r["storage_oid"] or "", "temp_oid": r["temp_oid"] or "",
-                      "ssh_user": r["ssh_user"] or "",
-                      "ssh_pass_set": bool(r["ssh_pass_set"]),
-                      "ssh_port": r["ssh_port"] or 22,
-                      "backup_enable": bool(r["backup_enable"]),
-                      "backup_last": r["backup_last"] or "",
-                      "backup_ok": bool(r["backup_ok"])})
+        hosts.append(
+            {
+                "id": r["id"],
+                "ip": r["ip"],
+                "snmp_community": r["snmp_community"] or "",
+                "if_index": r["if_index"] or 1,
+                "alias": r["alias"] or "",
+                "category": r["category"] or "Uncategorized",
+                "snmp_profile": (
+                    (r["snmp_profile"] or "auto")
+                    if (r["snmp_profile"] or "auto") in SNMP_PROFILES
+                    else "auto"
+                ),
+                "cpu_oid": r["cpu_oid"] or "",
+                "mem_oid": r["mem_oid"] or "",
+                "storage_oid": r["storage_oid"] or "",
+                "temp_oid": r["temp_oid"] or "",
+                "ssh_user": r["ssh_user"] or "",
+                "ssh_pass_set": bool(r["ssh_pass_set"]),
+                "ssh_port": r["ssh_port"] or 22,
+                "backup_enable": bool(r["backup_enable"]),
+                "backup_last": r["backup_last"] or "",
+                "backup_ok": bool(r["backup_ok"]),
+            }
+        )
     conn.close()
     return jsonify(hosts)
+
 
 @app.route("/api/hosts", methods=["POST"])
 @api_login_required
@@ -4131,15 +4966,28 @@ def api_add_host():
         if (c.fetchone()["cnt"] or 0) >= MAX_HOSTS:
             conn.close()
             return jsonify({"error": f"Batas maksimum {MAX_HOSTS} host tercapai"}), 400
-        c.execute("INSERT INTO hosts (ip, snmp_community, if_index, alias, category,"
-                  " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
-                  " ssh_user, ssh_pass, ssh_port, backup_enable)"
-                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  (ip, snmp_community, if_index, alias, category,
-                   snmp_vals["snmp_profile"], snmp_vals["cpu_oid"], snmp_vals["mem_oid"],
-                   snmp_vals["storage_oid"], snmp_vals["temp_oid"],
-                   ssh_vals.get("ssh_user", ""), ssh_vals.get("ssh_pass", ""),
-                   ssh_vals.get("ssh_port", 22), ssh_vals.get("backup_enable", 0)))
+        c.execute(
+            "INSERT INTO hosts (ip, snmp_community, if_index, alias, category,"
+            " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
+            " ssh_user, ssh_pass, ssh_port, backup_enable)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ip,
+                snmp_community,
+                if_index,
+                alias,
+                category,
+                snmp_vals["snmp_profile"],
+                snmp_vals["cpu_oid"],
+                snmp_vals["mem_oid"],
+                snmp_vals["storage_oid"],
+                snmp_vals["temp_oid"],
+                ssh_vals.get("ssh_user", ""),
+                ssh_vals.get("ssh_pass", ""),
+                ssh_vals.get("ssh_port", 22),
+                ssh_vals.get("backup_enable", 0),
+            ),
+        )
         conn.commit()
     except sqlite3.IntegrityError:
         conn.rollback()
@@ -4147,10 +4995,15 @@ def api_add_host():
         return jsonify({"error": "Host sudah ada"}), 400
     conn.close()
     try:
-        audit(current_user.username, "host.create", f"{ip} alias={alias} category={category}")
+        audit(
+            current_user.username,
+            "host.create",
+            f"{ip} alias={alias} category={category}",
+        )
     except Exception:
         pass
     return jsonify({"status": "success"})
+
 
 @app.route("/api/hosts/<path:ip>", methods=["DELETE"])
 @api_login_required
@@ -4165,11 +5018,17 @@ def api_delete_host(ip):
         finally:
             conn.close()
 
-
-        global status_memory, down_since, agent_status_memory, agent_offline_memory, last_down_telegram
-        for mem in (status_memory, down_since, agent_status_memory, agent_offline_memory,
-                    last_down_telegram, mt_alarm_memory, mt_is_mikrotik, mt_sysup,
-                    snmp_state):
+        for mem in (
+            status_memory,
+            down_since,
+            agent_status_memory,
+            agent_offline_memory,
+            last_down_telegram,
+            mt_alarm_memory,
+            mt_is_mikrotik,
+            mt_sysup,
+            snmp_state,
+        ):
             try:
                 if ip in mem:
                     del mem[ip]
@@ -4214,10 +5073,16 @@ def api_update_host_alias(ip):
     data = request.get_json(silent=True) or {}
     alias = str(data.get("alias") or "").strip()
     raw_category = data.get("category")
-    category = str(raw_category or "").strip() or "Uncategorized" if raw_category is not None else None
+    category = (
+        str(raw_category or "").strip() or "Uncategorized"
+        if raw_category is not None
+        else None
+    )
     conn, c = get_db()
     if category is not None:
-        c.execute("UPDATE hosts SET alias=?, category=? WHERE ip=?", (alias, category, ip))
+        c.execute(
+            "UPDATE hosts SET alias=?, category=? WHERE ip=?", (alias, category, ip)
+        )
     else:
         c.execute("UPDATE hosts SET alias=? WHERE ip=?", (alias, ip))
     updated = c.rowcount
@@ -4226,7 +5091,11 @@ def api_update_host_alias(ip):
     if not updated:
         return jsonify({"error": "Host tidak ditemukan"}), 404
     try:
-        audit(current_user.username, "host.rename", f"{ip} alias={alias} category={category}")
+        audit(
+            current_user.username,
+            "host.rename",
+            f"{ip} alias={alias} category={category}",
+        )
     except Exception:
         pass
     return jsonify({"status": "success", "alias": alias, "category": category})
@@ -4258,11 +5127,14 @@ def api_update_host_snmp(ip):
             return jsonify({"error": "if_index harus angka >= 1"}), 400
         sets.append("if_index=?")
         params.append(idx)
-    for key in ("snmp_profile", "cpu_oid", "mem_oid", "storage_oid", "temp_oid"):
+    # Whitelist kolom yang boleh diupdate untuk mencegah SQL Injection
+    _ALLOWED_SNMP_COLS = {"snmp_profile", "cpu_oid", "mem_oid", "storage_oid", "temp_oid"}
+    _ALLOWED_SSH_COLS = {"ssh_user", "ssh_pass", "ssh_port", "backup_enable"}
+    for key in _ALLOWED_SNMP_COLS:
         if key in data:
             sets.append(f"{key}=?")
             params.append(snmp_vals[key])
-    for key in ("ssh_user", "ssh_pass", "ssh_port", "backup_enable"):
+    for key in _ALLOWED_SSH_COLS:
         if key in ssh_vals:
             sets.append(f"{key}=?")
             params.append(ssh_vals[key])
@@ -4280,8 +5152,9 @@ def api_update_host_snmp(ip):
     except Exception:
         pass
     try:
-        _changed = [k for k in list(snmp_vals) + list(ssh_vals)
-                    if k in data and k != "ssh_pass"]
+        _changed = [
+            k for k in list(snmp_vals) + list(ssh_vals) if k in data and k != "ssh_pass"
+        ]
         if "ssh_pass" in data:
             _changed.append("ssh_pass=***")
         audit(current_user.username, "host.snmp", f"{ip} {','.join(_changed)}")
@@ -4293,32 +5166,43 @@ def api_update_host_snmp(ip):
 @app.route("/api/settings", methods=["GET"])
 @api_login_required
 def api_get_settings():
-    return jsonify({
-        "cpu_threshold": get_setting("cpu_threshold", 85.0),
-        "ram_threshold": get_setting("ram_threshold", 90.0),
-        "disk_threshold": get_setting("disk_threshold", 90.0),
-        "fiber_rx_overload": get_setting("fiber_rx_overload", FIBER_RX_OVERLOAD),
-        "fiber_rx_warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
-        "fiber_rx_crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
-        "fiber_rx_target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
-        "fiber_tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
-        "fiber_tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
-        "fiber_degrade_db": get_setting("fiber_degrade_db", FIBER_DEGRADE_DB),
-        "fiber_degrade_days": get_setting("fiber_degrade_days", FIBER_DEGRADE_DAYS),
-        "fiber_stale_min": get_setting("fiber_stale_min", FIBER_STALE_MIN),
-        "fiber_flap_flips": get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS),
-        "fiber_flap_hours": get_setting("fiber_flap_hours", FIBER_FLAP_HOURS),
-        "fiber_parent_min": get_setting("fiber_parent_min", FIBER_PARENT_MIN),
-        "temp_threshold": get_setting("temp_threshold", 60.0),
-        "temp_crit": get_setting("temp_crit", 75.0),
-        "mt_cpu_oid": get_setting("mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str),
-        "mt_mem_oid": get_setting("mt_mem_oid", MT_DEFAULT_OIDS["mem"], type_cast=str),
-        "mt_storage_oid": get_setting("mt_storage_oid", MT_DEFAULT_OIDS["storage"], type_cast=str),
-        "mt_temp_oid": get_setting("mt_temp_oid", MT_DEFAULT_OIDS["temp"], type_cast=str),
-        "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
-        "mt_stale_min": get_setting("mt_stale_min", MT_STALE_MIN),
-        "mt_backup_keep": get_setting("mt_backup_keep", 10),
-    })
+    return jsonify(
+        {
+            "cpu_threshold": get_setting("cpu_threshold", 85.0),
+            "ram_threshold": get_setting("ram_threshold", 90.0),
+            "disk_threshold": get_setting("disk_threshold", 90.0),
+            "fiber_rx_overload": get_setting("fiber_rx_overload", FIBER_RX_OVERLOAD),
+            "fiber_rx_warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
+            "fiber_rx_crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
+            "fiber_rx_target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
+            "fiber_tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
+            "fiber_tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
+            "fiber_degrade_db": get_setting("fiber_degrade_db", FIBER_DEGRADE_DB),
+            "fiber_degrade_days": get_setting("fiber_degrade_days", FIBER_DEGRADE_DAYS),
+            "fiber_stale_min": get_setting("fiber_stale_min", FIBER_STALE_MIN),
+            "fiber_flap_flips": get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS),
+            "fiber_flap_hours": get_setting("fiber_flap_hours", FIBER_FLAP_HOURS),
+            "fiber_parent_min": get_setting("fiber_parent_min", FIBER_PARENT_MIN),
+            "temp_threshold": get_setting("temp_threshold", 60.0),
+            "temp_crit": get_setting("temp_crit", 75.0),
+            "mt_cpu_oid": get_setting(
+                "mt_cpu_oid", MT_DEFAULT_OIDS["cpu"], type_cast=str
+            ),
+            "mt_mem_oid": get_setting(
+                "mt_mem_oid", MT_DEFAULT_OIDS["mem"], type_cast=str
+            ),
+            "mt_storage_oid": get_setting(
+                "mt_storage_oid", MT_DEFAULT_OIDS["storage"], type_cast=str
+            ),
+            "mt_temp_oid": get_setting(
+                "mt_temp_oid", MT_DEFAULT_OIDS["temp"], type_cast=str
+            ),
+            "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
+            "mt_stale_min": get_setting("mt_stale_min", MT_STALE_MIN),
+            "mt_backup_keep": get_setting("mt_backup_keep", 10),
+        }
+    )
+
 
 FIBER_SETTING_RANGES = {
     "fiber_rx_overload": (-40.0, 10.0),
@@ -4328,6 +5212,7 @@ FIBER_SETTING_RANGES = {
     "fiber_tx_min": (-10.0, 10.0),
     "fiber_tx_max": (-10.0, 10.0),
 }
+
 
 @app.route("/api/settings", methods=["POST"])
 @api_login_required
@@ -4443,17 +5328,40 @@ def api_save_settings():
             return jsonify({"error": "mt_backup_keep harus 3-50 versi"}), 400
         vals["mt_backup_keep"] = v
     # konsistensi: crit < warn <= overload, tx_min <= tx_max, temp warn < crit
-    merged = {k: get_setting(k, d) for k, d in
-              [("fiber_rx_overload", FIBER_RX_OVERLOAD), ("fiber_rx_warn", FIBER_RX_WARN),
-               ("fiber_rx_crit", FIBER_RX_CRIT), ("fiber_rx_target", FIBER_RX_TARGET),
-               ("fiber_tx_min", FIBER_TX_MIN),
-               ("fiber_tx_max", FIBER_TX_MAX), ("temp_threshold", 60.0),
-               ("temp_crit", 75.0)]}
+    merged = {
+        k: get_setting(k, d)
+        for k, d in [
+            ("fiber_rx_overload", FIBER_RX_OVERLOAD),
+            ("fiber_rx_warn", FIBER_RX_WARN),
+            ("fiber_rx_crit", FIBER_RX_CRIT),
+            ("fiber_rx_target", FIBER_RX_TARGET),
+            ("fiber_tx_min", FIBER_TX_MIN),
+            ("fiber_tx_max", FIBER_TX_MAX),
+            ("temp_threshold", 60.0),
+            ("temp_crit", 75.0),
+        ]
+    }
     merged.update({k: v for k, v in vals.items() if k in merged})
-    if not (merged["fiber_rx_crit"] < merged["fiber_rx_warn"] <= merged["fiber_rx_overload"]):
-        return jsonify({"error": "Harus: crit < warn <= overload (mis. -27 < -25 <= -8)"}), 400
-    if not (merged["fiber_rx_crit"] <= merged["fiber_rx_target"] <= merged["fiber_rx_overload"]):
-        return jsonify({"error": "fiber_rx_target harus di antara crit..overload (mis. -27..-8)"}), 400
+    if not (
+        merged["fiber_rx_crit"] < merged["fiber_rx_warn"] <= merged["fiber_rx_overload"]
+    ):
+        return (
+            jsonify({"error": "Harus: crit < warn <= overload (mis. -27 < -25 <= -8)"}),
+            400,
+        )
+    if not (
+        merged["fiber_rx_crit"]
+        <= merged["fiber_rx_target"]
+        <= merged["fiber_rx_overload"]
+    ):
+        return (
+            jsonify(
+                {
+                    "error": "fiber_rx_target harus di antara crit..overload (mis. -27..-8)"
+                }
+            ),
+            400,
+        )
     if not (merged["fiber_tx_min"] <= merged["fiber_tx_max"]):
         return jsonify({"error": "fiber_tx_min harus <= fiber_tx_max"}), 400
     if not (merged["temp_threshold"] < merged["temp_crit"]):
@@ -4464,13 +5372,17 @@ def api_save_settings():
     conn, c = get_db()
     for key, v in vals.items():
 
-
-        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(v)))
+        c.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(v))
+        )
     conn.commit()
     conn.close()
     try:
-        audit(current_user.username, "settings.update",
-              " ".join(f"{k}={v}" for k, v in vals.items()))
+        audit(
+            current_user.username,
+            "settings.update",
+            " ".join(f"{k}={v}" for k, v in vals.items()),
+        )
     except Exception:
         pass
     return jsonify({"status": "success"})
@@ -4480,9 +5392,13 @@ def api_save_settings():
 @api_login_required
 def api_change_password():
     from werkzeug.security import generate_password_hash
+
     data = request.get_json(silent=True) or {}
     cur = str(data.get("current_password") or "")[:200]
-    new_user = str(data.get("new_username") or _get_admin_username()).strip()[:50] or _get_admin_username()
+    new_user = (
+        str(data.get("new_username") or _get_admin_username()).strip()[:50]
+        or _get_admin_username()
+    )
     new_pass = str(data.get("new_password") or "")
     if not _verify_admin(current_user.username, cur):
         return jsonify({"error": "Password saat ini salah"}), 400
@@ -4491,9 +5407,14 @@ def api_change_password():
     if not re.match(r"^[a-zA-Z0-9_.\-]{3,50}$", new_user):
         return jsonify({"error": "Username 3-50 karakter (huruf/angka/_.-)"}), 400
     conn, c = get_db()
-    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_user', ?)", (new_user,))
-    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
-              (generate_password_hash(new_pass),))
+    c.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_user', ?)",
+        (new_user,),
+    )
+    c.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
+        (generate_password_hash(new_pass),),
+    )
     conn.commit()
     conn.close()
 
@@ -4511,11 +5432,10 @@ def api_change_password():
 
 @app.route("/api/agent/report", methods=["POST"])
 def agent_report():
-    global agent_status_memory, agent_offline_memory
-
 
     if AGENT_API_KEY:
         import hmac
+
         provided = request.headers.get("X-API-Key") or ""
         if not provided or not hmac.compare_digest(provided, AGENT_API_KEY):
             return jsonify({"error": "Forbidden: API key agent salah"}), 403
@@ -4547,7 +5467,6 @@ def agent_report():
         return jsonify({"error": "Format host tidak valid"}), 400
     host = raw_host
 
-
     try:
         _hc, _cc = get_db()
         _cc.execute("SELECT 1 FROM hosts WHERE ip=?", (host,))
@@ -4557,7 +5476,10 @@ def agent_report():
 
         return jsonify({"error": "Database sibuk, coba lagi"}), 503
     if not _known:
-        return jsonify({"error": "Host belum terdaftar. Tambahkan dulu di dashboard."}), 404
+        return (
+            jsonify({"error": "Host belum terdaftar. Tambahkan dulu di dashboard."}),
+            404,
+        )
     try:
         cpu = _to_float(data.get("cpu", 0.0), "cpu", 0, 100)
         ram = _to_float(data.get("ram", 0.0), "ram", 0, 100)
@@ -4569,7 +5491,6 @@ def agent_report():
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
     cpu_thresh = get_setting("cpu_threshold", 85.0)
     ram_thresh = get_setting("ram_threshold", 90.0)
     disk_thresh = get_setting("disk_threshold", 90.0)
@@ -4577,7 +5498,6 @@ def agent_report():
     cpu_clear = max(cpu_thresh - HYSTERESIS, 0)
     ram_clear = max(ram_thresh - HYSTERESIS, 0)
     disk_clear = max(disk_thresh - HYSTERESIS, 0)
-
 
     telegram_queue = []
     log_queue = []
@@ -4589,45 +5509,53 @@ def agent_report():
             )
             log_queue.append(("AGENT_ONLINE", "Agent kembali terhubung"))
 
-
         if host not in agent_status_memory:
-            agent_status_memory[host] = {'cpu': False, 'ram': False, 'disk': False}
+            agent_status_memory[host] = {"cpu": False, "ram": False, "disk": False}
 
-
-        if cpu > cpu_thresh and not agent_status_memory[host]['cpu']:
-            agent_status_memory[host]['cpu'] = True
-            telegram_queue.append(f"⚠️ *HIGH CPU ALERT*\nHost: `{host}`\nCPU: *{cpu}%* (Batas: {cpu_thresh}%)\nWaktu: {timestamp}")
+        if cpu > cpu_thresh and not agent_status_memory[host]["cpu"]:
+            agent_status_memory[host]["cpu"] = True
+            telegram_queue.append(
+                f"⚠️ *HIGH CPU ALERT*\nHost: `{host}`\nCPU: *{cpu}%* (Batas: {cpu_thresh}%)\nWaktu: {timestamp}"
+            )
             log_queue.append(("HIGH_CPU", f"{cpu}% (Batas: {cpu_thresh}%)"))
-        elif cpu <= cpu_clear and agent_status_memory[host]['cpu']:
-            agent_status_memory[host]['cpu'] = False
-            telegram_queue.append(f"✅ *CPU NORMAL*\nHost: `{host}`\nCPU: {cpu}%\nWaktu: {timestamp}")
+        elif cpu <= cpu_clear and agent_status_memory[host]["cpu"]:
+            agent_status_memory[host]["cpu"] = False
+            telegram_queue.append(
+                f"✅ *CPU NORMAL*\nHost: `{host}`\nCPU: {cpu}%\nWaktu: {timestamp}"
+            )
             log_queue.append(("CPU_NORMAL", f"Kembali normal: {cpu}%"))
 
-
-        if ram > ram_thresh and not agent_status_memory[host]['ram']:
-            agent_status_memory[host]['ram'] = True
-            telegram_queue.append(f"⚠️ *HIGH RAM ALERT*\nHost: `{host}`\nRAM: *{ram}%* (Batas: {ram_thresh}%)\nWaktu: {timestamp}")
+        if ram > ram_thresh and not agent_status_memory[host]["ram"]:
+            agent_status_memory[host]["ram"] = True
+            telegram_queue.append(
+                f"⚠️ *HIGH RAM ALERT*\nHost: `{host}`\nRAM: *{ram}%* (Batas: {ram_thresh}%)\nWaktu: {timestamp}"
+            )
             log_queue.append(("HIGH_RAM", f"{ram}% (Batas: {ram_thresh}%)"))
-        elif ram <= ram_clear and agent_status_memory[host]['ram']:
-            agent_status_memory[host]['ram'] = False
-            telegram_queue.append(f"✅ *RAM NORMAL*\nHost: `{host}`\nRAM: {ram}%\nWaktu: {timestamp}")
+        elif ram <= ram_clear and agent_status_memory[host]["ram"]:
+            agent_status_memory[host]["ram"] = False
+            telegram_queue.append(
+                f"✅ *RAM NORMAL*\nHost: `{host}`\nRAM: {ram}%\nWaktu: {timestamp}"
+            )
             log_queue.append(("RAM_NORMAL", f"Kembali normal: {ram}%"))
 
-
-        if disk > disk_thresh and not agent_status_memory[host].get('disk'):
-            agent_status_memory[host]['disk'] = True
-            telegram_queue.append(f"⚠️ *HIGH DISK ALERT*\nHost: `{host}`\nDISK Penuh: *{disk}%* (Batas: {disk_thresh}%)\nWaktu: {timestamp}")
+        if disk > disk_thresh and not agent_status_memory[host].get("disk"):
+            agent_status_memory[host]["disk"] = True
+            telegram_queue.append(
+                f"⚠️ *HIGH DISK ALERT*\nHost: `{host}`\nDISK Penuh: *{disk}%* (Batas: {disk_thresh}%)\nWaktu: {timestamp}"
+            )
             log_queue.append(("HIGH_DISK", f"{disk}% (Batas: {disk_thresh}%)"))
-        elif disk <= disk_clear and agent_status_memory[host].get('disk'):
-            agent_status_memory[host]['disk'] = False
-            telegram_queue.append(f"✅ *DISK NORMAL*\nHost: `{host}`\nKapasitas terpakai: {disk}%\nWaktu: {timestamp}")
+        elif disk <= disk_clear and agent_status_memory[host].get("disk"):
+            agent_status_memory[host]["disk"] = False
+            telegram_queue.append(
+                f"✅ *DISK NORMAL*\nHost: `{host}`\nKapasitas terpakai: {disk}%\nWaktu: {timestamp}"
+            )
             log_queue.append(("DISK_NORMAL", f"Kembali normal: {disk}%"))
 
         conn, c = get_db()
         try:
             c.execute(
                 "INSERT INTO agent_metrics (host, cpu_percent, ram_percent, disk_percent, net_in, net_out, timestamp, source) VALUES (?, ?, ?, ?, ?, ?, ?, 'agent')",
-                (host, cpu, ram, disk, net_in, net_out, timestamp)
+                (host, cpu, ram, disk, net_in, net_out, timestamp),
             )
             for ev, msg in log_queue:
                 _insert_system_log(c, ev, host, msg, timestamp)
@@ -4647,6 +5575,7 @@ def agent_report():
         except Exception as e:
             print(f"[WARN] telegram agent {host} gagal: {e}")
     return jsonify({"status": "success"})
+
 
 def _align_series(per_host, label_fmt):
     try:
@@ -4670,11 +5599,14 @@ def get_agent_metrics():
     conn, c = get_db()
     metrics = {}
     for host in get_target_hosts():
-        c.execute("""
+        c.execute(
+            """
             SELECT cpu_percent, ram_percent, disk_percent, net_in, net_out, timestamp FROM agent_metrics 
             WHERE host=? AND cpu_percent IS NOT NULL AND timestamp > datetime('now', 'localtime', '-5 minutes') 
             ORDER BY id DESC LIMIT 1
-        """, (host,))
+        """,
+            (host,),
+        )
         row = c.fetchone()
         if row:
             metrics[host] = {
@@ -4683,7 +5615,7 @@ def get_agent_metrics():
                 "disk": round(row["disk_percent"] or 0, 1),
                 "net_in": round(row["net_in"] or 0, 2),
                 "net_out": round(row["net_out"] or 0, 2),
-                "last_seen": row["timestamp"]
+                "last_seen": row["timestamp"],
             }
     conn.close()
     return jsonify(metrics)
@@ -4699,25 +5631,39 @@ def get_agent_history():
     hours = max(1, min(hours, 168))
     metric = request.args.get("metric", "cpu")
 
-    valid_metrics = {"cpu": "cpu_percent", "ram": "ram_percent", "disk": "disk_percent",
-                     "net_in": "net_in", "net_out": "net_out"}
+    valid_metrics = {
+        "cpu": "cpu_percent",
+        "ram": "ram_percent",
+        "disk": "disk_percent",
+        "net_in": "net_in",
+        "net_out": "net_out",
+    }
     col = valid_metrics.get(metric, "cpu_percent")
 
     conn, c = get_db()
     try:
 
-        extra = " AND cpu_percent IS NOT NULL" if col in ("cpu_percent", "ram_percent", "disk_percent") else ""
+        extra = (
+            " AND cpu_percent IS NOT NULL"
+            if col in ("cpu_percent", "ram_percent", "disk_percent")
+            else ""
+        )
         per_host = {}
         for host in get_target_hosts():
-            c.execute(f"""
+            c.execute(
+                f"""
                 SELECT timestamp, {col} as val
                 FROM agent_metrics
                 WHERE host=? AND timestamp > datetime('now', 'localtime', '-{hours} hours'){extra}
                 ORDER BY id ASC
-            """, (host,))
+            """,
+                (host,),
+            )
             rows = c.fetchall()
             if rows:
-                per_host[host] = [(r["timestamp"], round(r["val"] or 0, 2)) for r in rows]
+                per_host[host] = [
+                    (r["timestamp"], round(r["val"] or 0, 2)) for r in rows
+                ]
     finally:
         conn.close()
 
@@ -4728,7 +5674,7 @@ def get_agent_history():
 @app.route("/api/metrics")
 @api_login_required
 def get_metrics():
-    conn, c  = get_db()
+    conn, c = get_db()
     try:
         per_host = {}
         for host in get_target_hosts():
@@ -4753,7 +5699,7 @@ def get_history():
     except (ValueError, TypeError):
         return jsonify({"error": "hours harus angka 1-24"}), 400
     hours = max(1, min(hours, 24))
-    conn, c  = get_db()
+    conn, c = get_db()
     try:
         per_host = {}
         for host in get_target_hosts():
@@ -4775,9 +5721,10 @@ def get_history():
 @api_login_required
 def get_stats():
     conn, c = get_db()
-    stats   = {}
+    stats = {}
     for host in get_target_hosts():
-        c.execute("""
+        c.execute(
+            """
             SELECT
                 COUNT(*)                                            AS total,
                 SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END)    AS up_count,
@@ -4787,29 +5734,33 @@ def get_stats():
                 AVG(CASE WHEN latency != -1 THEN packet_loss END)  AS avg_loss
             FROM ping_logs
             WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
-        """, (host,))
-        r        = c.fetchone()
-        total    = r["total"]    or 0
+        """,
+            (host,),
+        )
+        r = c.fetchone()
+        total = r["total"] or 0
         up_count = r["up_count"] or 0
         if total == 0:
 
             stats[host] = {
                 "uptime_pct": None,
-                "avg_ms"    : None,
-                "min_ms"    : None,
-                "max_ms"    : None,
-                "avg_loss"  : None,
-                "is_down"   : False,
+                "avg_ms": None,
+                "min_ms": None,
+                "max_ms": None,
+                "avg_loss": None,
+                "is_down": False,
                 "is_pending": True,
             }
         else:
             stats[host] = {
                 "uptime_pct": round((up_count / total * 100), 1),
-                "avg_ms"    : round(r["avg_ms"], 2) if r["avg_ms"] is not None else None,
-                "min_ms"    : round(r["min_ms"], 2) if r["min_ms"] is not None else None,
-                "max_ms"    : round(r["max_ms"], 2) if r["max_ms"] is not None else None,
-                "avg_loss"  : round(r["avg_loss"], 1) if r["avg_loss"] is not None else None,
-                "is_down"   : status_memory.get(host, False),
+                "avg_ms": round(r["avg_ms"], 2) if r["avg_ms"] is not None else None,
+                "min_ms": round(r["min_ms"], 2) if r["min_ms"] is not None else None,
+                "max_ms": round(r["max_ms"], 2) if r["max_ms"] is not None else None,
+                "avg_loss": (
+                    round(r["avg_loss"], 1) if r["avg_loss"] is not None else None
+                ),
+                "is_down": status_memory.get(host, False),
                 "is_pending": False,
             }
     conn.close()
@@ -4837,15 +5788,21 @@ def get_events():
             is_maint = bool(r["is_maintenance"])
         except (KeyError, IndexError, TypeError):
             is_maint = False
-        events.append({
-            "id"         : r["id"],
-            "host"       : r["host"],
-            "started_at" : r["started_at"],
-            "resolved_at": r["resolved_at"] or "Ongoing",
-            "duration"   : f"{m}m {s}s" if r["duration_s"] else ("Ongoing" if not r["resolved_at"] else "—"),
-            "status"     : "resolved" if r["resolved_at"] else "ongoing",
-            "is_maintenance": is_maint,
-        })
+        events.append(
+            {
+                "id": r["id"],
+                "host": r["host"],
+                "started_at": r["started_at"],
+                "resolved_at": r["resolved_at"] or "Ongoing",
+                "duration": (
+                    f"{m}m {s}s"
+                    if r["duration_s"]
+                    else ("Ongoing" if not r["resolved_at"] else "—")
+                ),
+                "status": "resolved" if r["resolved_at"] else "ongoing",
+                "is_maintenance": is_maint,
+            }
+        )
     conn.close()
     return jsonify(events)
 
@@ -4856,7 +5813,9 @@ def delete_event(event_id):
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("SELECT host, resolved_at FROM down_events WHERE id=?", (event_id,))
+            c.execute(
+                "SELECT host, resolved_at FROM down_events WHERE id=?", (event_id,)
+            )
             row = c.fetchone()
             if not row:
                 return jsonify({"error": "Event tidak ditemukan"}), 404
@@ -4866,8 +5825,10 @@ def delete_event(event_id):
             conn.commit()
             if was_ongoing:
 
-
-                c.execute("SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1", (host,))
+                c.execute(
+                    "SELECT 1 FROM down_events WHERE host=? AND resolved_at IS NULL LIMIT 1",
+                    (host,),
+                )
                 still_ongoing = c.fetchone() is not None
                 if not still_ongoing:
                     status_memory[host] = False
@@ -4891,7 +5852,6 @@ def clear_events():
             conn.commit()
         finally:
             conn.close()
-
 
         for h in list(status_memory.keys()):
             status_memory[h] = False
@@ -4958,30 +5918,62 @@ def api_maintenance_create():
         # Maintenance hierarki fiber: "ODP:<nama>" / "OLT:<nama>" men-suppress
         # semua ONT di bawahnya (lihat _fiber_maintenance_info).
         lowered = host.lower()
-        if not is_host and not is_ont and (lowered.startswith("odp:") or lowered.startswith("olt:")):
+        if (
+            not is_host
+            and not is_ont
+            and (lowered.startswith("odp:") or lowered.startswith("olt:"))
+        ):
             scope, _, name = host.partition(":")
             name = name.strip()
             if not name:
-                return jsonify({"error": "Format harus ODP:<nama> atau OLT:<nama>"}), 400
+                return (
+                    jsonify({"error": "Format harus ODP:<nama> atau OLT:<nama>"}),
+                    400,
+                )
             try:
                 if lowered.startswith("odp:"):
-                    c.execute("SELECT name FROM odps WHERE name COLLATE NOCASE = ?", (name,))
+                    c.execute(
+                        "SELECT name FROM odps WHERE name COLLATE NOCASE = ?", (name,)
+                    )
                 else:
-                    c.execute("SELECT name FROM olts WHERE name COLLATE NOCASE = ?", (name,))
+                    c.execute(
+                        "SELECT name FROM olts WHERE name COLLATE NOCASE = ?", (name,)
+                    )
                 row = c.fetchone()
             except sqlite3.OperationalError:
                 row = None
             if not row:
-                return jsonify({"error": f"{scope.upper()} '{name}' belum terdaftar."}), 404
+                return (
+                    jsonify({"error": f"{scope.upper()} '{name}' belum terdaftar."}),
+                    404,
+                )
             host = f"{scope.upper()}:{row['name']}"
-        if not is_host and not is_ont and not (host.startswith("ODP:") or host.startswith("OLT:")):
-            return jsonify({"error": "Host/ONT SN belum terdaftar. Tambahkan dulu di dashboard. Untuk fiber massal pakai ODP:<nama> atau OLT:<nama>."}), 404
+        if (
+            not is_host
+            and not is_ont
+            and not (host.startswith("ODP:") or host.startswith("OLT:"))
+        ):
+            return (
+                jsonify(
+                    {
+                        "error": "Host/ONT SN belum terdaftar. Tambahkan dulu di dashboard. Untuk fiber massal pakai ODP:<nama> atau OLT:<nama>."
+                    }
+                ),
+                404,
+            )
         c.execute(
             "SELECT 1 FROM maintenance_windows WHERE host=? AND start_at <= ? AND end_at >= ? LIMIT 1",
             (host, _fmt_maint_time(end_dt), _fmt_maint_time(start_dt)),
         )
         if c.fetchone():
-            return jsonify({"error": "Window maintenance bertabrakan dengan jadwal aktif host ini"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Window maintenance bertabrakan dengan jadwal aktif host ini"
+                    }
+                ),
+                400,
+            )
     finally:
         conn.close()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -4991,13 +5983,23 @@ def api_maintenance_create():
             c.execute(
                 "INSERT INTO maintenance_windows (host, start_at, end_at, reason, created_by, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (host, _fmt_maint_time(start_dt), _fmt_maint_time(end_dt),
-                 reason, current_user.username, now_str),
+                (
+                    host,
+                    _fmt_maint_time(start_dt),
+                    _fmt_maint_time(end_dt),
+                    reason,
+                    current_user.username,
+                    now_str,
+                ),
             )
             new_id = c.lastrowid
-            _insert_system_log(c, "MAINTENANCE_CREATE", host,
-                               f"{_fmt_maint_time(start_dt)} s/d {_fmt_maint_time(end_dt)}{(' - ' + reason) if reason else ''}",
-                               now_str)
+            _insert_system_log(
+                c,
+                "MAINTENANCE_CREATE",
+                host,
+                f"{_fmt_maint_time(start_dt)} s/d {_fmt_maint_time(end_dt)}{(' - ' + reason) if reason else ''}",
+                now_str,
+            )
             _commit_with_retry(conn)
         finally:
             conn.close()
@@ -5085,15 +6087,19 @@ def add_service_api():
     conn, c = get_db()
 
     if svc_type == "tcp":
-        c.execute("SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?", (ip, port))
+        c.execute(
+            "SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?", (ip, port)
+        )
     else:
-        c.execute("SELECT id FROM services WHERE ip=? AND type='http' AND url=?", (ip, url))
+        c.execute(
+            "SELECT id FROM services WHERE ip=? AND type='http' AND url=?", (ip, url)
+        )
     if c.fetchone():
         conn.close()
         return jsonify({"error": "Service monitor ini sudah ada"}), 400
     c.execute(
         "INSERT INTO services (ip, name, type, port, url) VALUES (?, ?, ?, ?, ?)",
-        (ip, name, svc_type, port, url)
+        (ip, name, svc_type, port, url),
     )
     new_id = c.lastrowid
     conn.commit()
@@ -5127,7 +6133,11 @@ def delete_service_api(svc_id):
     conn.commit()
     conn.close()
     try:
-        audit(current_user.username, "service.delete", f"{row['name']} {row['ip']} id={svc_id}")
+        audit(
+            current_user.username,
+            "service.delete",
+            f"{row['name']} {row['ip']} id={svc_id}",
+        )
     except Exception:
         pass
     return jsonify({"status": "success"})
@@ -5143,7 +6153,10 @@ def api_service_history(svc_id):
     hours = max(1, min(hours, 168))
     conn, c = get_db()
     try:
-        c.execute("SELECT id, name, type, ip, port, url, status FROM services WHERE id=?", (svc_id,))
+        c.execute(
+            "SELECT id, name, type, ip, port, url, status FROM services WHERE id=?",
+            (svc_id,),
+        )
         svc = c.fetchone()
         if not svc:
             return jsonify({"error": "Service tidak ditemukan"}), 404
@@ -5155,15 +6168,24 @@ def api_service_history(svc_id):
         rows = c.fetchall()
     finally:
         conn.close()
-    labels = [r["timestamp"].split(" ")[1] if " " in (r["timestamp"] or "") else r["timestamp"] for r in rows]
+    labels = [
+        (
+            r["timestamp"].split(" ")[1]
+            if " " in (r["timestamp"] or "")
+            else r["timestamp"]
+        )
+        for r in rows
+    ]
     values = [round(r["latency"], 2) if r["status"] == "ONLINE" else None for r in rows]
-    return jsonify({
-        "service": dict(svc),
-        "hours": hours,
-        "labels": labels,
-        "values": values,
-        "count": len(rows),
-    })
+    return jsonify(
+        {
+            "service": dict(svc),
+            "hours": hours,
+            "labels": labels,
+            "values": values,
+            "count": len(rows),
+        }
+    )
 
 
 @app.route("/api/services/<int:svc_id>/ssl-check", methods=["POST"])
@@ -5248,15 +6270,22 @@ def _validate_fiber(d):
     source = str(d.get("source") or "manual").strip().lower()[:16]
     if source not in ("manual", "simulator", "snmp"):
         source = "manual"
-    return {"ont_sn": ont_sn,
-            "customer": str(d.get("customer") or "").strip()[:100],
-            "olt_name": str(d.get("olt_name") or "").strip()[:100],
-            "pon_port": str(d.get("pon_port") or "").strip()[:50],
-            "odp_name": str(d.get("odp_name") or "").strip()[:100],
-            "rx_power": rx, "tx_power": tx, "source": source,
-            "mute_alarm": mute, "mute_until": mute_until, "mute_reason": mute_reason,
-            "rx_warn": rw, "rx_crit": rc,
-            "ont_index": ont_index}, None
+    return {
+        "ont_sn": ont_sn,
+        "customer": str(d.get("customer") or "").strip()[:100],
+        "olt_name": str(d.get("olt_name") or "").strip()[:100],
+        "pon_port": str(d.get("pon_port") or "").strip()[:50],
+        "odp_name": str(d.get("odp_name") or "").strip()[:100],
+        "rx_power": rx,
+        "tx_power": tx,
+        "source": source,
+        "mute_alarm": mute,
+        "mute_until": mute_until,
+        "mute_reason": mute_reason,
+        "rx_warn": rw,
+        "rx_crit": rc,
+        "ont_index": ont_index,
+    }, None
 
 
 def _fiber_row_status(o):
@@ -5264,8 +6293,9 @@ def _fiber_row_status(o):
 
     Kembalikan (status, severity, advice, need, stale, stale_age).
     """
-    status, severity, advice, need = fiber_eval(o.get("rx_power"), o.get("tx_power"),
-                                               _th_for_ont(o))
+    status, severity, advice, need = fiber_eval(
+        o.get("rx_power"), o.get("tx_power"), _th_for_ont(o)
+    )
     stale, stale_age = _fiber_stale_info(o)
     if stale and status in ("normal", "warning", "unknown"):
         status, severity = "stale", "warning"
@@ -5273,29 +6303,52 @@ def _fiber_row_status(o):
     return status, severity, advice, need, stale, stale_age
 
 
-def _fiber_enrich_row(o, degrade_days=7, degrade_thresh=3.0, down_map=None,
-                      flap_hours=24):
+def _fiber_enrich_row(
+    o, degrade_days=7, degrade_thresh=3.0, down_map=None, flap_hours=24
+):
     """Baris ONT + field terhitung untuk API (status, mute, stale, degradasi, flap, downtime)."""
     status, severity, advice, need, stale, stale_age = _fiber_row_status(o)
     dg = fiber_degrade_memory.get(o["id"]) or {}
     fl = fiber_flap_memory.get(o["id"]) or {}
     down_since = (down_map or {}).get(o["id"])
-    return {**o, "calc_status": status, "severity": severity,
-            "advice": advice, "need_attenuator_db": need,
-            "mute_active": _is_mute_active(o),
-            "stale": stale, "stale_age": stale_age,
-            "degrading": bool(dg.get("degrading")),
-            "degrade_drop_db": dg.get("drop_db"),
-            "degrade_days": degrade_days, "degrade_thresh_db": degrade_thresh,
-            "flapping": bool(fl.get("flapping")), "flap_count": fl.get("flips"),
-            "flap_hours": flap_hours,
-            "down_since": down_since, "down_ongoing": down_since is not None}
+    return {
+        **o,
+        "calc_status": status,
+        "severity": severity,
+        "advice": advice,
+        "need_attenuator_db": need,
+        "mute_active": _is_mute_active(o),
+        "stale": stale,
+        "stale_age": stale_age,
+        "degrading": bool(dg.get("degrading")),
+        "degrade_drop_db": dg.get("drop_db"),
+        "degrade_days": degrade_days,
+        "degrade_thresh_db": degrade_thresh,
+        "flapping": bool(fl.get("flapping")),
+        "flap_count": fl.get("flips"),
+        "flap_hours": flap_hours,
+        "down_since": down_since,
+        "down_ongoing": down_since is not None,
+    }
 
 
-_FIBER_SORTS = ("olt", "rx_asc", "rx_desc", "sn_asc", "sn_desc",
-                "checked_desc", "status")
-_FIBER_STATUS_RANK = {"overload": 0, "critical": 1, "warning": 2, "stale": 3,
-                      "unknown": 4, "normal": 5}
+_FIBER_SORTS = (
+    "olt",
+    "rx_asc",
+    "rx_desc",
+    "sn_asc",
+    "sn_desc",
+    "checked_desc",
+    "status",
+)
+_FIBER_STATUS_RANK = {
+    "overload": 0,
+    "critical": 1,
+    "warning": 2,
+    "stale": 3,
+    "unknown": 4,
+    "normal": 5,
+}
 
 
 @app.route("/api/fiber", methods=["GET"])
@@ -5317,8 +6370,10 @@ def api_fiber_list():
     down_map = _fiber_open_downtime_map()
     enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map, _fhours) for o in rows]
     # mode legacy (tanpa param): kembalikan array penuh seperti dulu
-    if not any(request.args.get(k) is not None
-               for k in ("page", "per_page", "sort", "q", "status", "olt", "odp")):
+    if not any(
+        request.args.get(k) is not None
+        for k in ("page", "per_page", "sort", "q", "status", "olt", "odp")
+    ):
         return jsonify(enriched)
     # mode paginasi: filter + sort di server
     status_f = (request.args.get("status") or "all").strip().lower()
@@ -5333,32 +6388,50 @@ def api_fiber_list():
     if odp_f:
         items = [o for o in items if (o.get("odp_name") or "").strip().lower() == odp_f]
     if q:
-        items = [o for o in items
-                 if q in " ".join(str(o.get(k) or "") for k in
-                                  ("ont_sn", "customer", "olt_name", "odp_name",
-                                   "pon_port")).lower()]
+        items = [
+            o
+            for o in items
+            if q
+            in " ".join(
+                str(o.get(k) or "")
+                for k in ("ont_sn", "customer", "olt_name", "odp_name", "pon_port")
+            ).lower()
+        ]
     sort = (request.args.get("sort") or "olt").strip().lower()
     if sort not in _FIBER_SORTS:
         return jsonify({"error": f"sort harus salah satu {list(_FIBER_SORTS)}"}), 400
     if sort == "rx_asc":
-        items.sort(key=lambda o: (o.get("rx_power") is None,
-                                  o.get("rx_power") if o.get("rx_power") is not None else 0,
-                                  o.get("id")))
+        items.sort(
+            key=lambda o: (
+                o.get("rx_power") is None,
+                o.get("rx_power") if o.get("rx_power") is not None else 0,
+                o.get("id"),
+            )
+        )
     elif sort == "rx_desc":
-        items.sort(key=lambda o: (o.get("rx_power") is None,
-                                  -(o.get("rx_power") if o.get("rx_power") is not None else 0),
-                                  o.get("id")))
+        items.sort(
+            key=lambda o: (
+                o.get("rx_power") is None,
+                -(o.get("rx_power") if o.get("rx_power") is not None else 0),
+                o.get("id"),
+            )
+        )
     elif sort == "sn_asc":
         items.sort(key=lambda o: ((o.get("ont_sn") or "").lower(), o.get("id")))
     elif sort == "sn_desc":
-        items.sort(key=lambda o: ((o.get("ont_sn") or "").lower(), o.get("id")),
-                   reverse=True)
+        items.sort(
+            key=lambda o: ((o.get("ont_sn") or "").lower(), o.get("id")), reverse=True
+        )
     elif sort == "checked_desc":
         items.sort(key=lambda o: (o.get("last_checked") or ""), reverse=True)
     elif sort == "status":
-        items.sort(key=lambda o: (_FIBER_STATUS_RANK.get(o["calc_status"], 9),
-                                  o.get("rx_power") if o.get("rx_power") is not None else 99,
-                                  o.get("id")))
+        items.sort(
+            key=lambda o: (
+                _FIBER_STATUS_RANK.get(o["calc_status"], 9),
+                o.get("rx_power") if o.get("rx_power") is not None else 99,
+                o.get("id"),
+            )
+        )
     else:
         items.sort(key=lambda o: ((o.get("olt_name") or "").lower(), o.get("id")))
     try:
@@ -5375,9 +6448,16 @@ def api_fiber_list():
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
     start = (page - 1) * per_page
-    return jsonify({"items": items[start:start + per_page], "total": total,
-                    "page": page, "per_page": per_page, "pages": pages,
-                    "sort": sort})
+    return jsonify(
+        {
+            "items": items[start : start + per_page],
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "pages": pages,
+            "sort": sort,
+        }
+    )
 
 
 @app.route("/api/fiber/summary", methods=["GET"])
@@ -5399,9 +6479,19 @@ def api_fiber_summary():
     _fthresh, _fhours = _fiber_flap_settings()
     down_map = _fiber_open_downtime_map()
     enriched = [_fiber_enrich_row(o, _ddays, _dthresh, down_map, _fhours) for o in rows]
-    counts = {"total": len(enriched), "normal": 0, "warning": 0, "critical": 0,
-              "overload": 0, "stale": 0, "unknown": 0, "degrading": 0, "muted": 0,
-              "down_ongoing": 0, "flapping": 0}
+    counts = {
+        "total": len(enriched),
+        "normal": 0,
+        "warning": 0,
+        "critical": 0,
+        "overload": 0,
+        "stale": 0,
+        "unknown": 0,
+        "degrading": 0,
+        "muted": 0,
+        "down_ongoing": 0,
+        "flapping": 0,
+    }
     for o in enriched:
         if o["calc_status"] in counts:
             counts[o["calc_status"]] += 1
@@ -5418,22 +6508,41 @@ def api_fiber_summary():
     best = sorted(with_rx, key=lambda o: (-o["rx_power"], o["id"]))[:5]
 
     def _mini(o):
-        return {"id": o["id"], "ont_sn": o.get("ont_sn"), "customer": o.get("customer"),
-                "olt_name": o.get("olt_name"), "odp_name": o.get("odp_name"),
-                "rx_power": o.get("rx_power"), "calc_status": o.get("calc_status")}
+        return {
+            "id": o["id"],
+            "ont_sn": o.get("ont_sn"),
+            "customer": o.get("customer"),
+            "olt_name": o.get("olt_name"),
+            "odp_name": o.get("odp_name"),
+            "rx_power": o.get("rx_power"),
+            "calc_status": o.get("calc_status"),
+        }
 
     opts = sorted(enriched, key=lambda o: (o.get("ont_sn") or "").lower())
-    return jsonify({
-        "counts": counts,
-        "worst_rx": [_mini(o) for o in worst],
-        "best_rx": [_mini(o) for o in best],
-        "ont_options": [{"id": o["id"], "ont_sn": o.get("ont_sn"),
-                         "customer": o.get("customer"), "rx_power": o.get("rx_power")}
-                        for o in opts],
-        "olt_names": sorted({(o.get("olt_name") or "").strip() for o in enriched} - {""}),
-        "odp_names": sorted({(o.get("odp_name") or "").strip() for o in enriched} - {""}),
-        "degrade_days": _ddays, "degrade_thresh_db": _dthresh,
-    })
+    return jsonify(
+        {
+            "counts": counts,
+            "worst_rx": [_mini(o) for o in worst],
+            "best_rx": [_mini(o) for o in best],
+            "ont_options": [
+                {
+                    "id": o["id"],
+                    "ont_sn": o.get("ont_sn"),
+                    "customer": o.get("customer"),
+                    "rx_power": o.get("rx_power"),
+                }
+                for o in opts
+            ],
+            "olt_names": sorted(
+                {(o.get("olt_name") or "").strip() for o in enriched} - {""}
+            ),
+            "odp_names": sorted(
+                {(o.get("odp_name") or "").strip() for o in enriched} - {""}
+            ),
+            "degrade_days": _ddays,
+            "degrade_thresh_db": _dthresh,
+        }
+    )
 
 
 @app.route("/api/fiber", methods=["POST"])
@@ -5448,21 +6557,39 @@ def api_fiber_create():
     conn, c = get_db()
     try:
         try:
-            c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+            c.execute(
+                """INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
                        rx_power,tx_power,status,last_checked,source,created_at,updated_at,
                        mute_alarm,mute_until,mute_reason,rx_warn,rx_crit,ont_index,last_seen)
                        VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?)""",
-                      (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
-                       vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                       now if has_measurement else None,
-                       vals["source"], now, now,
-                       vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
-                       vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
-                       now if has_measurement else None))
+                (
+                    vals["ont_sn"],
+                    vals["customer"],
+                    vals["olt_name"],
+                    vals["pon_port"],
+                    vals["odp_name"],
+                    vals["rx_power"],
+                    vals["tx_power"],
+                    status,
+                    now if has_measurement else None,
+                    vals["source"],
+                    now,
+                    now,
+                    vals["mute_alarm"],
+                    vals["mute_until"],
+                    vals["mute_reason"],
+                    vals["rx_warn"],
+                    vals["rx_crit"],
+                    vals["ont_index"],
+                    now if has_measurement else None,
+                ),
+            )
             fid = c.lastrowid
             if has_measurement:
-                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                          (fid, vals["rx_power"], vals["tx_power"], now))
+                c.execute(
+                    "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                    (fid, vals["rx_power"], vals["tx_power"], now),
+                )
             conn.commit()
         except sqlite3.IntegrityError:
             try:
@@ -5476,7 +6603,11 @@ def api_fiber_create():
         except Exception:
             pass
     try:
-        audit(current_user.username, "fiber.create", f"{vals['ont_sn']} rx={vals['rx_power']}")
+        audit(
+            current_user.username,
+            "fiber.create",
+            f"{vals['ont_sn']} rx={vals['rx_power']}",
+        )
     except Exception:
         pass
     # evaluasi langsung 1 ONT: alert cepat + memory di-set (poll tak duplikat)
@@ -5504,21 +6635,39 @@ def api_fiber_update(fid):
             return jsonify({"error": "ONT tidak ditemukan"}), 404
         last_seen_new = now if has_measurement else (_old["last_seen"] or None)
         try:
-            c.execute("""UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
+            c.execute(
+                """UPDATE fiber_onts SET ont_sn=?, customer=?, olt_name=?, pon_port=?, odp_name=?,
                          rx_power=?, tx_power=?, status=?, last_checked=?, source=?, updated_at=?,
                          mute_alarm=?, mute_until=?, mute_reason=?, rx_warn=?, rx_crit=?, ont_index=?,
                          last_seen=?
                          WHERE id=?""",
-                      (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
-                       vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                       now if has_measurement else None,
-                       vals["source"], now,
-                       vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
-                       vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
-                       last_seen_new, fid))
+                (
+                    vals["ont_sn"],
+                    vals["customer"],
+                    vals["olt_name"],
+                    vals["pon_port"],
+                    vals["odp_name"],
+                    vals["rx_power"],
+                    vals["tx_power"],
+                    status,
+                    now if has_measurement else None,
+                    vals["source"],
+                    now,
+                    vals["mute_alarm"],
+                    vals["mute_until"],
+                    vals["mute_reason"],
+                    vals["rx_warn"],
+                    vals["rx_crit"],
+                    vals["ont_index"],
+                    last_seen_new,
+                    fid,
+                ),
+            )
             if has_measurement:
-                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                          (fid, vals["rx_power"], vals["tx_power"], now))
+                c.execute(
+                    "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                    (fid, vals["rx_power"], vals["tx_power"], now),
+                )
             conn.commit()
         except sqlite3.IntegrityError:
             try:
@@ -5558,8 +6707,12 @@ def api_fiber_delete(fid):
         pass
     conn.commit()
     conn.close()
-    for _mem in (fiber_alarm_memory, fiber_degrade_memory,
-                 fiber_flap_memory, fiber_degrade_tg):
+    for _mem in (
+        fiber_alarm_memory,
+        fiber_degrade_memory,
+        fiber_flap_memory,
+        fiber_degrade_tg,
+    ):
         try:
             _mem.pop(fid, None)
         except Exception:
@@ -5587,9 +6740,11 @@ def api_fiber_history(fid):
         ont = c.fetchone()
         if not ont:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
-        c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
-                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
-                  (fid, f"-{hours} hours"))
+        c.execute(
+            "SELECT timestamp, rx_power, tx_power FROM fiber_history "
+            "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
+            (fid, f"-{hours} hours"),
+        )
         rows = c.fetchall()
     finally:
         conn.close()
@@ -5598,13 +6753,34 @@ def api_fiber_history(fid):
         step = (len(rows) + 499) // 500
         rows = rows[::step]
     if hours <= 24:
-        labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"] for r in rows]
+        labels = [
+            (
+                r["timestamp"].split(" ")[1]
+                if r["timestamp"] and " " in r["timestamp"]
+                else r["timestamp"]
+            )
+            for r in rows
+        ]
     else:
         # rentang >24 jam: sertakan tanggal agar titik beda hari tak bertabrakan
-        labels = [r["timestamp"][5:16] if r["timestamp"] and len(r["timestamp"]) >= 16 else r["timestamp"] for r in rows]
-    return jsonify({"ont": dict(ont), "hours": hours, "labels": labels,
-                    "rx": [r["rx_power"] for r in rows],
-                    "tx": [r["tx_power"] for r in rows], "count": len(rows)})
+        labels = [
+            (
+                r["timestamp"][5:16]
+                if r["timestamp"] and len(r["timestamp"]) >= 16
+                else r["timestamp"]
+            )
+            for r in rows
+        ]
+    return jsonify(
+        {
+            "ont": dict(ont),
+            "hours": hours,
+            "labels": labels,
+            "rx": [r["rx_power"] for r in rows],
+            "tx": [r["tx_power"] for r in rows],
+            "count": len(rows),
+        }
+    )
 
 
 @app.route("/api/fiber/<int:fid>/history/export")
@@ -5622,9 +6798,11 @@ def api_fiber_history_export(fid):
         ont = c.fetchone()
         if not ont:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
-        c.execute("SELECT timestamp, rx_power, tx_power FROM fiber_history "
-                  "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
-                  (fid, f"-{hours} hours"))
+        c.execute(
+            "SELECT timestamp, rx_power, tx_power FROM fiber_history "
+            "WHERE ont_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC LIMIT 25000",
+            (fid, f"-{hours} hours"),
+        )
         rows = [dict(r) for r in c.fetchall()]
     finally:
         try:
@@ -5637,14 +6815,21 @@ def api_fiber_history_export(fid):
     for r in rows:
         w.writerow([r["timestamp"], r["rx_power"], r["tx_power"]])
     try:
-        audit(current_user.username, "fiber.history_export",
-              f"{ont['ont_sn']} rows={len(rows)} hours={hours}")
+        audit(
+            current_user.username,
+            "fiber.history_export",
+            f"{ont['ont_sn']} rows={len(rows)} hours={hours}",
+        )
     except Exception:
         pass
     safe_sn = re.sub(r"[^A-Za-z0-9_.\-]", "_", ont["ont_sn"] or "ont")[:48]
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition":
-                             f"attachment; filename=history_{safe_sn}_{hours}h.csv"})
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=history_{safe_sn}_{hours}h.csv"
+        },
+    )
 
 
 def _fiber_open_downtime_map():
@@ -5652,7 +6837,9 @@ def _fiber_open_downtime_map():
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT ont_id, started_at FROM fiber_downtime WHERE resolved_at IS NULL")
+            c.execute(
+                "SELECT ont_id, started_at FROM fiber_downtime WHERE resolved_at IS NULL"
+            )
             return {r["ont_id"]: r["started_at"] for r in c.fetchall()}
         finally:
             conn.close()
@@ -5668,18 +6855,26 @@ def api_fiber_downtime(fid):
         c.execute("SELECT id FROM fiber_onts WHERE id=?", (fid,))
         if not c.fetchone():
             return jsonify({"error": "ONT tidak ditemukan"}), 404
-        c.execute("SELECT id, ont_sn, status, rx_dbm, started_at, resolved_at, duration_s"
-                  " FROM fiber_downtime WHERE ont_id=? ORDER BY id DESC LIMIT 100", (fid,))
+        c.execute(
+            "SELECT id, ont_sn, status, rx_dbm, started_at, resolved_at, duration_s"
+            " FROM fiber_downtime WHERE ont_id=? ORDER BY id DESC LIMIT 100",
+            (fid,),
+        )
         out = []
         for r in c.fetchall():
-            out.append({
-                "id": r["id"], "ont_sn": r["ont_sn"], "status": r["status"],
-                "rx_dbm": r["rx_dbm"], "started_at": r["started_at"],
-                "resolved_at": r["resolved_at"] or "Ongoing",
-                "duration_s": r["duration_s"],
-                "duration": _fmt_duration(r["duration_s"]),
-                "state": "resolved" if r["resolved_at"] else "ongoing",
-            })
+            out.append(
+                {
+                    "id": r["id"],
+                    "ont_sn": r["ont_sn"],
+                    "status": r["status"],
+                    "rx_dbm": r["rx_dbm"],
+                    "started_at": r["started_at"],
+                    "resolved_at": r["resolved_at"] or "Ongoing",
+                    "duration_s": r["duration_s"],
+                    "duration": _fmt_duration(r["duration_s"]),
+                    "state": "resolved" if r["resolved_at"] else "ongoing",
+                }
+            )
     finally:
         conn.close()
     return jsonify(out)
@@ -5704,9 +6899,12 @@ def api_fiber_sla(fid):
         ont = c.fetchone()
         if not ont:
             return jsonify({"error": "ONT tidak ditemukan"}), 404
-        c.execute("SELECT started_at, resolved_at, duration_s FROM fiber_downtime"
-                  " WHERE ont_id=? AND (resolved_at IS NULL OR resolved_at >= ?)"
-                  " ORDER BY id ASC", (fid, win_start.strftime("%Y-%m-%d %H:%M:%S")))
+        c.execute(
+            "SELECT started_at, resolved_at, duration_s FROM fiber_downtime"
+            " WHERE ont_id=? AND (resolved_at IS NULL OR resolved_at >= ?)"
+            " ORDER BY id ASC",
+            (fid, win_start.strftime("%Y-%m-%d %H:%M:%S")),
+        )
         rows = [dict(r) for r in c.fetchall()]
     finally:
         conn.close()
@@ -5717,7 +6915,11 @@ def api_fiber_sla(fid):
         except (ValueError, TypeError):
             continue
         try:
-            e = datetime.strptime(r["resolved_at"], "%Y-%m-%d %H:%M:%S") if r["resolved_at"] else now
+            e = (
+                datetime.strptime(r["resolved_at"], "%Y-%m-%d %H:%M:%S")
+                if r["resolved_at"]
+                else now
+            )
         except (ValueError, TypeError):
             e = now
         s = max(s, win_start)
@@ -5728,12 +6930,19 @@ def api_fiber_sla(fid):
         incidents += 1
         longest = max(longest, overlap)
     uptime_pct = round(max(0.0, (win_s - down_s) / win_s * 100), 2)
-    return jsonify({"ont": {"id": ont["id"], "ont_sn": ont["ont_sn"]},
-                    "days": days, "window_s": win_s,
-                    "uptime_pct": uptime_pct, "incidents": incidents,
-                    "total_downtime_s": down_s,
-                    "total_downtime_str": _fmt_duration(down_s),
-                    "longest_s": longest, "longest_str": _fmt_duration(longest)})
+    return jsonify(
+        {
+            "ont": {"id": ont["id"], "ont_sn": ont["ont_sn"]},
+            "days": days,
+            "window_s": win_s,
+            "uptime_pct": uptime_pct,
+            "incidents": incidents,
+            "total_downtime_s": down_s,
+            "total_downtime_str": _fmt_duration(down_s),
+            "longest_s": longest,
+            "longest_str": _fmt_duration(longest),
+        }
+    )
 
 
 @app.route("/api/fiber/export")
@@ -5752,23 +6961,55 @@ def api_fiber_export():
             pass
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ont_sn", "customer", "olt", "pon_port", "odp", "rx_dbm", "tx_dbm",
-                "status", "saran", "last_checked", "source", "mute_alarm",
-                "mute_until", "mute_reason"])
+    w.writerow(
+        [
+            "ont_sn",
+            "customer",
+            "olt",
+            "pon_port",
+            "odp",
+            "rx_dbm",
+            "tx_dbm",
+            "status",
+            "saran",
+            "last_checked",
+            "source",
+            "mute_alarm",
+            "mute_until",
+            "mute_reason",
+        ]
+    )
     for o in rows:
-        status, _, advice, _need = fiber_eval(o.get("rx_power"), o.get("tx_power"), _th_for_ont(o))
-        w.writerow([_csv_safe(o.get("ont_sn")), _csv_safe(o.get("customer")),
-                    _csv_safe(o.get("olt_name")), _csv_safe(o.get("pon_port")),
-                    _csv_safe(o.get("odp_name")), o.get("rx_power"), o.get("tx_power"),
-                    status, _csv_safe(advice), _csv_safe(o.get("last_checked")),
-                    _csv_safe(o.get("source")), o.get("mute_alarm") or 0,
-                    _csv_safe(o.get("mute_until")), _csv_safe(o.get("mute_reason"))])
+        status, _, advice, _need = fiber_eval(
+            o.get("rx_power"), o.get("tx_power"), _th_for_ont(o)
+        )
+        w.writerow(
+            [
+                _csv_safe(o.get("ont_sn")),
+                _csv_safe(o.get("customer")),
+                _csv_safe(o.get("olt_name")),
+                _csv_safe(o.get("pon_port")),
+                _csv_safe(o.get("odp_name")),
+                o.get("rx_power"),
+                o.get("tx_power"),
+                status,
+                _csv_safe(advice),
+                _csv_safe(o.get("last_checked")),
+                _csv_safe(o.get("source")),
+                o.get("mute_alarm") or 0,
+                _csv_safe(o.get("mute_until")),
+                _csv_safe(o.get("mute_reason")),
+            ]
+        )
     try:
         audit(current_user.username, "fiber.export", f"rows={len(rows)}")
     except Exception:
         pass
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=fiber_redaman.csv"})
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=fiber_redaman.csv"},
+    )
 
 
 @app.route("/api/fiber/import", methods=["POST"])
@@ -5787,8 +7028,15 @@ def api_fiber_import():
     alarm tetap tampil di triggers dan telegram dikirim saat ada perubahan
     berikutnya.
     """
-    mode = ((request.form.get("mode") if request.form else None)
-            or request.args.get("mode") or "skip").strip().lower()
+    mode = (
+        (
+            (request.form.get("mode") if request.form else None)
+            or request.args.get("mode")
+            or "skip"
+        )
+        .strip()
+        .lower()
+    )
     if mode not in ("skip", "upsert", "update"):
         return jsonify({"error": "mode harus 'skip' atau 'upsert'"}), 400
     do_upsert = mode in ("upsert", "update")
@@ -5806,7 +7054,9 @@ def api_fiber_import():
         return jsonify({"error": "File harus CSV UTF-8"}), 400
     try:
         reader = csv.DictReader(io.StringIO(text))
-        if not reader.fieldnames or "ont_sn" not in [h.strip() for h in reader.fieldnames]:
+        if not reader.fieldnames or "ont_sn" not in [
+            h.strip() for h in reader.fieldnames
+        ]:
             return jsonify({"error": "Header CSV harus memuat kolom 'ont_sn'"}), 400
         rows = [r for _, r in zip(range(501), reader)]
     except Exception:
@@ -5817,13 +7067,20 @@ def api_fiber_import():
         conn, c = get_db()
         try:
             for i, r in enumerate(rows, start=2):
-                vals, err = _validate_fiber({k.strip(): (v.strip() if isinstance(v, str) else v)
-                                             for k, v in (r or {}).items() if k})
+                vals, err = _validate_fiber(
+                    {
+                        k.strip(): (v.strip() if isinstance(v, str) else v)
+                        for k, v in (r or {}).items()
+                        if k
+                    }
+                )
                 if err:
                     errors.append(f"baris {i}: {err}")
                     continue
                 try:
-                    c.execute("SELECT id FROM fiber_onts WHERE ont_sn=?", (vals["ont_sn"],))
+                    c.execute(
+                        "SELECT id FROM fiber_onts WHERE ont_sn=?", (vals["ont_sn"],)
+                    )
                     existing = c.fetchone()
                     if existing:
                         if not do_upsert:
@@ -5831,70 +7088,136 @@ def api_fiber_import():
                             continue
                         fid = existing["id"]
                         # merge: hanya sel terisi yang menimpa nilai lama
-                        raw = {(k.strip() if isinstance(k, str) else k): v
-                               for k, v in (r or {}).items() if k}
+                        raw = {
+                            (k.strip() if isinstance(k, str) else k): v
+                            for k, v in (r or {}).items()
+                            if k
+                        }
                         c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,))
                         cur = dict(c.fetchone())
                         merged = dict(vals)
-                        for _f in ("customer", "olt_name", "pon_port", "odp_name",
-                                   "rx_power", "tx_power", "source", "mute_alarm",
-                                   "mute_until", "mute_reason", "rx_warn", "rx_crit",
-                                   "ont_index"):
+                        for _f in (
+                            "customer",
+                            "olt_name",
+                            "pon_port",
+                            "odp_name",
+                            "rx_power",
+                            "tx_power",
+                            "source",
+                            "mute_alarm",
+                            "mute_until",
+                            "mute_reason",
+                            "rx_warn",
+                            "rx_crit",
+                            "ont_index",
+                        ):
                             _rv = raw.get(_f)
-                            if _rv is None or (isinstance(_rv, str) and not _rv.strip()):
+                            if _rv is None or (
+                                isinstance(_rv, str) and not _rv.strip()
+                            ):
                                 merged[_f] = cur.get(_f)
                         # normalisasi ulang tipe merge sisa DB (mute_until dkk.)
                         if merged.get("mute_until"):
                             try:
                                 _dt = _parse_maint_time(str(merged["mute_until"]))
-                                merged["mute_until"] = _fmt_maint_time(_dt) if _dt else ""
+                                merged["mute_until"] = (
+                                    _fmt_maint_time(_dt) if _dt else ""
+                                )
                             except Exception:
                                 merged["mute_until"] = cur.get("mute_until") or ""
                         # last_seen maju hanya bila CSV membawa pengukuran baru
                         _raw_rx = raw.get("rx_power")
                         _raw_tx = raw.get("tx_power")
                         _has_new_meas = (
-                            (_raw_rx is not None and not (isinstance(_raw_rx, str) and not _raw_rx.strip()))
-                            or (_raw_tx is not None and not (isinstance(_raw_tx, str) and not _raw_tx.strip()))
+                            _raw_rx is not None
+                            and not (isinstance(_raw_rx, str) and not _raw_rx.strip())
+                        ) or (
+                            _raw_tx is not None
+                            and not (isinstance(_raw_tx, str) and not _raw_tx.strip())
                         )
-                        merged["last_seen"] = now if _has_new_meas else (cur.get("last_seen") or None)
-                        has_meas = (merged["rx_power"] is not None or merged["tx_power"] is not None)
-                        status, _, _, _ = fiber_eval(merged["rx_power"], merged["tx_power"],
-                                                     _th_for_ont(merged))
-                        c.execute("""UPDATE fiber_onts SET customer=?, olt_name=?, pon_port=?, odp_name=?,
+                        merged["last_seen"] = (
+                            now if _has_new_meas else (cur.get("last_seen") or None)
+                        )
+                        has_meas = (
+                            merged["rx_power"] is not None
+                            or merged["tx_power"] is not None
+                        )
+                        status, _, _, _ = fiber_eval(
+                            merged["rx_power"], merged["tx_power"], _th_for_ont(merged)
+                        )
+                        c.execute(
+                            """UPDATE fiber_onts SET customer=?, olt_name=?, pon_port=?, odp_name=?,
                                      rx_power=?, tx_power=?, status=?, last_checked=?, source=?,
                                      updated_at=?, mute_alarm=?, mute_until=?, mute_reason=?,
                                      rx_warn=?, rx_crit=?, ont_index=?, last_seen=? WHERE id=?""",
-                                  (merged["customer"], merged["olt_name"], merged["pon_port"],
-                                   merged["odp_name"], merged["rx_power"], merged["tx_power"], status,
-                                   now if has_meas else None, merged["source"], now,
-                                   merged["mute_alarm"], merged["mute_until"], merged["mute_reason"],
-                                   merged["rx_warn"], merged["rx_crit"], merged["ont_index"],
-                                   merged["last_seen"], fid))
+                            (
+                                merged["customer"],
+                                merged["olt_name"],
+                                merged["pon_port"],
+                                merged["odp_name"],
+                                merged["rx_power"],
+                                merged["tx_power"],
+                                status,
+                                now if has_meas else None,
+                                merged["source"],
+                                now,
+                                merged["mute_alarm"],
+                                merged["mute_until"],
+                                merged["mute_reason"],
+                                merged["rx_warn"],
+                                merged["rx_crit"],
+                                merged["ont_index"],
+                                merged["last_seen"],
+                                fid,
+                            ),
+                        )
                         if has_meas:
-                            c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                                      (fid, merged["rx_power"], merged["tx_power"], now))
+                            c.execute(
+                                "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                                (fid, merged["rx_power"], merged["tx_power"], now),
+                            )
                         fiber_alarm_memory[fid] = status
                         updated += 1
                         continue
-                    status, _, _, _ = fiber_eval(vals["rx_power"], vals["tx_power"],
-                                                 _th_for_ont(vals))
-                    has_meas_imp = (vals["rx_power"] is not None or vals["tx_power"] is not None)
-                    c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                    status, _, _, _ = fiber_eval(
+                        vals["rx_power"], vals["tx_power"], _th_for_ont(vals)
+                    )
+                    has_meas_imp = (
+                        vals["rx_power"] is not None or vals["tx_power"] is not None
+                    )
+                    c.execute(
+                        """INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
                                rx_power,tx_power,status,last_checked,source,created_at,updated_at,
                                mute_alarm,mute_until,mute_reason,rx_warn,rx_crit,ont_index,last_seen)
                                VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?)""",
-                              (vals["ont_sn"], vals["customer"], vals["olt_name"], vals["pon_port"],
-                               vals["odp_name"], vals["rx_power"], vals["tx_power"], status,
-                               now if has_meas_imp else None,
-                               vals["source"], now, now,
-                               vals["mute_alarm"], vals["mute_until"], vals["mute_reason"],
-                               vals["rx_warn"], vals["rx_crit"], vals["ont_index"],
-                               now if has_meas_imp else None))
+                        (
+                            vals["ont_sn"],
+                            vals["customer"],
+                            vals["olt_name"],
+                            vals["pon_port"],
+                            vals["odp_name"],
+                            vals["rx_power"],
+                            vals["tx_power"],
+                            status,
+                            now if has_meas_imp else None,
+                            vals["source"],
+                            now,
+                            now,
+                            vals["mute_alarm"],
+                            vals["mute_until"],
+                            vals["mute_reason"],
+                            vals["rx_warn"],
+                            vals["rx_crit"],
+                            vals["ont_index"],
+                            now if has_meas_imp else None,
+                        ),
+                    )
                     fid = c.lastrowid
                     if vals["rx_power"] is not None or vals["tx_power"] is not None:
-                        c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
-                                  (fid, vals["rx_power"], vals["tx_power"], now))
+                        c.execute(
+                            "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp) VALUES (?,?,?,?)",
+                            (fid, vals["rx_power"], vals["tx_power"], now),
+                        )
                     fiber_alarm_memory[fid] = status
                     created += 1
                 except sqlite3.IntegrityError:
@@ -5905,11 +7228,22 @@ def api_fiber_import():
         finally:
             conn.close()
     try:
-        audit(current_user.username, "fiber.import", f"created={created} updated={updated} skipped={skipped}")
+        audit(
+            current_user.username,
+            "fiber.import",
+            f"created={created} updated={updated} skipped={skipped}",
+        )
     except Exception:
         pass
-    return jsonify({"status": "success", "created": created, "updated": updated,
-                    "skipped": skipped, "errors": errors[:20]})
+    return jsonify(
+        {
+            "status": "success",
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors[:20],
+        }
+    )
 
 
 # ---------------- ODP (agregasi ONT per ODP) ----------------
@@ -5944,11 +7278,14 @@ def _validate_odp(d):
     lat, lon, err = _parse_latlon(d)
     if err:
         return None, err
-    return {"name": name,
-            "olt_name": str(d.get("olt_name") or "").strip()[:100],
-            "capacity": capacity,
-            "location": str(d.get("location") or "").strip()[:100],
-            "lat": lat, "lon": lon}, None
+    return {
+        "name": name,
+        "olt_name": str(d.get("olt_name") or "").strip()[:100],
+        "capacity": capacity,
+        "location": str(d.get("location") or "").strip()[:100],
+        "lat": lat,
+        "lon": lon,
+    }, None
 
 
 def _odp_aggregation():
@@ -5961,7 +7298,9 @@ def _odp_aggregation():
         except sqlite3.OperationalError:
             return []
         try:
-            c.execute("SELECT odp_name, rx_power, tx_power, rx_warn, rx_crit, last_seen, source FROM fiber_onts")
+            c.execute(
+                "SELECT odp_name, rx_power, tx_power, rx_warn, rx_crit, last_seen, source FROM fiber_onts"
+            )
             onts = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
             onts = []
@@ -5971,33 +7310,75 @@ def _odp_aggregation():
         except Exception:
             pass
     known = {o["name"].lower(): o["name"] for o in odps}
-    buckets = {o["name"]: {"total": 0, "normal": 0, "warning": 0,
-                            "critical": 0, "overload": 0, "stale": 0, "unknown": 0} for o in odps}
-    buckets[""] = {"total": 0, "normal": 0, "warning": 0,
-                   "critical": 0, "overload": 0, "stale": 0, "unknown": 0}
+    buckets = {
+        o["name"]: {
+            "total": 0,
+            "normal": 0,
+            "warning": 0,
+            "critical": 0,
+            "overload": 0,
+            "stale": 0,
+            "unknown": 0,
+        }
+        for o in odps
+    }
+    buckets[""] = {
+        "total": 0,
+        "normal": 0,
+        "warning": 0,
+        "critical": 0,
+        "overload": 0,
+        "stale": 0,
+        "unknown": 0,
+    }
     for t in onts:
         # cocokkan ODP tanpa peduli kapital agar salah ketik tidak yatim
         key = known.get((t.get("odp_name") or "").strip().lower(), "")
-        status, _, _, _ = fiber_eval(t.get("rx_power"), t.get("tx_power"), _th_for_ont(t))
+        status, _, _, _ = fiber_eval(
+            t.get("rx_power"), t.get("tx_power"), _th_for_ont(t)
+        )
         if status in ("normal", "warning", "unknown") and _fiber_stale_info(t)[0]:
             status = "stale"
         b = buckets[key]
         b["total"] += 1
         b[status if status in b else "unknown"] += 1
-    rank = {"critical": 4, "overload": 3, "warning": 2, "stale": 2, "unknown": 1, "normal": 0}
+    rank = {
+        "critical": 4,
+        "overload": 3,
+        "warning": 2,
+        "stale": 2,
+        "unknown": 1,
+        "normal": 0,
+    }
     out = []
     for o in odps:
         b = buckets[o["name"]]
-        worst = max((k for k in b if k != "total" and b[k] > 0),
-                    key=lambda k: rank.get(k, 0), default="normal")
+        worst = max(
+            (k for k in b if k != "total" and b[k] > 0),
+            key=lambda k: rank.get(k, 0),
+            default="normal",
+        )
         fill = round(b["total"] / o["capacity"] * 100, 1) if o["capacity"] else 0
         out.append({**o, **b, "worst": worst, "fill_pct": fill})
     unb = buckets[""]
     if unb["total"]:
-        worst = max((k for k in unb if k != "total" and unb[k] > 0),
-                    key=lambda k: rank.get(k, 0), default="normal")
-        out.append({"id": 0, "name": "(tanpa ODP)", "olt_name": "", "capacity": 0,
-                    "location": "", **unb, "worst": worst, "fill_pct": 0})
+        worst = max(
+            (k for k in unb if k != "total" and unb[k] > 0),
+            key=lambda k: rank.get(k, 0),
+            default="normal",
+        )
+        out.append(
+            {
+                "id": 0,
+                "name": "(tanpa ODP)",
+                "olt_name": "",
+                "capacity": 0,
+                "location": "",
+                **unb,
+                "worst": worst,
+                "fill_pct": 0,
+            }
+        )
     return out
 
 
@@ -6020,10 +7401,20 @@ def api_odp_create():
         conn.close()
         return jsonify({"error": "Nama ODP sudah terdaftar"}), 400
     try:
-        c.execute("INSERT INTO odps (name, olt_name, capacity, location, lat, lon, created_at, updated_at)"
-                  " VALUES (?,?,?,?,?,?,?,?)",
-                  (vals["name"], vals["olt_name"], vals["capacity"],
-                   vals["location"], vals["lat"], vals["lon"], now, now))
+        c.execute(
+            "INSERT INTO odps (name, olt_name, capacity, location, lat, lon, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (
+                vals["name"],
+                vals["olt_name"],
+                vals["capacity"],
+                vals["location"],
+                vals["lat"],
+                vals["lon"],
+                now,
+                now,
+            ),
+        )
         nid = c.lastrowid
         conn.commit()
     except sqlite3.IntegrityError:
@@ -6054,20 +7445,34 @@ def api_odp_update(oid):
     if not old:
         conn.close()
         return jsonify({"error": "ODP tidak ditemukan"}), 404
-    c.execute("SELECT id FROM odps WHERE name COLLATE NOCASE = ? AND id != ?",
-              (vals["name"], oid))
+    c.execute(
+        "SELECT id FROM odps WHERE name COLLATE NOCASE = ? AND id != ?",
+        (vals["name"], oid),
+    )
     if c.fetchone():
         conn.close()
         return jsonify({"error": "Nama ODP dipakai data lain"}), 400
     try:
-        c.execute("UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, lat=?, lon=?, updated_at=? WHERE id=?",
-                  (vals["name"], vals["olt_name"], vals["capacity"],
-                   vals["location"], vals["lat"], vals["lon"], now, oid))
+        c.execute(
+            "UPDATE odps SET name=?, olt_name=?, capacity=?, location=?, lat=?, lon=?, updated_at=? WHERE id=?",
+            (
+                vals["name"],
+                vals["olt_name"],
+                vals["capacity"],
+                vals["location"],
+                vals["lat"],
+                vals["lon"],
+                now,
+                oid,
+            ),
+        )
         # ONT yang menunjuk nama lama ikut pindah (case-insensitive,
         # selaras dengan agregasi yang mencocokkan tanpa peduli kapital)
         if old["name"].lower() != vals["name"].lower():
-            c.execute("UPDATE fiber_onts SET odp_name=? WHERE odp_name COLLATE NOCASE = ?",
-                      (vals["name"], old["name"]))
+            c.execute(
+                "UPDATE fiber_onts SET odp_name=? WHERE odp_name COLLATE NOCASE = ?",
+                (vals["name"], old["name"]),
+            )
         conn.commit()
     except sqlite3.IntegrityError:
         try:
@@ -6095,7 +7500,10 @@ def api_odp_delete(oid):
         return jsonify({"error": "ODP tidak ditemukan"}), 404
     c.execute("DELETE FROM odps WHERE id=?", (oid,))
     # ONT yatim: kosongkan referensi (data ONT tetap aman, case-insensitive)
-    c.execute("UPDATE fiber_onts SET odp_name='' WHERE odp_name COLLATE NOCASE = ?", (row["name"],))
+    c.execute(
+        "UPDATE fiber_onts SET odp_name='' WHERE odp_name COLLATE NOCASE = ?",
+        (row["name"],),
+    )
     conn.commit()
     conn.close()
     try:
@@ -6117,21 +7525,28 @@ OLT_VENDOR_PRESETS = {
     "zte": {
         "rx_base": "1.3.6.1.4.1.3902.1012.3.50.12.1.1.10",
         "tx_base": "1.3.6.1.4.1.3902.1012.3.50.12.1.1.14",
-        "div": 1.0, "scale": 0.002, "offset": -30.0,
+        "div": 1.0,
+        "scale": 0.002,
+        "offset": -30.0,
         "note": "ZTE C300/C320. ont_index = sufiks hasil walk "
-                "(<ponIfIndex>.<onuIdx>[.1]), mis. 268501248.5.1. "
-                "Tx kolom .14 mengikuti encoding yang sama — verifikasi via tombol Test.",
+        "(<ponIfIndex>.<onuIdx>[.1]), mis. 268501248.5.1. "
+        "Tx kolom .14 mengikuti encoding yang sama — verifikasi via tombol Test.",
     },
     "huawei": {
         "rx_base": "1.3.6.1.4.1.2011.6.128.1.1.2.51.1.4",
         "tx_base": "",
-        "div": 1.0, "scale": 0.01, "offset": -100.0,
+        "div": 1.0,
+        "scale": 0.01,
+        "offset": -100.0,
         "note": "Huawei MA5600T/MA5800 (rumus (raw-10000)/100). "
-                "Tx ONT tidak tersedia di tabel ini — kosongkan (pantau Rx saja).",
+        "Tx ONT tidak tersedia di tabel ini — kosongkan (pantau Rx saja).",
     },
     "generic": {
-        "rx_base": "", "tx_base": "",
-        "div": 100.0, "scale": 1.0, "offset": 0.0,
+        "rx_base": "",
+        "tx_base": "",
+        "div": 100.0,
+        "scale": 1.0,
+        "offset": 0.0,
         "note": "",
     },
 }
@@ -6206,9 +7621,19 @@ def _validate_olt(d):
     lat, lon, err = _parse_latlon(d)
     if err:
         return None, err
-    return {"name": name, "ip": ip, "community": community, "vendor": vendor,
-            "rx_base": rx_base, "tx_base": tx_base, "div": div,
-            "scale": scale, "offset": offset, "lat": lat, "lon": lon}, None
+    return {
+        "name": name,
+        "ip": ip,
+        "community": community,
+        "vendor": vendor,
+        "rx_base": rx_base,
+        "tx_base": tx_base,
+        "div": div,
+        "scale": scale,
+        "offset": offset,
+        "lat": lat,
+        "lon": lon,
+    }, None
 
 
 def _apply_olt_preset(vals, raw_data):
@@ -6241,8 +7666,10 @@ def api_olt_list():
     conn, c = get_db()
     try:
         try:
-            c.execute("SELECT id, name, ip, vendor, rx_base, tx_base, div, scale, offset, lat, lon,"
-                      " last_tested, last_test_ok, last_test_msg FROM olts ORDER BY name ASC")
+            c.execute(
+                "SELECT id, name, ip, vendor, rx_base, tx_base, div, scale, offset, lat, lon,"
+                " last_tested, last_test_ok, last_test_msg FROM olts ORDER BY name ASC"
+            )
             rows = [dict(r) for r in c.fetchall()]
         except sqlite3.OperationalError:
             rows = []
@@ -6269,12 +7696,26 @@ def api_olt_create():
         if c.fetchone():
             return jsonify({"error": "Nama OLT sudah terdaftar"}), 400
         try:
-            c.execute("INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div,"
-                      " scale, offset, lat, lon, created_at, updated_at)"
-                      " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (vals["name"], vals["ip"], vals["community"], vals["vendor"],
-                       vals["rx_base"], vals["tx_base"], vals["div"],
-                       vals["scale"], vals["offset"], vals["lat"], vals["lon"], now, now))
+            c.execute(
+                "INSERT INTO olts (name, ip, community, vendor, rx_base, tx_base, div,"
+                " scale, offset, lat, lon, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    vals["name"],
+                    vals["ip"],
+                    vals["community"],
+                    vals["vendor"],
+                    vals["rx_base"],
+                    vals["tx_base"],
+                    vals["div"],
+                    vals["scale"],
+                    vals["offset"],
+                    vals["lat"],
+                    vals["lon"],
+                    now,
+                    now,
+                ),
+            )
             nid = c.lastrowid
             conn.commit()
         except sqlite3.IntegrityError:
@@ -6311,19 +7752,37 @@ def api_olt_update(oid):
         # community tak pernah dikirim balik ke UI; kosong = pertahankan lama
         if not vals["community"] and old["community"]:
             vals["community"] = old["community"]
-        c.execute("SELECT id FROM olts WHERE name COLLATE NOCASE = ? AND id != ?",
-                  (vals["name"], oid))
+        c.execute(
+            "SELECT id FROM olts WHERE name COLLATE NOCASE = ? AND id != ?",
+            (vals["name"], oid),
+        )
         if c.fetchone():
             return jsonify({"error": "Nama OLT dipakai data lain"}), 400
         try:
-            c.execute("UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?,"
-                      " div=?, scale=?, offset=?, lat=?, lon=?, updated_at=? WHERE id=?",
-                      (vals["name"], vals["ip"], vals["community"], vals["vendor"],
-                       vals["rx_base"], vals["tx_base"], vals["div"],
-                       vals["scale"], vals["offset"], vals["lat"], vals["lon"], now, oid))
+            c.execute(
+                "UPDATE olts SET name=?, ip=?, community=?, vendor=?, rx_base=?, tx_base=?,"
+                " div=?, scale=?, offset=?, lat=?, lon=?, updated_at=? WHERE id=?",
+                (
+                    vals["name"],
+                    vals["ip"],
+                    vals["community"],
+                    vals["vendor"],
+                    vals["rx_base"],
+                    vals["tx_base"],
+                    vals["div"],
+                    vals["scale"],
+                    vals["offset"],
+                    vals["lat"],
+                    vals["lon"],
+                    now,
+                    oid,
+                ),
+            )
             if old["name"].lower() != vals["name"].lower():
-                c.execute("UPDATE fiber_onts SET olt_name=? WHERE olt_name COLLATE NOCASE = ?",
-                          (vals["name"], old["name"]))
+                c.execute(
+                    "UPDATE fiber_onts SET olt_name=? WHERE olt_name COLLATE NOCASE = ?",
+                    (vals["name"], old["name"]),
+                )
             conn.commit()
         except sqlite3.IntegrityError:
             try:
@@ -6369,7 +7828,9 @@ def api_olt_delete(oid):
 @app.route("/api/olts/presets", methods=["GET"])
 @api_login_required
 def api_olt_presets():
-    return jsonify({k: {kk: vv for kk, vv in v.items()} for k, v in OLT_VENDOR_PRESETS.items()})
+    return jsonify(
+        {k: {kk: vv for kk, vv in v.items()} for k, v in OLT_VENDOR_PRESETS.items()}
+    )
 
 
 def _olt_test_connection(olt, timeout=3.0):
@@ -6379,11 +7840,19 @@ def _olt_test_connection(olt, timeout=3.0):
     rx/tx berisi {ok, oid, index, raw, dbm} atau None bila base tak diisi.
     """
     import time as _t
+
     t0 = _t.time()
     ip = (olt.get("ip") or "").strip()
     comm = (olt.get("community") or "").strip()
-    res: dict = {"reachable": False, "sysup_s": None, "rx": None, "tx": None,
-           "ok": False, "message": "", "elapsed_ms": 0}
+    res: dict = {
+        "reachable": False,
+        "sysup_s": None,
+        "rx": None,
+        "tx": None,
+        "ok": False,
+        "message": "",
+        "elapsed_ms": 0,
+    }
     if not ip or not comm:
         res["message"] = "IP/community OLT belum diisi"
         return res
@@ -6402,8 +7871,10 @@ def _olt_test_connection(olt, timeout=3.0):
         res["sysup_s"] = round(vals[0] / 100.0, 1)
     except (ValueError, TypeError):
         pass
-    for key, base in (("rx", (olt.get("rx_base") or "").strip().strip(".")),
-                      ("tx", (olt.get("tx_base") or "").strip().strip("."))):
+    for key, base in (
+        ("rx", (olt.get("rx_base") or "").strip().strip(".")),
+        ("tx", (olt.get("tx_base") or "").strip().strip(".")),
+    ):
         if not _valid_oid(base):
             continue
         try:
@@ -6413,15 +7884,20 @@ def _olt_test_connection(olt, timeout=3.0):
         if not oid:
             res[key] = {"ok": False, "error": "OID tak menjawab — cek rx/tx_base"}
             continue
-        suffix = oid[len(base):].lstrip(".")
+        suffix = oid[len(base) :].lstrip(".")
         raw = ival
         if raw is None and sval not in (None, ""):
             try:
                 raw = float(sval)
             except (ValueError, TypeError):
                 raw = None
-        res[key] = {"ok": raw is not None, "oid": oid, "index": suffix, "raw": raw,
-                    "dbm": _olt_raw_to_dbm(raw, olt) if raw is not None else None}
+        res[key] = {
+            "ok": raw is not None,
+            "oid": oid,
+            "index": suffix,
+            "raw": raw,
+            "dbm": _olt_raw_to_dbm(raw, olt) if raw is not None else None,
+        }
     res["elapsed_ms"] = int((_t.time() - t0) * 1000)
     bases = [k for k in ("rx", "tx") if res.get(k) is not None]
     if not bases:
@@ -6432,8 +7908,11 @@ def _olt_test_connection(olt, timeout=3.0):
         parts = []
         for k in bases:
             e: dict = res[k]
-            parts.append(f"{k}={e.get('dbm')}dBm(idx {e.get('index')})" if e.get("ok")
-                         else f"{k} gagal")
+            parts.append(
+                f"{k}={e.get('dbm')}dBm(idx {e.get('index')})"
+                if e.get("ok")
+                else f"{k} gagal"
+            )
         res["message"] = f"terjangkau (up {res['sysup_s']}s); " + ", ".join(parts)
     else:
         res["message"] = "terjangkau, tapi OID Rx/Tx tak menjawab — cek rx/tx_base"
@@ -6460,8 +7939,10 @@ def api_olt_test(oid):
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("UPDATE olts SET last_tested=?, last_test_ok=?, last_test_msg=? WHERE id=?",
-                      (now, 1 if res["ok"] else 0, res["message"][:200], oid))
+            c.execute(
+                "UPDATE olts SET last_tested=?, last_test_ok=?, last_test_msg=? WHERE id=?",
+                (now, 1 if res["ok"] else 0, res["message"][:200], oid),
+            )
             _commit_with_retry(conn)
         finally:
             try:
@@ -6472,7 +7953,9 @@ def api_olt_test(oid):
         audit(current_user.username, "olt.test", f"{olt['name']} ok={res['ok']}")
     except Exception:
         pass
-    return jsonify({**res, "olt": {"id": olt["id"], "name": olt["name"]}, "tested_at": now})
+    return jsonify(
+        {**res, "olt": {"id": olt["id"], "name": olt["name"]}, "tested_at": now}
+    )
 
 
 def _discover_sn(olt_name, suffix):
@@ -6503,7 +7986,12 @@ def api_olt_discover(oid):
     except (ValueError, TypeError):
         return jsonify({"error": "limit harus angka 1-256"}), 400
     limit = max(1, min(limit, 256))
-    do_update = str(data.get("update", "1")).strip().lower() not in ("0", "false", "tidak", "no")
+    do_update = str(data.get("update", "1")).strip().lower() not in (
+        "0",
+        "false",
+        "tidak",
+        "no",
+    )
     conn, c = get_db()
     try:
         c.execute("SELECT * FROM olts WHERE id=?", (oid,))
@@ -6523,7 +8011,14 @@ def api_olt_discover(oid):
     if not ip or not comm:
         return jsonify({"error": "IP/community OLT belum diisi"}), 400
     if not _valid_oid(base_rx):
-        return jsonify({"error": "rx_base belum diisi — pilih preset vendor dulu atau isi manual"}), 400
+        return (
+            jsonify(
+                {
+                    "error": "rx_base belum diisi — pilih preset vendor dulu atau isi manual"
+                }
+            ),
+            400,
+        )
     try:
         up = _snmp_get(ip, comm, [SYSUP_OID], timeout=3.0)
     except Exception as e:
@@ -6536,7 +8031,7 @@ def api_olt_discover(oid):
         return jsonify({"error": f"walk gagal: {e}"}), 502
     suffixes, rx_map = [], {}
     for woid, _tag, ival, sval in walked or []:
-        suffix = (woid or "")[len(base_rx):].lstrip(".")
+        suffix = (woid or "")[len(base_rx) :].lstrip(".")
         if not suffix:
             continue
         raw = ival
@@ -6553,9 +8048,11 @@ def api_olt_discover(oid):
     tx_map = {}
     if _valid_oid(base_tx) and suffixes:
         for i in range(0, len(suffixes), 25):
-            chunk = suffixes[i:i + 25]
+            chunk = suffixes[i : i + 25]
             try:
-                tvals = _snmp_get(ip, comm, [base_tx + "." + s for s in chunk], timeout=4.0)
+                tvals = _snmp_get(
+                    ip, comm, [base_tx + "." + s for s in chunk], timeout=4.0
+                )
             except Exception:
                 tvals = [None] * len(chunk)
             for sfx, v in zip(chunk, tvals or []):
@@ -6569,8 +8066,10 @@ def api_olt_discover(oid):
     with db_lock:
         conn, c = get_db()
         try:
-            c.execute("SELECT id, source, ont_index FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
-                      (olt["name"],))
+            c.execute(
+                "SELECT id, source, ont_index FROM fiber_onts WHERE olt_name COLLATE NOCASE = ?",
+                (olt["name"],),
+            )
             existing = {}
             for r in c.fetchall():
                 idx = (r["ont_index"] or "").strip()
@@ -6588,51 +8087,102 @@ def api_olt_discover(oid):
                     if not do_update:
                         skipped += 1
                         continue
-                    c.execute("UPDATE fiber_onts SET rx_power=?, tx_power=?, status=?,"
-                              " last_checked=?, last_seen=? WHERE id=?",
-                              (rx_dbm, tx_dbm, status, now, now, ex["id"]))
-                    c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
-                              " VALUES (?,?,?,?)", (ex["id"], rx_dbm, tx_dbm, now))
+                    c.execute(
+                        "UPDATE fiber_onts SET rx_power=?, tx_power=?, status=?,"
+                        " last_checked=?, last_seen=? WHERE id=?",
+                        (rx_dbm, tx_dbm, status, now, now, ex["id"]),
+                    )
+                    c.execute(
+                        "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                        " VALUES (?,?,?,?)",
+                        (ex["id"], rx_dbm, tx_dbm, now),
+                    )
                     fiber_alarm_memory[ex["id"]] = status
                     updated += 1
                     continue
                 sn = _discover_sn(olt["name"], sfx)
                 try:
-                    c.execute("""INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
+                    c.execute(
+                        """INSERT INTO fiber_onts(ont_sn,customer,olt_name,pon_port,odp_name,
                                rx_power,tx_power,status,last_checked,source,created_at,updated_at,
                                mute_alarm,rx_warn,rx_crit,ont_index,last_seen)
                                VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?)""",
-                              (sn, "", olt["name"], "", "", rx_dbm, tx_dbm, status,
-                               now, "snmp", now, now, 0, None, None, sfx, now))
+                        (
+                            sn,
+                            "",
+                            olt["name"],
+                            "",
+                            "",
+                            rx_dbm,
+                            tx_dbm,
+                            status,
+                            now,
+                            "snmp",
+                            now,
+                            now,
+                            0,
+                            None,
+                            None,
+                            sfx,
+                            now,
+                        ),
+                    )
                     nid = c.lastrowid
                 except sqlite3.IntegrityError:
                     skipped += 1
                     continue
-                c.execute("INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
-                          " VALUES (?,?,?,?)", (nid, rx_dbm, tx_dbm, now))
+                c.execute(
+                    "INSERT INTO fiber_history (ont_id, rx_power, tx_power, timestamp)"
+                    " VALUES (?,?,?,?)",
+                    (nid, rx_dbm, tx_dbm, now),
+                )
                 fiber_alarm_memory[nid] = status
                 created += 1
             _commit_with_retry(conn)
         finally:
             conn.close()
     try:
-        audit(current_user.username, "olt.discover",
-              f"{olt['name']} created={created} updated={updated}")
+        audit(
+            current_user.username,
+            "olt.discover",
+            f"{olt['name']} created={created} updated={updated}",
+        )
     except Exception:
         pass
-    return jsonify({"status": "success", "olt": olt["name"], "walked": len(suffixes),
-                    "created": created, "updated": updated,
-                    "skipped_manual": skipped_manual, "skipped": skipped})
+    return jsonify(
+        {
+            "status": "success",
+            "olt": olt["name"],
+            "walked": len(suffixes),
+            "created": created,
+            "updated": updated,
+            "skipped_manual": skipped_manual,
+            "skipped": skipped,
+        }
+    )
 
 
-_TOPO_RANK = {"critical": 5, "overload": 4, "warning": 3, "stale": 2,
-              "unknown": 1, "normal": 0}
+_TOPO_RANK = {
+    "critical": 5,
+    "overload": 4,
+    "warning": 3,
+    "stale": 2,
+    "unknown": 1,
+    "normal": 0,
+}
 
 
 def _topo_counts(members):
     """(counts, worst) untuk sekelompok ONT yang sudah punya _status."""
-    counts = {"total": len(members), "normal": 0, "warning": 0, "critical": 0,
-              "overload": 0, "stale": 0, "unknown": 0}
+    counts = {
+        "total": len(members),
+        "normal": 0,
+        "warning": 0,
+        "critical": 0,
+        "overload": 0,
+        "stale": 0,
+        "unknown": 0,
+    }
     worst, rank = "normal", -1
     for m in members:
         st = m.get("_status", "unknown")
@@ -6685,7 +8235,9 @@ def api_fiber_topology():
         raw_olt = (d.get("olt_name") or "").strip()
         canon = olt_by_key.get(raw_olt.lower())
         name = (canon.get("name") if canon else raw_olt) or ""
-        odp_groups.setdefault(name.strip().lower(), {"display": name, "items": []})["items"].append(d)
+        odp_groups.setdefault(name.strip().lower(), {"display": name, "items": []})[
+            "items"
+        ].append(d)
     ont_groups = {}
     for o in onts:
         raw_olt = (o.get("olt_name") or "").strip()
@@ -6695,68 +8247,134 @@ def api_fiber_topology():
         ont_groups.setdefault((dkey, pkey), []).append(o)
 
     def _ont_node(o):
-        return {"id": o["id"], "ont_sn": o.get("ont_sn"), "customer": o.get("customer"),
-                "pon_port": o.get("pon_port"), "rx_power": o.get("rx_power"),
-                "tx_power": o.get("tx_power"), "status": o.get("_status", "unknown")}
+        return {
+            "id": o["id"],
+            "ont_sn": o.get("ont_sn"),
+            "customer": o.get("customer"),
+            "pon_port": o.get("pon_port"),
+            "rx_power": o.get("rx_power"),
+            "tx_power": o.get("tx_power"),
+            "status": o.get("_status", "unknown"),
+        }
 
     def _sorted_onts(items):
-        return sorted((_ont_node(o) for o in items),
-                      key=lambda x: (-_TOPO_RANK.get(x["status"], 0),
-                                     x["rx_power"] if x["rx_power"] is not None else 99,
-                                     x["id"]))
+        return sorted(
+            (_ont_node(o) for o in items),
+            key=lambda x: (
+                -_TOPO_RANK.get(x["status"], 0),
+                x["rx_power"] if x["rx_power"] is not None else 99,
+                x["id"],
+            ),
+        )
 
     out = []
     reg_keys = [(o.get("name") or "").strip().lower() for o in olts]
-    wild_keys = sorted({k for k in list(odp_groups) + [dk for dk, _ in ont_groups]
-                        if k not in reg_keys})
+    wild_keys = sorted(
+        {
+            k
+            for k in list(odp_groups) + [dk for dk, _ in ont_groups]
+            if k not in reg_keys
+        }
+    )
     for dkey in reg_keys + wild_keys:
         canon = olt_by_key.get(dkey)
-        display = (canon.get("name") if canon
-                   else odp_groups.get(dkey, {}).get("display") or "")
+        display = (
+            canon.get("name")
+            if canon
+            else odp_groups.get(dkey, {}).get("display") or ""
+        )
         if not display:
             display = "(tanpa OLT)"
-        olt_info = ({"id": canon["id"], "name": canon.get("name"), "ip": canon.get("ip"),
-                     "vendor": canon.get("vendor"), "lat": canon.get("lat"),
-                     "lon": canon.get("lon")} if canon else None)
+        olt_info = (
+            {
+                "id": canon["id"],
+                "name": canon.get("name"),
+                "ip": canon.get("ip"),
+                "vendor": canon.get("vendor"),
+                "lat": canon.get("lat"),
+                "lon": canon.get("lon"),
+            }
+            if canon
+            else None
+        )
         node_odps, all_onts = [], []
-        for d in sorted(odp_groups.get(dkey, {}).get("items", []),
-                        key=lambda x: (x.get("name") or "").lower()):
+        for d in sorted(
+            odp_groups.get(dkey, {}).get("items", []),
+            key=lambda x: (x.get("name") or "").lower(),
+        ):
             members = ont_groups.pop((dkey, (d.get("name") or "").strip().lower()), [])
             all_onts.extend(members)
             counts, worst = _topo_counts(members)
             cap = d.get("capacity") or 0
-            node_odps.append({
-                "name": d.get("name"), "registered": True,
-                "odp": {"id": d["id"], "name": d.get("name"), "olt_name": d.get("olt_name"),
-                        "capacity": cap, "location": d.get("location"),
-                        "lat": d.get("lat"), "lon": d.get("lon")},
-                "counts": counts, "worst": worst,
-                "fill_pct": round(len(members) / cap * 100, 1) if cap else 0,
-                "onts": _sorted_onts(members),
-            })
+            node_odps.append(
+                {
+                    "name": d.get("name"),
+                    "registered": True,
+                    "odp": {
+                        "id": d["id"],
+                        "name": d.get("name"),
+                        "olt_name": d.get("olt_name"),
+                        "capacity": cap,
+                        "location": d.get("location"),
+                        "lat": d.get("lat"),
+                        "lon": d.get("lon"),
+                    },
+                    "counts": counts,
+                    "worst": worst,
+                    "fill_pct": round(len(members) / cap * 100, 1) if cap else 0,
+                    "onts": _sorted_onts(members),
+                }
+            )
         leftovers = sorted(
-            [(pk, ont_groups.pop((dkey, pk))) for (dk, pk) in
-             [k for k in list(ont_groups) if k[0] == dkey]],
+            [
+                (pk, ont_groups.pop((dkey, pk)))
+                for (dk, pk) in [k for k in list(ont_groups) if k[0] == dkey]
+            ],
             key=lambda t: (t[0] != "", t[0]),
         )
         for pkey, members in leftovers:
             all_onts.extend(members)
-            label = next((o.get("odp_name") or "" for o in members
-                          if (o.get("odp_name") or "").strip()), "")
+            label = next(
+                (
+                    o.get("odp_name") or ""
+                    for o in members
+                    if (o.get("odp_name") or "").strip()
+                ),
+                "",
+            )
             counts, worst = _topo_counts(members)
-            node_odps.append({
-                "name": label.strip() or "(tanpa ODP)", "registered": False,
-                "odp": {"id": 0, "name": label.strip(),
+            node_odps.append(
+                {
+                    "name": label.strip() or "(tanpa ODP)",
+                    "registered": False,
+                    "odp": {
+                        "id": 0,
+                        "name": label.strip(),
                         "olt_name": display if display != "(tanpa OLT)" else "",
-                        "capacity": 0, "location": "", "lat": None, "lon": None},
-                "counts": counts, "worst": worst, "fill_pct": 0,
-                "onts": _sorted_onts(members),
-            })
+                        "capacity": 0,
+                        "location": "",
+                        "lat": None,
+                        "lon": None,
+                    },
+                    "counts": counts,
+                    "worst": worst,
+                    "fill_pct": 0,
+                    "onts": _sorted_onts(members),
+                }
+            )
         if not node_odps and not canon:
             continue
         counts, worst = _topo_counts(all_onts)
-        out.append({"name": display, "registered": bool(canon), "olt": olt_info,
-                    "counts": counts, "worst": worst, "odps": node_odps})
+        out.append(
+            {
+                "name": display,
+                "registered": bool(canon),
+                "olt": olt_info,
+                "counts": counts,
+                "worst": worst,
+                "odps": node_odps,
+            }
+        )
     return jsonify({"olts": out})
 
 
@@ -6784,9 +8402,17 @@ def api_fiber_link_budget():
         return jsonify({"error": str(e)}), 400
     splitters = data.get("splitters") or []
     if not isinstance(splitters, list) or not 1 <= len(splitters) <= 3:
-        return jsonify({"error": "splitters harus list 1-3 tingkat (mis. [\"1:4\",\"1:8\"])"}), 400
+        return (
+            jsonify({"error": 'splitters harus list 1-3 tingkat (mis. ["1:4","1:8"])'}),
+            400,
+        )
     if any(s not in FIBER_SPLITTER_LOSS for s in splitters):
-        return jsonify({"error": f"splitter harus salah satu {sorted(FIBER_SPLITTER_LOSS)}"}), 400
+        return (
+            jsonify(
+                {"error": f"splitter harus salah satu {sorted(FIBER_SPLITTER_LOSS)}"}
+            ),
+            400,
+        )
 
     result = fiber_link_budget(tx, splitters, fiber_km, connectors, splices, margin)
     actual_rx = None
@@ -6799,7 +8425,10 @@ def api_fiber_link_budget():
             return jsonify({"error": "ont_id harus angka"}), 400
         conn, c = get_db()
         try:
-            c.execute("SELECT id, ont_sn, customer, rx_power FROM fiber_onts WHERE id=?", (ont_id,))
+            c.execute(
+                "SELECT id, ont_sn, customer, rx_power FROM fiber_onts WHERE id=?",
+                (ont_id,),
+            )
             row = c.fetchone()
         finally:
             conn.close()
@@ -6808,11 +8437,25 @@ def api_fiber_link_budget():
         ont = {"id": row["id"], "ont_sn": row["ont_sn"], "customer": row["customer"]}
         actual_rx = row["rx_power"]
     verdict, severity, advice = fiber_budget_verdict(result["expected_rx"], actual_rx)
-    return jsonify({**result, "splitters": splitters,
-                    "fiber_km": fiber_km, "connectors": connectors,
-                    "splices": splices, "ont": ont, "actual_rx": actual_rx,
-                    "delta_db": round(actual_rx - result["expected_rx"], 2) if actual_rx is not None else None,
-                    "verdict": verdict, "severity": severity, "advice": advice})
+    return jsonify(
+        {
+            **result,
+            "splitters": splitters,
+            "fiber_km": fiber_km,
+            "connectors": connectors,
+            "splices": splices,
+            "ont": ont,
+            "actual_rx": actual_rx,
+            "delta_db": (
+                round(actual_rx - result["expected_rx"], 2)
+                if actual_rx is not None
+                else None
+            ),
+            "verdict": verdict,
+            "severity": severity,
+            "advice": advice,
+        }
+    )
 
 
 # ---------------- MIKROTIK ----------------
@@ -6831,7 +8474,13 @@ def _mt_evaluate(host, cpu, mem, sto, temp):
         mem_thresh = get_setting("ram_threshold", 90.0)
         st_thresh = get_setting("disk_threshold", 90.0)
     except Exception:
-        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh = 60.0, 75.0, 85.0, 90.0, 90.0
+        temp_warn, temp_crit, cpu_thresh, mem_thresh, st_thresh = (
+            60.0,
+            75.0,
+            85.0,
+            90.0,
+            90.0,
+        )
     notes = []
     sev = None
 
@@ -6869,7 +8518,9 @@ def _mt_evaluate(host, cpu, mem, sto, temp):
 def api_mikrotik_list():
     conn, c = get_db()
     try:
-        c.execute("SELECT ip, alias, category, snmp_community, snmp_profile FROM hosts ORDER BY id ASC")
+        c.execute(
+            "SELECT ip, alias, category, snmp_community, snmp_profile FROM hosts ORDER BY id ASC"
+        )
         hosts = [dict(r) for r in c.fetchall()]
         out = []
         for h in hosts:
@@ -6878,8 +8529,11 @@ def api_mikrotik_list():
                 continue
             if (h.get("snmp_profile") or "auto") == "generic":
                 continue
-            c.execute("SELECT cpu, mem_used, storage_used, temp_c, uptime_s, timestamp"
-                      " FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
+            c.execute(
+                "SELECT cpu, mem_used, storage_used, temp_c, uptime_s, timestamp"
+                " FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
+                (ip,),
+            )
             r = c.fetchone()
             if r:
                 try:
@@ -6887,28 +8541,55 @@ def api_mikrotik_list():
                 except (ValueError, TypeError, KeyError, IndexError):
                     uptime_s = None
                 status, severity, advice = _mt_evaluate(
-                    ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                    ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"]
+                )
                 stale, stale_age = _mt_stale_info(r["timestamp"])
                 if stale and status in ("normal", "warning"):
                     status, severity = "stale", "warning"
-                    advice = (f"Tanpa data SNMP baru sejak {stale_age} "
-                              f"(terakhir {r['timestamp'] or '—'}). Kemungkinan host mati, "
-                              "community diganti, atau UDP 161 diblokir.")
-                out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
-                            "category": (h.get("category") or "").strip() or "Uncategorized",
-                            "cpu": r["cpu"], "mem": r["mem_used"], "storage": r["storage_used"],
-                            "temp_c": r["temp_c"], "uptime_s": uptime_s,
-                            "uptime": _fmt_uptime(uptime_s), "last_seen": r["timestamp"],
-                            "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
-                            "stale": stale, "stale_age": stale_age,
-                            "status": status, "severity": severity, "advice": advice})
+                    advice = (
+                        f"Tanpa data SNMP baru sejak {stale_age} "
+                        f"(terakhir {r['timestamp'] or '—'}). Kemungkinan host mati, "
+                        "community diganti, atau UDP 161 diblokir."
+                    )
+                out.append(
+                    {
+                        "host": ip,
+                        "alias": (h.get("alias") or "").strip() or ip,
+                        "category": (h.get("category") or "").strip()
+                        or "Uncategorized",
+                        "cpu": r["cpu"],
+                        "mem": r["mem_used"],
+                        "storage": r["storage_used"],
+                        "temp_c": r["temp_c"],
+                        "uptime_s": uptime_s,
+                        "uptime": _fmt_uptime(uptime_s),
+                        "last_seen": r["timestamp"],
+                        "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
+                        "stale": stale,
+                        "stale_age": stale_age,
+                        "status": status,
+                        "severity": severity,
+                        "advice": advice,
+                    }
+                )
             else:
-                out.append({"host": ip, "alias": (h.get("alias") or "").strip() or ip,
-                            "category": (h.get("category") or "").strip() or "Uncategorized",
-                            "cpu": None, "mem": None, "storage": None, "temp_c": None,
-                            "last_seen": None, "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
-                            "status": "unknown", "severity": None,
-                            "advice": "Menunggu poll SNMP berikutnya."})
+                out.append(
+                    {
+                        "host": ip,
+                        "alias": (h.get("alias") or "").strip() or ip,
+                        "category": (h.get("category") or "").strip()
+                        or "Uncategorized",
+                        "cpu": None,
+                        "mem": None,
+                        "storage": None,
+                        "temp_c": None,
+                        "last_seen": None,
+                        "is_mikrotik": bool(mt_is_mikrotik.get(ip)),
+                        "status": "unknown",
+                        "severity": None,
+                        "advice": "Menunggu poll SNMP berikutnya.",
+                    }
+                )
     finally:
         try:
             conn.close()
@@ -6926,21 +8607,41 @@ def api_mikrotik_history(host):
         return jsonify({"error": "hours harus angka 1-336"}), 400
     hours = max(1, min(hours, 336))
     metric = request.args.get("metric", "cpu")
-    cols = {"cpu": "cpu", "mem": "mem_used", "storage": "storage_used", "temp": "temp_c"}
+    cols = {
+        "cpu": "cpu",
+        "mem": "mem_used",
+        "storage": "storage_used",
+        "temp": "temp_c",
+    }
     col = cols.get(metric, "cpu")
     conn, c = get_db()
     try:
-        c.execute(f"SELECT timestamp, {col} AS val FROM device_health"
-                  " WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
-                  (host, f"-{hours} hours"))
+        c.execute(
+            f"SELECT timestamp, {col} AS val FROM device_health"
+            " WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+            (host, f"-{hours} hours"),
+        )
         rows = c.fetchall()
     finally:
         conn.close()
-    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"]
-              for r in rows]
-    return jsonify({"host": host, "metric": metric, "hours": hours,
-                    "labels": labels, "values": [r["val"] for r in rows],
-                    "count": len(rows)})
+    labels = [
+        (
+            r["timestamp"].split(" ")[1]
+            if r["timestamp"] and " " in r["timestamp"]
+            else r["timestamp"]
+        )
+        for r in rows
+    ]
+    return jsonify(
+        {
+            "host": host,
+            "metric": metric,
+            "hours": hours,
+            "labels": labels,
+            "values": [r["val"] for r in rows],
+            "count": len(rows),
+        }
+    )
 
 
 def _fmt_uptime(s):
@@ -6968,14 +8669,19 @@ def api_mt_iface_list(host):
         c.execute("SELECT ip FROM hosts WHERE ip=?", (host,))
         if not c.fetchone():
             return jsonify({"error": "Host tidak ditemukan"}), 404
-        c.execute("SELECT if_index, name, oper, monitor, last_changed FROM snmp_interfaces"
-                  " WHERE host=? ORDER BY if_index ASC", (host,))
+        c.execute(
+            "SELECT if_index, name, oper, monitor, last_changed FROM snmp_interfaces"
+            " WHERE host=? ORDER BY if_index ASC",
+            (host,),
+        )
         out = []
         for r in c.fetchall():
             d = dict(r)
-            c.execute("SELECT net_in, net_out, timestamp FROM iface_traffic"
-                      " WHERE host=? AND if_index=? ORDER BY id DESC LIMIT 1",
-                      (host, d["if_index"]))
+            c.execute(
+                "SELECT net_in, net_out, timestamp FROM iface_traffic"
+                " WHERE host=? AND if_index=? ORDER BY id DESC LIMIT 1",
+                (host, d["if_index"]),
+            )
             last = c.fetchone()
             d["last_in"] = last["net_in"] if last else None
             d["last_out"] = last["net_out"] if last else None
@@ -7004,17 +8710,26 @@ def api_mt_iface_discover(host):
         return jsonify({"error": "Profil host generic (SNMP health nonaktif)"}), 400
     found = discover_interfaces(host, community)
     if not found:
-        return jsonify({"error": "Tidak ada interface terjawab (cek community/firewall/UDP 161)"}), 502
+        return (
+            jsonify(
+                {
+                    "error": "Tidak ada interface terjawab (cek community/firewall/UDP 161)"
+                }
+            ),
+            502,
+        )
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db_lock:
         conn, c = get_db()
         try:
             for f in found:
-                c.execute("INSERT INTO snmp_interfaces (host, if_index, name, oper, monitor, last_changed)"
-                          " VALUES (?,?,?,?,1,?)"
-                          " ON CONFLICT(host, if_index) DO UPDATE SET name=excluded.name,"
-                          " oper=excluded.oper, last_changed=excluded.last_changed",
-                          (host, f["if_index"], f["name"][:64], f["oper"], now))
+                c.execute(
+                    "INSERT INTO snmp_interfaces (host, if_index, name, oper, monitor, last_changed)"
+                    " VALUES (?,?,?,?,1,?)"
+                    " ON CONFLICT(host, if_index) DO UPDATE SET name=excluded.name,"
+                    " oper=excluded.oper, last_changed=excluded.last_changed",
+                    (host, f["if_index"], f["name"][:64], f["oper"], now),
+                )
             conn.commit()
         finally:
             conn.close()
@@ -7027,8 +8742,14 @@ def api_mt_iface_discover(host):
         threading.Thread(target=poll_mikrotik_ifaces, daemon=True).start()
     except Exception:
         pass
-    return jsonify({"status": "success", "count": len(found),
-                    "truncated": len(found) >= DISCOVER_MAX_IF, "interfaces": found})
+    return jsonify(
+        {
+            "status": "success",
+            "count": len(found),
+            "truncated": len(found) >= DISCOVER_MAX_IF,
+            "interfaces": found,
+        }
+    )
 
 
 @app.route("/api/mikrotik/<path:host>/interfaces", methods=["PATCH"])
@@ -7058,8 +8779,10 @@ def api_mt_iface_update(host):
     if not c.fetchone():
         conn.close()
         return jsonify({"error": "Interface tidak ditemukan (discover dulu)"}), 404
-    c.execute(f"UPDATE snmp_interfaces SET {', '.join(sets)} WHERE host=? AND if_index=?",
-              (*params, host, idx))
+    c.execute(
+        f"UPDATE snmp_interfaces SET {', '.join(sets)} WHERE host=? AND if_index=?",
+        (*params, host, idx),
+    )
     conn.commit()
     conn.close()
     try:
@@ -7100,8 +8823,11 @@ def api_mt_iface_delete(host, idx):
 def _mt_backup_host_row(host):
     conn, c = get_db()
     try:
-        c.execute("SELECT ip, ssh_user, ssh_pass, ssh_port, backup_enable,"
-                  " backup_last, backup_ok FROM hosts WHERE ip=?", (host,))
+        c.execute(
+            "SELECT ip, ssh_user, ssh_pass, ssh_port, backup_enable,"
+            " backup_last, backup_ok FROM hosts WHERE ip=?",
+            (host,),
+        )
         row = c.fetchone()
         return dict(row) if row else None
     finally:
@@ -7115,8 +8841,11 @@ def api_mt_backup_list(host):
         return jsonify({"error": "Host tidak ditemukan"}), 404
     conn, c = get_db()
     try:
-        c.execute("SELECT id, taken_at, size, sha256, changed FROM mt_backups"
-                  " WHERE host=? ORDER BY id DESC LIMIT 50", (host,))
+        c.execute(
+            "SELECT id, taken_at, size, sha256, changed FROM mt_backups"
+            " WHERE host=? ORDER BY id DESC LIMIT 50",
+            (host,),
+        )
         out = [dict(r) for r in c.fetchall()]
     finally:
         conn.close()
@@ -7128,8 +8857,11 @@ def api_mt_backup_list(host):
 def api_mt_backup_get(host, bid):
     conn, c = get_db()
     try:
-        c.execute("SELECT id, host, taken_at, size, sha256, content FROM mt_backups"
-                  " WHERE host=? AND id=?", (host, bid))
+        c.execute(
+            "SELECT id, host, taken_at, size, sha256, content FROM mt_backups"
+            " WHERE host=? AND id=?",
+            (host, bid),
+        )
         row = c.fetchone()
     finally:
         conn.close()
@@ -7138,10 +8870,16 @@ def api_mt_backup_get(host, bid):
     d = dict(row)
     if (request.args.get("download") or "").strip() == "1":
         safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", host)[:48]
-        return Response(d.get("content") or "", mimetype="text/plain",
-                        headers={"Content-Disposition":
-                                 f"attachment; filename={safe}_{d.get('taken_at','')[:10]}.rsc"})
-    return jsonify({k: d.get(k) for k in ("id", "host", "taken_at", "size", "sha256", "content")})
+        return Response(
+            d.get("content") or "",
+            mimetype="text/plain",
+            headers={
+                "Content-Disposition": f"attachment; filename={safe}_{d.get('taken_at','')[:10]}.rsc"
+            },
+        )
+    return jsonify(
+        {k: d.get(k) for k in ("id", "host", "taken_at", "size", "sha256", "content")}
+    )
 
 
 @app.route("/api/mikrotik/<path:host>/backups/<int:bid>/diff", methods=["GET"])
@@ -7149,8 +8887,11 @@ def api_mt_backup_get(host, bid):
 def api_mt_backup_diff(host, bid):
     conn, c = get_db()
     try:
-        c.execute("SELECT id, taken_at, content FROM mt_backups"
-                  " WHERE host=? AND id<=? ORDER BY id DESC LIMIT 2", (host, bid))
+        c.execute(
+            "SELECT id, taken_at, content FROM mt_backups"
+            " WHERE host=? AND id<=? ORDER BY id DESC LIMIT 2",
+            (host, bid),
+        )
         rows = [dict(r) for r in c.fetchall()]
     finally:
         conn.close()
@@ -7159,16 +8900,26 @@ def api_mt_backup_diff(host, bid):
     cur = rows[0]
     prev = rows[1] if len(rows) > 1 else None
     if not prev:
-        return jsonify({"id": bid, "vs": None, "diff": [],
-                        "note": "versi pertama (baseline, tanpa pembanding)"})
-    diff = list(difflib.unified_diff((prev.get("content") or "").splitlines(),
-                                     (cur.get("content") or "").splitlines(),
-                                     fromfile=f"#{prev['id']} {prev['taken_at']}",
-                                     tofile=f"#{cur['id']} {cur['taken_at']}", n=3))
+        return jsonify(
+            {
+                "id": bid,
+                "vs": None,
+                "diff": [],
+                "note": "versi pertama (baseline, tanpa pembanding)",
+            }
+        )
+    diff = list(
+        difflib.unified_diff(
+            (prev.get("content") or "").splitlines(),
+            (cur.get("content") or "").splitlines(),
+            fromfile=f"#{prev['id']} {prev['taken_at']}",
+            tofile=f"#{cur['id']} {cur['taken_at']}",
+            n=3,
+        )
+    )
     if len(diff) > 500:
         diff = diff[:500] + [f"... dipotong, total {len(diff)} baris"]
-    return jsonify({"id": bid, "vs": prev["id"], "diff": diff,
-                    "lines": len(diff)})
+    return jsonify({"id": bid, "vs": prev["id"], "diff": diff, "lines": len(diff)})
 
 
 @app.route("/api/mikrotik/<path:host>/backup", methods=["POST"])
@@ -7180,8 +8931,11 @@ def api_mt_backup_now(host):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         ok, payload = fetch_mikrotik_config(
-            host, row.get("ssh_user") or "", row.get("ssh_pass") or "",
-            row.get("ssh_port") or 22)
+            host,
+            row.get("ssh_user") or "",
+            row.get("ssh_pass") or "",
+            row.get("ssh_port") or 22,
+        )
     except Exception as e:
         return jsonify({"error": f"fetch gagal: {e}"}), 502
     tg_msg = None
@@ -7209,8 +8963,9 @@ def api_mt_backup_now(host):
         pass
     if not ok:
         return jsonify({"error": payload}), 502
-    return jsonify({"status": "success", "taken_at": timestamp,
-                    "notified": bool(tg_msg)})
+    return jsonify(
+        {"status": "success", "taken_at": timestamp, "notified": bool(tg_msg)}
+    )
 
 
 @app.route("/api/mikrotik/<path:host>/iface/<int:idx>/history")
@@ -7223,13 +8978,18 @@ def api_mt_iface_history(host, idx):
     hours = max(1, min(hours, 336))
     conn, c = get_db()
     try:
-        c.execute("SELECT name FROM snmp_interfaces WHERE host=? AND if_index=?", (host, idx))
+        c.execute(
+            "SELECT name FROM snmp_interfaces WHERE host=? AND if_index=?", (host, idx)
+        )
         iface = c.fetchone()
         if not iface:
             return jsonify({"error": "Interface tidak ditemukan"}), 404
-        c.execute("SELECT timestamp, net_in, net_out FROM iface_traffic"
-                  " WHERE host=? AND if_index=? AND timestamp > datetime('now','localtime',?)"
-                  " ORDER BY id ASC", (host, idx, f"-{hours} hours"))
+        c.execute(
+            "SELECT timestamp, net_in, net_out FROM iface_traffic"
+            " WHERE host=? AND if_index=? AND timestamp > datetime('now','localtime',?)"
+            " ORDER BY id ASC",
+            (host, idx, f"-{hours} hours"),
+        )
         rows = c.fetchall()
     finally:
         conn.close()
@@ -7237,11 +8997,26 @@ def api_mt_iface_history(host, idx):
     if len(rows) > 500:
         step = (len(rows) + 499) // 500
         rows = rows[::step]
-    labels = [r["timestamp"].split(" ")[1] if r["timestamp"] and " " in r["timestamp"] else r["timestamp"]
-              for r in rows]
-    return jsonify({"host": host, "if_index": idx, "name": iface["name"], "hours": hours,
-                    "labels": labels, "rx": [r["net_in"] for r in rows],
-                    "tx": [r["net_out"] for r in rows], "count": len(rows)})
+    labels = [
+        (
+            r["timestamp"].split(" ")[1]
+            if r["timestamp"] and " " in r["timestamp"]
+            else r["timestamp"]
+        )
+        for r in rows
+    ]
+    return jsonify(
+        {
+            "host": host,
+            "if_index": idx,
+            "name": iface["name"],
+            "hours": hours,
+            "labels": labels,
+            "rx": [r["net_in"] for r in rows],
+            "tx": [r["net_out"] for r in rows],
+            "count": len(rows),
+        }
+    )
 
 
 @app.route("/inventory")
@@ -7283,10 +9058,15 @@ def api_inventory_list():
             live = "pending" if is_monitored else "unmonitored"
             last_latency = None
             last_seen = None
-        out.append({**inv, "live": live,
-                    "last_latency": last_latency,
-                    "last_seen": last_seen,
-                    "monitored": is_monitored})
+        out.append(
+            {
+                **inv,
+                "live": live,
+                "last_latency": last_latency,
+                "last_seen": last_seen,
+                "monitored": is_monitored,
+            }
+        )
     conn.close()
     return jsonify(out)
 
@@ -7294,6 +9074,7 @@ def api_inventory_list():
 IPV4_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
 
 INVENTORY_ASSET_STATUS = {"aktif", "cadangan", "rusak", "hilang"}
+
 
 def _validate_inventory(d):
     hostname = (d.get("hostname") or "").strip()
@@ -7322,7 +9103,12 @@ def _validate_inventory(d):
         return None, "Status aset harus aktif/cadangan/rusak/hilang"
     if len(device_type) > 50 or len(brand_model) > 100 or len(location) > 100:
         return None, "Tipe/merek/lokasi terlalu panjang"
-    if len(pic_name) > 100 or len(pic_phone) > 30 or len(asset_no) > 50 or len(notes) > 500:
+    if (
+        len(pic_name) > 100
+        or len(pic_phone) > 30
+        or len(asset_no) > 50
+        or len(notes) > 500
+    ):
         return None, "Data PIC/aset/catatan terlalu panjang"
     if install_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", install_date):
         return None, "Tanggal pasang harus YYYY-MM-DD"
@@ -7331,16 +9117,19 @@ def _validate_inventory(d):
             datetime.strptime(install_date, "%Y-%m-%d")
         except ValueError:
             return None, "Tanggal pasang tidak valid"
-    return {"hostname": hostname, "ip": ip,
-            "device_type": device_type,
-            "brand_model": brand_model,
-            "location": location,
-            "pic_name": pic_name,
-            "pic_phone": pic_phone,
-            "install_date": install_date,
-            "asset_status": asset_status,
-            "asset_no": asset_no,
-            "notes": notes}, None
+    return {
+        "hostname": hostname,
+        "ip": ip,
+        "device_type": device_type,
+        "brand_model": brand_model,
+        "location": location,
+        "pic_name": pic_name,
+        "pic_phone": pic_phone,
+        "install_date": install_date,
+        "asset_status": asset_status,
+        "asset_no": asset_no,
+        "notes": notes,
+    }, None
 
 
 @app.route("/api/inventory", methods=["POST"])
@@ -7352,12 +9141,26 @@ def api_inventory_create():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn, c = get_db()
     try:
-        c.execute("""INSERT INTO inventory(hostname,ip,device_type,brand_model,location,
+        c.execute(
+            """INSERT INTO inventory(hostname,ip,device_type,brand_model,location,
                      pic_name,pic_phone,install_date,asset_status,asset_no,notes,created_at,updated_at)
                      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (vals["hostname"], vals["ip"], vals["device_type"], vals["brand_model"],
-                   vals["location"], vals["pic_name"], vals["pic_phone"], vals["install_date"],
-                   vals["asset_status"], vals["asset_no"], vals["notes"], now, now))
+            (
+                vals["hostname"],
+                vals["ip"],
+                vals["device_type"],
+                vals["brand_model"],
+                vals["location"],
+                vals["pic_name"],
+                vals["pic_phone"],
+                vals["install_date"],
+                vals["asset_status"],
+                vals["asset_no"],
+                vals["notes"],
+                now,
+                now,
+            ),
+        )
         conn.commit()
         iid = c.lastrowid
     except sqlite3.IntegrityError:
@@ -7378,12 +9181,26 @@ def api_inventory_update(iid):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn, c = get_db()
     try:
-        c.execute("""UPDATE inventory SET hostname=?, ip=?, device_type=?, brand_model=?, location=?,
+        c.execute(
+            """UPDATE inventory SET hostname=?, ip=?, device_type=?, brand_model=?, location=?,
                      pic_name=?, pic_phone=?, install_date=?, asset_status=?, asset_no=?, notes=?, updated_at=?
                      WHERE id=?""",
-                  (vals["hostname"], vals["ip"], vals["device_type"], vals["brand_model"],
-                   vals["location"], vals["pic_name"], vals["pic_phone"], vals["install_date"],
-                   vals["asset_status"], vals["asset_no"], vals["notes"], now, iid))
+            (
+                vals["hostname"],
+                vals["ip"],
+                vals["device_type"],
+                vals["brand_model"],
+                vals["location"],
+                vals["pic_name"],
+                vals["pic_phone"],
+                vals["install_date"],
+                vals["asset_status"],
+                vals["asset_no"],
+                vals["notes"],
+                now,
+                iid,
+            ),
+        )
         if c.rowcount == 0:
             conn.rollback()
             conn.close()
@@ -7430,15 +9247,44 @@ def api_inventory_export():
     conn.close()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["id", "hostname", "ip", "tipe", "merek_model", "lokasi", "pic", "no_hp",
-                "tgl_pasang", "status_aset", "no_aset", "catatan"])
+    w.writerow(
+        [
+            "id",
+            "hostname",
+            "ip",
+            "tipe",
+            "merek_model",
+            "lokasi",
+            "pic",
+            "no_hp",
+            "tgl_pasang",
+            "status_aset",
+            "no_aset",
+            "catatan",
+        ]
+    )
     for r in rows:
-        w.writerow([r["id"], _csv_safe(r["hostname"]), _csv_safe(r["ip"]), _csv_safe(r["device_type"]),
-                    _csv_safe(r["brand_model"]), _csv_safe(r["location"]), _csv_safe(r["pic_name"]),
-                    _csv_safe(r["pic_phone"]), _csv_safe(r["install_date"]), _csv_safe(r["asset_status"]),
-                    _csv_safe(r["asset_no"]), _csv_safe(r["notes"])])
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=inventory.csv"})
+        w.writerow(
+            [
+                r["id"],
+                _csv_safe(r["hostname"]),
+                _csv_safe(r["ip"]),
+                _csv_safe(r["device_type"]),
+                _csv_safe(r["brand_model"]),
+                _csv_safe(r["location"]),
+                _csv_safe(r["pic_name"]),
+                _csv_safe(r["pic_phone"]),
+                _csv_safe(r["install_date"]),
+                _csv_safe(r["asset_status"]),
+                _csv_safe(r["asset_no"]),
+                _csv_safe(r["notes"]),
+            ]
+        )
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=inventory.csv"},
+    )
 
 
 @app.route("/triggers")
@@ -7450,14 +9296,11 @@ def triggers_page():
 @app.route("/api/triggers")
 @api_login_required
 def get_triggers():
-    global status_memory, agent_status_memory, agent_offline_memory
-
 
     valid_hosts = set(get_target_hosts())
     maint_map = get_active_maintenance_map()
 
     alarms = []
-
 
     for host, is_down in list(status_memory.items()):
         if host not in valid_hosts:
@@ -7465,20 +9308,23 @@ def get_triggers():
         if is_down:
             if host in maint_map:
                 reason = (maint_map[host].get("reason") or "").strip()[:200]
-                alarms.append({
-                    "host": host,
-                    "severity": "warning",
-                    "message": f"In maintenance (DOWN suppressed){(' - ' + reason) if reason else ''}",
-                    "category": "maintenance"
-                })
+                alarms.append(
+                    {
+                        "host": host,
+                        "severity": "warning",
+                        "message": f"In maintenance (DOWN suppressed){(' - ' + reason) if reason else ''}",
+                        "category": "maintenance",
+                    }
+                )
             else:
-                alarms.append({
-                    "host": host,
-                    "severity": "disaster",
-                    "message": "Host is DOWN (Unreachable)",
-                    "category": "availability"
-                })
-
+                alarms.append(
+                    {
+                        "host": host,
+                        "severity": "disaster",
+                        "message": "Host is DOWN (Unreachable)",
+                        "category": "availability",
+                    }
+                )
 
     for host, is_offline in list(agent_offline_memory.items()):
         if host not in valid_hosts:
@@ -7486,40 +9332,68 @@ def get_triggers():
         if host in maint_map:
             continue
         if is_offline and not status_memory.get(host, False):
-            alarms.append({
-                "host": host,
-                "severity": "high",
-                "message": "NMS Agent is Offline / Not reporting",
-                "category": "agent"
-            })
-
+            alarms.append(
+                {
+                    "host": host,
+                    "severity": "high",
+                    "message": "NMS Agent is Offline / Not reporting",
+                    "category": "agent",
+                }
+            )
 
     for host, status in list(agent_status_memory.items()):
         if host not in valid_hosts:
             continue
-        if not status_memory.get(host, False) and not agent_offline_memory.get(host, False):
+        if not status_memory.get(host, False) and not agent_offline_memory.get(
+            host, False
+        ):
             if status.get("cpu", False):
-                alarms.append({"host": host, "severity": "warning", "message": "High CPU Usage", "category": "resource"})
+                alarms.append(
+                    {
+                        "host": host,
+                        "severity": "warning",
+                        "message": "High CPU Usage",
+                        "category": "resource",
+                    }
+                )
             if status.get("ram", False):
-                alarms.append({"host": host, "severity": "warning", "message": "High RAM Usage", "category": "resource"})
+                alarms.append(
+                    {
+                        "host": host,
+                        "severity": "warning",
+                        "message": "High RAM Usage",
+                        "category": "resource",
+                    }
+                )
             if status.get("disk", False):
-                alarms.append({"host": host, "severity": "warning", "message": "High Disk Usage", "category": "resource"})
+                alarms.append(
+                    {
+                        "host": host,
+                        "severity": "warning",
+                        "message": "High Disk Usage",
+                        "category": "resource",
+                    }
+                )
 
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT id, ip, name, type, url, status, ssl_days_left, ssl_expires_at FROM services")
+            c.execute(
+                "SELECT id, ip, name, type, url, status, ssl_days_left, ssl_expires_at FROM services"
+            )
             for r in c.fetchall():
                 d = dict(r)
                 st = (d.get("status") or "").upper()
                 label = f"{d.get('name')} ({d.get('ip')})"
                 if st == "OFFLINE":
-                    alarms.append({
-                        "host": label,
-                        "severity": "high",
-                        "message": f"Service OFFLINE: {d.get('name')} [{d.get('type')}]",
-                        "category": "service",
-                    })
+                    alarms.append(
+                        {
+                            "host": label,
+                            "severity": "high",
+                            "message": f"Service OFFLINE: {d.get('name')} [{d.get('type')}]",
+                            "category": "service",
+                        }
+                    )
                 lvl = _ssl_level(d.get("ssl_days_left"))
                 if lvl and (d.get("url") or "").lower().startswith("https://"):
                     try:
@@ -7527,26 +9401,32 @@ def get_triggers():
                     except (ValueError, TypeError):
                         days = None
                     if lvl == "expired":
-                        alarms.append({
-                            "host": label,
-                            "severity": "disaster",
-                            "message": f"SSL EXPIRED: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                            "category": "service",
-                        })
+                        alarms.append(
+                            {
+                                "host": label,
+                                "severity": "disaster",
+                                "message": f"SSL EXPIRED: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                                "category": "service",
+                            }
+                        )
                     elif lvl == "high":
-                        alarms.append({
-                            "host": label,
-                            "severity": "high",
-                            "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                            "category": "service",
-                        })
+                        alarms.append(
+                            {
+                                "host": label,
+                                "severity": "high",
+                                "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                                "category": "service",
+                            }
+                        )
                     else:
-                        alarms.append({
-                            "host": label,
-                            "severity": "warning",
-                            "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                            "category": "service",
-                        })
+                        alarms.append(
+                            {
+                                "host": label,
+                                "severity": "warning",
+                                "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
+                                "category": "service",
+                            }
+                        )
         finally:
             conn.close()
     except Exception as e:
@@ -7574,13 +9454,19 @@ def get_triggers():
                 continue
             in_maint, maint_reason, maint_scope = _fiber_maintenance_info(d, maint_map)
             if in_maint:
-                scope_txt = f" ({maint_scope.upper()})" if maint_scope and maint_scope != "ont" else ""
-                alarms.append({
-                    "host": f"{d.get('ont_sn')}",
-                    "severity": "warning",
-                    "message": f"Fiber dalam maintenance{scope_txt} — alarm disuppress{(' - ' + maint_reason) if maint_reason else ''}",
-                    "category": "maintenance",
-                })
+                scope_txt = (
+                    f" ({maint_scope.upper()})"
+                    if maint_scope and maint_scope != "ont"
+                    else ""
+                )
+                alarms.append(
+                    {
+                        "host": f"{d.get('ont_sn')}",
+                        "severity": "warning",
+                        "message": f"Fiber dalam maintenance{scope_txt} — alarm disuppress{(' - ' + maint_reason) if maint_reason else ''}",
+                        "category": "maintenance",
+                    }
+                )
                 continue
             if _is_mute_active(d):
                 continue
@@ -7594,24 +9480,30 @@ def get_triggers():
             if severity:
                 sev_rows.append((_okey, d.get("ont_sn"), status))
                 if _parent:
-                    _pname = (_parent.get("name") or _okey)
-                    alarms.append({
-                        "host": f"{d.get('ont_sn')}",
-                        "severity": "warning",
-                        "message": f"Fiber {status.upper()} disuppress — induk OLT '{_pname}' bermasalah",
-                        "category": "maintenance",
-                    })
+                    _pname = _parent.get("name") or _okey
+                    alarms.append(
+                        {
+                            "host": f"{d.get('ont_sn')}",
+                            "severity": "warning",
+                            "message": f"Fiber {status.upper()} disuppress — induk OLT '{_pname}' bermasalah",
+                            "category": "maintenance",
+                        }
+                    )
                     continue
                 label = d.get("customer") or d.get("ont_sn")
-                loc = " / ".join([x for x in (d.get("olt_name"), d.get("odp_name")) if x])
+                loc = " / ".join(
+                    [x for x in (d.get("olt_name"), d.get("odp_name")) if x]
+                )
                 rx_txt = f"{rx} dBm" if rx is not None else "—"
                 tx_txt = f"{tx} dBm" if tx is not None else "—"
-                alarms.append({
-                    "host": f"{d.get('ont_sn')} ({label})",
-                    "severity": severity,
-                    "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
-                    "category": "fiber",
-                })
+                alarms.append(
+                    {
+                        "host": f"{d.get('ont_sn')} ({label})",
+                        "severity": severity,
+                        "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
+                        "category": "fiber",
+                    }
+                )
                 continue
             if _parent:
                 # anggota insiden tanpa alarm sendiri: tak perlu baris tambahan
@@ -7624,13 +9516,15 @@ def get_triggers():
                 except Exception:
                     _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
                 label = d.get("customer") or d.get("ont_sn")
-                alarms.append({
-                    "host": f"{d.get('ont_sn')} ({label})",
-                    "severity": "warning",
-                    "message": f"Fiber DEGRADASI: Rx turun {dg.get('drop_db')} dB dalam {_dd} hari "
-                               f"(kini {rx} dBm, ambang {_dth} dB) — cek bending/konektor/splicing sebelum kritis.",
-                    "category": "fiber",
-                })
+                alarms.append(
+                    {
+                        "host": f"{d.get('ont_sn')} ({label})",
+                        "severity": "warning",
+                        "message": f"Fiber DEGRADASI: Rx turun {dg.get('drop_db')} dB dalam {_dd} hari "
+                        f"(kini {rx} dBm, ambang {_dth} dB) — cek bending/konektor/splicing sebelum kritis.",
+                        "category": "fiber",
+                    }
+                )
                 continue
             # flap: bolak-balik normal<->terganggu (konektor longgar/ODP basah)
             fl = fiber_flap_memory.get(d["id"]) or {}
@@ -7640,17 +9534,19 @@ def get_triggers():
                 except Exception:
                     _fth, _fh = FIBER_FLAP_FLIPS, FIBER_FLAP_HOURS
                 label = d.get("customer") or d.get("ont_sn")
-                alarms.append({
-                    "host": f"{d.get('ont_sn')} ({label})",
-                    "severity": "warning",
-                    "message": f"Fiber FLAPPING: {fl.get('flips')}x berubah normal↔terganggu dalam {_fh} jam "
-                               f"(ambang {_fth}x) — cek konektor longgar, splicing, ODP basah/rusak.",
-                    "category": "fiber",
-                })
+                alarms.append(
+                    {
+                        "host": f"{d.get('ont_sn')} ({label})",
+                        "severity": "warning",
+                        "message": f"Fiber FLAPPING: {fl.get('flips')}x berubah normal↔terganggu dalam {_fh} jam "
+                        f"(ambang {_fth}x) — cek konektor longgar, splicing, ODP basah/rusak.",
+                        "category": "fiber",
+                    }
+                )
         # entri induk: 1 baris per OLT bermasalah + hitungan anggota
         try:
             _members = {}
-            for (_ok, _sn, _st) in sev_rows:
+            for _ok, _sn, _st in sev_rows:
                 if _ok:
                     _members.setdefault(_ok, []).append((_sn, _st))
             for _key, _ent in fiber_parent_down.items():
@@ -7661,20 +9557,26 @@ def get_triggers():
                 _crit = sum(1 for _, _st in _mlist if _st in ("critical", "overload"))
                 _warn = len(_mlist) - _crit
                 if (_ent or {}).get("synthetic"):
-                    _msg = (f"Insiden massal OLT '{_name}' — {len(_mlist)} ONT "
-                            f"({_crit} kritis/overload, {_warn} warning), "
-                            f"alarm individual disuppress")
+                    _msg = (
+                        f"Insiden massal OLT '{_name}' — {len(_mlist)} ONT "
+                        f"({_crit} kritis/overload, {_warn} warning), "
+                        f"alarm individual disuppress"
+                    )
                 else:
                     _ip = (_ent or {}).get("ip") or "?"
-                    _msg = (f"Induk OLT '{_name}' DOWN (mgmt {_ip}) — {len(_mlist)} ONT "
-                            f"({_crit} kritis/overload, {_warn} warning), "
-                            f"alarm individual disuppress")
-                alarms.append({
-                    "host": f"OLT {_name}",
-                    "severity": "disaster",
-                    "message": _msg,
-                    "category": "fiber",
-                })
+                    _msg = (
+                        f"Induk OLT '{_name}' DOWN (mgmt {_ip}) — {len(_mlist)} ONT "
+                        f"({_crit} kritis/overload, {_warn} warning), "
+                        f"alarm individual disuppress"
+                    )
+                alarms.append(
+                    {
+                        "host": f"OLT {_name}",
+                        "severity": "disaster",
+                        "message": _msg,
+                        "category": "fiber",
+                    }
+                )
         except Exception:
             pass
     except Exception as e:
@@ -7683,60 +9585,83 @@ def get_triggers():
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT ip, alias FROM hosts WHERE snmp_community IS NOT NULL"
-                      " AND snmp_community != '' AND (snmp_profile IS NULL OR snmp_profile != 'generic')"
-                      " ORDER BY id ASC")
+            c.execute(
+                "SELECT ip, alias FROM hosts WHERE snmp_community IS NOT NULL"
+                " AND snmp_community != '' AND (snmp_profile IS NULL OR snmp_profile != 'generic')"
+                " ORDER BY id ASC"
+            )
             for h in c.fetchall():
                 ip = h["ip"]
                 label = (h["alias"] or "").strip() or ip
-                c2 = conn.execute("SELECT cpu, mem_used, storage_used, temp_c, timestamp FROM device_health"
-                                  " WHERE host=? ORDER BY id DESC LIMIT 1", (ip,))
+                c2 = conn.execute(
+                    "SELECT cpu, mem_used, storage_used, temp_c, timestamp FROM device_health"
+                    " WHERE host=? ORDER BY id DESC LIMIT 1",
+                    (ip,),
+                )
                 r = c2.fetchone()
                 stale_host = False
                 if r:
                     stale_host, stale_age = _mt_stale_info(r["timestamp"])
                     if stale_host:
-                        alarms.append({
-                            "host": f"{label} ({ip})",
-                            "severity": "warning",
-                            "message": f"MikroTik STALE: tanpa data SNMP baru sejak {stale_age} — "
-                                       f"port/reboot tak terpantau. Cek host/community/UDP 161.",
-                            "category": "mikrotik",
-                        })
+                        alarms.append(
+                            {
+                                "host": f"{label} ({ip})",
+                                "severity": "warning",
+                                "message": f"MikroTik STALE: tanpa data SNMP baru sejak {stale_age} — "
+                                f"port/reboot tak terpantau. Cek host/community/UDP 161.",
+                                "category": "mikrotik",
+                            }
+                        )
                         continue
                     status, severity, advice = _mt_evaluate(
-                        ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"])
+                        ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"]
+                    )
                     if severity:
-                        alarms.append({
-                            "host": f"{label} ({ip})",
-                            "severity": severity,
-                            "message": f"MikroTik {status.upper()}: {advice}",
-                            "category": "mikrotik",
-                        })
+                        alarms.append(
+                            {
+                                "host": f"{label} ({ip})",
+                                "severity": severity,
+                                "message": f"MikroTik {status.upper()}: {advice}",
+                                "category": "mikrotik",
+                            }
+                        )
                 # port down + reboot baru (per host, tak tergantung device_health)
                 try:
-                    c.execute("SELECT if_index, name FROM snmp_interfaces"
-                              " WHERE host=? AND monitor=1 AND oper=2", (ip,))
+                    c.execute(
+                        "SELECT if_index, name FROM snmp_interfaces"
+                        " WHERE host=? AND monitor=1 AND oper=2",
+                        (ip,),
+                    )
                     for prow in c.fetchall():
-                        alarms.append({
-                            "host": f"{label} ({ip})",
-                            "severity": "high",
-                            "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
-                            "category": "mikrotik",
-                        })
+                        alarms.append(
+                            {
+                                "host": f"{label} ({ip})",
+                                "severity": "high",
+                                "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
+                                "category": "mikrotik",
+                            }
+                        )
                 except sqlite3.OperationalError:
                     pass
                 try:
-                    c.execute("SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
-                              (ip,))
+                    c.execute(
+                        "SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
+                        (ip,),
+                    )
                     urow = c.fetchone()
-                    if urow and urow["uptime_s"] is not None and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S:
-                        alarms.append({
-                            "host": f"{label} ({ip})",
-                            "severity": "warning",
-                            "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
-                            "category": "mikrotik",
-                        })
+                    if (
+                        urow
+                        and urow["uptime_s"] is not None
+                        and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S
+                    ):
+                        alarms.append(
+                            {
+                                "host": f"{label} ({ip})",
+                                "severity": "warning",
+                                "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
+                                "category": "mikrotik",
+                            }
+                        )
                 except sqlite3.OperationalError:
                     pass
         finally:
@@ -7747,14 +9672,24 @@ def get_triggers():
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT ip, alias, backup_last, backup_ok FROM hosts"
-                      " WHERE backup_enable=1 ORDER BY ip ASC")
+            c.execute(
+                "SELECT ip, alias, backup_last, backup_ok FROM hosts"
+                " WHERE backup_enable=1 ORDER BY ip ASC"
+            )
             now = datetime.now()
             for r in c.fetchall():
                 last = (r["backup_last"] or "").strip()
                 try:
-                    age_h = ((now - datetime.strptime(last, "%Y-%m-%d %H:%M:%S"))
-                             .total_seconds() / 3600) if last else None
+                    age_h = (
+                        (
+                            (
+                                now - datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
+                            ).total_seconds()
+                            / 3600
+                        )
+                        if last
+                        else None
+                    )
                 except (ValueError, TypeError):
                     age_h = None
                 if age_h is not None and r["backup_ok"] and age_h <= 48:
@@ -7766,13 +9701,15 @@ def get_triggers():
                     reason = "gagal"
                 else:
                     reason = f"basi {int(age_h)} jam"
-                alarms.append({
-                    "host": f"{label} ({r['ip']})",
-                    "severity": "warning",
-                    "message": f"Backup konfigurasi {reason} (terakhir {last or '—'}) — "
-                               f"cek kredensial SSH / jadwal backup.",
-                    "category": "mikrotik",
-                })
+                alarms.append(
+                    {
+                        "host": f"{label} ({r['ip']})",
+                        "severity": "warning",
+                        "message": f"Backup konfigurasi {reason} (terakhir {last or '—'}) — "
+                        f"cek kredensial SSH / jadwal backup.",
+                        "category": "mikrotik",
+                    }
+                )
         finally:
             conn.close()
     except Exception as e:
@@ -7781,10 +9718,11 @@ def get_triggers():
     severity_order = {"disaster": 1, "high": 2, "warning": 3}
     alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))
 
-
     raw_sev = (request.args.get("severity") or "").lower()
     if raw_sev:
-        wanted = {s.strip() for s in raw_sev.split(",") if s.strip()} & set(severity_order)
+        wanted = {s.strip() for s in raw_sev.split(",") if s.strip()} & set(
+            severity_order
+        )
         if wanted:
             alarms = [a for a in alarms if a["severity"] in wanted]
 
@@ -7799,6 +9737,7 @@ def _like_escape(s):
 @login_required
 def logs_page():
     return render_template("logs.html")
+
 
 @app.route("/api/system_logs")
 @api_login_required
@@ -7844,21 +9783,20 @@ def get_system_logs():
 
     logs_data = []
     for r in rows:
-        logs_data.append({
-            "id": r["id"],
-            "timestamp": r["timestamp"],
-            "event_type": r["event_type"],
-            "host": r["host"],
-            "message": r["message"]
-        })
+        logs_data.append(
+            {
+                "id": r["id"],
+                "timestamp": r["timestamp"],
+                "event_type": r["event_type"],
+                "host": r["host"],
+                "message": r["message"],
+            }
+        )
     conn.close()
 
-    return jsonify({
-        "logs": logs_data,
-        "total": total_logs,
-        "page": page,
-        "limit": limit
-    })
+    return jsonify(
+        {"logs": logs_data, "total": total_logs, "page": page, "limit": limit}
+    )
 
 
 @app.route("/api/system_logs/export")
@@ -7888,21 +9826,34 @@ def export_system_logs():
     w = csv.writer(buf)
     w.writerow(["timestamp", "host", "event_type", "message"])
     for r in rows:
-        w.writerow([_csv_safe(r["timestamp"]), _csv_safe(r["host"]),
-                    _csv_safe(r["event_type"]), _csv_safe(r["message"])])
+        w.writerow(
+            [
+                _csv_safe(r["timestamp"]),
+                _csv_safe(r["host"]),
+                _csv_safe(r["event_type"]),
+                _csv_safe(r["message"]),
+            ]
+        )
     try:
-        audit(current_user.username, "logs.export", f"host={host_filter or 'all'} type={type_filter or 'all'} q={q or '-'} rows={len(rows)}")
+        audit(
+            current_user.username,
+            "logs.export",
+            f"host={host_filter or 'all'} type={type_filter or 'all'} q={q or '-'} rows={len(rows)}",
+        )
     except Exception:
         pass
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=nms_system_logs.csv"})
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=nms_system_logs.csv"},
+    )
 
 
 @app.route("/api/export")
 @api_login_required
 def export_csv():
     targets = get_target_hosts()
-    host  = request.args.get("host", targets[0] if targets else "unknown")
+    host = request.args.get("host", targets[0] if targets else "unknown")
     try:
         hours = int(request.args.get("hours", 24))
     except (ValueError, TypeError):
@@ -7917,22 +9868,28 @@ def export_csv():
     rows = c.fetchall()
     conn.close()
 
-    out    = io.StringIO()
+    out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["timestamp", "host", "latency_ms", "packet_loss_pct"])
     for r in rows:
         lat = r["latency"] if r["latency"] != -1 else "DOWN"
-        writer.writerow([_csv_safe(r["timestamp"]), _csv_safe(host), lat, r["packet_loss"]])
+        writer.writerow(
+            [_csv_safe(r["timestamp"]), _csv_safe(host), lat, r["packet_loss"]]
+        )
 
-    safe_host = re.sub(r"[^a-zA-Z0-9.\-]", "_", host)[:100].replace(".", "_") or "unknown"
+    safe_host = (
+        re.sub(r"[^a-zA-Z0-9.\-]", "_", host)[:100].replace(".", "_") or "unknown"
+    )
     fname = f"nms_{safe_host}_{hours}h.csv"
     return Response(
-        out.getvalue(), mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={fname}"}
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
 
 
 REPORT_DAYS_CHOICES = (1, 3, 7)
+
 
 def _report_days():
     try:
@@ -7942,6 +9899,7 @@ def _report_days():
     if d not in REPORT_DAYS_CHOICES:
         d = 7
     return d
+
 
 def _fmt_duration(s):
     if s is None:
@@ -7958,6 +9916,7 @@ def _fmt_duration(s):
         return f"{m}m {sec}s"
     return f"{sec}s"
 
+
 @app.route("/reports")
 @login_required
 def reports_page():
@@ -7970,8 +9929,14 @@ def api_reports_summary():
     days = _report_days()
     conn, c = get_db()
     c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
-    hosts = [{"ip": r["ip"], "alias": (r["alias"] or "").strip() or r["ip"],
-              "category": (r["category"] or "").strip() or "Uncategorized"} for r in c.fetchall()]
+    hosts = [
+        {
+            "ip": r["ip"],
+            "alias": (r["alias"] or "").strip() or r["ip"],
+            "category": (r["category"] or "").strip() or "Uncategorized",
+        }
+        for r in c.fetchall()
+    ]
     host_rows = []
     outages = []
     total_downtime = 0
@@ -7982,7 +9947,8 @@ def api_reports_summary():
     counted_uptime = 0
     for h in hosts:
         ip = h["ip"]
-        c.execute("""
+        c.execute(
+            """
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
                    AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms,
@@ -7991,29 +9957,39 @@ def api_reports_summary():
                    AVG(CASE WHEN latency != -1 THEN packet_loss END) AS avg_loss
             FROM ping_logs
             WHERE host=? AND timestamp > datetime('now','localtime',?)
-        """, (ip, f"-{days} days"))
+        """,
+            (ip, f"-{days} days"),
+        )
         r = c.fetchone()
         total = r["total"] or 0
         up_count = r["up_count"] or 0
 
         try:
-            c.execute("""
+            c.execute(
+                """
                 SELECT id, started_at, resolved_at, duration_s, is_maintenance FROM down_events
                 WHERE host=? AND started_at > datetime('now','localtime',?)
                 ORDER BY id DESC
-            """, (ip, f"-{days} days"))
+            """,
+                (ip, f"-{days} days"),
+            )
         except sqlite3.OperationalError:
-            c.execute("""
+            c.execute(
+                """
                 SELECT id, started_at, resolved_at, duration_s FROM down_events
                 WHERE host=? AND started_at > datetime('now','localtime',?)
                 ORDER BY id DESC
-            """, (ip, f"-{days} days"))
+            """,
+                (ip, f"-{days} days"),
+            )
         evs = c.fetchall()
+
         def _is_maint(e):
             try:
                 return bool(e["is_maintenance"])
             except (KeyError, IndexError, TypeError):
                 return False
+
         real_evs = [e for e in evs if not _is_maint(e)]
         maint_evs = [e for e in evs if _is_maint(e)]
         down_count = len(real_evs)
@@ -8028,57 +10004,92 @@ def api_reports_summary():
         h_maint_downtime = sum(maint_durs)
         total_maint_downtime += h_maint_downtime
         if total == 0:
-            host_rows.append({**h, "uptime_pct": None, "total_checks": 0,
-                              "up_count": 0, "down_count": down_count,
-                              "maintenance_count": maint_count,
-                              "avg_ms": None, "min_ms": None, "max_ms": None,
-                              "avg_loss": None, "mttr_s": mttr,
-                              "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                              "downtime_s": h_downtime,
-                              "maintenance_downtime_s": h_maint_downtime})
+            host_rows.append(
+                {
+                    **h,
+                    "uptime_pct": None,
+                    "total_checks": 0,
+                    "up_count": 0,
+                    "down_count": down_count,
+                    "maintenance_count": maint_count,
+                    "avg_ms": None,
+                    "min_ms": None,
+                    "max_ms": None,
+                    "avg_loss": None,
+                    "mttr_s": mttr,
+                    "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
+                    "downtime_s": h_downtime,
+                    "maintenance_downtime_s": h_maint_downtime,
+                }
+            )
         else:
             uptime = round(up_count / total * 100, 1)
             sum_uptime += uptime
             counted_uptime += 1
-            host_rows.append({**h, "uptime_pct": uptime, "total_checks": total,
-                              "up_count": up_count, "down_count": down_count,
-                              "maintenance_count": maint_count,
-                              "avg_ms": round(r["avg_ms"], 2) if r["avg_ms"] is not None else None,
-                              "min_ms": round(r["min_ms"], 2) if r["min_ms"] is not None else None,
-                              "max_ms": round(r["max_ms"], 2) if r["max_ms"] is not None else None,
-                              "avg_loss": round(r["avg_loss"], 1) if r["avg_loss"] is not None else None,
-                              "mttr_s": mttr,
-                              "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                              "downtime_s": h_downtime,
-                              "maintenance_downtime_s": h_maint_downtime})
+            host_rows.append(
+                {
+                    **h,
+                    "uptime_pct": uptime,
+                    "total_checks": total,
+                    "up_count": up_count,
+                    "down_count": down_count,
+                    "maintenance_count": maint_count,
+                    "avg_ms": (
+                        round(r["avg_ms"], 2) if r["avg_ms"] is not None else None
+                    ),
+                    "min_ms": (
+                        round(r["min_ms"], 2) if r["min_ms"] is not None else None
+                    ),
+                    "max_ms": (
+                        round(r["max_ms"], 2) if r["max_ms"] is not None else None
+                    ),
+                    "avg_loss": (
+                        round(r["avg_loss"], 1) if r["avg_loss"] is not None else None
+                    ),
+                    "mttr_s": mttr,
+                    "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
+                    "downtime_s": h_downtime,
+                    "maintenance_downtime_s": h_maint_downtime,
+                }
+            )
         for e in evs[:200]:
-            outages.append({"id": e["id"], "host": ip, "alias": h["alias"],
-                            "started_at": e["started_at"],
-                            "resolved_at": e["resolved_at"] or "Ongoing",
-                            "duration_s": e["duration_s"],
-                            "duration_str": _fmt_duration(e["duration_s"]),
-                            "status": "resolved" if e["resolved_at"] else "ongoing",
-                            "is_maintenance": _is_maint(e)})
+            outages.append(
+                {
+                    "id": e["id"],
+                    "host": ip,
+                    "alias": h["alias"],
+                    "started_at": e["started_at"],
+                    "resolved_at": e["resolved_at"] or "Ongoing",
+                    "duration_s": e["duration_s"],
+                    "duration_str": _fmt_duration(e["duration_s"]),
+                    "status": "resolved" if e["resolved_at"] else "ongoing",
+                    "is_maintenance": _is_maint(e),
+                }
+            )
     conn.close()
     outages.sort(key=lambda x: x["started_at"], reverse=True)
     outages = outages[:200]
-    return jsonify({
-        "period_days": days,
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "note": "ping_logs retensi 7 hari; outage maintenance tidak dihitung ke SLA",
-        "hosts": host_rows,
-        "outages": outages,
-        "totals": {
-            "hosts": len(hosts),
-            "avg_uptime": round(sum_uptime / counted_uptime, 1) if counted_uptime else None,
-            "total_outages": total_outages,
-            "total_downtime_s": total_downtime,
-            "total_downtime_str": _fmt_duration(total_downtime),
-            "maintenance_outages": total_maint_outages,
-            "maintenance_downtime_s": total_maint_downtime,
-            "maintenance_downtime_str": _fmt_duration(total_maint_downtime),
-        },
-    })
+    return jsonify(
+        {
+            "period_days": days,
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "note": "ping_logs retensi 7 hari; outage maintenance tidak dihitung ke SLA",
+            "hosts": host_rows,
+            "outages": outages,
+            "totals": {
+                "hosts": len(hosts),
+                "avg_uptime": (
+                    round(sum_uptime / counted_uptime, 1) if counted_uptime else None
+                ),
+                "total_outages": total_outages,
+                "total_downtime_s": total_downtime,
+                "total_downtime_str": _fmt_duration(total_downtime),
+                "maintenance_outages": total_maint_outages,
+                "maintenance_downtime_s": total_maint_downtime,
+                "maintenance_downtime_str": _fmt_duration(total_maint_downtime),
+            },
+        }
+    )
 
 
 @app.route("/api/reports/export")
@@ -8089,29 +10100,73 @@ def api_reports_export():
 
     conn, c = get_db()
     c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
-    hosts = [{"ip": r["ip"], "alias": (r["alias"] or "").strip() or r["ip"],
-              "category": (r["category"] or "").strip() or "Uncategorized"} for r in c.fetchall()]
+    hosts = [
+        {
+            "ip": r["ip"],
+            "alias": (r["alias"] or "").strip() or r["ip"],
+            "category": (r["category"] or "").strip() or "Uncategorized",
+        }
+        for r in c.fetchall()
+    ]
     buf = io.StringIO()
     w = csv.writer(buf)
     if table == "outages":
-        w.writerow(["id", "host", "alias", "started_at", "resolved_at", "duration_s", "duration", "status"])
-        c.execute("""
+        w.writerow(
+            [
+                "id",
+                "host",
+                "alias",
+                "started_at",
+                "resolved_at",
+                "duration_s",
+                "duration",
+                "status",
+            ]
+        )
+        c.execute(
+            """
             SELECT id, host, started_at, resolved_at, duration_s FROM down_events
             WHERE started_at > datetime('now','localtime',?) ORDER BY id DESC LIMIT 1000
-        """, (f"-{days} days",))
+        """,
+            (f"-{days} days",),
+        )
         amap = {h["ip"]: h["alias"] for h in hosts}
         for r in c.fetchall():
-            w.writerow([r["id"], _csv_safe(r["host"]), _csv_safe(amap.get(r["host"], r["host"])),
-                        _csv_safe(r["started_at"]), _csv_safe(r["resolved_at"] or "Ongoing"),
-                        r["duration_s"] if r["duration_s"] is not None else "",
-                        _fmt_duration(r["duration_s"]), "resolved" if r["resolved_at"] else "ongoing"])
+            w.writerow(
+                [
+                    r["id"],
+                    _csv_safe(r["host"]),
+                    _csv_safe(amap.get(r["host"], r["host"])),
+                    _csv_safe(r["started_at"]),
+                    _csv_safe(r["resolved_at"] or "Ongoing"),
+                    r["duration_s"] if r["duration_s"] is not None else "",
+                    _fmt_duration(r["duration_s"]),
+                    "resolved" if r["resolved_at"] else "ongoing",
+                ]
+            )
         fname = f"nms_outages_{days}d.csv"
     else:
-        w.writerow(["ip", "alias", "category", "uptime_pct", "checks", "up", "down_events",
-                    "avg_ms", "min_ms", "max_ms", "avg_loss_pct", "mttr_s", "downtime_s"])
+        w.writerow(
+            [
+                "ip",
+                "alias",
+                "category",
+                "uptime_pct",
+                "checks",
+                "up",
+                "down_events",
+                "avg_ms",
+                "min_ms",
+                "max_ms",
+                "avg_loss_pct",
+                "mttr_s",
+                "downtime_s",
+            ]
+        )
         for h in hosts:
             ip = h["ip"]
-            c.execute("""
+            c.execute(
+                """
                 SELECT COUNT(*) AS total,
                        SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
                        AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms,
@@ -8119,30 +10174,45 @@ def api_reports_export():
                        MAX(CASE WHEN latency != -1 THEN latency END) AS max_ms,
                        AVG(CASE WHEN latency != -1 THEN packet_loss END) AS avg_loss
                 FROM ping_logs WHERE host=? AND timestamp > datetime('now','localtime',?)
-            """, (ip, f"-{days} days"))
+            """,
+                (ip, f"-{days} days"),
+            )
             r = c.fetchone()
             total = r["total"] or 0
             up_count = r["up_count"] or 0
-            c.execute("SELECT COUNT(*) AS cnt, AVG(duration_s) AS mttr, SUM(duration_s) AS dt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
-                      (ip, f"-{days} days"))
+            c.execute(
+                "SELECT COUNT(*) AS cnt, AVG(duration_s) AS mttr, SUM(duration_s) AS dt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
+                (ip, f"-{days} days"),
+            )
             e = c.fetchone()
-            w.writerow([_csv_safe(ip), _csv_safe(h["alias"]), _csv_safe(h["category"]),
-                        round(up_count / total * 100, 1) if total else "",
-                        total, up_count, e["cnt"] or 0,
-                        round(r["avg_ms"], 2) if r["avg_ms"] is not None else "",
-                        round(r["min_ms"], 2) if r["min_ms"] is not None else "",
-                        round(r["max_ms"], 2) if r["max_ms"] is not None else "",
-                        round(r["avg_loss"], 1) if r["avg_loss"] is not None else "",
-                        round(e["mttr"]) if e["mttr"] is not None else "",
-                        int(e["dt"] or 0)])
+            w.writerow(
+                [
+                    _csv_safe(ip),
+                    _csv_safe(h["alias"]),
+                    _csv_safe(h["category"]),
+                    round(up_count / total * 100, 1) if total else "",
+                    total,
+                    up_count,
+                    e["cnt"] or 0,
+                    round(r["avg_ms"], 2) if r["avg_ms"] is not None else "",
+                    round(r["min_ms"], 2) if r["min_ms"] is not None else "",
+                    round(r["max_ms"], 2) if r["max_ms"] is not None else "",
+                    round(r["avg_loss"], 1) if r["avg_loss"] is not None else "",
+                    round(e["mttr"]) if e["mttr"] is not None else "",
+                    int(e["dt"] or 0),
+                ]
+            )
         fname = f"nms_summary_{days}d.csv"
     conn.close()
     try:
         audit(current_user.username, "reports.export", f"{table} {days}d")
     except Exception:
         pass
-    return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": f"attachment; filename={fname}"})
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
 
 
 @app.route("/api/reports/send", methods=["POST"])
@@ -8161,17 +10231,22 @@ def api_reports_send():
     lines = []
     worst = []
     for ip in hosts:
-        c.execute("""
+        c.execute(
+            """
             SELECT COUNT(*) AS total, SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
                    AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms
             FROM ping_logs WHERE host=? AND timestamp > datetime('now','localtime',?)
-        """, (ip, f"-{days} days"))
+        """,
+            (ip, f"-{days} days"),
+        )
         r = c.fetchone()
         total = r["total"] or 0
         up_count = r["up_count"] or 0
         uptime = round(up_count / total * 100, 1) if total else None
-        c.execute("SELECT COUNT(*) AS cnt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
-                  (ip, f"-{days} days"))
+        c.execute(
+            "SELECT COUNT(*) AS cnt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
+            (ip, f"-{days} days"),
+        )
         cnt = c.fetchone()["cnt"] or 0
         if uptime is None:
             icon, txt = "⚪", "no data"
@@ -8233,13 +10308,16 @@ def api_public_status():
                     (ip,),
                 )
                 latest = c.fetchone()
-                c.execute("""
+                c.execute(
+                    """
                     SELECT COUNT(*) AS total,
                            SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
                            AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms
                     FROM ping_logs
                     WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
-                """, (ip,))
+                """,
+                    (ip,),
+                )
                 r = c.fetchone()
                 total = r["total"] or 0
                 up_count = r["up_count"] or 0
@@ -8254,7 +10332,9 @@ def api_public_status():
                 elif ip in maint_map:
                     st = "maintenance"
                     maint_n += 1
-                elif status_memory.get(ip, False) or (has_latest and latest["latency"] == -1):
+                elif status_memory.get(ip, False) or (
+                    has_latest and latest["latency"] == -1
+                ):
                     st = "down"
                     down_n += 1
                 else:
@@ -8264,34 +10344,42 @@ def api_public_status():
                     "name": name,
                     "status": st,
                     "uptime_24h": uptime,
-                    "avg_ms": round(r["avg_ms"], 1) if r["avg_ms"] is not None else None,
+                    "avg_ms": (
+                        round(r["avg_ms"], 1) if r["avg_ms"] is not None else None
+                    ),
                 }
                 if st == "maintenance":
-                    entry["note"] = ((maint_map[ip].get("reason") or "").strip()[:100]
-                                     or "Scheduled maintenance")
+                    entry["note"] = (maint_map[ip].get("reason") or "").strip()[
+                        :100
+                    ] or "Scheduled maintenance"
                 nodes.append(entry)
 
             c.execute("SELECT id, name, type, status FROM services ORDER BY id ASC")
             services = []
             for s in c.fetchall():
                 d = dict(s)
-                c.execute("""
+                c.execute(
+                    """
                     SELECT COUNT(*) AS total,
                            SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS up_count
                     FROM service_history
                     WHERE service_id=? AND timestamp > datetime('now','localtime','-24 hours')
-                """, (d["id"],))
+                """,
+                    (d["id"],),
+                )
                 sr = c.fetchone()
                 stotal = sr["total"] or 0
                 sup = sr["up_count"] or 0
                 st_raw = (d.get("status") or "PENDING").upper()
                 st = st_raw.lower() if st_raw in ("ONLINE", "OFFLINE") else "pending"
-                services.append({
-                    "name": (d.get("name") or "service")[:80],
-                    "type": (d.get("type") or "").lower()[:10],
-                    "status": st,
-                    "uptime_24h": round(sup / stotal * 100, 1) if stotal else None,
-                })
+                services.append(
+                    {
+                        "name": (d.get("name") or "service")[:80],
+                        "type": (d.get("type") or "").lower()[:10],
+                        "status": st,
+                        "uptime_24h": round(sup / stotal * 100, 1) if stotal else None,
+                    }
+                )
         finally:
             conn.close()
     except Exception as e:
@@ -8299,21 +10387,23 @@ def api_public_status():
         resp = jsonify({"error": "Status tidak tersedia, coba lagi."})
         resp.headers["Cache-Control"] = "no-store"
         return resp, 503
-    resp = jsonify({
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "summary": {
-            "total": len(nodes),
-            "up": up_n,
-            "down": down_n,
-            "pending": pend_n,
-            "maintenance": maint_n,
-            "avg_uptime_24h": round(sum_uptime / counted, 1) if counted else None,
-            "services": len(services),
-            "services_online": sum(1 for s in services if s["status"] == "online"),
-        },
-        "nodes": nodes,
-        "services": services,
-    })
+    resp = jsonify(
+        {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "summary": {
+                "total": len(nodes),
+                "up": up_n,
+                "down": down_n,
+                "pending": pend_n,
+                "maintenance": maint_n,
+                "avg_uptime_24h": round(sum_uptime / counted, 1) if counted else None,
+                "services": len(services),
+                "services_online": sum(1 for s in services if s["status"] == "online"),
+            },
+            "nodes": nodes,
+            "services": services,
+        }
+    )
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -8331,10 +10421,12 @@ def health():
     except Exception:
         db_ok = False
     uptime_s = int((datetime.now() - app_start_time).total_seconds())
-    return jsonify({
-        "status": "ok" if db_ok else "degraded",
-        "uptime_seconds": uptime_s,
-    }), 200 if db_ok else 503
+    return jsonify(
+        {
+            "status": "ok" if db_ok else "degraded",
+            "uptime_seconds": uptime_s,
+        }
+    ), (200 if db_ok else 503)
 
 
 if __name__ == "__main__":
