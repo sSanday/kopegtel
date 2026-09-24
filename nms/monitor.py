@@ -1,9 +1,4 @@
-"""nms.monitor — ping host dan heartbeat agent.
-
-Dipindah dari app.py (modul 3, P3) tanpa perubahan perilaku.
-check_host/check_network/SNMP menyusul di modul berikutnya (terikat fake
-test dan dependensi fiber).
-"""
+"""nms.monitor — ping host, heartbeat agent, dan korelasi induk fiber."""
 
 import re
 import sqlite3
@@ -201,7 +196,6 @@ def check_network():
                                 or (now_dt - last_tg).total_seconds() >= DOWN_COOLDOWN_S
                             ):
                                 last_down_telegram[host] = now_dt
-                                # korelasi induk fiber: OLT ber-IP ini -> alarm ONT disuppress
                                 _aff, _onames = _fiber_parent_register(
                                     host, timestamp, c
                                 )
@@ -286,7 +280,6 @@ def check_network():
                             telegram_queue.append(
                                 f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
                             )
-                            # induk ping pulih -> lepas supresi fiber OLT ini
                             try:
                                 for _k in [
                                     k

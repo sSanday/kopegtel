@@ -1,9 +1,4 @@
-"""nms.snmp — SNMP data-plane: codec BER, GET/NEXT/WALK, discovery iface.
-
-Dipindah dari app.py (modul 4, P3) tanpa perubahan perilaku. Murni tanpa
-dependensi Flask/DB (hanya socket) agar mudah dites.
-get_snmp_bandwidth & polling tetap di app.py (terikat fake test & state).
-"""
+"""nms.snmp — SNMP data-plane: codec BER, GET/NEXT/WALK, discovery interface."""
 
 import os
 import re
@@ -243,7 +238,7 @@ def snmp_walk(ip, community, base, max_rows=64):
         if not oid or not _oid_under(oid, base) or oid in seen:
             break
         seen.add(oid)
-        if tag in (0x80, 0x81, 0x82):  # noSuch / endOfMibView
+        if tag in (0x80, 0x81, 0x82):
             break
         out.append((oid, tag, ival, sval))
         cur = oid
@@ -252,9 +247,7 @@ def snmp_walk(ip, community, base, max_rows=64):
 
 IF_DESCR_BASE = "1.3.6.1.2.1.2.2.1.2"
 IF_OPER_BASE = "1.3.6.1.2.1.2.2.1.8"
-DISCOVER_MAX_IF = (
-    128  # batas interface per discover (walk berhenti sendiri di ujung tabel)
-)
+DISCOVER_MAX_IF = 128
 
 
 def discover_interfaces(ip, community, max_if=DISCOVER_MAX_IF):
@@ -327,8 +320,6 @@ def _snmp_get(ip, community, oids, timeout=2.0):
         sock.sendto(pkt, (ip, 161))
         resp, _ = sock.recvfrom(8192)
         vals = _extract_snmp_values(resp)
-        # hanya mapping posisional bila jumlah pas (respons error/varbind
-        # parsial jumlahnya tak cocok -> anggap tak terjawab semua)
         if len(vals) == len(oids):
             return list(vals)
         return [None] * len(oids)

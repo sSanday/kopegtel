@@ -1,11 +1,4 @@
-"""nms.db — lapisan database SQLite NMS Dashboard.
-
-Dipindah dari app.py (modul 2, P3) tanpa perubahan perilaku, kecuali:
-- DB_PATH dibaca via resolve_db_path() saat dipanggil (bukan sekali saat
-  import) agar override NMS_DB_PATH oleh test tetap berlaku.
-- backup_database mengimpor send_telegram_alert secara lazy untuk
-  menghindari circular import dengan nms.notify.
-"""
+"""nms.db — lapisan database SQLite."""
 
 import glob
 import os
@@ -182,7 +175,6 @@ def init_db():
         c.execute("ALTER TABLE hosts ADD COLUMN snmp_profile TEXT DEFAULT 'auto'")
     except sqlite3.OperationalError:
         pass
-    # Whitelist kolom agar tidak terjadi SQL Injection melalui f-string
     _ALLOWED_OID_COLS = {"cpu_oid", "mem_oid", "storage_oid", "temp_oid"}
     for _col in _ALLOWED_OID_COLS:
         try:
@@ -342,7 +334,6 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)"
     )
 
-    # --- Fiber / Redaman (GPON ONT Rx/Tx power) ---
     c.execute("""CREATE TABLE IF NOT EXISTS fiber_onts(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ont_sn TEXT UNIQUE NOT NULL,
@@ -383,7 +374,6 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_fiber_down ON fiber_downtime(ont_id, resolved_at)"
     )
 
-    # --- MikroTik / SNMP device health (CPU/RAM/storage/suhu) ---
     c.execute("""CREATE TABLE IF NOT EXISTS device_health(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
@@ -468,8 +458,6 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     try:
-        # backfill sekali: ONT yang sudah punya pengukuran dianggap terpantau
-        # pada cek terakhir (agar tak langsung 'stale' setelah upgrade)
         c.execute(
             "UPDATE fiber_onts SET last_seen=COALESCE(NULLIF(last_checked, ''), updated_at) "
             "WHERE (last_seen IS NULL OR last_seen='') "

@@ -2,8 +2,6 @@ import os
 import tempfile
 import unittest
 
-# bootstrap agar aman dijalankan standalone (sebelum import app):
-# pakai DB sementara, jangan pernah menyentuh network.db produksi.
 _tmp = tempfile.mkdtemp(prefix="nms_test_mikrotik_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
@@ -15,6 +13,9 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+from nms import mikrotik as _mkmod
+from nms import mikrotik_poll as _mtmod
+from nms import mikrotik_routes as _mrtmod
 from nms import snmp as _snmpmod
 
 try:
@@ -61,12 +62,12 @@ class SnmpUnitTest(unittest.TestCase):
                 return [100, 200]
             return [1, 2]
 
-        orig = m._snmp_get
-        m._snmp_get = fake_get
+        orig = _mtmod._snmp_get
+        _mtmod._snmp_get = fake_get
         try:
-            self.assertEqual(m.get_snmp_bandwidth("1.2.3.4", "pub", 1), (100, 200))
+            self.assertEqual(_mtmod.get_snmp_bandwidth("1.2.3.4", "pub", 1), (100, 200))
         finally:
-            m._snmp_get = orig
+            _mtmod._snmp_get = orig
 
     def test_bandwidth_fallback_32bit(self):
         def fake_get(ip, community, oids, timeout=2.0):
@@ -74,16 +75,16 @@ class SnmpUnitTest(unittest.TestCase):
                 return [None, None]
             return [7, 9]
 
-        orig = m._snmp_get
-        m._snmp_get = fake_get
+        orig = _mtmod._snmp_get
+        _mtmod._snmp_get = fake_get
         try:
-            self.assertEqual(m.get_snmp_bandwidth("1.2.3.4", "pub", 2), (7, 9))
+            self.assertEqual(_mtmod.get_snmp_bandwidth("1.2.3.4", "pub", 2), (7, 9))
         finally:
-            m._snmp_get = orig
+            _mtmod._snmp_get = orig
 
     def test_bandwidth_ifindex_invalid(self):
-        self.assertEqual(m.get_snmp_bandwidth("1.2.3.4", "pub", 0), (None, None))
-        self.assertEqual(m.get_snmp_bandwidth("1.2.3.4", "pub", "x"), (None, None))
+        self.assertEqual(_mtmod.get_snmp_bandwidth("1.2.3.4", "pub", 0), (None, None))
+        self.assertEqual(_mtmod.get_snmp_bandwidth("1.2.3.4", "pub", "x"), (None, None))
 
     def test_resolve_oids_override(self):
         row = {
@@ -92,7 +93,7 @@ class SnmpUnitTest(unittest.TestCase):
             "storage_oid": "",
             "temp_oid": "",
         }
-        oids = m.resolve_mt_oids(row)
+        oids = _mtmod.resolve_mt_oids(row)
         self.assertEqual(oids["cpu"], "1.3.6.1.4.1.1.1.0")
         self.assertEqual(oids["mem"], m.MT_DEFAULT_OIDS["mem"])
 
@@ -135,7 +136,6 @@ class MikrotikApiTest(unittest.TestCase):
             self.assertEqual(h["snmp_profile"], "mikrotik")
             self.assertEqual(h["cpu_oid"], "1.3.6.1.4.1.1.9.0")
             self.assertEqual(h["mem_oid"], "")
-            # PATCH snmp
             r = self.client.patch(
                 f"/api/hosts/{MT_HOST}/snmp",
                 json={"snmp_profile": "auto", "if_index": 3},
@@ -191,15 +191,15 @@ class MikrotikApiTest(unittest.TestCase):
     def test_poll_alarm_dan_pulih(self):
         self._add_host(MT_HOST)
         sent = []
-        orig_health = m.get_mikrotik_health
-        orig_tg = m.send_telegram_alert
-        m.get_mikrotik_health = lambda ip, comm, oids: {
+        orig_health = _mtmod.get_mikrotik_health
+        orig_tg = _mtmod.send_telegram_alert
+        _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
             "cpu": 95.0,
             "mem": 50.0,
             "storage": 10.0,
             "temp_raw": 800.0,
         }
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.poll_mikrotik_health()
             self.assertTrue(m.mt_is_mikrotik.get(MT_HOST))
@@ -207,12 +207,10 @@ class MikrotikApiTest(unittest.TestCase):
             self.assertTrue(m.mt_alarm_memory[MT_HOST].get("temp_crit"))
             self.assertTrue(any("CPU" in s for s in sent))
             self.assertTrue(any("KRITIS" in s for s in sent))
-            # poll kedua sama -> tidak spam ulang
             n = len(sent)
             m.poll_mikrotik_health()
             self.assertEqual(len(sent), n)
-            # pulih
-            m.get_mikrotik_health = lambda ip, comm, oids: {
+            _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
                 "cpu": 10.0,
                 "mem": 20.0,
                 "storage": 10.0,
@@ -221,8 +219,7 @@ class MikrotikApiTest(unittest.TestCase):
             m.poll_mikrotik_health()
             self.assertFalse(m.mt_alarm_memory[MT_HOST].get("cpu"))
             self.assertTrue(any("NORMAL" in s for s in sent))
-            # triggers memuat kategori mikrotik saat alarm aktif lagi
-            m.get_mikrotik_health = lambda ip, comm, oids: {
+            _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
                 "cpu": 95.0,
                 "mem": 20.0,
                 "storage": 10.0,
@@ -232,7 +229,6 @@ class MikrotikApiTest(unittest.TestCase):
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             cats = {(a["category"], a["host"]) for a in r.get_json()}
             self.assertTrue(any(c == "mikrotik" and MT_HOST in h for c, h in cats))
-            # list + history
             r = self.client.get("/api/mikrotik", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["host"] == MT_HOST)
             self.assertEqual(item["cpu"], 95.0)
@@ -247,15 +243,15 @@ class MikrotikApiTest(unittest.TestCase):
             )
             self.assertEqual(r.status_code, 400)
         finally:
-            m.get_mikrotik_health = orig_health
-            m.send_telegram_alert = orig_tg
+            _mtmod.get_mikrotik_health = orig_health
+            _mtmod.send_telegram_alert = orig_tg
             self.client.delete(f"/api/hosts/{MT_HOST}", headers=XRW_HDR)
             self.assertNotIn(MT_HOST, m.mt_alarm_memory)
 
     def test_host_tanpa_respon_dilewati(self):
         self._add_host(MT_HOST2)
-        orig_health = m.get_mikrotik_health
-        m.get_mikrotik_health = lambda ip, comm, oids: {
+        orig_health = _mtmod.get_mikrotik_health
+        _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
             "cpu": None,
             "mem": None,
             "storage": None,
@@ -271,7 +267,7 @@ class MikrotikApiTest(unittest.TestCase):
             conn.close()
             self.assertEqual(n, 0)
         finally:
-            m.get_mikrotik_health = orig_health
+            _mtmod.get_mikrotik_health = orig_health
             self.client.delete(f"/api/hosts/{MT_HOST2}", headers=XRW_HDR)
 
     def test_halaman_mikrotik(self):
@@ -319,11 +315,11 @@ def _build_snmp_response(varbinds):
 class SnmpWalkTest(unittest.TestCase):
     def test_decode_oid(self):
         self.assertEqual(
-            m._decode_oid(bytes([43, 6, 1, 2, 1, 2, 2, 1, 8, 1])),
+            _snmpmod._decode_oid(bytes([43, 6, 1, 2, 1, 2, 2, 1, 8, 1])),
             "1.3.6.1.2.1.2.2.1.8.1",
         )
-        self.assertIsNone(m._decode_oid(b""))
-        self.assertIsNone(m._decode_oid(bytes([43, 6, 0x81])))
+        self.assertIsNone(_snmpmod._decode_oid(b""))
+        self.assertIsNone(_snmpmod._decode_oid(bytes([43, 6, 0x81])))
 
     def test_extract_varbinds_int_dan_string(self):
         resp = _build_snmp_response(
@@ -332,7 +328,7 @@ class SnmpWalkTest(unittest.TestCase):
                 ([1, 3, 6, 1, 2, 1, 2, 2, 1, 2, 1], 0x04, b"ether1"),
             ]
         )
-        vbs = m._extract_snmp_varbinds(resp)
+        vbs = _snmpmod._extract_snmp_varbinds(resp)
         self.assertEqual(len(vbs), 2)
         self.assertEqual(vbs[0], ("1.3.6.1.2.1.2.2.1.8.1", 0x02, 1, None))
         self.assertEqual(vbs[1][0], "1.3.6.1.2.1.2.2.1.2.1")
@@ -348,7 +344,7 @@ class SnmpWalkTest(unittest.TestCase):
         orig = _snmpmod._snmp_getnext
         _snmpmod._snmp_getnext = lambda ip, comm, oid, timeout=2.5: next(it)
         try:
-            out = m.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2")
+            out = _snmpmod.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2")
             self.assertEqual(len(out), 2)
         finally:
             _snmpmod._snmp_getnext = orig
@@ -362,8 +358,10 @@ class SnmpWalkTest(unittest.TestCase):
             "x",
         )
         try:
-            out = m.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", max_rows=64)
-            self.assertEqual(len(out), 1)  # oid sama berulang -> stop
+            out = _snmpmod.snmp_walk(
+                "1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", max_rows=64
+            )
+            self.assertEqual(len(out), 1)
         finally:
             _snmpmod._snmp_getnext = orig
 
@@ -380,7 +378,7 @@ class SnmpWalkTest(unittest.TestCase):
 
         _snmpmod.snmp_walk = fake_walk
         try:
-            out = m.discover_interfaces("1.2.3.4", "pub")
+            out = _mrtmod.discover_interfaces("1.2.3.4", "pub")
             self.assertEqual(
                 out,
                 [
@@ -447,8 +445,8 @@ class MikrotikIfaceTest(unittest.TestCase):
     def test_discover_toggle_delete(self):
         self._add(MT_IF_HOST)
         try:
-            orig = m.discover_interfaces
-            m.discover_interfaces = lambda ip, comm, max_if=48: [
+            orig = _mrtmod.discover_interfaces
+            _mrtmod.discover_interfaces = lambda ip, comm, max_if=48: [
                 {"if_index": 1, "name": "ether1", "oper": 1},
                 {"if_index": 2, "name": "ether2", "oper": 2},
             ]
@@ -459,7 +457,7 @@ class MikrotikIfaceTest(unittest.TestCase):
                 self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
                 self.assertEqual(r.get_json()["count"], 2)
             finally:
-                m.discover_interfaces = orig
+                _mrtmod.discover_interfaces = orig
             r = self.client.get(
                 f"/api/mikrotik/{MT_IF_HOST}/interfaces", headers=XRW_HDR
             )
@@ -484,7 +482,6 @@ class MikrotikIfaceTest(unittest.TestCase):
                 f"/api/mikrotik/{MT_IF_HOST}/interfaces", headers=XRW_HDR
             )
             self.assertEqual(len(r.get_json()), 1)
-            # discover host tak dikenal / tanpa community
             r = self.client.post(
                 "/api/mikrotik/10.99.99.250/interfaces/discover", headers=XRW_HDR
             )
@@ -506,18 +503,18 @@ class MikrotikIfaceTest(unittest.TestCase):
         conn.close()
         state = {"oper": 1, "in": 1000, "out": 2000}
         sent = []
-        orig_check = m._mt_iface_check_one
-        orig_tg = m.send_telegram_alert
-        m._mt_iface_check_one = lambda args: (
+        orig_check = _mtmod._mt_iface_check_one
+        orig_tg = _mtmod.send_telegram_alert
+        _mtmod._mt_iface_check_one = lambda args: (
             args[0],
             {
                 "opers": {1: state["oper"]},
                 "counters": {1: {"in": state["in"], "out": state["out"]}},
             },
         )
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
-            m.poll_mikrotik_ifaces()  # baseline, diam
+            m.poll_mikrotik_ifaces()
             self.assertEqual(sent, [])
             state["oper"] = 2
             m.poll_mikrotik_ifaces()
@@ -529,12 +526,10 @@ class MikrotikIfaceTest(unittest.TestCase):
                     for a in r.get_json()
                 )
             )
-            # flip balik cepat -> cooldown: tanpa telegram, tercatat flapping
             state["oper"] = 1
             m.poll_mikrotik_ifaces()
             self.assertFalse(any("PORT UP" in s for s in sent))
             self.assertEqual(m.mt_iface_flaps.get((MT_IF_HOST, 1)), 1)
-            # DB oper + log tetap terupdate walau telegram disuppress
             conn, c = m.get_db()
             oper_db = c.execute(
                 "SELECT oper FROM snmp_interfaces WHERE host=? AND if_index=1",
@@ -547,7 +542,6 @@ class MikrotikIfaceTest(unittest.TestCase):
             conn.close()
             self.assertEqual(oper_db, 1)
             self.assertGreaterEqual(up_log, 1)
-            # lewat cooldown + flip lagi -> telegram dengan catatan flapping
             m.mt_iface_tg[(MT_IF_HOST, 1)] = _t.time() - 601
             state["oper"] = 2
             m.poll_mikrotik_ifaces()
@@ -569,8 +563,8 @@ class MikrotikIfaceTest(unittest.TestCase):
             )
             self.assertEqual(r.status_code, 404)
         finally:
-            m._mt_iface_check_one = orig_check
-            m.send_telegram_alert = orig_tg
+            _mtmod._mt_iface_check_one = orig_check
+            _mtmod.send_telegram_alert = orig_tg
             for _mem in (
                 m.mt_iface_oper,
                 m.iface_state,
@@ -584,21 +578,21 @@ class MikrotikIfaceTest(unittest.TestCase):
         self._add(MT_RB_HOST)
         ticks = [10000000]
         sent = []
-        orig_health = m.get_mikrotik_health
-        orig_get = m._snmp_get
-        orig_tg = m.send_telegram_alert
-        m.get_mikrotik_health = lambda ip, comm, oids: {
+        orig_health = _mtmod.get_mikrotik_health
+        orig_get = _mtmod._snmp_get
+        orig_tg = _mtmod.send_telegram_alert
+        _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
             "cpu": 10.0,
             "mem": 20.0,
             "storage": 10.0,
             "temp_raw": 400.0,
         }
-        m._snmp_get = lambda ip, comm, oids, timeout=2.0: [ticks[0]]
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _mtmod._snmp_get = lambda ip, comm, oids, timeout=2.0: [ticks[0]]
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
-            m.poll_mikrotik_health()  # baseline
+            m.poll_mikrotik_health()
             self.assertFalse(any("REBOOT" in s for s in sent))
-            ticks[0] = 5000  # reboot!
+            ticks[0] = 5000
             m.poll_mikrotik_health()
             self.assertTrue(any("REBOOT" in s for s in sent))
             conn, c = m.get_db()
@@ -619,9 +613,9 @@ class MikrotikIfaceTest(unittest.TestCase):
             item = next(o for o in r.get_json() if o["host"] == MT_RB_HOST)
             self.assertIn("m", item["uptime"])
         finally:
-            m.get_mikrotik_health = orig_health
-            m._snmp_get = orig_get
-            m.send_telegram_alert = orig_tg
+            _mtmod.get_mikrotik_health = orig_health
+            _mtmod._snmp_get = orig_get
+            _mtmod.send_telegram_alert = orig_tg
             self.client.delete(f"/api/hosts/{MT_RB_HOST}", headers=XRW_HDR)
 
 
@@ -679,10 +673,10 @@ class MikrotikStaleWrapTest(unittest.TestCase):
 
         old = (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
         fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.assertTrue(m._mt_stale_info(old)[0])
-        self.assertFalse(m._mt_stale_info(fresh)[0])
-        self.assertFalse(m._mt_stale_info("")[0])
-        self.assertFalse(m._mt_stale_info(None)[0])
+        self.assertTrue(_mkmod._mt_stale_info(old)[0])
+        self.assertFalse(_mkmod._mt_stale_info(fresh)[0])
+        self.assertFalse(_mkmod._mt_stale_info("")[0])
+        self.assertFalse(_mkmod._mt_stale_info(None)[0])
 
     def test_stale_di_list_dan_triggers(self):
         from datetime import datetime, timedelta
@@ -721,30 +715,29 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
     def test_reboot_kind_helper(self):
-        self.assertEqual(m._mt_reboot_kind(100000.0, 50.0), "reboot")
-        self.assertIsNone(m._mt_reboot_kind(50.0, 100000.0))
-        self.assertIsNone(m._mt_reboot_kind(None, 50.0))
+        self.assertEqual(_mkmod._mt_reboot_kind(100000.0, 50.0), "reboot")
+        self.assertIsNone(_mkmod._mt_reboot_kind(50.0, 100000.0))
+        self.assertIsNone(_mkmod._mt_reboot_kind(None, 50.0))
         wrap_prev = 2**32 / 100.0 - 1000.0
-        self.assertEqual(m._mt_reboot_kind(wrap_prev, 50.0), "wrap")
-        # jauh dari batas wrap walau turun -> tetap reboot
-        self.assertEqual(m._mt_reboot_kind(1000000.0, 50.0), "reboot")
+        self.assertEqual(_mkmod._mt_reboot_kind(wrap_prev, 50.0), "wrap")
+        self.assertEqual(_mkmod._mt_reboot_kind(1000000.0, 50.0), "reboot")
 
     def test_wrap_tidak_panik(self):
         self._add(MT_ST_HOST)
         sent = []
-        orig_health = m.get_mikrotik_health
-        orig_get = m._snmp_get
-        orig_tg = m.send_telegram_alert
+        orig_health = _mtmod.get_mikrotik_health
+        orig_get = _mtmod._snmp_get
+        orig_tg = _mtmod.send_telegram_alert
         wrap_prev = 2**32 / 100.0 - 1000.0
         ticks = [wrap_prev * 100]
-        m.get_mikrotik_health = lambda ip, comm, oids: {
+        _mtmod.get_mikrotik_health = lambda ip, comm, oids: {
             "cpu": 10.0,
             "mem": 20.0,
             "storage": 10.0,
             "temp_raw": 400.0,
         }
-        m._snmp_get = lambda ip, comm, oids, timeout=2.0: [ticks[0]]
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _mtmod._snmp_get = lambda ip, comm, oids, timeout=2.0: [ticks[0]]
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.poll_mikrotik_health()
             self.assertFalse(any("REBOOT" in s or "WRAP" in s for s in sent))
@@ -754,9 +747,9 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.assertTrue(wrap)
             self.assertFalse(any("REBOOT TERDETEKSI" in s for s in sent))
         finally:
-            m.get_mikrotik_health = orig_health
-            m._snmp_get = orig_get
-            m.send_telegram_alert = orig_tg
+            _mtmod.get_mikrotik_health = orig_health
+            _mtmod._snmp_get = orig_get
+            _mtmod.send_telegram_alert = orig_tg
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
     def test_settings_mt_stale_min(self):
@@ -819,14 +812,14 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             j = r.get_json()
             self.assertLessEqual(j["count"], 500)
-            self.assertEqual(j["count"], 300)  # 600 titik -> step 2
+            self.assertEqual(j["count"], 300)
         finally:
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
     def test_discover_besar_flag_truncated(self):
         self._add(MT_ST_HOST)
-        orig = m.discover_interfaces
-        m.discover_interfaces = lambda ip, comm, max_if=128: [
+        orig = _mrtmod.discover_interfaces
+        _mrtmod.discover_interfaces = lambda ip, comm, max_if=128: [
             {"if_index": i, "name": f"ether{i}", "oper": 1} for i in range(1, 129)
         ]
         try:
@@ -838,7 +831,7 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.assertEqual(j["count"], 128)
             self.assertTrue(j["truncated"])
         finally:
-            m.discover_interfaces = orig
+            _mrtmod.discover_interfaces = orig
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
 
@@ -921,11 +914,11 @@ class MikrotikBackupTest(unittest.TestCase):
         self._add()
         cfg = [CFG_V1]
         sent = []
-        orig_fetch, orig_tg = m.fetch_mikrotik_config, m.send_telegram_alert
-        m.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        orig_fetch, orig_tg = _mtmod.fetch_mikrotik_config, _mtmod.send_telegram_alert
+        _mtmod.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
-            m.poll_mt_backups()  # baseline sunyi
+            m.poll_mt_backups()
             conn, c = m.get_db()
             n = c.execute(
                 "SELECT COUNT(*) FROM mt_backups WHERE host=?", (MT_BK_HOST,)
@@ -933,7 +926,7 @@ class MikrotikBackupTest(unittest.TestCase):
             conn.close()
             self.assertEqual(n, 1)
             self.assertEqual(sent, [])
-            m.poll_mt_backups()  # identik -> tak ada baris baru
+            m.poll_mt_backups()
             conn, c = m.get_db()
             n = c.execute(
                 "SELECT COUNT(*) FROM mt_backups WHERE host=?", (MT_BK_HOST,)
@@ -941,7 +934,7 @@ class MikrotikBackupTest(unittest.TestCase):
             conn.close()
             self.assertEqual(n, 1)
             cfg[0] = CFG_V2
-            m.poll_mt_backups()  # berubah -> telegram
+            m.poll_mt_backups()
             conn, c = m.get_db()
             row = c.execute(
                 "SELECT changed FROM mt_backups WHERE host=? ORDER BY id DESC LIMIT 1",
@@ -950,7 +943,6 @@ class MikrotikBackupTest(unittest.TestCase):
             conn.close()
             self.assertEqual(row[0], 1)
             self.assertTrue(any("BERUBAH" in s for s in sent))
-            # prune ke 3 versi
             r = self.client.get("/api/settings", headers=XRW_HDR)
             orig = r.get_json()
             self.client.post(
@@ -973,15 +965,18 @@ class MikrotikBackupTest(unittest.TestCase):
                     headers=JSON_HDR,
                 )
         finally:
-            m.fetch_mikrotik_config, m.send_telegram_alert = orig_fetch, orig_tg
+            _mtmod.fetch_mikrotik_config, _mtmod.send_telegram_alert = (
+                orig_fetch,
+                orig_tg,
+            )
             self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
 
     def test_gagal_tak_bertelegram_tapi_trigger(self):
         self._add()
-        orig_fetch, orig_tg = m.fetch_mikrotik_config, m.send_telegram_alert
-        m.fetch_mikrotik_config = lambda *a, **k: (False, "auth failed")
+        orig_fetch, orig_tg = _mtmod.fetch_mikrotik_config, _mtmod.send_telegram_alert
+        _mtmod.fetch_mikrotik_config = lambda *a, **k: (False, "auth failed")
         sent = []
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.poll_mt_backups()
             self.assertEqual(sent, [])
@@ -998,14 +993,17 @@ class MikrotikBackupTest(unittest.TestCase):
             ]
             self.assertTrue(bad)
         finally:
-            m.fetch_mikrotik_config, m.send_telegram_alert = orig_fetch, orig_tg
+            _mtmod.fetch_mikrotik_config, _mtmod.send_telegram_alert = (
+                orig_fetch,
+                orig_tg,
+            )
             self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
 
     def test_endpoint_list_isi_download_diff_manual(self):
         self._add()
         cfg = [CFG_V1]
-        orig_fetch = m.fetch_mikrotik_config
-        m.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
+        orig_fetch = _mrtmod.fetch_mikrotik_config
+        _mrtmod.fetch_mikrotik_config = lambda *a, **k: (True, cfg[0])
         try:
             r = self.client.post(f"/api/mikrotik/{MT_BK_HOST}/backup", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
@@ -1035,7 +1033,7 @@ class MikrotikBackupTest(unittest.TestCase):
             r = self.client.get(f"/api/mikrotik/10.99.99.250/backups", headers=XRW_HDR)
             self.assertEqual(r.status_code, 404)
         finally:
-            m.fetch_mikrotik_config = orig_fetch
+            _mrtmod.fetch_mikrotik_config = orig_fetch
             self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
 
 

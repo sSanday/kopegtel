@@ -1,10 +1,6 @@
-"""nms.notify — notifikasi Telegram + audit trail.
-
-Dipindah dari app.py (modul 2, P3) tanpa perubahan perilaku.
-"""
+"""nms.notify — notifikasi Telegram dan audit trail."""
 
 import requests
-from datetime import datetime
 
 from nms.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from nms.db import log_system_event

@@ -3,8 +3,6 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 
-# bootstrap agar aman dijalankan standalone (sebelum import app):
-# pakai DB sementara, jangan pernah menyentuh network.db produksi.
 _tmp = tempfile.mkdtemp(prefix="nms_test_features_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")

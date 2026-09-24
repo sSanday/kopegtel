@@ -15,6 +15,7 @@ os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
 from nms import crypto as cr
+from nms import mikrotik_poll as _mtmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -103,7 +104,7 @@ class CryptoTest(unittest.TestCase):
         conn.commit()
         conn.close()
         try:
-            cands = m._mt_backup_candidates()
+            cands = _mtmod._mt_backup_candidates()
             mine = [h for h in cands if h.get("ip") == CR_HOST]
             self.assertTrue(mine)
             self.assertEqual(mine[0]["ssh_pass"], CR_PASS)

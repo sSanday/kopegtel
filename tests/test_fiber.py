@@ -2,8 +2,6 @@ import os
 import tempfile
 import unittest
 
-# bootstrap agar aman dijalankan standalone (sebelum import app):
-# pakai DB sementara, jangan pernah menyentuh network.db produksi.
 _tmp = tempfile.mkdtemp(prefix="nms_test_fiber_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
@@ -15,7 +13,12 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+from nms import fiber as _fibmod
+from nms import fiber_poll as _fmod
+from nms import fiber_routes as _frmod
+from nms import mikrotik as _mkmod
 from nms import monitor as _monmod
+from nms import olt as _oltmod
 
 try:
     m.scheduler.shutdown(wait=False)
@@ -58,10 +61,10 @@ class FiberThresholdTest(unittest.TestCase):
             "tx_min": 0.0,
             "tx_max": 5.0,
         }
-        self.assertEqual(m.fiber_status_for_rx(-19.0, th)[0], "normal")
-        self.assertEqual(m.fiber_status_for_rx(-26.0, th)[0], "warning")
-        self.assertEqual(m.fiber_status_for_rx(-28.5, th)[0], "critical")
-        self.assertEqual(m.fiber_status_for_rx(None, th)[0], "unknown")
+        self.assertEqual(_fibmod.fiber_status_for_rx(-19.0, th)[0], "normal")
+        self.assertEqual(_fibmod.fiber_status_for_rx(-26.0, th)[0], "warning")
+        self.assertEqual(_fibmod.fiber_status_for_rx(-28.5, th)[0], "critical")
+        self.assertEqual(_fibmod.fiber_status_for_rx(None, th)[0], "unknown")
 
     def test_overload_saran_peredam(self):
         th = {
@@ -72,7 +75,7 @@ class FiberThresholdTest(unittest.TestCase):
             "tx_min": 0.0,
             "tx_max": 5.0,
         }
-        status, sev, advice, need = m.fiber_status_for_rx(-5.0, th)
+        status, sev, advice, need = _fibmod.fiber_status_for_rx(-5.0, th)
         self.assertEqual(status, "overload")
         self.assertEqual(sev, "high")
         self.assertIn("PEREDAM", advice)
@@ -87,12 +90,12 @@ class FiberThresholdTest(unittest.TestCase):
             "tx_min": 0.0,
             "tx_max": 5.0,
         }
-        self.assertEqual(m.fiber_status_for_tx(2.1, th)[0], "tx_ok")
-        self.assertEqual(m.fiber_status_for_tx(None, th)[0], "tx_unknown")
-        st, sev, _adv = m.fiber_status_for_tx(7.5, th)
+        self.assertEqual(_fibmod.fiber_status_for_tx(2.1, th)[0], "tx_ok")
+        self.assertEqual(_fibmod.fiber_status_for_tx(None, th)[0], "tx_unknown")
+        st, sev, _adv = _fibmod.fiber_status_for_tx(7.5, th)
         self.assertEqual(st, "tx_abnormal")
         self.assertIsNotNone(sev)
-        st, sev, _adv = m.fiber_status_for_tx(-8.0, th)
+        st, sev, _adv = _fibmod.fiber_status_for_tx(-8.0, th)
         self.assertEqual(st, "tx_abnormal")
         self.assertEqual(sev, "high")
 
@@ -105,13 +108,10 @@ class FiberThresholdTest(unittest.TestCase):
             "tx_min": 0.0,
             "tx_max": 5.0,
         }
-        # rx normal + tx normal
         self.assertEqual(m.fiber_eval(-19.0, 2.0, th)[0], "normal")
-        # rx normal + tx rusak -> warning ikut tx
         st, sev, adv, _n = m.fiber_eval(-19.0, 9.0, th)
         self.assertEqual(st, "warning")
         self.assertIn("Tx", adv)
-        # rx critical + tx rusak -> critical menang (severity disaster)
         st, sev, _adv, _n = m.fiber_eval(-29.0, 9.0, th)
         self.assertEqual(st, "critical")
         self.assertEqual(sev, "disaster")
@@ -128,9 +128,8 @@ class FiberThresholdTest(unittest.TestCase):
         c.execute("SELECT value FROM settings WHERE key='fiber_rx_warn'")
         row = c.fetchone()
         conn.close()
-        # seed default harus ada setelah init_db
         self.assertIsNotNone(row)
-        th = m._fiber_thresholds()
+        th = _fibmod._fiber_thresholds()
         for k in ("overload", "warn", "crit", "target", "tx_min", "tx_max"):
             self.assertIn(k, th)
 
@@ -248,12 +247,10 @@ class FiberApiTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_settings_fiber_validasi_dan_efek(self):
-        # simpan asli untuk restore
         r = self.client.get("/api/settings", headers=XRW_HDR)
         self.assertEqual(r.status_code, 200)
         orig = r.get_json()
         try:
-            # konsistensi ditolak
             r = self.client.post(
                 "/api/settings",
                 json={"fiber_rx_crit": -20.0, "fiber_rx_warn": -25.0},
@@ -266,14 +263,13 @@ class FiberApiTest(unittest.TestCase):
                 headers=JSON_HDR,
             )
             self.assertEqual(r.status_code, 400)
-            # ubah warn jadi -20 -> rx -21 harusnya warning
             r = self.client.post(
                 "/api/settings", json={"fiber_rx_warn": -20.0}, headers=JSON_HDR
             )
             self.assertEqual(r.status_code, 200)
-            th = m._fiber_thresholds()
+            th = _fibmod._fiber_thresholds()
             self.assertEqual(th["warn"], -20.0)
-            self.assertEqual(m.fiber_status_for_rx(-21.0)[0], "warning")
+            self.assertEqual(_fibmod.fiber_status_for_rx(-21.0)[0], "warning")
         finally:
             self.client.post(
                 "/api/settings",
@@ -309,7 +305,6 @@ class FiberApiTest(unittest.TestCase):
             conn.close()
             self.assertAlmostEqual(row["rx_power"], -19.5)
             self.assertEqual(row["status"], "normal")
-            # snapshot history tercatat walau source=manual (grafik tidak kosong)
             self.assertEqual(after, before + 1)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
@@ -330,8 +325,7 @@ class FiberLinkBudgetTest(unittest.TestCase):
         _cleanup_sn()
 
     def test_hitung_matematika(self):
-        # tx 3.0 - (7.2+10.5) - 2km*0.35 - 4*0.5 - 2*0.1 = 3.0-20.6 = -17.6
-        r = m.fiber_link_budget(3.0, ["1:4", "1:8"], 2.0, 4, 2)
+        r = _fibmod.fiber_link_budget(3.0, ["1:4", "1:8"], 2.0, 4, 2)
         self.assertAlmostEqual(r["losses"]["splitter_db"], 17.7)
         self.assertAlmostEqual(r["losses"]["fiber_db"], 0.7)
         self.assertAlmostEqual(r["losses"]["connector_db"], 2.0)
@@ -340,13 +334,13 @@ class FiberLinkBudgetTest(unittest.TestCase):
         self.assertAlmostEqual(r["expected_rx"], -17.6)
 
     def test_verdict(self):
-        v, _s, _a = m.fiber_budget_verdict(-17.6, -17.0)
+        v, _s, _a = _fibmod.fiber_budget_verdict(-17.6, -17.0)
         self.assertEqual(v, "ok")
-        v, s, a = m.fiber_budget_verdict(-17.6, -25.0)
+        v, s, a = _fibmod.fiber_budget_verdict(-17.6, -25.0)
         self.assertEqual(v, "over_budget")
         self.assertEqual(s, "high")
         self.assertIn("bending", a)
-        v, _s, _a = m.fiber_budget_verdict(-17.6, None)
+        v, _s, _a = _fibmod.fiber_budget_verdict(-17.6, None)
         self.assertEqual(v, "no_data")
 
     def test_api_tanpa_pembanding(self):
@@ -483,11 +477,9 @@ class OdpApiTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
-        # duplikat ditolak
         r = self.client.post("/api/odps", json={"name": ODP_NAME}, headers=JSON_HDR)
         self.assertEqual(r.status_code, 400)
         try:
-            # ONT critical di ODP ini
             r = self.client.post(
                 "/api/fiber",
                 json={
@@ -510,7 +502,6 @@ class OdpApiTest(unittest.TestCase):
                 self.assertEqual(item["critical"], 1)
                 self.assertEqual(item["worst"], "critical")
                 self.assertAlmostEqual(item["fill_pct"], 12.5)
-                # rename ODP memindahkan ONT
                 r = self.client.put(
                     f"/api/odps/{oid}",
                     json={"name": ODP_NAME + "-R", "capacity": 8},
@@ -523,7 +514,6 @@ class OdpApiTest(unittest.TestCase):
             finally:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
         finally:
-            # kembalikan nama lalu hapus
             conn, c = m.get_db()
             c.execute("UPDATE odps SET name=? WHERE id=?", (ODP_NAME, oid))
             conn.commit()
@@ -659,7 +649,6 @@ class FiberMuteOverrideTest(unittest.TestCase):
                 if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")
             ]
             self.assertEqual(fib, [])
-            # unmute -> muncul lagi
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -683,7 +672,6 @@ class FiberMuteOverrideTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_override_threshold_per_ont(self):
-        # rx -21 globalnya normal (< -25 warn), tapi override warn -20 -> warning
         r = self.client.post(
             "/api/fiber",
             json={
@@ -701,7 +689,6 @@ class FiberMuteOverrideTest(unittest.TestCase):
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_OVERRIDE)
             self.assertEqual(item["calc_status"], "warning")
-            # validasi: crit >= warn ditolak
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -717,7 +704,6 @@ class FiberMuteOverrideTest(unittest.TestCase):
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
     def test_single_check_langsung_set_memory(self):
-        # tanpa menunggu scheduler, memory langsung terisi setelah create
         r = self.client.post(
             "/api/fiber",
             json={"ont_sn": SN_SINGLE, "rx_power": -29.0, "tx_power": 2.0},
@@ -784,7 +770,6 @@ class FiberMaintenanceTest(unittest.TestCase):
                 if a.get("category") == "maintenance" and SN_MAINT in a.get("host", "")
             ]
             self.assertTrue(maint)
-            # poll tak mengirim telegram: memory tetap terset, tak ada ledakan
             before = dict(m.fiber_alarm_memory)
             m.poll_fiber_monitor()
             self.assertEqual(m.fiber_alarm_memory.get(fid), "critical")
@@ -898,12 +883,12 @@ class FiberImportOltTest(unittest.TestCase):
             self.assertEqual(r.status_code, 201)
             fid = r.get_json()["id"]
             try:
-                real = m._snmp_get
-                m._snmp_get = lambda ip, comm, oids, timeout=2.0: [-1995, 210]
+                real = _fmod._snmp_get
+                _fmod._snmp_get = lambda ip, comm, oids, timeout=2.0: [-1995, 210]
                 try:
                     m.poll_fiber_snmp()
                 finally:
-                    m._snmp_get = real
+                    _fmod._snmp_get = real
                 conn, c = m.get_db()
                 c.execute(
                     "SELECT rx_power, tx_power FROM fiber_onts WHERE id=?", (fid,)
@@ -920,24 +905,16 @@ class FiberImportOltTest(unittest.TestCase):
 
 class SchedulerRefTest(unittest.TestCase):
     def test_semua_job_scheduler_terdefinisi(self):
-        # Regresi: scheduler aktif saat produksi (NMS_DISABLE_SCHEDULER=0),
-        # tapi test mematikannya -> NameError saat deploy tak terdeteksi.
-        # Pastikan tiap func=... di blok scheduler ada sebagai callable,
-        # dan didefinisikan SEBELUM blok scheduler (aman saat import).
         import re
 
         src = open(m.__file__).read()
-        # \s* agar tahan terhadap formatting (black menaruh func= di baris baru)
         names = re.findall(r"scheduler\.add_job\(\s*func=([A-Za-z_][A-Za-z0-9_]*)", src)
         self.assertTrue(names)
         sched_pos = src.index("SCHEDULER_ENABLED = ")
         pre = src[:sched_pos]
         for n in names:
             self.assertTrue(callable(getattr(m, n, None)), f"job {n} tidak terdefinisi")
-            # Boleh def lokal ATAU impor dari nms.* — keduanya aman dari NameError
-            # saat blok scheduler dieksekusi (hasil refactor bertahap P3).
             defined = f"def {n}(" in pre
-            # Impor multi-baris (tanda kurung) maupun satu baris.
             imported = (
                 re.search(rf"from nms\.\w+ import \([^)]*?\b{n}\b", pre, re.S)
                 is not None
@@ -1048,7 +1025,6 @@ class FiberMuteExpiryTest(unittest.TestCase):
                 if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")
             ]
             self.assertEqual(fib, [])
-            # kedaluawarsa -> alarm aktif lagi
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -1255,7 +1231,6 @@ class FiberImportUpsertTest(unittest.TestCase):
                 "SELECT COUNT(*) FROM fiber_history WHERE ont_id=?", (fid,)
             ).fetchone()[0]
             conn.close()
-            # CSV hanya berisi rx baru (tanpa customer/odp) -> merge, bukan wipe
             csv_text = (
                 "ont_sn,rx_power,tx_power,source\n" f"{SN_UPSERT},-26.0,2.0,manual\n"
             )
@@ -1280,7 +1255,6 @@ class FiberImportUpsertTest(unittest.TestCase):
             ).fetchone()[0]
             conn.close()
             self.assertEqual(after, before + 1)
-            # mode default tetap skip
             r = self.client.post(
                 "/api/fiber/import",
                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
@@ -1290,7 +1264,6 @@ class FiberImportUpsertTest(unittest.TestCase):
             j = r.get_json()
             self.assertEqual(j["skipped"], 1)
             self.assertEqual(j.get("updated", 0), 0)
-            # mode invalid ditolak
             r = self.client.post(
                 "/api/fiber/import?mode=bogus",
                 data={"file": (_io.BytesIO(csv_text.encode()), "ont.csv")},
@@ -1329,27 +1302,23 @@ class FiberStaleTest(unittest.TestCase):
 
         old = (datetime.now() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # manual tak pernah stale walau data lama
         self.assertEqual(
             m._fiber_stale_info(
                 {"source": "manual", "rx_power": -19.0, "last_seen": old}
             )[0],
             False,
         )
-        # snmp segar -> tidak stale
         self.assertEqual(
             m._fiber_stale_info(
                 {"source": "snmp", "rx_power": -19.0, "last_seen": fresh}
             )[0],
             False,
         )
-        # snmp 3 jam (ambang default 60 mnt) -> stale
         is_stale, age = m._fiber_stale_info(
             {"source": "snmp", "rx_power": -19.0, "last_seen": old}
         )
         self.assertTrue(is_stale)
         self.assertIn("jam", age)
-        # tanpa pengukuran / tanpa last_seen -> bukan stale
         self.assertEqual(
             m._fiber_stale_info(
                 {"source": "snmp", "rx_power": None, "tx_power": None, "last_seen": old}
@@ -1397,7 +1366,6 @@ class FiberStaleTest(unittest.TestCase):
             self.assertTrue(stale)
             self.assertEqual(stale[0]["severity"], "warning")
             self.assertIn("STALE", stale[0]["message"])
-            # data segar masuk lagi -> kembali normal
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -1502,10 +1470,8 @@ class FiberDegradationTest(unittest.TestCase):
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             fid = r.get_json()["id"]
             try:
-                # history baru saja -> rentang < 24 jam -> belum dinilai
-                degr, drop = m._fiber_degradation(fid, -16.0)
+                degr, drop = _fmod._fiber_degradation(fid, -16.0)
                 self.assertFalse(degr)
-                # tanam titik lama: 6 hari lalu Rx -16, kini -20 (turun 4 dB)
                 old_ts = (datetime.now() - timedelta(days=6)).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
@@ -1528,10 +1494,9 @@ class FiberDegradationTest(unittest.TestCase):
                     headers=JSON_HDR,
                 )
                 self.assertEqual(r.status_code, 200)
-                degr, drop = m._fiber_degradation(fid, -20.0)
+                degr, drop = _fmod._fiber_degradation(fid, -20.0)
                 self.assertTrue(degr)
                 self.assertAlmostEqual(drop, 4.0)
-                # poll mengisi memory -> list & triggers menampilkan
                 m.poll_fiber_monitor()
                 mem = m.fiber_degrade_memory.get(fid) or {}
                 self.assertTrue(mem.get("degrading"))
@@ -1628,15 +1593,19 @@ class FiberOltPresetTest(unittest.TestCase):
 
     def test_transform_helper(self):
         self.assertAlmostEqual(
-            m._olt_raw_to_dbm(5000, {"div": 1.0, "scale": 0.002, "offset": -30.0}),
+            _oltmod._olt_raw_to_dbm(
+                5000, {"div": 1.0, "scale": 0.002, "offset": -30.0}
+            ),
             -20.0,
         )
         self.assertAlmostEqual(
-            m._olt_raw_to_dbm(7500, {"div": 1.0, "scale": 0.01, "offset": -100.0}),
+            _oltmod._olt_raw_to_dbm(
+                7500, {"div": 1.0, "scale": 0.01, "offset": -100.0}
+            ),
             -25.0,
         )
-        self.assertAlmostEqual(m._olt_raw_to_dbm(-1995, {"div": 100.0}), -19.95)
-        self.assertIsNone(m._olt_raw_to_dbm("bukan-angka", {"div": 100.0}))
+        self.assertAlmostEqual(_oltmod._olt_raw_to_dbm(-1995, {"div": 100.0}), -19.95)
+        self.assertIsNone(_oltmod._olt_raw_to_dbm("bukan-angka", {"div": 100.0}))
 
     def test_create_auto_preset_dan_validasi(self):
         r = self.client.post(
@@ -1654,7 +1623,6 @@ class FiberOltPresetTest(unittest.TestCase):
         self.assertIn("3902.1012.3.50.12.1.1.10", o["rx_base"])
         self.assertAlmostEqual(o["scale"], 0.002)
         self.assertAlmostEqual(o["offset"], -30.0)
-        # kustomisasi eksplisit tak tertimpa preset
         r = self.client.post(
             "/api/olts",
             json={
@@ -1671,7 +1639,6 @@ class FiberOltPresetTest(unittest.TestCase):
         o = self._get_olt(OLT_P2)
         self.assertEqual(o["rx_base"], "1.3.6.1.4.1.1")
         self.assertAlmostEqual(o["scale"], 1.0)
-        # validasi scale/offset
         r = self.client.post(
             "/api/olts",
             json={"name": "TEST-OLT-X", "vendor": "zte", "scale": 0},
@@ -1701,10 +1668,10 @@ class FiberOltPresetTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
-        real_get, real_next = m._snmp_get, m._snmp_getnext
+        real_get, real_next = _frmod._snmp_get, _frmod._snmp_getnext
         try:
-            m._snmp_get = lambda ip, comm, oids, timeout=2.0: [360000]
-            m._snmp_getnext = lambda ip, comm, base, timeout=2.5: (
+            _frmod._snmp_get = lambda ip, comm, oids, timeout=2.0: [360000]
+            _frmod._snmp_getnext = lambda ip, comm, base, timeout=2.5: (
                 (base + ".7", 0x02, -1995, None)
                 if base.endswith(".1")
                 else (base + ".7", 0x02, 210, None)
@@ -1720,15 +1687,14 @@ class FiberOltPresetTest(unittest.TestCase):
             self.assertAlmostEqual(j["tx"]["dbm"], 2.10)
             o = self._get_olt(OLT_T)
             self.assertEqual(o["last_test_ok"], 1)
-            # OLT mati -> ok False
-            m._snmp_get = lambda ip, comm, oids, timeout=2.0: [None]
+            _frmod._snmp_get = lambda ip, comm, oids, timeout=2.0: [None]
             r = self.client.post(f"/api/olts/{oid}/test", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200)
             self.assertFalse(r.get_json()["ok"])
             r = self.client.post("/api/olts/999999/test", headers=XRW_HDR)
             self.assertEqual(r.status_code, 404)
         finally:
-            m._snmp_get, m._snmp_getnext = real_get, real_next
+            _frmod._snmp_get, _frmod._snmp_getnext = real_get, real_next
 
     def test_discover_bulk_upsert(self):
         r = self.client.post(
@@ -1746,7 +1712,6 @@ class FiberOltPresetTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
         oid = r.get_json()["id"]
-        # baris manual dengan index sama -> harus dilewati, tak ditimpa
         r = self.client.post(
             "/api/fiber",
             json={
@@ -1760,20 +1725,20 @@ class FiberOltPresetTest(unittest.TestCase):
             headers=JSON_HDR,
         )
         self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
-        real_get, real_walk = m._snmp_get, m.snmp_walk
+        real_get, real_walk = _frmod._snmp_get, _frmod.snmp_walk
         base = "1.3.6.1.4.1.9999.1"
         try:
-            m.snmp_walk = lambda ip, comm, b, max_rows=64: [
+            _frmod.snmp_walk = lambda ip, comm, b, max_rows=64: [
                 (base + ".1.1", 0x02, -1995, None),
                 (base + ".1.2", 0x02, -2600, None),
             ]
 
             def _fake_get(ip, comm, oids, timeout=2.0):
-                if oids == [m.SYSUP_OID]:
+                if oids == [_mkmod.SYSUP_OID]:
                     return [360000]
                 return [210 if o.endswith(".1.1") else 215 for o in oids]
 
-            m._snmp_get = _fake_get
+            _frmod._snmp_get = _fake_get
             r = self.client.post(
                 f"/api/olts/{oid}/discover", json={"limit": 10}, headers=JSON_HDR
             )
@@ -1792,7 +1757,6 @@ class FiberOltPresetTest(unittest.TestCase):
             man = next(o for o in onts if o["ont_sn"] == "TEST-MANUAL-DISC")
             self.assertEqual(man["customer"], "Jangan Timpa")
             self.assertAlmostEqual(man["rx_power"], -18.0)
-            # discover kedua -> update, bukan create
             r = self.client.post(
                 f"/api/olts/{oid}/discover", json={"limit": 10}, headers=JSON_HDR
             )
@@ -1800,7 +1764,7 @@ class FiberOltPresetTest(unittest.TestCase):
             self.assertEqual(j["created"], 0)
             self.assertEqual(j["updated"], 1)
         finally:
-            m._snmp_get, m.snmp_walk = real_get, real_walk
+            _frmod._snmp_get, _frmod.snmp_walk = real_get, real_walk
             try:
                 conn, c = m.get_db()
                 c.execute(
@@ -1892,7 +1856,6 @@ class FiberPagingSummaryTest(unittest.TestCase):
         self.assertEqual(j["page"], 1)
         r = self.client.get("/api/fiber?page=2&per_page=2", headers=XRW_HDR)
         self.assertEqual(r.get_json()["page"], 2)
-        # sort rx terburuk dulu
         r = self.client.get(
             f"/api/fiber?sort=rx_asc&olt={OLT_PG}&per_page=50", headers=XRW_HDR
         )
@@ -1982,15 +1945,15 @@ class FiberDailySummaryTest(unittest.TestCase):
                 pass
 
         sent = []
-        real = m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real = _fmod.send_telegram_alert
+        _fmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             with _mock.patch.object(
-                m, "get_db", return_value=(_EmptyConn(), _EmptyC())
+                _fmod, "get_db", return_value=(_EmptyConn(), _EmptyC())
             ):
                 m.send_fiber_summary()
         finally:
-            m.send_telegram_alert = real
+            _fmod.send_telegram_alert = real
         self.assertEqual(sent, [])
 
     def test_isi_laporan(self):
@@ -2015,12 +1978,12 @@ class FiberDailySummaryTest(unittest.TestCase):
         conn.close()
         m.fiber_degrade_memory[fid_b] = {"degrading": True, "drop_db": 3.5}
         sent = []
-        real = m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real = _fmod.send_telegram_alert
+        _fmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.send_fiber_summary()
         finally:
-            m.send_telegram_alert = real
+            _fmod.send_telegram_alert = real
             m.fiber_degrade_memory.pop(fid_b, None)
         self.assertEqual(len(sent), 1)
         msg = sent[0]
@@ -2028,10 +1991,8 @@ class FiberDailySummaryTest(unittest.TestCase):
         self.assertIn("Total 3 ONT", msg)
         self.assertIn(SN_SUM_A, msg)
         self.assertIn("CRITICAL", msg)
-        # muted dihitung tapi tak masuk daftar perhatian
         self.assertIn("mute 1", msg)
         self.assertNotIn(SN_SUM_M, msg)
-        # normal + degradasi -> masuk seksi degradasi dini
         self.assertIn(SN_SUM_B, msg)
         self.assertIn("3.5 dB", msg)
 
@@ -2105,7 +2066,6 @@ class FiberDowntimeTest(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["state"], "ongoing")
             self.assertEqual(rows[0]["status"], "critical")
-            # list menandai down_ongoing
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_DT_A)
             self.assertTrue(item["down_ongoing"])
@@ -2133,7 +2093,6 @@ class FiberDowntimeTest(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["state"], "resolved")
             self.assertIsNotNone(rows[0]["duration_s"])
-            # log pemulihan memuat durasi
             conn, c = m.get_db()
             c.execute(
                 "SELECT message FROM system_logs WHERE host=? AND event_type='FIBER_NORMAL'"
@@ -2187,7 +2146,6 @@ class FiberDowntimeTest(unittest.TestCase):
             m.poll_fiber_monitor()
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_DT_B)
-            # stale tak menutupi critical (tetap butuh kunjungan teknisi)
             self.assertEqual(item["calc_status"], "critical")
             self.assertTrue(item["stale"])
             rows = self._downtime(fid)
@@ -2305,11 +2263,9 @@ class FiberFlapTest(unittest.TestCase):
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             fid = r.get_json()["id"]
             try:
-                # baru 1 titik -> belum flap
-                flapping, flips = m._fiber_flap(fid)
+                flapping, flips = _fmod._fiber_flap(fid)
                 self.assertFalse(flapping)
                 self.assertEqual(flips, 0)
-                # tanam riwayat bolak-balik: -19,-26,-19,-26,-19 (4 flip)
                 now = datetime.now()
                 conn, c = m.get_db()
                 for h, rx in (
@@ -2338,7 +2294,7 @@ class FiberFlapTest(unittest.TestCase):
                     headers=JSON_HDR,
                 )
                 self.assertEqual(r.status_code, 200)
-                flapping, flips = m._fiber_flap(fid)
+                flapping, flips = _fmod._fiber_flap(fid)
                 self.assertTrue(flapping)
                 self.assertEqual(flips, 4)
                 m.poll_fiber_monitor()
@@ -2448,17 +2404,17 @@ class FiberDegradeNotifyTest(unittest.TestCase):
         r = self.client.put(f"/api/fiber/{fid}", json=body, headers=JSON_HDR)
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         m.fiber_degrade_memory.pop(fid, None)
-        m.fiber_degrade_tg.pop(fid, None)
+        _fmod.fiber_degrade_tg.pop(fid, None)
         return fid
 
     def _poll_capturing(self):
         sent = []
-        real = m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real = _fmod.send_telegram_alert
+        _fmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             m.poll_fiber_monitor()
         finally:
-            m.send_telegram_alert = real
+            _fmod.send_telegram_alert = real
         return sent
 
     def test_notif_sekali_lalu_diam(self):
@@ -2469,22 +2425,19 @@ class FiberDegradeNotifyTest(unittest.TestCase):
             sent = self._poll_capturing()
             degr = [s for s in sent if "DEGRADASI" in s and SN_DGN in s]
             self.assertEqual(len(degr), 1)
-            # poll berikutnya: tetap degrading -> diam
             sent = self._poll_capturing()
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
-            # turun-naik melewati ambang dalam 24 jam -> cooldown menahan
             m.fiber_degrade_memory.pop(fid, None)
             sent = self._poll_capturing()
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
-            # setelah 24 jam -> boleh ingatkan lagi
             m.fiber_degrade_memory.pop(fid, None)
-            m.fiber_degrade_tg[fid] = _t.time() - 90000
+            _fmod.fiber_degrade_tg[fid] = _t.time() - 90000
             sent = self._poll_capturing()
             self.assertEqual(len([s for s in sent if "DEGRADASI" in s]), 1)
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             m.fiber_degrade_memory.pop(fid, None)
-            m.fiber_degrade_tg.pop(fid, None)
+            _fmod.fiber_degrade_tg.pop(fid, None)
 
     def test_muted_tak_kirim_tapi_log(self):
         fid = self._make_degrading(SN_DGM, -16.0, -20.0, mute_alarm=1)
@@ -2504,15 +2457,13 @@ class FiberDegradeNotifyTest(unittest.TestCase):
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             m.fiber_degrade_memory.pop(fid, None)
-            m.fiber_degrade_tg.pop(fid, None)
+            _fmod.fiber_degrade_tg.pop(fid, None)
 
     def test_status_warning_tak_dinotif_degradasi(self):
-        # sudah beralarm warning sendiri -> notif degradasi terpisah tak perlu
         fid = self._make_degrading(SN_DGW, -22.0, -26.0)
         try:
             sent = self._poll_capturing()
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
-            # warning-nya sendiri tetap tampil di triggers
             r = self.client.get("/api/triggers", headers=XRW_HDR)
             warn = [
                 a
@@ -2523,7 +2474,7 @@ class FiberDegradeNotifyTest(unittest.TestCase):
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             m.fiber_degrade_memory.pop(fid, None)
-            m.fiber_degrade_tg.pop(fid, None)
+            _fmod.fiber_degrade_tg.pop(fid, None)
 
 
 ODP_T = "TEST-ODP-TOPO"
@@ -2627,7 +2578,6 @@ class FiberTopoTest(unittest.TestCase):
             r = self.client.get("/api/fiber/topology", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200)
             j = r.get_json()
-            # community tak boleh bocor
             self.assertNotIn("community", r.get_data(as_text=True))
             olt = next(o for o in j["olts"] if o["name"] == OLT_T)
             self.assertTrue(olt["registered"])
@@ -2680,7 +2630,7 @@ def _cleanup_par(client):
                         m.fiber_alarm_memory,
                         m.fiber_degrade_memory,
                         m.fiber_flap_memory,
-                        m.fiber_degrade_tg,
+                        _fmod.fiber_degrade_tg,
                     ):
                         _mem.pop(row["id"], None)
                 conn.commit()
@@ -2767,11 +2717,11 @@ class FiberParentTest(unittest.TestCase):
         sent = []
         real_ping = _monmod.ping_host
         real_tg_app = m.send_telegram_alert
+        real_tg_fmod = _fmod.send_telegram_alert
         real_tg_mon = _monmod.send_telegram_alert
-        # check_network pindah ke nms.monitor, route fiber tetap di app:
-        # fake telegram di KEDUA namespace agar "sent" menangkap semuanya.
         _tg_fake = lambda msg: sent.append(msg)
         m.send_telegram_alert = _tg_fake
+        _fmod.send_telegram_alert = _tg_fake
         _monmod.send_telegram_alert = _tg_fake
         down = {OLT_PAR_IP: True}
         _monmod.ping_host = lambda h: (-1.0, 100.0) if down.get(h) else (0.5, 0.0)
@@ -2783,7 +2733,6 @@ class FiberParentTest(unittest.TestCase):
             self.assertIn(OLT_PAR, downs[0])
             self.assertIn("2 ONT", downs[0])
             self.assertIn(OLT_PAR.lower(), m.fiber_parent_down)
-            # transisi kritis di bawah induk -> sunyi, log FIBER_PARENT
             sent.clear()
             self._put_rx(f1, SN_PP1, -29.0, OLT_PAR)
             self._put_rx(f2, SN_PP2, -29.0, OLT_PAR)
@@ -2819,7 +2768,6 @@ class FiberParentTest(unittest.TestCase):
                 and (SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", ""))
             ]
             self.assertEqual(indiv, [])
-            # induk pulih -> perilaku normal kembali (recovery individual)
             down.clear()
             sent.clear()
             m.check_network()
@@ -2833,6 +2781,7 @@ class FiberParentTest(unittest.TestCase):
         finally:
             _monmod.ping_host = real_ping
             m.send_telegram_alert = real_tg_app
+            _fmod.send_telegram_alert = real_tg_fmod
             _monmod.send_telegram_alert = real_tg_mon
             for fid in (f1, f2):
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
@@ -2848,10 +2797,9 @@ class FiberParentTest(unittest.TestCase):
         self._mk_olt(OLT_SYN)
         fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_SY1, SN_SY2, SN_SY3)]
         sent = []
-        real_tg = m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real_tg = _fmod.send_telegram_alert
+        _fmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
-            # jatuhkan ketiganya TANPA single check (simulasi serentak)
             conn, c = m.get_db()
             for fid in fids:
                 c.execute("UPDATE fiber_onts SET rx_power=-29.0 WHERE id=?", (fid,))
@@ -2865,7 +2813,6 @@ class FiberParentTest(unittest.TestCase):
             indiv = [s for s in sent if "REDAMAN TINGGI" in s or "FIBER WARNING" in s]
             self.assertEqual(indiv, [])
             self.assertIn(OLT_SYN.lower(), m.fiber_parent_down)
-            # poll berikut diam; triggers tampilkan induk + supresi
             sent.clear()
             m.poll_fiber_monitor()
             self.assertEqual(sent, [])
@@ -2877,7 +2824,6 @@ class FiberParentTest(unittest.TestCase):
                     for a in alarms
                 )
             )
-            # pulihkan semua -> 1 telegram pulih induk, bukan 3 individual
             for fid, sn in zip(fids, (SN_SY1, SN_SY2, SN_SY3)):
                 self._put_rx(fid, sn, -19.0, OLT_SYN)
             sent.clear()
@@ -2888,7 +2834,7 @@ class FiberParentTest(unittest.TestCase):
             )
             self.assertNotIn(OLT_SYN.lower(), m.fiber_parent_down)
         finally:
-            m.send_telegram_alert = real_tg
+            _fmod.send_telegram_alert = real_tg
             for fid in fids:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             self.client.post(
@@ -2907,8 +2853,8 @@ class FiberParentTest(unittest.TestCase):
         self._mk_olt(OLT_SYN)
         fids = [self._mk_ont(sn, OLT_SYN) for sn in (SN_BL1, SN_BL2)]
         sent = []
-        real_tg = m.send_telegram_alert
-        m.send_telegram_alert = lambda msg: sent.append(msg)
+        real_tg = _fmod.send_telegram_alert
+        _fmod.send_telegram_alert = lambda msg: sent.append(msg)
         try:
             conn, c = m.get_db()
             for fid in fids:
@@ -2922,7 +2868,7 @@ class FiberParentTest(unittest.TestCase):
             self.assertEqual([s for s in sent if "INSIDEN MASSAL" in s], [])
             self.assertNotIn(OLT_SYN.lower(), m.fiber_parent_down)
         finally:
-            m.send_telegram_alert = real_tg
+            _fmod.send_telegram_alert = real_tg
             for fid in fids:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             self.client.post(

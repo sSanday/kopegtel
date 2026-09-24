@@ -92,12 +92,17 @@ def main():
             time_diff = now_time - last_time
 
             if time_diff > 0:
-                net_in = ((now_net.bytes_recv - last_net.bytes_recv) * 8) / (
-                    1024 * 1024 * time_diff
-                )
-                net_out = ((now_net.bytes_sent - last_net.bytes_sent) * 8) / (
-                    1024 * 1024 * time_diff
-                )
+                delta_in = now_net.bytes_recv - last_net.bytes_recv
+                delta_out = now_net.bytes_sent - last_net.bytes_sent
+                if delta_in < 0 or delta_out < 0:
+                    print("[WARN] network counter reset, kirim 0 Mbps.")
+                    net_in = 0.0
+                    net_out = 0.0
+                else:
+                    net_in = (delta_in * 8) / (1024 * 1024 * time_diff)
+                    net_out = (delta_out * 8) / (1024 * 1024 * time_diff)
+                    net_in = min(max(net_in, 0.0), 100000.0)
+                    net_out = min(max(net_out, 0.0), 100000.0)
             else:
                 net_in = 0.0
                 net_out = 0.0
