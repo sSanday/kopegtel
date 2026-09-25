@@ -826,6 +826,7 @@ a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
 .sum-card.down{border-color:rgba(255,68,68,.2)}
 .sum-card.down .sv{color:var(--down)}
 .sum-card.avg .sv{color:var(--accent)}
+.lan-hint{font-family:var(--mono);font-size:.68rem;line-height:1.7;color:var(--warn);background:rgba(255,176,0,.06);border:1px solid rgba(255,176,0,.3);border-radius:8px;padding:10px 14px;margin:-8px 0 20px}
 
 /* Disabled sidebar items */
 .sb-item.sb-disabled{opacity:.38;cursor:not-allowed}
@@ -1023,6 +1024,7 @@ a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
       <a href="/fiber" class="sum-card" id="fiberCard" title="Lihat monitoring fiber" style="text-decoration:none"><div class="sk">fiber alarm</div><div class="sv" id="sumFiber">—</div></a>
       <a href="/mikrotik" class="sum-card" id="mtCard" title="Lihat health MikroTik" style="text-decoration:none"><div class="sk">mikrotik alarm</div><div class="sv" id="sumMt">—</div></a>
     </div>
+    <div id="lanHint" class="lan-hint" style="display:none">⚠️ semua node unreachable — kemungkinan server kehilangan koneksi ke subnet LAN (cek WiFi/kabel server), bukan app yang rusak.</div>
     <div id="statusGrid" class="status-grid">
       <div class="skeleton" style="height:130px"></div>
       <div class="skeleton" style="height:130px;animation-delay:.12s"></div>
@@ -1346,6 +1348,11 @@ function updateSummary(total, up, down, avgUptime, pending){
   else if(downEl) downEl.removeAttribute('title');
   const downCard = downEl ? downEl.closest('.sum-card') : null;
   if(downCard){downCard.classList.toggle('alert',down>0);downCard.classList.toggle('calm',!(down>0));}
+  const lanHint = document.getElementById('lanHint');
+  if(lanHint){
+    const known = (up||0) + (down||0) + (pending||0);
+    lanHint.style.display = (total>0 && (up||0)===0 && known>=total) ? 'block' : 'none';
+  }
 }
 
 function renderStatus(pData, aData){
