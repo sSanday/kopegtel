@@ -18,11 +18,20 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
+
+# AGENT_API_KEY is required for security
 if not AGENT_API_KEY:
-    print(
-        "[WARN] AGENT_API_KEY kosong — /api/agent/report TERBUKA tanpa auth "
-        "(siapa pun bisa kirim metrik palsu). Set AGENT_API_KEY di .env untuk produksi."
-    )
+    import sys
+    env = os.environ.get("FLASK_ENV", "production")
+    if env == "production":
+        print("[FATAL] AGENT_API_KEY must be set in .env for production")
+        sys.exit(1)
+    else:
+        print("[WARN] AGENT_API_KEY not set (development mode only)")
+        # Generate a temporary key for development
+        import secrets
+        AGENT_API_KEY = secrets.token_urlsafe(32)
+        print(f"[DEV] Generated temporary AGENT_API_KEY: {AGENT_API_KEY}")
 
 try:
     MAX_HOSTS = max(1, int(os.environ.get("MAX_HOSTS", "200")))

@@ -18,8 +18,10 @@ from nms.db import (
     log_system_event,
 )
 from nms.notify import send_telegram_alert
+from nms.query_helpers import get_all_agent_metrics
+from nms.thread_safe import ThreadSafeDict
 
-agent_offline_memory = {}
+agent_offline_memory = ThreadSafeDict()
 
 
 _PING_TARGET_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
@@ -66,17 +68,9 @@ def check_agent_heartbeat():
     conn, c = get_db()
     try:
         last_map = {}
+        all_metrics = get_all_agent_metrics(c, time_range_minutes=5)
         for host in targets:
-
-            c.execute(
-                """
-                SELECT timestamp FROM agent_metrics 
-                WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1
-            """,
-                (host,),
-            )
-            row = c.fetchone()
-            last_map[host] = row["timestamp"] if row else None
+            last_map[host] = all_metrics.get(host, {}).get("timestamp")
     finally:
         conn.close()
 
@@ -111,10 +105,10 @@ def check_agent_heartbeat():
             print(f"[WARN] log AGENT_OFFLINE gagal: {e}")
 
 
-status_memory = {}
-down_since = {}
+status_memory = ThreadSafeDict()
+down_since = ThreadSafeDict()
 
-last_down_telegram = {}
+last_down_telegram = ThreadSafeDict()
 
 
 def check_host(host):
@@ -228,7 +222,7 @@ def check_network():
 
                             try:
                                 c.execute(
-                                    "SELECT started_at FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
+                                    "SELECT started_at, is_maintenance FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
                                     (host,),
                                 )
                                 orow = c.fetchone()
@@ -240,17 +234,9 @@ def check_network():
                                         0,
                                         int((datetime.now() - started).total_seconds()),
                                     )
+                                was_maint_event = bool(orow and orow["is_maintenance"])
                             except Exception:
-                                pass
-                        try:
-                            c.execute(
-                                "SELECT is_maintenance FROM down_events WHERE host=? AND resolved_at IS NULL ORDER BY id DESC LIMIT 1",
-                                (host,),
-                            )
-                            mrow = c.fetchone()
-                            was_maint_event = bool(mrow and mrow["is_maintenance"])
-                        except Exception:
-                            was_maint_event = False
+                                was_maint_event = False
                         if duration_s is not None:
                             m, s = divmod(duration_s, 60)
                             duration_str = f"\nDurasi DOWN : {m} menit {s} detik"
@@ -322,7 +308,7 @@ def check_network():
             print(f"[WARN] telegram gagal: {e}")
 
 
-fiber_parent_down = {}
+fiber_parent_down = ThreadSafeDict()
 FIBER_PARENT_MIN = 5
 
 

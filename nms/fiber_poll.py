@@ -36,6 +36,7 @@ from nms.monitor import (
 from nms.notify import send_telegram_alert
 from nms.olt import _olt_raw_to_dbm
 from nms.snmp import _snmp_get, _valid_oid
+from nms.thread_safe import ThreadSafeDict
 
 _FIBER_SUMMARY_ICON = {
     "overload": "🔊",
@@ -185,10 +186,10 @@ def send_fiber_summary():
     )
 
 
-fiber_alarm_memory = {}
-fiber_degrade_memory = {}
-fiber_flap_memory = {}
-fiber_degrade_tg = {}
+fiber_alarm_memory = ThreadSafeDict()
+fiber_degrade_memory = ThreadSafeDict()
+fiber_flap_memory = ThreadSafeDict()
+fiber_degrade_tg = ThreadSafeDict()
 FIBER_DEGRADE_TG_COOLDOWN_S = 86400
 
 

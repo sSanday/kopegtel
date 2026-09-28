@@ -82,6 +82,35 @@ def init_db():
         value TEXT NOT NULL
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'operator',
+        created_at TEXT NOT NULL,
+        last_login TEXT
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS host_thresholds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        host TEXT UNIQUE NOT NULL,
+        cpu_threshold REAL,
+        ram_threshold REAL,
+        disk_threshold REAL,
+        created_at TEXT NOT NULL
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS alert_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        host TEXT NOT NULL,
+        alert_type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        message TEXT,
+        triggered_at TEXT NOT NULL,
+        resolved_at TEXT,
+        duration_s INTEGER
+    )""")
+
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')"
     )
@@ -281,6 +310,9 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_agent_host_clock ON agent_metrics(host, timestamp)"
     )
     c.execute("CREATE INDEX IF NOT EXISTS idx_down_host ON down_events(host)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_down_host_resolved ON down_events(host, resolved_at, id)"
+    )
     c.execute(
         "CREATE INDEX IF NOT EXISTS idx_syslog_type_host ON system_logs(event_type, host)"
     )
@@ -751,6 +783,380 @@ def backup_database():
             )
         except Exception as e:
             print(f"[WARN] telegram backup-alert gagal: {e}")
+
+
+def restore_database(backup_file_path):
+    if not os.path.exists(backup_file_path):
+        return False, "File backup tidak ditemukan"
+    
+    if not backup_file_path.endswith('.db'):
+        return False, "File harus berformat .db"
+    
+    db_path = resolve_db_path()
+    try:
+        src = dst = None
+        src = sqlite3.connect(backup_file_path, timeout=30)
+        src.execute("SELECT 1 FROM hosts LIMIT 1")
+        src.fetchone()
+        
+        dst = sqlite3.connect(db_path, timeout=30)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        return True, "Database berhasil di-restore"
+    except sqlite3.DatabaseError:
+        return False, "File backup rusak atau bukan database SQLite valid"
+    except Exception as e:
+        return False, f"Restore gagal: {str(e)}"
+
+
+def list_backups():
+    backup_dir = os.path.join(BASE_DIR, "backups")
+    if not os.path.exists(backup_dir):
+        return []
+    
+    backups = []
+    for backup_file in sorted(glob.glob(os.path.join(backup_dir, "*.db")), reverse=True):
+        try:
+            stat = os.stat(backup_file)
+            backups.append({
+                "filename": os.path.basename(backup_file),
+                "path": backup_file,
+                "size_mb": round(stat.st_size / (1024*1024), 2),
+                "created_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            })
+        except Exception:
+            pass
+    return backups
+
+
+def create_user(username, password_hash, role="operator"):
+    conn, c = get_db()
+    try:
+        c.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            (username, password_hash, role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        conn.commit()
+        conn.close()
+        return True, "User berhasil dibuat"
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, "Username sudah ada"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+def get_user(username):
+    conn, c = get_db()
+    c.execute("SELECT id, username, role, created_at FROM users WHERE username=?", (username,))
+    user = c.fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+
+def list_users():
+    conn, c = get_db()
+    c.execute("SELECT id, username, role, created_at FROM users ORDER BY created_at DESC")
+    users = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return users
+
+
+def delete_user(username):
+    if username == "admin":
+        return False, "Cannot delete admin user"
+    
+    conn, c = get_db()
+    try:
+        c.execute("DELETE FROM users WHERE username=?", (username,))
+        deleted = c.rowcount
+        conn.commit()
+        conn.close()
+        return deleted > 0, "User berhasil dihapus" if deleted else "User tidak ditemukan"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+def update_user_role(username, role):
+    valid_roles = ("admin", "operator", "viewer")
+    if role not in valid_roles:
+        return False, f"Role harus: {', '.join(valid_roles)}"
+    
+    conn, c = get_db()
+    try:
+        c.execute("UPDATE users SET role=? WHERE username=?", (role, username))
+        updated = c.rowcount
+        conn.commit()
+        conn.close()
+        return updated > 0, "Role berhasil diperbarui" if updated else "User tidak ditemukan"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+def set_host_threshold(host, cpu=None, ram=None, disk=None):
+    conn, c = get_db()
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO host_thresholds (host, cpu_threshold, ram_threshold, disk_threshold, created_at) VALUES (?, ?, ?, ?, ?)",
+            (host, cpu, ram, disk, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        conn.commit()
+        conn.close()
+        return True, "Threshold berhasil disimpan"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+def get_host_threshold(host):
+    conn, c = get_db()
+    c.execute("SELECT cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds WHERE host=?", (host,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_host_thresholds():
+    conn, c = get_db()
+    c.execute("SELECT host, cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds ORDER BY host ASC")
+    thresholds = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return thresholds
+
+
+def delete_host_threshold(host):
+    conn, c = get_db()
+    try:
+        c.execute("DELETE FROM host_thresholds WHERE host=?", (host,))
+        deleted = c.rowcount
+        conn.commit()
+        conn.close()
+        return deleted > 0, "Threshold berhasil dihapus" if deleted else "Host tidak ditemukan"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+def log_alert(host, alert_type, severity, message):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute(
+            "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+            (host, alert_type, severity, message, timestamp)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        conn.close()
+        return False
+
+
+def resolve_alert(alert_id):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute("SELECT triggered_at FROM alert_history WHERE id=?", (alert_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return False
+        
+        triggered = datetime.strptime(row["triggered_at"], "%Y-%m-%d %H:%M:%S")
+        now = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+        duration = int((now - triggered).total_seconds())
+        
+        c.execute(
+            "UPDATE alert_history SET resolved_at=?, duration_s=? WHERE id=?",
+            (timestamp, duration, alert_id)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        conn.close()
+        return False
+
+
+def get_alert_history(host=None, alert_type=None, severity=None, limit=100, offset=0):
+    conn, c = get_db()
+    
+    query = "SELECT id, host, alert_type, severity, message, triggered_at, resolved_at, duration_s FROM alert_history WHERE 1=1"
+    params = []
+    
+    if host:
+        query += " AND host=?"
+        params.append(host)
+    if alert_type:
+        query += " AND alert_type=?"
+        params.append(alert_type)
+    if severity:
+        query += " AND severity=?"
+        params.append(severity)
+    
+    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    c.execute(query, params)
+    alerts = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return alerts
+
+
+def get_active_alerts(host=None):
+    conn, c = get_db()
+    
+    query = "SELECT id, host, alert_type, severity, message, triggered_at FROM alert_history WHERE resolved_at IS NULL"
+    params = []
+    
+    if host:
+        query += " AND host=?"
+        params.append(host)
+    
+    query += " ORDER BY triggered_at DESC"
+    
+    c.execute(query, params)
+    alerts = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return alerts
+
+
+def bulk_import_hosts(hosts_data):
+    """Import multiple hosts from list of dicts. 
+    Each dict should have: ip, alias (optional), category (optional), snmp_community (optional)
+    Returns (success_count, error_count, errors_list)
+    """
+    success_count = 0
+    error_count = 0
+    errors = []
+    
+    conn, c = get_db()
+    
+    for idx, host_data in enumerate(hosts_data, 1):
+        try:
+            ip = str(host_data.get("ip") or "").strip()
+            alias = str(host_data.get("alias") or "").strip()
+            category = str(host_data.get("category") or "Uncategorized").strip()
+            snmp_community = str(host_data.get("snmp_community") or "").strip()
+            
+            if not ip:
+                errors.append(f"Row {idx}: IP required")
+                error_count += 1
+                continue
+            
+            import re
+            ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
+            hostname_re = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
+            
+            if ipv4_re.match(ip):
+                try:
+                    if any(int(p) > 255 for p in ip.split(".")):
+                        errors.append(f"Row {idx} ({ip}): Invalid IP format")
+                        error_count += 1
+                        continue
+                except ValueError:
+                    errors.append(f"Row {idx} ({ip}): Invalid IP format")
+                    error_count += 1
+                    continue
+            elif not hostname_re.match(ip):
+                errors.append(f"Row {idx} ({ip}): Invalid IP/hostname")
+                error_count += 1
+                continue
+            
+            c.execute(
+                "INSERT INTO hosts (ip, snmp_community, alias, category) VALUES (?, ?, ?, ?)",
+                (ip, snmp_community, alias, category)
+            )
+            success_count += 1
+        except sqlite3.IntegrityError:
+            errors.append(f"Row {idx} ({ip}): Host already exists")
+            error_count += 1
+        except Exception as e:
+            errors.append(f"Row {idx}: {str(e)}")
+            error_count += 1
+    
+    try:
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return 0, len(hosts_data), [f"Commit failed: {str(e)}"]
+    
+    conn.close()
+    return success_count, error_count, errors
+
+
+def generate_daily_report():
+    """Generate daily monitoring report. Returns report dict."""
+    conn, c = get_db()
+    
+    report = {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "period": "24h",
+        "hosts": {},
+        "summary": {}
+    }
+    
+    try:
+        c.execute("SELECT COUNT(*) AS cnt FROM hosts")
+        total_hosts = c.fetchone()["cnt"] or 0
+        
+        c.execute(
+            """
+            SELECT host, 
+                COUNT(*) AS total,
+                SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count
+            FROM ping_logs
+            WHERE timestamp > datetime('now', 'localtime', '-24 hours')
+            GROUP BY host
+            """
+        )
+        
+        up_hosts = 0
+        for row in c.fetchall():
+            total = row["total"] or 0
+            up_count = row["up_count"] or 0
+            uptime = round((up_count / total * 100), 1) if total else None
+            
+            if uptime and uptime >= 99:
+                up_hosts += 1
+            
+            report["hosts"][row["host"]] = {
+                "uptime_pct": uptime,
+                "checks": total,
+                "up_checks": up_count
+            }
+        
+        c.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM down_events
+            WHERE started_at > datetime('now', 'localtime', '-24 hours')
+            """
+        )
+        down_events = c.fetchone()["cnt"] or 0
+        
+        c.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM alert_history
+            WHERE triggered_at > datetime('now', 'localtime', '-24 hours')
+            """
+        )
+        total_alerts = c.fetchone()["cnt"] or 0
+        
+        report["summary"] = {
+            "total_hosts": total_hosts,
+            "healthy_hosts": up_hosts,
+            "down_events": down_events,
+            "total_alerts": total_alerts
+        }
+    finally:
+        conn.close()
+    
+    return report
 
 
 def log_system_event(event_type, host, message):

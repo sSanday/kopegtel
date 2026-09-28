@@ -1,0 +1,29 @@
+2026-09-28 10:39:21,983 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,983 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,984 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,984 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,984 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,984 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,984 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,985 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:21,985 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,006 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,007 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,007 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,009 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,010 - apscheduler.scheduler - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-09-28 10:39:22,011 - apscheduler.scheduler - INFO - Added job "check_network" to job store "default"
+2026-09-28 10:39:22,013 - apscheduler.scheduler - INFO - Added job "check_services" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "check_agent_heartbeat" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "poll_snmp_bandwidth" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "poll_mikrotik_health" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "poll_mikrotik_ifaces" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "poll_fiber_monitor" to job store "default"
+2026-09-28 10:39:22,014 - apscheduler.scheduler - INFO - Added job "poll_fiber_snmp" to job store "default"
+2026-09-28 10:39:22,015 - apscheduler.scheduler - INFO - Added job "check_ssl_expiry" to job store "default"
+2026-09-28 10:39:22,015 - apscheduler.scheduler - INFO - Added job "send_heartbeat" to job store "default"
+2026-09-28 10:39:22,017 - apscheduler.scheduler - INFO - Added job "send_fiber_summary" to job store "default"
+2026-09-28 10:39:22,018 - apscheduler.scheduler - INFO - Added job "poll_mt_backups" to job store "default"
+2026-09-28 10:39:22,019 - apscheduler.scheduler - INFO - Added job "cleanup_old_data" to job store "default"
+2026-09-28 10:39:22,019 - apscheduler.scheduler - INFO - Added job "backup_database" to job store "default"
+2026-09-28 10:39:22,020 - apscheduler.scheduler - INFO - Scheduler started

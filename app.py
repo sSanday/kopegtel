@@ -1,12 +1,14 @@
 import csv
 import io
 import ipaddress
+import logging
 import os
 import re
 import socket
 import sqlite3
 import threading
 import time
+from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -22,7 +24,15 @@ from flask import (
     request,
     session,
     url_for,
+    g,
 )
+
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    LIMITER_AVAILABLE = True
+except ImportError:
+    LIMITER_AVAILABLE = False
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -49,16 +59,35 @@ from nms.db import (
     _insert_system_log,
     _parse_maint_time,
     backup_database,
+    bulk_import_hosts,
     cleanup_old_data,
+    create_user,
     db_lock,
+    delete_host_threshold,
+    delete_user,
+    generate_daily_report,
+    get_active_alerts,
+    get_alert_history,
     get_active_maintenance_map,
     get_db,
+    get_host_threshold,
     get_setting,
     get_target_hosts,
+    get_user,
     init_db,
+    list_backups,
+    list_host_thresholds,
+    list_users,
+    log_alert,
     log_system_event,
+    resolve_alert,
+    restore_database,
+    set_host_threshold,
+    update_user_role,
 )
 from nms.notify import audit, send_telegram_alert
+from nms.validators import validate_backup_filename
+from nms.query_helpers import get_all_agent_metrics, get_all_host_stats, get_service_uptime_map
 from nms.crypto import encrypt_secret
 from nms.monitor import (
     FIBER_PARENT_MIN,
@@ -69,6 +98,13 @@ from nms.monitor import (
     last_down_telegram,
     status_memory,
 )
+from nms.exceptions import (
+    AuthenticationError,
+    DatabaseError,
+    safe_db_operation,
+    log_exception,
+)
+from nms.thread_safe import ThreadSafeDict
 from nms.monitor import agent_offline_memory, check_agent_heartbeat
 from nms.snmp import _valid_oid
 from nms.fiber import (
@@ -86,7 +122,7 @@ from nms.fiber import (
     _th_for_ont,
     fiber_eval,
 )
-from nms.auth import api_login_required
+from nms.auth import api_login_required, require_role
 from nms.format import _csv_safe, _fmt_duration
 from nms.fiber_poll import (
     _fiber_degrade_settings,
@@ -125,8 +161,15 @@ from nms.mikrotik_poll import (
 )
 from nms.mikrotik_routes import mikrotik_bp
 from nms.fiber_routes import fiber_bp
+from nms.blueprints import api_bp
 
 app = Flask(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 if not SECRET_KEY:
     raise SystemExit(
@@ -137,19 +180,104 @@ if not SECRET_KEY:
 app.secret_key = SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=7)
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=1)
 app.config["REMEMBER_COOKIE_HTTPONLY"] = True
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Strict"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
 
-
-app.config["SESSION_COOKIE_SECURE"] = COOKIE_SECURE
-app.config["REMEMBER_COOKIE_SECURE"] = COOKIE_SECURE
+app.config["SESSION_COOKIE_SECURE"] = COOKIE_SECURE or True
+app.config["REMEMBER_COOKIE_SECURE"] = COOKIE_SECURE or True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app_start_time = datetime.now()
+
+os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
+
+if LIMITER_AVAILABLE:
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+else:
+    class NoOpLimiter:
+        def limit(self, *args, **kwargs):
+            return lambda f: f
+    limiter = NoOpLimiter()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(BASE_DIR, 'logs/app.log')),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app.register_blueprint(mikrotik_bp)
 app.register_blueprint(fiber_bp)
+app.register_blueprint(api_bp)
+
+
+@app.before_request
+def log_request():
+    g.start_time = time.time()
+    g.ip = get_client_ip()
+    
+    if current_user.is_authenticated:
+        session.permanent = True
+        app.permanent_session_lifetime = timedelta(hours=8)
+        session.modified = True
+        
+        last_activity = session.get("_last_activity")
+        now = time.time()
+        
+        if last_activity is None:
+            session["_last_activity"] = now
+        elif (now - last_activity) > 3600:
+            logout_user()
+            session.pop("admin_v", None)
+            logger.warning(f"Session timeout for {current_user.username} (idle > 1 hour)")
+            return redirect(url_for("login"))
+        else:
+            session["_last_activity"] = now
+
+
+@app.after_request
+def log_response(response):
+    if hasattr(g, 'start_time'):
+        elapsed = (time.time() - g.start_time) * 1000
+        client_ip = getattr(g, 'ip', 'unknown')
+        logger.info(
+            f"{request.method} {request.path} - Status: {response.status_code} - "
+            f"Time: {elapsed:.2f}ms - IP: {client_ip}"
+        )
+    return response
+
+
+@app.route("/health", methods=["GET"])
+@limiter.limit("60/minute")
+def health_check():
+    try:
+        conn, c = get_db()
+        c.execute("SELECT 1")
+        c.fetchone()
+        conn.close()
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "uptime_seconds": (datetime.now() - app_start_time).total_seconds()
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
+
 
 
 def _is_trusted_proxy():
@@ -178,39 +306,47 @@ login_manager.login_message_category = "warning"
 
 
 def _verify_admin(username, password):
-    username = (username or "")[:50]
-    password = (password or "")[:200]
-    try:
-        conn, c = get_db()
-        try:
-            c.execute("SELECT value FROM settings WHERE key='admin_user'")
-            r = c.fetchone()
-            db_user = r["value"] if r else None
-            c.execute("SELECT value FROM settings WHERE key='admin_pass_hash'")
-            r = c.fetchone()
-            db_hash = r["value"] if r else None
-        finally:
-            conn.close()
-    except Exception as e:
-        print(f"[AUTH] verifikasi ditolak (DB tidak bisa dibaca): {e}")
-        return False
-    if db_user and db_hash:
-        if username != db_user:
-            return False
-        try:
-            from werkzeug.security import check_password_hash
+     username = (username or "")[:50]
+     password = (password or "")[:200]
+     try:
+         conn, c = get_db()
+         try:
+             c.execute("SELECT value FROM settings WHERE key='admin_user'")
+             r = c.fetchone()
+             db_user = r["value"] if r else None
+             c.execute("SELECT value FROM settings WHERE key='admin_pass_hash'")
+             r = c.fetchone()
+             db_hash = r["value"] if r else None
+         finally:
+             conn.close()
+     except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+         logger.error(f"[AUTH] database error during verification: {e}")
+         return False
+     except Exception as e:
+         logger.error(f"[AUTH] unexpected error during verification: {e}")
+         return False
 
-            return check_password_hash(db_hash, password)
-        except Exception:
-            return False
-    if db_user or db_hash:
+     if db_user and db_hash:
+         if username != db_user:
+             return False
+         try:
+             from werkzeug.security import check_password_hash
 
-        return False
+             return check_password_hash(db_hash, password)
+         except (ValueError, TypeError) as e:
+             logger.warning(f"[AUTH] password hash check failed: {e}")
+             return False
+         except Exception as e:
+             logger.error(f"[AUTH] unexpected error checking password: {e}")
+             return False
+     if db_user or db_hash:
 
-    import hmac
+         return False
 
-    return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(
-        password, DASHBOARD_PASSWORD
+     import hmac
+
+     return hmac.compare_digest(username, DASHBOARD_USERNAME) and hmac.compare_digest(
+         password, DASHBOARD_PASSWORD
     )
 
 
@@ -307,10 +443,10 @@ def load_user(user_id):
 DB_PATH = os.environ.get("NMS_DB_PATH", os.path.join(BASE_DIR, "network.db"))
 
 
-agent_status_memory = {}
+agent_status_memory = ThreadSafeDict()
 
 
-login_failures = {}
+login_failures = ThreadSafeDict()
 
 
 def _prune_login_failures(now_ts):
@@ -348,45 +484,62 @@ def send_startup_alert():
     )
 
 
-def send_heartbeat():
-    targets = get_target_hosts()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    lines = []
-
-    conn, c = get_db()
+def send_daily_report():
     try:
-        for host in targets:
-            c.execute(
-                """
-                SELECT
-                    COUNT(*)                                           AS total,
-                    SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END)     AS up_count,
-                    AVG(CASE WHEN latency != -1 THEN latency  END)     AS avg_ms,
-                    AVG(CASE WHEN latency != -1 THEN packet_loss END)  AS avg_loss
-                FROM ping_logs
-                WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
-            """,
-                (host,),
-            )
-            r = c.fetchone()
-            total = r["total"] or 0
-            up_count = r["up_count"] or 0
-            uptime_pct = round((up_count / total * 100) if total else 0, 1)
-            avg_ms = round(r["avg_ms"] or 0, 1)
+        report = generate_daily_report()
+        summary = report.get("summary", {})
+        
+        healthy = summary.get("healthy_hosts", 0)
+        total = summary.get("total_hosts", 0)
+        down_events = summary.get("down_events", 0)
+        alerts = summary.get("total_alerts", 0)
+        
+        healthy_pct = round((healthy / total * 100), 1) if total else 0
+        
+        message = (
+            f"📊 *LAPORAN HARIAN NMS*\n"
+            f"Tanggal: {report.get('generated_at')}\n\n"
+            f"📈 *Ringkasan (24 Jam)*\n"
+            f"  Total Host: {total}\n"
+            f"  Sehat: {healthy} ({healthy_pct}%)\n"
+            f"  Down Events: {down_events}\n"
+            f"  Total Alerts: {alerts}\n"
+        )
+        
+        send_telegram_alert(message)
+        logger.info(f"Daily report sent")
+    except Exception as e:
+        logger.error(f"Daily report error: {e}")
 
-            status_icon = (
-                "✅" if uptime_pct >= 99 else ("⚠️" if uptime_pct >= 95 else "❌")
-            )
-            lines.append(
-                f"{status_icon} `{host}` — Uptime: *{uptime_pct}%* ({avg_ms} ms)"
-            )
-    finally:
-        conn.close()
 
-    body = "\n".join(lines)
-    send_telegram_alert(
-        f"📊 *Laporan Harian NMS (24 Jam Terakhir)*\n" f"Waktu : {now}\n\n" f"{body}"
-    )
+def send_heartbeat():
+     targets = get_target_hosts()
+     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+     lines = []
+
+     conn, c = get_db()
+     try:
+         all_stats = get_all_host_stats(c, time_range_hours=24)
+         for host in targets:
+             stats = all_stats.get(host, {"total": 0, "up_count": 0, "avg_ms": 0})
+             total = stats["total"] or 0
+             up_count = stats["up_count"] or 0
+             uptime_pct = round((up_count / total * 100) if total else 0, 1)
+             avg_ms = round(stats["avg_ms"] or 0, 1)
+
+             status_icon = (
+                 "✅" if uptime_pct >= 99 else ("⚠️" if uptime_pct >= 95 else "❌")
+             )
+             lines.append(
+                 f"{status_icon} `{host}` — Uptime: *{uptime_pct}%* ({avg_ms} ms)"
+             )
+     finally:
+         conn.close()
+
+     body = "\n".join(lines)
+     send_telegram_alert(
+         f"📊 *Laporan Harian NMS (24 Jam Terakhir)*\n" f"Waktu : {now}\n\n" f"{body}"
+     )
 
 
 def _is_url_allowed_for_monitoring(url):
@@ -736,29 +889,20 @@ def rebuild_alarm_memory():
             except Exception:
                 disk_thresh = 90.0
             now = datetime.now()
+            
+            all_metrics = get_all_agent_metrics(c, time_range_minutes=5)
             for h in valid:
                 try:
-
-                    c.execute(
-                        "SELECT cpu_percent, ram_percent, disk_percent, timestamp FROM agent_metrics WHERE host=? AND cpu_percent IS NOT NULL ORDER BY id DESC LIMIT 1",
-                        (h,),
-                    )
-                    last = c.fetchone()
-                    if not last:
+                    if h not in all_metrics:
                         continue
+                    last = all_metrics[h]
+                    cpu_val = last.get("cpu", 0)
+                    ram_val = last.get("ram", 0)
+                    disk_val = last.get("disk", 0)
                     agent_status_memory[h] = {
-                        "cpu": bool(
-                            last["cpu_percent"] is not None
-                            and last["cpu_percent"] > cpu_thresh
-                        ),
-                        "ram": bool(
-                            last["ram_percent"] is not None
-                            and last["ram_percent"] > ram_thresh
-                        ),
-                        "disk": bool(
-                            last["disk_percent"] is not None
-                            and last["disk_percent"] > disk_thresh
-                        ),
+                        "cpu": bool(cpu_val > cpu_thresh),
+                        "ram": bool(ram_val > ram_thresh),
+                        "disk": bool(disk_val > disk_thresh),
                     }
 
                     try:
@@ -774,7 +918,9 @@ def rebuild_alarm_memory():
                     continue
 
             try:
-                c.execute("SELECT id, status FROM fiber_onts")
+                c.execute(
+                    "SELECT id, status FROM fiber_onts WHERE status IN ('normal', 'warning', 'critical', 'overload', 'unknown', 'stale') LIMIT 10000"
+                )
                 for r in c.fetchall():
                     st = (r["status"] or "").strip().lower()
                     if st in (
@@ -847,6 +993,9 @@ if SCHEDULER_ENABLED:
     )
     scheduler.add_job(
         func=backup_database, trigger="cron", hour=0, minute=5, **_job_defaults
+    )
+    scheduler.add_job(
+        func=send_daily_report, trigger="cron", hour=7, minute=0, **_job_defaults
     )
     try:
         scheduler.start()
@@ -1196,6 +1345,7 @@ def _parse_ssh_fields(data):
 
 @app.route("/api/hosts", methods=["GET"])
 @api_login_required
+@limiter.limit("100/minute")
 def api_get_hosts():
     conn, c = get_db()
     c.execute(
@@ -1238,6 +1388,7 @@ def api_get_hosts():
 
 @app.route("/api/hosts", methods=["POST"])
 @api_login_required
+@limiter.limit("30/minute")
 def api_add_host():
     data = request.get_json(silent=True) or {}
     ip = str(data.get("ip") or "").strip()
@@ -1317,8 +1468,59 @@ def api_add_host():
     return jsonify({"status": "success"})
 
 
+@app.route("/api/hosts/bulk/import", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("10/minute")
+def bulk_import():
+    
+    if "file" not in request.files:
+        return jsonify({"error": "CSV file required"}), 400
+    
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+    
+    if not file.filename.endswith(".csv"):
+        return jsonify({"error": "File harus CSV format"}), 400
+    
+    try:
+        from io import TextIOWrapper
+        import csv as csv_module
+        
+        stream = TextIOWrapper(file.stream, encoding="utf-8")
+        reader = csv_module.DictReader(stream)
+        
+        hosts_data = []
+        for row in reader:
+            if row:
+                hosts_data.append(row)
+        
+        if not hosts_data:
+            return jsonify({"error": "CSV kosong"}), 400
+        
+        success, failed, errors = bulk_import_hosts(hosts_data)
+        
+        logger.info(f"Bulk import: {success} success, {failed} failed")
+        try:
+            audit(current_user.username, "hosts.bulk_import", f"{success} success, {failed} failed")
+        except Exception:
+            pass
+        
+        return jsonify({
+            "status": "completed",
+            "success": success,
+            "failed": failed,
+            "errors": errors[:50]
+        }), 200
+    except Exception as e:
+        logger.error(f"Bulk import error: {e}")
+        return jsonify({"error": f"Import gagal: {str(e)}"}), 500
+
+
 @app.route("/api/hosts/<path:ip>", methods=["DELETE"])
 @api_login_required
+@limiter.limit("30/minute")
 def api_delete_host(ip):
     ip = (ip or "").strip()
     with db_lock:
@@ -1705,6 +1907,7 @@ def api_save_settings():
 
 @app.route("/api/settings/password", methods=["POST"])
 @api_login_required
+@limiter.limit("5/minute")
 def api_change_password():
     from werkzeug.security import generate_password_hash
 
@@ -1746,6 +1949,7 @@ def api_change_password():
 
 
 @app.route("/api/agent/report", methods=["POST"])
+@limiter.limit("60/minute")
 def agent_report():
 
     if AGENT_API_KEY:
@@ -1931,26 +2135,7 @@ def _align_series(per_host, label_fmt):
 @api_login_required
 def get_agent_metrics():
     conn, c = get_db()
-    metrics = {}
-    for host in get_target_hosts():
-        c.execute(
-            """
-            SELECT cpu_percent, ram_percent, disk_percent, net_in, net_out, timestamp FROM agent_metrics 
-            WHERE host=? AND cpu_percent IS NOT NULL AND timestamp > datetime('now', 'localtime', '-5 minutes') 
-            ORDER BY id DESC LIMIT 1
-        """,
-            (host,),
-        )
-        row = c.fetchone()
-        if row:
-            metrics[host] = {
-                "cpu": round(row["cpu_percent"] or 0, 1),
-                "ram": round(row["ram_percent"] or 0, 1),
-                "disk": round(row["disk_percent"] or 0, 1),
-                "net_in": round(row["net_in"] or 0, 2),
-                "net_out": round(row["net_out"] or 0, 2),
-                "last_seen": row["timestamp"],
-            }
+    metrics = get_all_agent_metrics(c, time_range_minutes=5)
     conn.close()
     return jsonify(metrics)
 
@@ -2099,6 +2284,650 @@ def get_stats():
             }
     conn.close()
     return jsonify(stats)
+
+
+@app.route("/api/export/stats", methods=["GET"])
+@api_login_required
+@limiter.limit("10/minute")
+def export_stats():
+    format_type = request.args.get("format", "json").lower()
+    if format_type not in ("json", "csv"):
+        return jsonify({"error": "Format harus json atau csv"}), 400
+    
+    conn, c = get_db()
+    stats = []
+    for host in get_target_hosts():
+        c.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
+                AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms,
+                MIN(CASE WHEN latency != -1 THEN latency END) AS min_ms,
+                MAX(CASE WHEN latency != -1 THEN latency END) AS max_ms,
+                AVG(CASE WHEN latency != -1 THEN packet_loss END) AS avg_loss
+            FROM ping_logs
+            WHERE host=? AND timestamp > datetime('now','localtime','-24 hours')
+        """,
+            (host,),
+        )
+        r = c.fetchone()
+        total = r["total"] or 0
+        up_count = r["up_count"] or 0
+        stats.append({
+            "host": host,
+            "uptime_pct": round((up_count / total * 100), 1) if total else None,
+            "avg_ms": round(r["avg_ms"], 2) if r["avg_ms"] is not None else None,
+            "min_ms": round(r["min_ms"], 2) if r["min_ms"] is not None else None,
+            "max_ms": round(r["max_ms"], 2) if r["max_ms"] is not None else None,
+            "avg_loss": round(r["avg_loss"], 1) if r["avg_loss"] is not None else None,
+            "is_down": status_memory.get(host, False),
+            "total_checks": total,
+            "up_checks": up_count,
+        })
+    conn.close()
+    
+    if format_type == "json":
+        return Response(
+            jsonify(stats).get_json(force=True),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment;filename=stats.json"}
+        )
+    else:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=stats[0].keys() if stats else [])
+        writer.writeheader()
+        writer.writerows(stats)
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=stats.csv"}
+        )
+
+
+@app.route("/api/export/events", methods=["GET"])
+@api_login_required
+@limiter.limit("10/minute")
+def export_events():
+    format_type = request.args.get("format", "json").lower()
+    if format_type not in ("json", "csv"):
+        return jsonify({"error": "Format harus json atau csv"}), 400
+    
+    conn, c = get_db()
+    try:
+        c.execute("""
+            SELECT id, host, started_at, resolved_at, duration_s
+            FROM down_events ORDER BY id DESC LIMIT 1000
+        """)
+    except sqlite3.OperationalError:
+        return jsonify({"error": "Tabel events tidak ditemukan"}), 500
+    
+    events = []
+    for r in c.fetchall():
+        events.append({
+            "id": r["id"],
+            "host": r["host"],
+            "started_at": r["started_at"],
+            "resolved_at": r["resolved_at"] or "Ongoing",
+            "duration_s": r["duration_s"] or 0,
+            "status": "resolved" if r["resolved_at"] else "ongoing",
+        })
+    conn.close()
+    
+    if format_type == "json":
+        return Response(
+            jsonify(events).get_json(force=True),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment;filename=events.json"}
+        )
+    else:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=events[0].keys() if events else [])
+        writer.writeheader()
+        writer.writerows(events)
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=events.csv"}
+        )
+
+
+@app.route("/api/audit/logs", methods=["GET"])
+@api_login_required
+@limiter.limit("20/minute")
+def get_audit_logs():
+    try:
+        limit = int(request.args.get("limit", 100))
+        offset = int(request.args.get("offset", 0))
+    except (ValueError, TypeError):
+        return jsonify({"error": "limit dan offset harus angka"}), 400
+    
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    
+    event_type = request.args.get("event_type", "").strip().upper()
+    host_filter = request.args.get("host", "").strip()
+    
+    conn, c = get_db()
+    
+    query = "SELECT id, timestamp, event_type, host, message FROM system_logs WHERE 1=1"
+    params = []
+    
+    if event_type:
+        query += " AND event_type=?"
+        params.append(event_type)
+    if host_filter:
+        query += " AND host LIKE ?"
+        params.append(f"%{host_filter}%")
+    
+    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
+    c.execute(query, params)
+    logs = [dict(r) for r in c.fetchall()]
+    
+    c.execute("SELECT COUNT(*) AS cnt FROM system_logs WHERE 1=1" + 
+              (" AND event_type=?" if event_type else "") +
+              (" AND host LIKE ?" if host_filter else ""),
+              params[:-2])
+    total = c.fetchone()["cnt"] or 0
+    
+    conn.close()
+    
+    return jsonify({
+        "logs": logs,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_next": (offset + limit) < total
+    })
+
+
+@app.route("/api/audit/export", methods=["GET"])
+@api_login_required
+@limiter.limit("5/minute")
+def export_audit_logs():
+    format_type = request.args.get("format", "json").lower()
+    if format_type not in ("json", "csv"):
+        return jsonify({"error": "Format harus json atau csv"}), 400
+    
+    days = request.args.get("days", 30)
+    try:
+        days = max(1, min(int(days), 90))
+    except (ValueError, TypeError):
+        days = 30
+    
+    conn, c = get_db()
+    c.execute(
+        f"""
+        SELECT id, timestamp, event_type, host, message FROM system_logs
+        WHERE timestamp > datetime('now', 'localtime', '-{days} days')
+        ORDER BY id DESC
+        """
+    )
+    logs = [dict(r) for r in c.fetchall()]
+    conn.close()
+    
+    if format_type == "json":
+        return Response(
+            jsonify(logs).get_json(force=True),
+            mimetype="application/json",
+            headers={"Content-Disposition": "attachment;filename=audit_logs.json"}
+        )
+    else:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=logs[0].keys() if logs else [])
+        writer.writeheader()
+        writer.writerows(logs)
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=audit_logs.csv"}
+        )
+
+
+@app.route("/api/backups", methods=["GET"])
+@api_login_required
+@limiter.limit("20/minute")
+def get_backups():
+    backups = list_backups()
+    return jsonify({"backups": backups})
+
+
+@app.route("/api/backups/restore", methods=["POST"])
+@api_login_required
+@limiter.limit("5/minute")
+def restore_backup():
+    data = request.get_json(silent=True) or {}
+    backup_filename = str(data.get("filename") or "").strip()
+    
+    valid, sanitized, error = validate_backup_filename(backup_filename)
+    if not valid:
+        return jsonify({"error": error}), 400
+    
+    backup_path = os.path.join(BASE_DIR, "backups", sanitized)
+    
+    if not os.path.exists(backup_path):
+        return jsonify({"error": "Backup file not found"}), 404
+    
+    success, message = restore_database(backup_path)
+    
+    if success:
+        logger.info(f"Database restored from {backup_filename} by {current_user.username}")
+        try:
+            audit(current_user.username, "backup.restore", backup_filename)
+        except Exception:
+            pass
+        return jsonify({"status": "success", "message": message}), 200
+    else:
+        logger.error(f"Restore failed: {message}")
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/backups/manual", methods=["POST"])
+@api_login_required
+@limiter.limit("3/hour")
+def create_manual_backup():
+    backup_dir = os.path.join(BASE_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"network_backup_manual_{timestamp}.db")
+    
+    try:
+        src = dst = None
+        src = sqlite3.connect(resolve_db_path(), timeout=30)
+        dst = sqlite3.connect(backup_path, timeout=30)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        
+        stat = os.stat(backup_path)
+        logger.info(f"Manual backup created: {os.path.basename(backup_path)}")
+        try:
+            audit(current_user.username, "backup.create_manual", os.path.basename(backup_path))
+        except Exception:
+            pass
+        
+        return jsonify({
+            "status": "success",
+            "filename": os.path.basename(backup_path),
+            "size_mb": round(stat.st_size / (1024*1024), 2)
+        }), 200
+    except Exception as e:
+        logger.error(f"Manual backup failed: {e}")
+        return jsonify({"error": f"Backup gagal: {str(e)}"}), 500
+
+
+@app.route("/api/users", methods=["GET"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("30/minute")
+def get_users():
+    
+    users = list_users()
+    return jsonify({"users": users})
+
+
+@app.route("/api/users", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("10/minute")
+def add_user():
+    
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()[:50]
+    password = str(data.get("password") or "")
+    role = str(data.get("role") or "operator").lower()
+    
+    if not username or len(username) < 3:
+        return jsonify({"error": "Username minimum 3 karakter"}), 400
+    
+    if not password or len(password) < 8:
+        return jsonify({"error": "Password minimum 8 karakter"}), 400
+    
+    if role not in ("admin", "operator", "viewer"):
+        return jsonify({"error": "Role harus: admin, operator, atau viewer"}), 400
+    
+    try:
+        from werkzeug.security import generate_password_hash
+        password_hash = generate_password_hash(password)
+    except Exception:
+        return jsonify({"error": "Password hash gagal"}), 500
+    
+    success, message = create_user(username, password_hash, role)
+    
+    if success:
+        logger.info(f"User created: {username} (role: {role})")
+        try:
+            audit(current_user.username, "user.create", f"{username} role={role}")
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 201
+    else:
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("10/minute")
+def delete_user_endpoint(username):
+    
+    username = str(username or "").strip()[:50]
+    success, message = delete_user(username)
+    
+    if success:
+        logger.info(f"User deleted: {username}")
+        try:
+            audit(current_user.username, "user.delete", username)
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/users/<username>/role", methods=["PATCH"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("10/minute")
+def update_user_role_endpoint(username):
+    
+    username = str(username or "").strip()[:50]
+    data = request.get_json(silent=True) or {}
+    role = str(data.get("role") or "").lower()
+    
+    if not role:
+        return jsonify({"error": "Role required"}), 400
+    
+    success, message = update_user_role(username, role)
+    
+    if success:
+        logger.info(f"User role updated: {username} -> {role}")
+        try:
+            audit(current_user.username, "user.role_update", f"{username} -> {role}")
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/dashboard/summary", methods=["GET"])
+@api_login_required
+@limiter.limit("60/minute")
+def dashboard_summary():
+    conn, c = get_db()
+    
+    try:
+        c.execute("SELECT COUNT(*) AS cnt FROM hosts")
+        total_hosts = c.fetchone()["cnt"] or 0
+        
+        up_count = 0
+        down_count = 0
+        pending_count = 0
+        
+        for host in get_target_hosts():
+            if status_memory.get(host, False):
+                down_count += 1
+            elif host in status_memory:
+                up_count += 1
+            else:
+                pending_count += 1
+        
+        c.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM down_events 
+            WHERE resolved_at IS NULL
+            """
+        )
+        active_alerts = c.fetchone()["cnt"] or 0
+        
+        c.execute(
+            """
+            SELECT 
+                COUNT(*) AS total,
+                SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count
+            FROM ping_logs
+            WHERE timestamp > datetime('now', 'localtime', '-24 hours')
+            """
+        )
+        r = c.fetchone()
+        uptime_24h = None
+        if r["total"] and r["total"] > 0:
+            uptime_24h = round((r["up_count"] or 0) / r["total"] * 100, 1)
+        
+        c.execute(
+            """
+            SELECT 
+                COUNT(*) AS cnt,
+                SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS online_cnt
+            FROM services
+            """
+        )
+        svc = c.fetchone()
+        total_services = svc["cnt"] or 0
+        online_services = svc["online_cnt"] or 0
+        
+        c.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM system_logs
+            WHERE event_type LIKE 'HIGH_%' AND timestamp > datetime('now', 'localtime', '-24 hours')
+            """
+        )
+        resource_alerts = c.fetchone()["cnt"] or 0
+        
+    finally:
+        conn.close()
+    
+    return jsonify({
+        "timestamp": datetime.now().isoformat(),
+        "hosts": {
+            "total": total_hosts,
+            "up": up_count,
+            "down": down_count,
+            "pending": pending_count
+        },
+        "alerts": {
+            "active": active_alerts,
+            "resource_24h": resource_alerts
+        },
+        "uptime_24h": uptime_24h,
+         "services": {
+             "total": total_services,
+             "online": online_services,
+             "offline": total_services - online_services
+         }
+     })
+
+
+@app.route("/api/hosts/<path:ip>/thresholds", methods=["GET"])
+@api_login_required
+@limiter.limit("60/minute")
+def get_host_threshold_endpoint(ip):
+    ip = (ip or "").strip()
+    thresholds = get_host_threshold(ip)
+    
+    if not thresholds:
+        cpu_thresh = get_setting("cpu_threshold", 85.0)
+        ram_thresh = get_setting("ram_threshold", 90.0)
+        disk_thresh = get_setting("disk_threshold", 90.0)
+        thresholds = {
+            "cpu_threshold": cpu_thresh,
+            "ram_threshold": ram_thresh,
+            "disk_threshold": disk_thresh,
+            "is_custom": False
+        }
+    else:
+        thresholds["is_custom"] = True
+    
+    return jsonify(thresholds)
+
+
+@app.route("/api/hosts/<path:ip>/thresholds", methods=["POST"])
+@api_login_required
+@limiter.limit("30/minute")
+def set_host_threshold_endpoint(ip):
+    ip = (ip or "").strip()
+    data = request.get_json(silent=True) or {}
+    
+    cpu = data.get("cpu_threshold")
+    ram = data.get("ram_threshold")
+    disk = data.get("disk_threshold")
+    
+    if cpu is not None:
+        try:
+            cpu = float(cpu)
+            if not 1 <= cpu <= 100:
+                return jsonify({"error": "cpu_threshold harus 1-100"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "cpu_threshold harus angka"}), 400
+    
+    if ram is not None:
+        try:
+            ram = float(ram)
+            if not 1 <= ram <= 100:
+                return jsonify({"error": "ram_threshold harus 1-100"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "ram_threshold harus angka"}), 400
+    
+    if disk is not None:
+        try:
+            disk = float(disk)
+            if not 1 <= disk <= 100:
+                return jsonify({"error": "disk_threshold harus 1-100"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "disk_threshold harus angka"}), 400
+    
+    success, message = set_host_threshold(ip, cpu, ram, disk)
+    
+    if success:
+        logger.info(f"Host threshold set: {ip} cpu={cpu} ram={ram} disk={disk}")
+        try:
+            audit(current_user.username, "host.threshold_set", f"{ip} cpu={cpu} ram={ram} disk={disk}")
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/hosts/<path:ip>/thresholds", methods=["DELETE"])
+@api_login_required
+@limiter.limit("30/minute")
+def delete_host_threshold_endpoint(ip):
+    ip = (ip or "").strip()
+    
+    success, message = delete_host_threshold(ip)
+    
+    if success:
+        logger.info(f"Host threshold deleted: {ip}")
+        try:
+            audit(current_user.username, "host.threshold_delete", ip)
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"error": message}), 400
+
+
+@app.route("/api/thresholds/list", methods=["GET"])
+@api_login_required
+@limiter.limit("30/minute")
+def list_thresholds():
+    thresholds = list_host_thresholds()
+    return jsonify({"thresholds": thresholds})
+
+
+@app.route("/api/alerts/history", methods=["GET"])
+@api_login_required
+@limiter.limit("30/minute")
+def get_alerts_history():
+    try:
+        limit = int(request.args.get("limit", 100))
+        offset = int(request.args.get("offset", 0))
+    except (ValueError, TypeError):
+        return jsonify({"error": "limit dan offset harus angka"}), 400
+    
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    
+    host = request.args.get("host", "").strip()
+    alert_type = request.args.get("type", "").strip()
+    severity = request.args.get("severity", "").strip()
+    
+    alerts = get_alert_history(
+        host=host if host else None,
+        alert_type=alert_type if alert_type else None,
+        severity=severity if severity else None,
+        limit=limit,
+        offset=offset
+    )
+    
+    return jsonify({
+        "alerts": alerts,
+        "limit": limit,
+        "offset": offset
+    })
+
+
+@app.route("/api/alerts/active", methods=["GET"])
+@api_login_required
+@limiter.limit("60/minute")
+def get_active_alerts_endpoint():
+    host = request.args.get("host", "").strip()
+    
+    alerts = get_active_alerts(host=host if host else None)
+    
+    return jsonify({
+        "active_alerts": alerts,
+        "count": len(alerts)
+    })
+
+
+@app.route("/api/alerts/<int:alert_id>/resolve", methods=["POST"])
+@api_login_required
+@limiter.limit("30/minute")
+def resolve_alert_endpoint(alert_id):
+    success = resolve_alert(alert_id)
+    
+    if success:
+        logger.info(f"Alert resolved: {alert_id}")
+        try:
+            audit(current_user.username, "alert.resolve", f"alert_id={alert_id}")
+        except Exception:
+            pass
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"error": "Alert tidak ditemukan"}), 404
+
+
+@app.route("/api/reports/daily", methods=["GET"])
+@api_login_required
+@limiter.limit("20/minute")
+def get_daily_report():
+    report = generate_daily_report()
+    return jsonify(report)
+
+
+@app.route("/api/reports/daily/send", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("5/minute")
+def send_daily_report_endpoint():
+    
+    try:
+        send_daily_report()
+        logger.info(f"Manual daily report sent by {current_user.username}")
+        try:
+            audit(current_user.username, "report.send_daily", "manual")
+        except Exception:
+            pass
+        return jsonify({"status": "success", "message": "Report sent"}), 200
+    except Exception as e:
+        logger.error(f"Send report error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/events")

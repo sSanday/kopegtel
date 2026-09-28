@@ -29,3 +29,31 @@ def api_login_required(f):
         return f(*args, **kwargs)
 
     return decorated
+
+
+def require_role(*allowed_roles):
+    """Decorator untuk role-based access control.
+    
+    Usage:
+        @app.route("/admin")
+        @api_login_required
+        @require_role("admin")
+        def admin_endpoint():
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return jsonify({"error": "Unauthorized"}), 401
+            
+            user_role = getattr(current_user, 'role', None)
+            if user_role not in allowed_roles:
+                return jsonify({
+                    "error": f"Forbidden. Required role: {', '.join(allowed_roles)}"
+                }), 403
+            
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
