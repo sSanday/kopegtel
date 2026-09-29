@@ -84,6 +84,8 @@ from nms.db import (
     restore_database,
     set_host_threshold,
     update_user_role,
+    update_alert_workflow,
+    mark_alerts_escalated,
 )
 from nms.notify import audit, send_telegram_alert
 from nms.validators import validate_backup_filename
@@ -106,7 +108,8 @@ from nms.exceptions import (
 )
 from nms.thread_safe import ThreadSafeDict
 from nms.monitor import agent_offline_memory, check_agent_heartbeat
-from nms.snmp import _valid_oid
+from nms.snmp import _valid_oid, discover_subnet
+import json
 from nms.fiber import (
     FIBER_DEGRADE_DAYS,
     FIBER_DEGRADE_DB,
@@ -157,6 +160,7 @@ from nms.mikrotik_poll import (
     poll_mikrotik_ifaces,
     poll_mt_backups,
     poll_snmp_bandwidth,
+    auto_discover_interfaces,
     snmp_state,
 )
 from nms.mikrotik_routes import mikrotik_bp
@@ -943,6 +947,60 @@ def rebuild_alarm_memory():
 rebuild_alarm_memory()
 
 
+def run_scheduled_snmp_discovery():
+    network = get_setting("discovery_network", "", type_cast=str).strip()
+    community = get_setting("discovery_community", "", type_cast=str).strip()
+    if not network or not community:
+        return {"status": "disabled", "added": [], "removed": []}
+    try:
+        found = discover_subnet(network, community, timeout=0.8, max_hosts=256)
+    except Exception as exc:
+        logger.warning(f"Scheduled SNMP discovery gagal: {exc}")
+        return {"status": "error", "added": [], "removed": []}
+    current = {item["ip"] for item in found}
+    previous_raw = get_setting("discovery_last_hosts", "[]", type_cast=str)
+    try:
+        previous = set(json.loads(previous_raw))
+    except (TypeError, ValueError):
+        previous = set()
+    added, removed = sorted(current - previous), sorted(previous - current)
+    if added or removed:
+        parts = ["[NMS DISCOVERY] Perubahan perangkat"]
+        if added:
+            parts.append("Baru: " + ", ".join(added[:20]))
+        if removed:
+            parts.append("Hilang: " + ", ".join(removed[:20]))
+        send_telegram_alert("\n".join(parts))
+    conn, c = get_db()
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ("discovery_last_hosts", json.dumps(sorted(current))))
+    conn.commit()
+    conn.close()
+    return {"status": "ok", "added": added, "removed": removed}
+
+
+def escalate_unacknowledged_alerts():
+    now = datetime.now()
+    candidates = []
+    for alert in get_active_alerts():
+        if alert.get("acknowledged_at") or alert.get("escalated_at"):
+            continue
+        try:
+            triggered = datetime.strptime(alert["triggered_at"], "%Y-%m-%d %H:%M:%S")
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (now - triggered).total_seconds() < 900:
+            continue
+        candidates.append(alert)
+    if not candidates:
+        return 0
+    lines = ["[NMS ESCALATION] Alert belum ditangani > 15 menit:"]
+    for alert in candidates[:20]:
+        lines.append(f"- {alert['severity'].upper()} {alert['host']}: {alert.get('message') or '-'}")
+    send_telegram_alert("\n".join(lines))
+    mark_alerts_escalated([alert["id"] for alert in candidates])
+    return len(candidates)
+
+
 SCHEDULER_ENABLED = os.environ.get("NMS_DISABLE_SCHEDULER", "0") != "1"
 try:
     LOCAL_TZ = ZoneInfo("Asia/Jakarta")
@@ -956,6 +1014,12 @@ if SCHEDULER_ENABLED:
         func=check_network, trigger="interval", seconds=30, **_job_defaults
     )
     scheduler.add_job(
+        func=escalate_unacknowledged_alerts, trigger="interval", minutes=5, **_job_defaults
+    )
+    scheduler.add_job(
+        func=run_scheduled_snmp_discovery, trigger="interval", hours=6, **_job_defaults
+    )
+    scheduler.add_job(
         func=check_services, trigger="interval", seconds=30, **_job_defaults
     )
     scheduler.add_job(
@@ -963,6 +1027,9 @@ if SCHEDULER_ENABLED:
     )
     scheduler.add_job(
         func=poll_snmp_bandwidth, trigger="interval", seconds=30, **_job_defaults
+    )
+    scheduler.add_job(
+        func=auto_discover_interfaces, trigger="interval", hours=1, **_job_defaults
     )
     scheduler.add_job(
         func=poll_mikrotik_health, trigger="interval", seconds=60, **_job_defaults
@@ -1386,6 +1453,65 @@ def api_get_hosts():
     return jsonify(hosts)
 
 
+@app.route("/discovery")
+@login_required
+def discovery_page():
+    return render_template("discovery.html")
+
+
+@app.route("/api/discovery/scheduled/run", methods=["POST"])
+@api_login_required
+def api_scheduled_discovery_run():
+    return jsonify(run_scheduled_snmp_discovery())
+
+
+@app.route("/api/discovery/snmp", methods=["POST"])
+@api_login_required
+def api_snmp_discovery():
+    data = request.get_json(silent=True) or {}
+    network = str(data.get("network") or "").strip()
+    community = str(data.get("community") or "").strip()
+    try:
+        results = discover_subnet(network, community, timeout=data.get("timeout", 0.8), max_hosts=256)
+    except (ValueError, TypeError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.warning(f"SNMP discovery gagal: {exc}")
+        return jsonify({"error": "Discovery gagal"}), 502
+    return jsonify({"network": network, "count": len(results), "devices": results})
+
+
+@app.route("/api/discovery/import", methods=["POST"])
+@api_login_required
+def api_discovery_import():
+    data = request.get_json(silent=True) or {}
+    devices = data.get("devices")
+    community = str(data.get("community") or "").strip()[:128]
+    if not isinstance(devices, list) or not devices or len(devices) > 256:
+        return jsonify({"error": "devices harus list 1-256 item"}), 400
+    conn, c = get_db()
+    added, skipped = [], []
+    try:
+        for device in devices:
+            ip = str((device or {}).get("ip") or "").strip()
+            if not ip:
+                continue
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                skipped.append({"ip": ip, "reason": "IP tidak valid"})
+                continue
+            try:
+                c.execute("INSERT INTO hosts (ip, alias, category, snmp_community, snmp_profile) VALUES (?, ?, ?, ?, ?)", (ip, str((device or {}).get("sys_name") or ip)[:128], str((device or {}).get("vendor") or "Generic")[:64], community, "mikrotik" if (device or {}).get("vendor") == "MikroTik" else "generic"))
+                added.append(ip)
+            except sqlite3.IntegrityError:
+                skipped.append({"ip": ip, "reason": "sudah terdaftar"})
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"added": added, "skipped": skipped, "count": len(added)}), 201
+
+
 @app.route("/api/hosts", methods=["POST"])
 @api_login_required
 @limiter.limit("30/minute")
@@ -1718,6 +1844,8 @@ def api_get_settings():
             "mt_temp_div": get_setting("mt_temp_div", 10, type_cast=float),
             "mt_stale_min": get_setting("mt_stale_min", MT_STALE_MIN),
             "mt_backup_keep": get_setting("mt_backup_keep", 10),
+            "discovery_network": get_setting("discovery_network", "", type_cast=str),
+            "discovery_community": get_setting("discovery_community", "", type_cast=str),
         }
     )
 
@@ -1845,6 +1973,19 @@ def api_save_settings():
         if not 3 <= v <= 50:
             return jsonify({"error": "mt_backup_keep harus 3-50 versi"}), 400
         vals["mt_backup_keep"] = v
+    if "discovery_network" in data:
+        network = str(data.get("discovery_network") or "").strip()
+        if network:
+            try:
+                ipaddress.ip_network(network, strict=False)
+            except ValueError:
+                return jsonify({"error": "discovery_network harus CIDR valid"}), 400
+        vals["discovery_network"] = network
+    if "discovery_community" in data:
+        community = str(data.get("discovery_community") or "").strip()
+        if len(community) > 128:
+            return jsonify({"error": "discovery_community maksimal 128 karakter"}), 400
+        vals["discovery_community"] = community
     merged = {
         k: get_setting(k, d)
         for k, d in [
@@ -2405,20 +2546,20 @@ def get_audit_logs():
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
     
-    event_type = request.args.get("event_type", "").strip().upper()
-    host_filter = request.args.get("host", "").strip()
+    username = request.args.get("username", "").strip()
+    action = request.args.get("action", "").strip()
     
     conn, c = get_db()
     
-    query = "SELECT id, timestamp, event_type, host, message FROM system_logs WHERE 1=1"
+    query = "SELECT id, timestamp, username, action, target, detail, ip_address FROM audit_logs WHERE 1=1"
     params = []
     
-    if event_type:
-        query += " AND event_type=?"
-        params.append(event_type)
-    if host_filter:
-        query += " AND host LIKE ?"
-        params.append(f"%{host_filter}%")
+    if username:
+        query += " AND username LIKE ?"
+        params.append(f"%{username}%")
+    if action:
+        query += " AND action LIKE ?"
+        params.append(f"%{action}%")
     
     query += " ORDER BY id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
@@ -2426,9 +2567,9 @@ def get_audit_logs():
     c.execute(query, params)
     logs = [dict(r) for r in c.fetchall()]
     
-    c.execute("SELECT COUNT(*) AS cnt FROM system_logs WHERE 1=1" + 
-              (" AND event_type=?" if event_type else "") +
-              (" AND host LIKE ?" if host_filter else ""),
+    c.execute("SELECT COUNT(*) AS cnt FROM audit_logs WHERE 1=1" + 
+              (" AND username LIKE ?" if username else "") +
+              (" AND action LIKE ?" if action else ""),
               params[:-2])
     total = c.fetchone()["cnt"] or 0
     
@@ -2460,7 +2601,7 @@ def export_audit_logs():
     conn, c = get_db()
     c.execute(
         f"""
-        SELECT id, timestamp, event_type, host, message FROM system_logs
+        SELECT id, timestamp, username, action, target, detail, ip_address FROM audit_logs
         WHERE timestamp > datetime('now', 'localtime', '-{days} days')
         ORDER BY id DESC
         """
@@ -2884,6 +3025,66 @@ def get_active_alerts_endpoint():
         "active_alerts": alerts,
         "count": len(alerts)
     })
+
+
+@app.route("/incidents")
+@login_required
+def incidents_page():
+    return render_template("incidents.html")
+
+
+@app.route("/api/alerts/incidents", methods=["GET"])
+@api_login_required
+def get_alert_incidents():
+    alerts = get_active_alerts()
+    groups = {}
+    for alert in alerts:
+        host = str(alert.get("host") or "").strip()
+        if host.upper().startswith(("OLT:", "ODP:")):
+            key = host.upper()
+        else:
+            key = host
+        incident = groups.setdefault(key, {"key": key, "severity": "warning", "alerts": []})
+        incident["alerts"].append(alert)
+        rank = {"disaster": 3, "high": 2, "warning": 1, "info": 0}
+        if rank.get(alert.get("severity"), 0) > rank.get(incident["severity"], 0):
+            incident["severity"] = alert.get("severity")
+    incidents = sorted(groups.values(), key=lambda x: (-{"disaster": 3, "high": 2, "warning": 1}.get(x["severity"], 0), x["key"]))
+    for incident in incidents:
+        incident["count"] = len(incident["alerts"])
+    return jsonify({"incidents": incidents, "count": len(incidents)})
+
+
+@app.route("/api/alerts/<int:alert_id>/workflow", methods=["PATCH"])
+@api_login_required
+@limiter.limit("30/minute")
+def update_alert_workflow_endpoint(alert_id):
+    data = request.get_json(silent=True) or {}
+    allowed = {"acknowledged", "assigned_to", "note"}
+    if not any(key in data for key in allowed):
+        return jsonify({"error": "Tidak ada perubahan"}), 400
+    acknowledged = data.get("acknowledged") if "acknowledged" in data else None
+    if acknowledged is not None and not isinstance(acknowledged, bool):
+        return jsonify({"error": "acknowledged harus boolean"}), 400
+    assigned_to = data.get("assigned_to") if "assigned_to" in data else None
+    note = data.get("note") if "note" in data else None
+    if assigned_to is not None and not isinstance(assigned_to, str):
+        return jsonify({"error": "assigned_to harus teks"}), 400
+    if note is not None and not isinstance(note, str):
+        return jsonify({"error": "note harus teks"}), 400
+    if note is not None and len(note) > 1000:
+        return jsonify({"error": "note maksimal 1000 karakter"}), 400
+    success = update_alert_workflow(
+        alert_id,
+        current_user.username,
+        acknowledged=acknowledged,
+        assigned_to=assigned_to,
+        note=note,
+    )
+    if not success:
+        return jsonify({"error": "Alert tidak ditemukan"}), 404
+    audit(current_user.username, "alert.workflow_update", f"alert_id={alert_id}")
+    return jsonify({"status": "success"}), 200
 
 
 @app.route("/api/alerts/<int:alert_id>/resolve", methods=["POST"])
@@ -3360,6 +3561,65 @@ def api_service_ssl_check(svc_id):
         return jsonify({"error": "Service tidak ditemukan"}), 404
     trigger_async_ssl_check()
     return jsonify({"status": "queued"})
+
+
+@app.route("/sla")
+@login_required
+def sla_page():
+    return render_template("sla.html")
+
+
+@app.route("/api/interfaces/traffic")
+@api_login_required
+def api_interface_traffic():
+    host = request.args.get("host", "").strip()
+    try:
+        hours = max(1, min(int(request.args.get("hours", 24)), 168))
+    except (TypeError, ValueError):
+        return jsonify({"error": "hours harus angka"}), 400
+    if not host:
+        return jsonify({"error": "host wajib diisi"}), 400
+    conn, c = get_db()
+    c.execute("SELECT if_index, name FROM snmp_interfaces WHERE host=? ORDER BY if_index", (host,))
+    interfaces = [dict(row) for row in c.fetchall()]
+    c.execute("SELECT if_index, timestamp, net_in, net_out FROM iface_traffic WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY timestamp ASC", (host, f"-{hours} hours"))
+    traffic = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return jsonify({"host": host, "hours": hours, "interfaces": interfaces, "traffic": traffic})
+
+
+@app.route("/api/sla/history")
+@api_login_required
+def api_sla_history():
+    days = max(1, min(int(request.args.get("days", 30)), 90))
+    conn, c = get_db()
+    c.execute("SELECT date(timestamp) AS day, COUNT(*) AS checks, SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up FROM ping_logs WHERE timestamp > datetime('now','localtime',?) GROUP BY date(timestamp) ORDER BY day", (f"-{days} days",))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return jsonify({"days": days, "history": [{"date": r["day"], "uptime_pct": round((r["up"] or 0) / r["checks"] * 100, 2) if r["checks"] else None, "checks": r["checks"]} for r in rows]})
+
+
+@app.route("/api/sla/sites")
+@api_login_required
+def api_sla_sites():
+    days = max(1, min(int(request.args.get("days", 7)), 90))
+    conn, c = get_db()
+    c.execute("SELECT location, ip, hostname FROM inventory WHERE location IS NOT NULL AND location != ''")
+    sites = {}
+    for row in c.fetchall():
+        site = row["location"]
+        stats = sites.setdefault(site, {"site": site, "hosts": 0, "checks": 0, "up": 0, "outages": 0})
+        stats["hosts"] += 1
+        c.execute("SELECT COUNT(*) AS checks, SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up FROM ping_logs WHERE host=? AND timestamp > datetime('now','localtime',?)", (row["ip"], f"-{days} days"))
+        check = c.fetchone()
+        stats["checks"] += check["checks"] or 0
+        stats["up"] += check["up"] or 0
+        c.execute("SELECT COUNT(*) AS n FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?) AND (is_maintenance IS NULL OR is_maintenance=0)", (row["ip"], f"-{days} days"))
+        stats["outages"] += c.fetchone()["n"] or 0
+    conn.close()
+    for stats in sites.values():
+        stats["uptime_pct"] = round(stats["up"] / stats["checks"] * 100, 2) if stats["checks"] else None
+    return jsonify({"days": days, "sites": sorted(sites.values(), key=lambda x: x["site"])})
 
 
 @app.route("/inventory")
@@ -4055,6 +4315,21 @@ def get_triggers():
         if wanted:
             alarms = [a for a in alarms if a["severity"] in wanted]
 
+    try:
+        active_alerts = get_active_alerts()
+        workflow_map = {(a["host"], a["message"]): a for a in active_alerts}
+        for alarm in alarms:
+            workflow = workflow_map.get((alarm.get("host"), alarm.get("message")))
+            if workflow:
+                alarm.update({
+                    "id": workflow["id"],
+                    "acknowledged_at": workflow.get("acknowledged_at"),
+                    "acknowledged_by": workflow.get("acknowledged_by"),
+                    "assigned_to": workflow.get("assigned_to"),
+                    "note": workflow.get("note"),
+                })
+    except Exception as e:
+        logger.warning(f"Alert workflow enrichment gagal: {e}")
     return jsonify(alarms)
 
 
@@ -4066,6 +4341,11 @@ def _like_escape(s):
 @login_required
 def logs_page():
     return render_template("logs.html")
+
+@app.route("/audit_logs")
+@login_required
+def audit_logs_page():
+    return render_template("audit.html")
 
 
 @app.route("/api/system_logs")

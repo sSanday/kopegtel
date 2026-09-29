@@ -15,6 +15,7 @@ from nms.db import (
     db_lock,
     get_db,
     get_setting,
+    log_alert,
 )
 from nms.format import _fmt_duration
 from nms.mikrotik import (
@@ -25,9 +26,31 @@ from nms.mikrotik import (
     _mt_reboot_kind,
 )
 from nms.notify import send_telegram_alert
-from nms.snmp import _snmp_get, _valid_oid
+from nms.snmp import _snmp_get, _valid_oid, discover_interfaces
 
 snmp_state = {}
+
+
+def auto_discover_interfaces():
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip, snmp_community, snmp_profile FROM hosts WHERE snmp_community IS NOT NULL AND snmp_community != ''")
+        hosts = [dict(row) for row in c.fetchall()]
+    finally:
+        conn.close()
+    for host in hosts:
+        if host.get("snmp_profile") not in ("mikrotik", "generic", "auto", None, ""):
+            continue
+        found = discover_interfaces(host["ip"], host["snmp_community"], max_if=128)
+        if not found:
+            continue
+        conn, c = get_db()
+        try:
+            for item in found:
+                c.execute("INSERT OR IGNORE INTO snmp_interfaces (host, if_index, name, oper, monitor, last_changed) VALUES (?, ?, ?, ?, 1, ?)", (host["ip"], item["if_index"], item["name"], item.get("oper"), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def get_snmp_bandwidth(ip, community, if_index):
@@ -599,6 +622,12 @@ def poll_mikrotik_ifaces():
                                     f" (flapping {_flaps}x/10 mnt)" if _flaps else ""
                                 )
                                 if oper == 2:
+                                    try:
+                                        c.execute("SELECT 1 FROM alert_history WHERE host=? AND alert_type=? AND resolved_at IS NULL LIMIT 1", (host, "interface_down"))
+                                        if not c.fetchone():
+                                            log_alert(host, "interface_down", "high", f"Interface {name} (ifIndex {idx}) down")
+                                    except Exception:
+                                        pass
                                     tg_queue.append(
                                         f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"
                                         f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}"
@@ -614,6 +643,10 @@ def poll_mikrotik_ifaces():
                                     except Exception:
                                         pass
                                 else:
+                                    try:
+                                        c.execute("UPDATE alert_history SET resolved_at=?, duration_s=CAST((julianday(?) - julianday(triggered_at)) * 86400 AS INTEGER) WHERE host=? AND alert_type='interface_down' AND resolved_at IS NULL", (timestamp, timestamp, host))
+                                    except Exception:
+                                        pass
                                     tg_queue.append(
                                         f"✅ *MIKROTIK PORT UP*\nHost: `{host}`\n"
                                         f"Port: *{name}* (ifIndex {idx}){_note}\nWaktu: {timestamp}"
@@ -651,9 +684,21 @@ def poll_mikrotik_ifaces():
                                 net_in = round((di * 8) / (1024 * 1024 * dt), 2)
                                 net_out = round((do * 8) / (1024 * 1024 * dt), 2)
                                 if net_in <= 100000 and net_out <= 100000:
-                                    traffic_rows.append(
-                                        (host, idx, net_in, net_out, timestamp)
-                                    )
+                                    traffic_rows.append((host, idx, net_in, net_out, timestamp))
+                                    limit_mbps = float(get_setting("iface_utilization_mbps", 80.0, type_cast=float))
+                                    if max(net_in, net_out) >= limit_mbps:
+                                        try:
+                                            c.execute("SELECT 1 FROM alert_history WHERE host=? AND alert_type=? AND resolved_at IS NULL LIMIT 1", (host, "interface_utilization"))
+                                            if not c.fetchone():
+                                                c.execute("INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)", (host, "interface_utilization", "warning", f"Interface {name} utilization {max(net_in, net_out):.2f} Mbps", timestamp))
+                                        except Exception:
+                                            pass
+                                    else:
+                                        try:
+                                            c.execute("UPDATE alert_history SET resolved_at=?, duration_s=CAST((julianday(?) - julianday(triggered_at)) * 86400 AS INTEGER) WHERE host=? AND alert_type='interface_utilization' AND resolved_at IS NULL", (timestamp, timestamp, host))
+                                        except Exception:
+                                            pass
+
                                 iface_state[key] = {
                                     "in": in_b,
                                     "out": out_b,

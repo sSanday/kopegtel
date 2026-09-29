@@ -13,6 +13,9 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+m.app.config["RATELIMIT_ENABLED"] = False
+if hasattr(m, "limiter") and hasattr(m.limiter, "enabled"):
+    m.limiter.enabled = False
 from nms import fiber as _fibmod
 from nms import fiber_poll as _fmod
 from nms import fiber_routes as _frmod
@@ -2594,6 +2597,8 @@ class FiberTopoTest(unittest.TestCase):
             self.assertFalse(no_olt["registered"])
             flat = [t["ont_sn"] for d in no_olt["odps"] for t in d["onts"]]
             self.assertIn(SN_T3, flat)
+            self.assertTrue(any(n["type"] == "olt" for n in j["nodes"]))
+            self.assertTrue(any(e["source"].startswith("olt:") for e in j["edges"]))
         finally:
             _cleanup_topo(self.client)
 

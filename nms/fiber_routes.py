@@ -2074,7 +2074,20 @@ def api_fiber_topology():
                 "odps": node_odps,
             }
         )
-    return jsonify({"olts": out})
+    nodes = []
+    edges = []
+    for olt in out:
+        olt_id = f"olt:{olt['name'].lower()}"
+        nodes.append({"id": olt_id, "type": "olt", "name": olt["name"], "status": olt["worst"], "lat": (olt.get("olt") or {}).get("lat"), "lon": (olt.get("olt") or {}).get("lon")})
+        for odp in olt.get("odps", []):
+            odp_id = f"odp:{olt['name'].lower()}:{odp['name'].lower()}"
+            nodes.append({"id": odp_id, "type": "odp", "name": odp["name"], "status": odp["worst"], "lat": (odp.get("odp") or {}).get("lat"), "lon": (odp.get("odp") or {}).get("lon")})
+            edges.append({"source": olt_id, "target": odp_id})
+            for ont in odp.get("onts", []):
+                ont_id = f"ont:{ont['ont_sn'].lower()}"
+                nodes.append({"id": ont_id, "type": "ont", "name": ont["ont_sn"], "status": ont.get("status", "unknown")})
+                edges.append({"source": odp_id, "target": ont_id})
+    return jsonify({"olts": out, "nodes": nodes, "edges": edges})
 
 
 @fiber_bp.route("/api/fiber/link-budget", methods=["POST"])

@@ -1,8 +1,10 @@
 """nms.snmp — SNMP data-plane: codec BER, GET/NEXT/WALK, discovery interface."""
 
+import ipaddress
 import os
 import re
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xA0):
@@ -300,6 +302,52 @@ def _valid_oid(s):
     except ValueError:
         return None
     return s
+
+
+SYS_DESCR_OID = "1.3.6.1.2.1.1.1.0"
+SYS_NAME_OID = "1.3.6.1.2.1.1.5.0"
+
+
+def detect_vendor(sys_descr, sys_name):
+    text = f"{sys_descr or ''} {sys_name or ''}".lower()
+    signatures = (
+        ("MikroTik", ("mikrotik", "routeros")),
+        ("Cisco", ("cisco",)),
+        ("Huawei", ("huawei",)),
+        ("ZTE", ("zte",)),
+        ("FiberHome", ("fiberhome",)),
+        ("Ubiquiti", ("ubiquiti", "edgeos")),
+    )
+    for vendor, needles in signatures:
+        if any(needle in text for needle in needles):
+            return vendor
+    return "Generic"
+
+
+def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
+    net = ipaddress.ip_network(str(network).strip(), strict=False)
+    hosts = list(net.hosts())
+    if len(hosts) > max_hosts:
+        raise ValueError(f"Subnet terlalu besar; maksimum {max_hosts} host")
+    community = str(community or "").strip()
+    if not community or len(community) > 128:
+        raise ValueError("community wajib diisi dan maksimal 128 karakter")
+    timeout = max(0.2, min(float(timeout), 3.0))
+
+    def probe(addr):
+        vals = _snmp_get(str(addr), community, [SYS_DESCR_OID, SYS_NAME_OID], timeout=timeout)
+        if vals and any(v is not None for v in vals):
+            return {"ip": str(addr), "sys_descr": vals[0], "sys_name": vals[1], "vendor": detect_vendor(vals[0], vals[1]), "reachable": True}
+        return None
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(1, min(int(workers), 64))) as pool:
+        futures = [pool.submit(probe, addr) for addr in hosts]
+        for future in as_completed(futures):
+            item = future.result()
+            if item:
+                results.append(item)
+    return sorted(results, key=lambda x: ipaddress.ip_address(x["ip"]))
 
 
 def _snmp_get(ip, community, oids, timeout=2.0):

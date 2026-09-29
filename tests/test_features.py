@@ -185,6 +185,170 @@ class MaintenanceTest(unittest.TestCase):
         self.assertFalse(any(a["severity"] == "disaster" for a in alarms), alarms)
 
 
+class SlaAndInterfaceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_sla_page_and_api(self):
+        self.assertEqual(self.client.get("/sla").status_code, 200)
+        r = self.client.get("/api/sla/sites?days=7", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("sites", r.get_json())
+        r = self.client.get("/api/sla/history?days=7", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("history", r.get_json())
+        r = self.client.get("/api/interfaces/traffic?host=10.99.99.99&hours=24", headers=XRW_HDR)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("traffic", r.get_json())
+
+
+class ScheduledDiscoveryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_schedule_and_change_detection(self):
+        original_discover = m.discover_subnet
+        original_notify = m.send_telegram_alert
+        sent = []
+        m.discover_subnet = lambda *args, **kwargs: [{"ip": "10.99.99.21", "sys_name": "test", "sys_descr": "x", "vendor": "Generic"}]
+        m.send_telegram_alert = lambda message: sent.append(message)
+        try:
+            r = self.client.post("/api/settings", json={"discovery_network": "10.99.99.0/24", "discovery_community": "public"}, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            result = m.run_scheduled_snmp_discovery()
+            self.assertEqual(result["added"], ["10.99.99.21"])
+            self.assertTrue(sent)
+        finally:
+            m.discover_subnet = original_discover
+            m.send_telegram_alert = original_notify
+
+
+class SnmpDiscoveryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_discovery_validation_and_result(self):
+        r = self.client.post("/api/discovery/snmp", json={"network": "bad", "community": "public"}, headers=JSON_HDR)
+        self.assertEqual(r.status_code, 400)
+        original = m.discover_subnet
+        m.discover_subnet = lambda *args, **kwargs: [{"ip": "10.99.99.20", "sys_name": "router", "sys_descr": "test", "reachable": True}]
+        try:
+            r = self.client.post("/api/discovery/snmp", json={"network": "10.99.99.0/24", "community": "public"}, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.get_json()["count"], 1)
+            r = self.client.post("/api/discovery/import", json={"community": "public", "devices": [{"ip": "10.99.99.20", "sys_name": "router", "vendor": "MikroTik"}]}, headers=JSON_HDR)
+            self.assertEqual(r.status_code, 201)
+            self.assertEqual(r.get_json()["count"], 1)
+            conn, c = m.get_db()
+            c.execute("DELETE FROM hosts WHERE ip=?", ("10.99.99.20",))
+            conn.commit()
+            conn.close()
+        finally:
+            m.discover_subnet = original
+
+
+class IncidentDashboardTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_page_and_escalation(self):
+        self.assertEqual(self.client.get("/incidents").status_code, 200)
+        conn, c = m.get_db()
+        ts = (datetime.now() - timedelta(minutes=20)).strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)", ("10.99.99.14", "test", "high", "escalate test", ts))
+        alert_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        sent = []
+        original = m.send_telegram_alert
+        m.send_telegram_alert = lambda message: sent.append(message)
+        try:
+            self.assertEqual(m.escalate_unacknowledged_alerts(), 1)
+            self.assertTrue(sent)
+            conn, c = m.get_db()
+            c.execute("SELECT escalated_at FROM alert_history WHERE id=?", (alert_id,))
+            self.assertIsNotNone(c.fetchone()["escalated_at"])
+            conn.close()
+        finally:
+            m.send_telegram_alert = original
+            conn, c = m.get_db()
+            c.execute("DELETE FROM alert_history WHERE id=?", (alert_id,))
+            conn.commit()
+            conn.close()
+
+
+class AlertCorrelationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_incidents_groups_active_alerts(self):
+        conn, c = m.get_db()
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.executemany(
+            "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+            [("OLT:CORE-1", "fiber", "high", "olt down", ts), ("OLT:CORE-1", "fiber", "warning", "ont degraded", ts)],
+        )
+        conn.commit()
+        conn.close()
+        try:
+            r = self.client.get("/api/alerts/incidents", headers=XRW_HDR)
+            self.assertEqual(r.status_code, 200)
+            incident = next(i for i in r.get_json()["incidents"] if i["key"] == "OLT:CORE-1")
+            self.assertEqual(incident["count"], 2)
+            self.assertEqual(incident["severity"], "high")
+        finally:
+            conn, c = m.get_db()
+            c.execute("DELETE FROM alert_history WHERE host=?", ("OLT:CORE-1",))
+            conn.commit()
+            conn.close()
+
+
+class AlertWorkflowTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+
+    def test_ack_assign_note(self):
+        conn, c = m.get_db()
+        c.execute(
+            "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+            ("10.99.99.13", "test", "high", "workflow test", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        alert_id = c.lastrowid
+        conn.commit()
+        conn.close()
+        try:
+            r = self.client.patch(
+                f"/api/alerts/{alert_id}/workflow",
+                json={"acknowledged": True, "assigned_to": "operator", "note": "ditangani"},
+                headers=JSON_HDR,
+            )
+            self.assertEqual(r.status_code, 200)
+            conn, c = m.get_db()
+            c.execute("SELECT * FROM alert_history WHERE id=?", (alert_id,))
+            row = c.fetchone()
+            conn.close()
+            self.assertEqual(row["acknowledged_by"], "admin")
+            self.assertEqual(row["assigned_to"], "operator")
+            self.assertEqual(row["note"], "ditangani")
+        finally:
+            conn, c = m.get_db()
+            c.execute("DELETE FROM alert_history WHERE id=?", (alert_id,))
+            conn.commit()
+            conn.close()
+
+
 class SslServiceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

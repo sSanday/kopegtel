@@ -108,8 +108,23 @@ def init_db():
         message TEXT,
         triggered_at TEXT NOT NULL,
         resolved_at TEXT,
-        duration_s INTEGER
+        duration_s INTEGER,
+        acknowledged_at TEXT,
+        acknowledged_by TEXT,
+        assigned_to TEXT,
+        note TEXT
     )""")
+    for _col, _ddl in (
+        ("acknowledged_at", "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT"),
+        ("acknowledged_by", "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT"),
+        ("assigned_to", "ALTER TABLE alert_history ADD COLUMN assigned_to TEXT"),
+        ("note", "ALTER TABLE alert_history ADD COLUMN note TEXT"),
+        ("escalated_at", "ALTER TABLE alert_history ADD COLUMN escalated_at TEXT"),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
 
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('cpu_threshold', '85.0')"
@@ -301,6 +316,16 @@ def init_db():
         event_type TEXT NOT NULL,
         host TEXT NOT NULL,
         message TEXT NOT NULL
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        username TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target TEXT,
+        detail TEXT,
+        ip_address TEXT
     )""")
 
     c.execute(
@@ -983,10 +1008,37 @@ def resolve_alert(alert_id):
         return False
 
 
+def update_alert_workflow(alert_id, username, acknowledged=None, assigned_to=None, note=None):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM alert_history WHERE id=?", (alert_id,))
+        if not c.fetchone():
+            return False
+        fields = []
+        params = []
+        if acknowledged is not None:
+            fields.extend(["acknowledged_at", "acknowledged_by"])
+            params.extend([datetime.now().strftime("%Y-%m-%d %H:%M:%S") if acknowledged else None, username if acknowledged else None])
+        if assigned_to is not None:
+            fields.append("assigned_to")
+            params.append(assigned_to.strip() or None)
+        if note is not None:
+            fields.append("note")
+            params.append(note.strip() or None)
+        if not fields:
+            return True
+        params.append(alert_id)
+        c.execute(f"UPDATE alert_history SET {', '.join(f + '=?' for f in fields)} WHERE id=?", params)
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def get_alert_history(host=None, alert_type=None, severity=None, limit=100, offset=0):
     conn, c = get_db()
     
-    query = "SELECT id, host, alert_type, severity, message, triggered_at, resolved_at, duration_s FROM alert_history WHERE 1=1"
+    query = "SELECT id, host, alert_type, severity, message, triggered_at, resolved_at, duration_s, acknowledged_at, acknowledged_by, assigned_to, note, escalated_at FROM alert_history WHERE 1=1"
     params = []
     
     if host:
@@ -1008,10 +1060,26 @@ def get_alert_history(host=None, alert_type=None, severity=None, limit=100, offs
     return alerts
 
 
+def mark_alerts_escalated(alert_ids):
+    if not alert_ids:
+        return
+    conn, c = get_db()
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        placeholders = ",".join("?" for _ in alert_ids)
+        c.execute(
+            f"UPDATE alert_history SET escalated_at=? WHERE id IN ({placeholders}) AND escalated_at IS NULL",
+            [timestamp, *alert_ids],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_active_alerts(host=None):
     conn, c = get_db()
     
-    query = "SELECT id, host, alert_type, severity, message, triggered_at FROM alert_history WHERE resolved_at IS NULL"
+    query = "SELECT id, host, alert_type, severity, message, triggered_at, acknowledged_at, acknowledged_by, assigned_to, note, escalated_at FROM alert_history WHERE resolved_at IS NULL"
     params = []
     
     if host:

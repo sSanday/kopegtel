@@ -352,7 +352,9 @@
             <th style="width:140px">Severity</th>
             <th style="width:250px">Host</th>
             <th style="width:150px">Category</th>
-            <th>Problem Description</th>
+             <th>Problem Description</th>
+             <th style="width:260px">Workflow</th>
+
           </tr>
         </thead>
         <tbody id="triggersBody">
@@ -543,7 +545,7 @@
       let html = '';
       if(!filtered.length){
         const isFiltering = sevSet.size > 0 || catFilter !== 'all' || searchQuery;
-        html = `<tr><td colspan="4">
+        html = `<tr><td colspan="5">
           <div class="empty-state">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>
@@ -558,12 +560,18 @@
           const rawHost = esc(a.host);
           const subName = (hostName !== a.host) ? `<span class="host-alias">${rawHost}</span>` : '';
           const hostCell = `<a class="host-link" href="/host/${encodeURIComponent(a.host)}" title="Detail ${rawHost}">${hostName}${subName}</a>`;
-          html += `<tr class="sev-${esc(a.severity)}">
-            <td><span class="tag ${esc(a.severity)}">${esc(a.severity)}</span></td>
-            <td class="col-host">${hostCell}</td>
-            <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc((a.category||'').toUpperCase())}</span></td>
-            <td class="col-msg">${esc(a.message)}</td>
-          </tr>`;
+           const ack = Boolean(a.acknowledged_at);
+           html += `<tr class="sev-${esc(a.severity)}">
+             <td><span class="tag ${esc(a.severity)}">${esc(a.severity)}</span></td>
+             <td class="col-host">${hostCell}</td>
+             <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc((a.category||'').toUpperCase())}</span></td>
+             <td class="col-msg">${esc(a.message)}</td>
+             <td>
+               <button class="refresh-btn" onclick="toggleAck(${Number(a.id)}, ${!ack})">${ack ? 'unack' : 'ack'}</button>
+               <button class="refresh-btn" onclick="editWorkflow(${Number(a.id)}, '${esc(a.assigned_to || '')}', '${esc(a.note || '')}')">assign/note</button>
+               ${a.assigned_to ? `<span class="host-alias">PIC: ${esc(a.assigned_to)}</span>` : ''}
+             </td>
+           </tr>`;
         });
       }
       tbody.innerHTML = html;
@@ -597,9 +605,27 @@
       }
     }
 
-    function apiHeaders(extra){
-      return Object.assign({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, extra || {});
-    }
+     async function updateWorkflow(id, payload){
+       const res = await fetch(`/api/alerts/${id}/workflow`, {method:'PATCH', headers:apiHeaders(), body:JSON.stringify(payload)});
+       const data = await res.json().catch(()=>({}));
+       if(!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+       await fetchTriggers();
+     }
+     async function toggleAck(id, acknowledged){
+       try { await updateWorkflow(id, {acknowledged}); } catch(e) { alert(e.message); }
+     }
+     async function editWorkflow(id, assigned, note){
+       const nextAssigned = prompt('Assign ke user:', assigned || '');
+       if(nextAssigned === null) return;
+       const nextNote = prompt('Catatan alert:', note || '');
+       if(nextNote === null) return;
+       try { await updateWorkflow(id, {assigned_to:nextAssigned, note:nextNote}); } catch(e) { alert(e.message); }
+     }
+
+     function apiHeaders(extra){
+       return Object.assign({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, extra || {});
+     }
+
 
     async function fetchMaintenance(){
       const tb = document.getElementById('maintBody');

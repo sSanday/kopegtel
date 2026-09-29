@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Log Viewer — NMS KOPEGTEL</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080c14;
+      --surface:#0c1220;
+      --card:rgba(12,18,32,0.8);
+      --border:rgba(0,255,136,0.1);
+      --border2:rgba(255,255,255,0.06);
+      --accent:#00a2ff;
+      --accent2:#00ff88;
+      --t1:#e0f0ff;
+      --t2:#6a8aaa;
+      --t3:#2a4060;
+      --mono:'JetBrains Mono',monospace;
+      --danger:#ff4444;
+      --success:#00ff88;
+      --warn:#ffaa00;
+      --info:#00a2ff;
+    }
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
+
+    body{
+      font-family:'Inter',sans-serif;
+      background:var(--bg);color:var(--t1);
+      min-height:100vh;overflow-x:hidden;
+    }
+
+    body::before{
+      content:'';position:fixed;inset:0;
+      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
+      pointer-events:none;z-index:9999;
+    }
+    body::after{
+      content:'';position:fixed;inset:0;
+      background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);
+      pointer-events:none;z-index:0;
+    }
+
+    .topbar{
+      position:sticky;top:0;z-index:100;
+      height:52px;background:rgba(8,12,20,0.97);
+      border-bottom:1px solid var(--border2);
+      backdrop-filter:blur(12px);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;
+    }
+    .tb-brand{
+      display:flex;align-items:center;gap:12px;
+      font-family:var(--mono);font-size:.72rem;
+    }
+    .tb-logo{
+      width:26px;height:26px;
+      background:linear-gradient(135deg,#00a2ff,#00ff88);
+      border-radius:5px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
+    }
+    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
+    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
+    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
+    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
+    .tb-sep{color:var(--t3);font-size:.62rem}
+    .back-btn{
+      display:flex;align-items:center;gap:6px;
+      background:rgba(0,0,0,.2);border:1px solid var(--border2);
+      color:var(--t2);padding:6px 14px;border-radius:6px;
+      font-family:var(--mono);font-size:.65rem;
+      text-decoration:none;transition:.15s;
+    }
+    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
+
+    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
+
+    .sec-label{
+      font-family:var(--mono);font-size:.62rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:2px;
+      color:var(--t3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+      margin-bottom:12px;
+    }
+    .sec-label::before{content:'//';color:var(--accent2)}
+
+    .filter-bar{
+      display:flex;align-items:center;gap:8px;row-gap:12px;flex-wrap:wrap;
+      padding:14px 16px;
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;margin-bottom:20px;
+    }
+    .filter-label{font-family:var(--mono);font-size:.65rem;color:var(--t2)}
+    .filter-bar select, .filter-bar input{
+      background:rgba(0,0,0,.3);border:1px solid var(--border2);
+      color:var(--t1);padding:6px 10px;border-radius:5px;
+      font-family:var(--mono);font-size:.65rem;
+    }
+    .filter-search{min-width:240px;flex:1}
+    .filter-stats{
+      margin-left:auto;font-family:var(--mono);font-size:.65rem;color:var(--t3);
+      background:rgba(0,0,0,0.2);padding:4px 10px;border-radius:99px;border:1px solid rgba(255,255,255,0.04);
+    }
+    .export-btn{
+      background:transparent;border:1px solid var(--border2);
+      color:var(--t2);padding:5px 12px;border-radius:5px;
+      font-family:var(--mono);font-size:.65rem;text-decoration:none;
+      display:inline-flex;align-items:center;gap:6px;transition:.15s;
+    }
+    .export-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
+
+    .log-card{
+      background:var(--card);border:1px solid var(--border2);
+      border-radius:8px;overflow:hidden;
+    }
+    .term-topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
+    }
+    .term-dots{display:flex;gap:5px}
+    .term-dot{width:10px;height:10px;border-radius:50%}
+    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
+    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
+    
+    .term-badge{
+      font-family:var(--mono);font-size:.55rem;font-weight:700;
+      color:var(--success);border:1px solid rgba(0,255,136,0.3);
+      background:rgba(0,255,136,0.1);padding:2px 8px;border-radius:99px;
+      cursor:pointer;user-select:none;transition:.15s;
+    }
+    .term-badge.off{
+      color:var(--t3);border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);
+    }
+    
+    .table-scroll{overflow:auto;max-height:70vh}
+    table{width:100%;border-collapse:collapse;min-width:900px}
+    th{
+      text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;
+      text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;
+      border-bottom:1px solid var(--border2);background:#0d1424;
+      white-space:nowrap;position:sticky;top:0;z-index:1;
+    }
+    td{
+      padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
+      font-family:var(--mono);font-size:.68rem;color:var(--t2);
+      font-variant-numeric:tabular-nums;
+    }
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(0,162,255,0.05)}
+    
+    .tag{
+      font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+      border-radius:3px;padding:3px 8px;white-space:nowrap;
+      background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25);
+    }
+    .tag.event-auth{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
+    .tag.event-host{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
+
+    .empty{text-align:center;padding:40px 20px;color:var(--t3);font-family:var(--mono);font-size:.7rem}
+
+    .pager{
+      display:flex;align-items:center;justify-content:center;gap:12px;
+      margin-top:20px;
+    }
+    .pager-btn{
+      background:rgba(0,0,0,.3);border:1px solid var(--border2);
+      color:var(--t1);width:32px;height:32px;border-radius:6px;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;font-family:var(--mono);transition:.15s;
+    }
+    .pager-btn:hover:not(:disabled){background:rgba(0,162,255,.1);border-color:rgba(0,162,255,.3);color:var(--info)}
+    .pager-btn:disabled{opacity:.3;cursor:not-allowed}
+    .pager-info{font-family:var(--mono);font-size:.65rem;color:var(--t2)}
+
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="tb-path">
+        <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
+        <span class="tb-sep">›</span>
+        <span class="crumb active">audit_logs</span>
+      </div>
+    </div>
+    <a href="/" class="back-btn">
+      cd ..
+    </a>
+  </div>
+
+  <div class="wrap">
+    <div class="sec-label">audit_log.tail</div>
+    <div class="filter-bar">
+      <span class="filter-label">username</span>
+      <input class="filter-search" id="qUser" type="text" placeholder="Cari username..." autocomplete="off">
+      <span class="filter-label">action</span>
+      <input class="filter-search" id="qAction" type="text" placeholder="Cari action..." autocomplete="off">
+      <a class="export-btn" id="exportBtn" href="/api/audit/export?format=csv"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M8 2v8M5 7l3 3 3-3M2.5 12.5v1.5h11v-1.5"/></svg> csv</a>
+      <div class="filter-stats" id="statsLabel">loading...</div>
+    </div>
+
+    <div class="log-card">
+      <div class="term-topbar">
+        <div class="term-dots">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
+        </div>
+        <div class="term-title">bash — tail -f /var/log/nms/user_audit.log</div>
+        <div class="term-badge" id="liveBadge" role="button" tabindex="0" title="Klik untuk pause/resume auto-refresh 10s">LIVE</div>
+      </div>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>timestamp</th>
+            <th>username</th>
+            <th>action</th>
+            <th>target</th>
+            <th>detail</th>
+            <th>ip_address</th>
+          </tr>
+        </thead>
+        <tbody id="logsBody">
+        </tbody>
+      </table>
+      </div>
+    </div>
+    
+    <div class="pager" id="pager" style="display:none">
+      <button class="pager-btn" id="btnPrev" onclick="goPage(-1)" title="Halaman sebelumnya">&lt;</button>
+      <span class="pager-info" id="pagerInfo">1 / 1</span>
+      <button class="pager-btn" id="btnNext" onclick="goPage(1)" title="Halaman berikutnya">&gt;</button>
+    </div>
+  </div>
+
+  <script>
+    let currentLimit = 100;
+    let currentOffset = 0;
+    let hasNext = false;
+    let autoRefresh = true;
+    let refreshTimer = null;
+    let isFetching = false;
+
+    const inUser = document.getElementById('qUser');
+    const inAction = document.getElementById('qAction');
+    const outExport = document.getElementById('exportBtn');
+    const badge = document.getElementById('liveBadge');
+
+    let debounceTimer;
+    [inUser, inAction].forEach(el => {
+      el.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(resetAndFetch, 300);
+      });
+    });
+
+    function resetAndFetch() {
+      currentOffset = 0;
+      fetchLogs();
+    }
+
+    function toggleLive() {
+      autoRefresh = !autoRefresh;
+      if(autoRefresh) {
+        badge.classList.remove('off');
+        fetchLogs();
+      } else {
+        badge.classList.add('off');
+        if(refreshTimer) clearTimeout(refreshTimer);
+      }
+    }
+    badge.addEventListener('click', toggleLive);
+
+    function escapeHtml(unsafe) {
+      return (unsafe||'').replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+    }
+
+    async function fetchLogs() {
+      if(isFetching) return;
+      isFetching = true;
+      try {
+        const u = inUser.value.trim();
+        const a = inAction.value.trim();
+        
+        let url = `/api/audit/logs?limit=${currentLimit}&offset=${currentOffset}`;
+        if(u) url += `&username=${encodeURIComponent(u)}`;
+        if(a) url += `&action=${encodeURIComponent(a)}`;
+
+        outExport.href = `/api/audit/export?format=csv&days=30`;
+
+        const r = await fetch(url);
+        if(!r.ok) throw new Error('API Error');
+        const d = await r.json();
+
+        hasNext = d.has_next;
+        const total = d.total || 0;
+        
+        document.getElementById('statsLabel').textContent = `${total} audit logs`;
+
+        renderTable(d.logs || []);
+        renderPager(total);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        isFetching = false;
+        if(autoRefresh) {
+          if(refreshTimer) clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(fetchLogs, 10000);
+        }
+      }
+    }
+
+    function renderTable(logs) {
+      const tb = document.getElementById('logsBody');
+      if(logs.length === 0) {
+        tb.innerHTML = '<tr><td colspan="7" class="empty">Tidak ada data audit log yang cocok</td></tr>';
+        return;
+      }
+      tb.innerHTML = logs.map(l => {
+        let tagClass = 'tag';
+        if ((l.action||'').startsWith('auth.')) tagClass += ' event-auth';
+        else if ((l.action||'').startsWith('host.')) tagClass += ' event-host';
+
+        return `<tr>
+          <td style="color:var(--t3)">${l.id}</td>
+          <td>${l.timestamp}</td>
+          <td><b>${escapeHtml(l.username)}</b></td>
+          <td><span class="${tagClass}">${escapeHtml(l.action)}</span></td>
+          <td>${escapeHtml(l.target || '-')}</td>
+          <td style="color:var(--t2);max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(l.detail || '')}">${escapeHtml(l.detail || '-')}</td>
+          <td>${escapeHtml(l.ip_address || '-')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function renderPager(total) {
+      const p = document.getElementById('pager');
+      if(total <= currentLimit && currentOffset === 0) {
+        p.style.display = 'none';
+        return;
+      }
+      p.style.display = 'flex';
+      
+      const curPage = Math.floor(currentOffset/currentLimit) + 1;
+      const totalPages = Math.ceil(total/currentLimit) || 1;
+      
+      document.getElementById('pagerInfo').textContent = `${curPage} / ${totalPages}`;
+      document.getElementById('btnPrev').disabled = (currentOffset === 0);
+      document.getElementById('btnNext').disabled = !hasNext;
+    }
+
+    function goPage(dir) {
+      if(dir === 1 && hasNext) currentOffset += currentLimit;
+      else if(dir === -1 && currentOffset >= currentLimit) currentOffset -= currentLimit;
+      fetchLogs();
+    }
+
+    fetchLogs();
+  </script>
+</body>
+</html>
