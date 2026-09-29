@@ -21,9 +21,6 @@ def get_db():
     conn = sqlite3.connect(resolve_db_path(), timeout=30, check_same_thread=False)
     conn.execute("PRAGMA busy_timeout=30000")
     try:
-        # journal_mode bisa gagal saat disk penuh (pernah: disk I/O error
-        # massal 23 Sep di semua job). Jangan matikan koneksi — SQLite tetap
-        # bisa jalan dengan journal mode default.
         conn.execute("PRAGMA journal_mode=WAL")
     except sqlite3.OperationalError as e:
         print(f"[DB] journal_mode=WAL gagal ({e}), lanjut mode default")
@@ -781,9 +778,6 @@ def backup_database():
             except Exception:
                 pass
 
-    # Retensi hanya untuk backup harian otomatis (network_backup_YYYY-MM-DD.db).
-    # Backup manual (network_backup_manual_*) TIDAK dihitung/dihapus agar tak
-    # terkuras jatah 30 file — hapus manual bila disk menipis.
     backups = sorted(
         glob.glob(os.path.join(backup_dir, "network_backup_[0-9]*.db"))
     )

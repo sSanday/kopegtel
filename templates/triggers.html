@@ -281,7 +281,6 @@
 </head>
 <body>
 
-  <!-- Topbar -->
   <div class="topbar">
     <div class="tb-brand">
       <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -301,7 +300,6 @@
 
   <div class="wrap">
 
-    <!-- Filter Bar -->
     <div class="sec-label" id="secLabel">active_alarms.list</div>
     <div class="filter-bar">
       <div class="t-row">
@@ -332,7 +330,6 @@
       </div>
     </div>
 
-    <!-- Log Table -->
     <div class="log-card">
       <div class="term-topbar">
         <div class="term-dots">
@@ -358,7 +355,6 @@
           </tr>
         </thead>
         <tbody id="triggersBody">
-          <!-- populated via JS -->
         </tbody>
       </table>
       </div>
@@ -369,7 +365,6 @@
       </div>
     </div>
 
-    <!-- Maintenance Window Manager -->
     <div class="sec-label" style="margin-top:20px">maintenance_windows.config</div>
     <div class="maint-card">
       <div class="term-topbar">
@@ -414,7 +409,7 @@
   <script>
     let aliasMap = {};
     let allAlarms = [];
-    let sevSet = new Set(); // kosong = all
+    let sevSet = new Set();
     let catFilter = 'all';
     let searchQuery = '';
     let curPage = 1;
@@ -442,7 +437,6 @@
       if(catSel) catSel.value = catFilter;
       const si = document.getElementById('hostSearch');
       if(si && document.activeElement !== si) si.value = searchQuery;
-      // Indikator + breadcrumb
       const note = document.getElementById('filterNote');
       const parts = [];
       if(sevSet.size) parts.push('sev:' + [...sevSet].join(','));
@@ -459,7 +453,6 @@
         if(crumbs.length) crumbs[crumbs.length-1].textContent = isAlerts ? 'alerts-critical' : 'active-triggers';
         if(sec) sec.textContent = isAlerts ? 'alerts_critical.list' : 'active_alarms.list';
       }catch(_){}
-      // Sinkron URL tanpa reload
       try{
         const p = new URLSearchParams();
         if(sevSet.size) p.set('severity', [...sevSet].sort().join(','));
@@ -523,7 +516,6 @@
       const cDis = document.getElementById('cnt-disaster');
       const cHi = document.getElementById('cnt-high');
       const cWarn = document.getElementById('cnt-warn');
-      // Counter dari data ASLI (belum difilter) agar tidak menyesatkan
       let dis=0, hi=0, warn=0;
       (allAlarms || []).forEach(a=>{
         const s = String(a.severity || '').toLowerCase();
@@ -587,11 +579,8 @@
       const btn = document.getElementById('refBtn');
       if(btn) btn.classList.add('spin');
       try{
-        // Ambil SEMUA agar counter Disaster/High/Warning tetap benar;
-        // filter severity/category/search diterapkan di getFiltered().
-        // (Server juga dukung ?severity= untuk konsumen API lain.)
         const res = await fetch('/api/triggers');
-        if(res.status === 401) return; // ditangani wrapper redirect
+        if(res.status === 401) return;
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         allAlarms = await res.json() || [];
         renderTable();
@@ -689,7 +678,6 @@
       } catch(e){ alert('Gagal: ' + e.message); }
     }
 
-    // Init
     window.addEventListener('DOMContentLoaded', async () => {
       initFilterFromURL();
       document.querySelectorAll('#sevBtns .filter-btn').forEach(b=>{
@@ -724,13 +712,11 @@
       await loadHosts();
       fetchTriggers();
       fetchMaintenance();
-      // Auto refresh every 10 seconds
       setInterval(fetchTriggers, 10000);
       setInterval(fetchMaintenance, 30000);
     });
   </script>
 <script>
-// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
 (function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
 </script>
 </body>
