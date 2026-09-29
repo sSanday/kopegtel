@@ -13,6 +13,7 @@ os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
 os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
+
 m.app.config["RATELIMIT_ENABLED"] = False
 if hasattr(m, "limiter") and hasattr(m.limiter, "enabled"):
     m.limiter.enabled = False

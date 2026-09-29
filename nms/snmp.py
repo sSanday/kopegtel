@@ -335,9 +335,17 @@ def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
     timeout = max(0.2, min(float(timeout), 3.0))
 
     def probe(addr):
-        vals = _snmp_get(str(addr), community, [SYS_DESCR_OID, SYS_NAME_OID], timeout=timeout)
+        vals = _snmp_get(
+            str(addr), community, [SYS_DESCR_OID, SYS_NAME_OID], timeout=timeout
+        )
         if vals and any(v is not None for v in vals):
-            return {"ip": str(addr), "sys_descr": vals[0], "sys_name": vals[1], "vendor": detect_vendor(vals[0], vals[1]), "reachable": True}
+            return {
+                "ip": str(addr),
+                "sys_descr": vals[0],
+                "sys_name": vals[1],
+                "vendor": detect_vendor(vals[0], vals[1]),
+                "reachable": True,
+            }
         return None
 
     results = []

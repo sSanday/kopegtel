@@ -199,7 +199,9 @@ class SlaAndInterfaceTest(unittest.TestCase):
         r = self.client.get("/api/sla/history?days=7", headers=XRW_HDR)
         self.assertEqual(r.status_code, 200)
         self.assertIn("history", r.get_json())
-        r = self.client.get("/api/interfaces/traffic?host=10.99.99.99&hours=24", headers=XRW_HDR)
+        r = self.client.get(
+            "/api/interfaces/traffic?host=10.99.99.99&hours=24", headers=XRW_HDR
+        )
         self.assertEqual(r.status_code, 200)
         self.assertIn("traffic", r.get_json())
 
@@ -214,10 +216,24 @@ class ScheduledDiscoveryTest(unittest.TestCase):
         original_discover = m.discover_subnet
         original_notify = m.send_telegram_alert
         sent = []
-        m.discover_subnet = lambda *args, **kwargs: [{"ip": "10.99.99.21", "sys_name": "test", "sys_descr": "x", "vendor": "Generic"}]
+        m.discover_subnet = lambda *args, **kwargs: [
+            {
+                "ip": "10.99.99.21",
+                "sys_name": "test",
+                "sys_descr": "x",
+                "vendor": "Generic",
+            }
+        ]
         m.send_telegram_alert = lambda message: sent.append(message)
         try:
-            r = self.client.post("/api/settings", json={"discovery_network": "10.99.99.0/24", "discovery_community": "public"}, headers=JSON_HDR)
+            r = self.client.post(
+                "/api/settings",
+                json={
+                    "discovery_network": "10.99.99.0/24",
+                    "discovery_community": "public",
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             result = m.run_scheduled_snmp_discovery()
             self.assertEqual(result["added"], ["10.99.99.21"])
@@ -234,15 +250,43 @@ class SnmpDiscoveryTest(unittest.TestCase):
         cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
 
     def test_discovery_validation_and_result(self):
-        r = self.client.post("/api/discovery/snmp", json={"network": "bad", "community": "public"}, headers=JSON_HDR)
+        r = self.client.post(
+            "/api/discovery/snmp",
+            json={"network": "bad", "community": "public"},
+            headers=JSON_HDR,
+        )
         self.assertEqual(r.status_code, 400)
         original = m.discover_subnet
-        m.discover_subnet = lambda *args, **kwargs: [{"ip": "10.99.99.20", "sys_name": "router", "sys_descr": "test", "reachable": True}]
+        m.discover_subnet = lambda *args, **kwargs: [
+            {
+                "ip": "10.99.99.20",
+                "sys_name": "router",
+                "sys_descr": "test",
+                "reachable": True,
+            }
+        ]
         try:
-            r = self.client.post("/api/discovery/snmp", json={"network": "10.99.99.0/24", "community": "public"}, headers=JSON_HDR)
+            r = self.client.post(
+                "/api/discovery/snmp",
+                json={"network": "10.99.99.0/24", "community": "public"},
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.get_json()["count"], 1)
-            r = self.client.post("/api/discovery/import", json={"community": "public", "devices": [{"ip": "10.99.99.20", "sys_name": "router", "vendor": "MikroTik"}]}, headers=JSON_HDR)
+            r = self.client.post(
+                "/api/discovery/import",
+                json={
+                    "community": "public",
+                    "devices": [
+                        {
+                            "ip": "10.99.99.20",
+                            "sys_name": "router",
+                            "vendor": "MikroTik",
+                        }
+                    ],
+                },
+                headers=JSON_HDR,
+            )
             self.assertEqual(r.status_code, 201)
             self.assertEqual(r.get_json()["count"], 1)
             conn, c = m.get_db()
@@ -263,7 +307,10 @@ class IncidentDashboardTest(unittest.TestCase):
         self.assertEqual(self.client.get("/incidents").status_code, 200)
         conn, c = m.get_db()
         ts = (datetime.now() - timedelta(minutes=20)).strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)", ("10.99.99.14", "test", "high", "escalate test", ts))
+        c.execute(
+            "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+            ("10.99.99.14", "test", "high", "escalate test", ts),
+        )
         alert_id = c.lastrowid
         conn.commit()
         conn.close()
@@ -296,14 +343,19 @@ class AlertCorrelationTest(unittest.TestCase):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c.executemany(
             "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
-            [("OLT:CORE-1", "fiber", "high", "olt down", ts), ("OLT:CORE-1", "fiber", "warning", "ont degraded", ts)],
+            [
+                ("OLT:CORE-1", "fiber", "high", "olt down", ts),
+                ("OLT:CORE-1", "fiber", "warning", "ont degraded", ts),
+            ],
         )
         conn.commit()
         conn.close()
         try:
             r = self.client.get("/api/alerts/incidents", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200)
-            incident = next(i for i in r.get_json()["incidents"] if i["key"] == "OLT:CORE-1")
+            incident = next(
+                i for i in r.get_json()["incidents"] if i["key"] == "OLT:CORE-1"
+            )
             self.assertEqual(incident["count"], 2)
             self.assertEqual(incident["severity"], "high")
         finally:
@@ -323,7 +375,13 @@ class AlertWorkflowTest(unittest.TestCase):
         conn, c = m.get_db()
         c.execute(
             "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
-            ("10.99.99.13", "test", "high", "workflow test", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            (
+                "10.99.99.13",
+                "test",
+                "high",
+                "workflow test",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
         )
         alert_id = c.lastrowid
         conn.commit()
@@ -331,7 +389,11 @@ class AlertWorkflowTest(unittest.TestCase):
         try:
             r = self.client.patch(
                 f"/api/alerts/{alert_id}/workflow",
-                json={"acknowledged": True, "assigned_to": "operator", "note": "ditangani"},
+                json={
+                    "acknowledged": True,
+                    "assigned_to": "operator",
+                    "note": "ditangani",
+                },
                 headers=JSON_HDR,
             )
             self.assertEqual(r.status_code, 200)

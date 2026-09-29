@@ -22,6 +22,7 @@ AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
 # AGENT_API_KEY is required for security
 if not AGENT_API_KEY:
     import sys
+
     env = os.environ.get("FLASK_ENV", "production")
     if env == "production":
         print("[FATAL] AGENT_API_KEY must be set in .env for production")
@@ -30,6 +31,7 @@ if not AGENT_API_KEY:
         print("[WARN] AGENT_API_KEY not set (development mode only)")
         # Generate a temporary key for development
         import secrets
+
         AGENT_API_KEY = secrets.token_urlsafe(32)
         print(f"[DEV] Generated temporary AGENT_API_KEY: {AGENT_API_KEY}")
 

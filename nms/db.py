@@ -112,8 +112,14 @@ def init_db():
         note TEXT
     )""")
     for _col, _ddl in (
-        ("acknowledged_at", "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT"),
-        ("acknowledged_by", "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT"),
+        (
+            "acknowledged_at",
+            "ALTER TABLE alert_history ADD COLUMN acknowledged_at TEXT",
+        ),
+        (
+            "acknowledged_by",
+            "ALTER TABLE alert_history ADD COLUMN acknowledged_by TEXT",
+        ),
         ("assigned_to", "ALTER TABLE alert_history ADD COLUMN assigned_to TEXT"),
         ("note", "ALTER TABLE alert_history ADD COLUMN note TEXT"),
         ("escalated_at", "ALTER TABLE alert_history ADD COLUMN escalated_at TEXT"),
@@ -778,9 +784,7 @@ def backup_database():
             except Exception:
                 pass
 
-    backups = sorted(
-        glob.glob(os.path.join(backup_dir, "network_backup_[0-9]*.db"))
-    )
+    backups = sorted(glob.glob(os.path.join(backup_dir, "network_backup_[0-9]*.db")))
     if len(backups) > 30:
         for old_backup in backups[:-30]:
             try:
@@ -807,17 +811,17 @@ def backup_database():
 def restore_database(backup_file_path):
     if not os.path.exists(backup_file_path):
         return False, "File backup tidak ditemukan"
-    
-    if not backup_file_path.endswith('.db'):
+
+    if not backup_file_path.endswith(".db"):
         return False, "File harus berformat .db"
-    
+
     db_path = resolve_db_path()
     try:
         src = dst = None
         src = sqlite3.connect(backup_file_path, timeout=30)
         src.execute("SELECT 1 FROM hosts LIMIT 1")
         src.fetchone()
-        
+
         dst = sqlite3.connect(db_path, timeout=30)
         src.backup(dst)
         dst.close()
@@ -833,17 +837,23 @@ def list_backups():
     backup_dir = os.path.join(BASE_DIR, "backups")
     if not os.path.exists(backup_dir):
         return []
-    
+
     backups = []
-    for backup_file in sorted(glob.glob(os.path.join(backup_dir, "*.db")), reverse=True):
+    for backup_file in sorted(
+        glob.glob(os.path.join(backup_dir, "*.db")), reverse=True
+    ):
         try:
             stat = os.stat(backup_file)
-            backups.append({
-                "filename": os.path.basename(backup_file),
-                "path": backup_file,
-                "size_mb": round(stat.st_size / (1024*1024), 2),
-                "created_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            })
+            backups.append(
+                {
+                    "filename": os.path.basename(backup_file),
+                    "path": backup_file,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "created_at": datetime.fromtimestamp(stat.st_mtime).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                }
+            )
         except Exception:
             pass
     return backups
@@ -854,7 +864,12 @@ def create_user(username, password_hash, role="operator"):
     try:
         c.execute(
             "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            (username, password_hash, role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            (
+                username,
+                password_hash,
+                role,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
         )
         conn.commit()
         conn.close()
@@ -869,7 +884,9 @@ def create_user(username, password_hash, role="operator"):
 
 def get_user(username):
     conn, c = get_db()
-    c.execute("SELECT id, username, role, created_at FROM users WHERE username=?", (username,))
+    c.execute(
+        "SELECT id, username, role, created_at FROM users WHERE username=?", (username,)
+    )
     user = c.fetchone()
     conn.close()
     return dict(user) if user else None
@@ -877,7 +894,9 @@ def get_user(username):
 
 def list_users():
     conn, c = get_db()
-    c.execute("SELECT id, username, role, created_at FROM users ORDER BY created_at DESC")
+    c.execute(
+        "SELECT id, username, role, created_at FROM users ORDER BY created_at DESC"
+    )
     users = [dict(r) for r in c.fetchall()]
     conn.close()
     return users
@@ -886,14 +905,16 @@ def list_users():
 def delete_user(username):
     if username == "admin":
         return False, "Cannot delete admin user"
-    
+
     conn, c = get_db()
     try:
         c.execute("DELETE FROM users WHERE username=?", (username,))
         deleted = c.rowcount
         conn.commit()
         conn.close()
-        return deleted > 0, "User berhasil dihapus" if deleted else "User tidak ditemukan"
+        return deleted > 0, (
+            "User berhasil dihapus" if deleted else "User tidak ditemukan"
+        )
     except Exception as e:
         conn.close()
         return False, str(e)
@@ -903,14 +924,16 @@ def update_user_role(username, role):
     valid_roles = ("admin", "operator", "viewer")
     if role not in valid_roles:
         return False, f"Role harus: {', '.join(valid_roles)}"
-    
+
     conn, c = get_db()
     try:
         c.execute("UPDATE users SET role=? WHERE username=?", (role, username))
         updated = c.rowcount
         conn.commit()
         conn.close()
-        return updated > 0, "Role berhasil diperbarui" if updated else "User tidak ditemukan"
+        return updated > 0, (
+            "Role berhasil diperbarui" if updated else "User tidak ditemukan"
+        )
     except Exception as e:
         conn.close()
         return False, str(e)
@@ -921,7 +944,7 @@ def set_host_threshold(host, cpu=None, ram=None, disk=None):
     try:
         c.execute(
             "INSERT OR REPLACE INTO host_thresholds (host, cpu_threshold, ram_threshold, disk_threshold, created_at) VALUES (?, ?, ?, ?, ?)",
-            (host, cpu, ram, disk, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            (host, cpu, ram, disk, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
         )
         conn.commit()
         conn.close()
@@ -933,7 +956,10 @@ def set_host_threshold(host, cpu=None, ram=None, disk=None):
 
 def get_host_threshold(host):
     conn, c = get_db()
-    c.execute("SELECT cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds WHERE host=?", (host,))
+    c.execute(
+        "SELECT cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds WHERE host=?",
+        (host,),
+    )
     row = c.fetchone()
     conn.close()
     return dict(row) if row else None
@@ -941,7 +967,9 @@ def get_host_threshold(host):
 
 def list_host_thresholds():
     conn, c = get_db()
-    c.execute("SELECT host, cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds ORDER BY host ASC")
+    c.execute(
+        "SELECT host, cpu_threshold, ram_threshold, disk_threshold FROM host_thresholds ORDER BY host ASC"
+    )
     thresholds = [dict(r) for r in c.fetchall()]
     conn.close()
     return thresholds
@@ -954,7 +982,9 @@ def delete_host_threshold(host):
         deleted = c.rowcount
         conn.commit()
         conn.close()
-        return deleted > 0, "Threshold berhasil dihapus" if deleted else "Host tidak ditemukan"
+        return deleted > 0, (
+            "Threshold berhasil dihapus" if deleted else "Host tidak ditemukan"
+        )
     except Exception as e:
         conn.close()
         return False, str(e)
@@ -966,7 +996,7 @@ def log_alert(host, alert_type, severity, message):
     try:
         c.execute(
             "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
-            (host, alert_type, severity, message, timestamp)
+            (host, alert_type, severity, message, timestamp),
         )
         conn.commit()
         conn.close()
@@ -985,14 +1015,14 @@ def resolve_alert(alert_id):
         if not row:
             conn.close()
             return False
-        
+
         triggered = datetime.strptime(row["triggered_at"], "%Y-%m-%d %H:%M:%S")
         now = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
         duration = int((now - triggered).total_seconds())
-        
+
         c.execute(
             "UPDATE alert_history SET resolved_at=?, duration_s=? WHERE id=?",
-            (timestamp, duration, alert_id)
+            (timestamp, duration, alert_id),
         )
         conn.commit()
         conn.close()
@@ -1002,7 +1032,9 @@ def resolve_alert(alert_id):
         return False
 
 
-def update_alert_workflow(alert_id, username, acknowledged=None, assigned_to=None, note=None):
+def update_alert_workflow(
+    alert_id, username, acknowledged=None, assigned_to=None, note=None
+):
     conn, c = get_db()
     try:
         c.execute("SELECT id FROM alert_history WHERE id=?", (alert_id,))
@@ -1012,7 +1044,16 @@ def update_alert_workflow(alert_id, username, acknowledged=None, assigned_to=Non
         params = []
         if acknowledged is not None:
             fields.extend(["acknowledged_at", "acknowledged_by"])
-            params.extend([datetime.now().strftime("%Y-%m-%d %H:%M:%S") if acknowledged else None, username if acknowledged else None])
+            params.extend(
+                [
+                    (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        if acknowledged
+                        else None
+                    ),
+                    username if acknowledged else None,
+                ]
+            )
         if assigned_to is not None:
             fields.append("assigned_to")
             params.append(assigned_to.strip() or None)
@@ -1022,7 +1063,10 @@ def update_alert_workflow(alert_id, username, acknowledged=None, assigned_to=Non
         if not fields:
             return True
         params.append(alert_id)
-        c.execute(f"UPDATE alert_history SET {', '.join(f + '=?' for f in fields)} WHERE id=?", params)
+        c.execute(
+            f"UPDATE alert_history SET {', '.join(f + '=?' for f in fields)} WHERE id=?",
+            params,
+        )
         conn.commit()
         return True
     finally:
@@ -1031,10 +1075,10 @@ def update_alert_workflow(alert_id, username, acknowledged=None, assigned_to=Non
 
 def get_alert_history(host=None, alert_type=None, severity=None, limit=100, offset=0):
     conn, c = get_db()
-    
+
     query = "SELECT id, host, alert_type, severity, message, triggered_at, resolved_at, duration_s, acknowledged_at, acknowledged_by, assigned_to, note, escalated_at FROM alert_history WHERE 1=1"
     params = []
-    
+
     if host:
         query += " AND host=?"
         params.append(host)
@@ -1044,10 +1088,10 @@ def get_alert_history(host=None, alert_type=None, severity=None, limit=100, offs
     if severity:
         query += " AND severity=?"
         params.append(severity)
-    
+
     query += " ORDER BY id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    
+
     c.execute(query, params)
     alerts = [dict(r) for r in c.fetchall()]
     conn.close()
@@ -1072,16 +1116,16 @@ def mark_alerts_escalated(alert_ids):
 
 def get_active_alerts(host=None):
     conn, c = get_db()
-    
+
     query = "SELECT id, host, alert_type, severity, message, triggered_at, acknowledged_at, acknowledged_by, assigned_to, note, escalated_at FROM alert_history WHERE resolved_at IS NULL"
     params = []
-    
+
     if host:
         query += " AND host=?"
         params.append(host)
-    
+
     query += " ORDER BY triggered_at DESC"
-    
+
     c.execute(query, params)
     alerts = [dict(r) for r in c.fetchall()]
     conn.close()
@@ -1089,32 +1133,35 @@ def get_active_alerts(host=None):
 
 
 def bulk_import_hosts(hosts_data):
-    """Import multiple hosts from list of dicts. 
+    """Import multiple hosts from list of dicts.
     Each dict should have: ip, alias (optional), category (optional), snmp_community (optional)
     Returns (success_count, error_count, errors_list)
     """
     success_count = 0
     error_count = 0
     errors = []
-    
+
     conn, c = get_db()
-    
+
     for idx, host_data in enumerate(hosts_data, 1):
         try:
             ip = str(host_data.get("ip") or "").strip()
             alias = str(host_data.get("alias") or "").strip()
             category = str(host_data.get("category") or "Uncategorized").strip()
             snmp_community = str(host_data.get("snmp_community") or "").strip()
-            
+
             if not ip:
                 errors.append(f"Row {idx}: IP required")
                 error_count += 1
                 continue
-            
+
             import re
+
             ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
-            hostname_re = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
-            
+            hostname_re = re.compile(
+                r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$"
+            )
+
             if ipv4_re.match(ip):
                 try:
                     if any(int(p) > 255 for p in ip.split(".")):
@@ -1129,10 +1176,10 @@ def bulk_import_hosts(hosts_data):
                 errors.append(f"Row {idx} ({ip}): Invalid IP/hostname")
                 error_count += 1
                 continue
-            
+
             c.execute(
                 "INSERT INTO hosts (ip, snmp_community, alias, category) VALUES (?, ?, ?, ?)",
-                (ip, snmp_community, alias, category)
+                (ip, snmp_community, alias, category),
             )
             success_count += 1
         except sqlite3.IntegrityError:
@@ -1141,13 +1188,13 @@ def bulk_import_hosts(hosts_data):
         except Exception as e:
             errors.append(f"Row {idx}: {str(e)}")
             error_count += 1
-    
+
     try:
         conn.commit()
     except Exception as e:
         conn.close()
         return 0, len(hosts_data), [f"Commit failed: {str(e)}"]
-    
+
     conn.close()
     return success_count, error_count, errors
 
@@ -1155,69 +1202,63 @@ def bulk_import_hosts(hosts_data):
 def generate_daily_report():
     """Generate daily monitoring report. Returns report dict."""
     conn, c = get_db()
-    
+
     report = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "period": "24h",
         "hosts": {},
-        "summary": {}
+        "summary": {},
     }
-    
+
     try:
         c.execute("SELECT COUNT(*) AS cnt FROM hosts")
         total_hosts = c.fetchone()["cnt"] or 0
-        
-        c.execute(
-            """
+
+        c.execute("""
             SELECT host, 
                 COUNT(*) AS total,
                 SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count
             FROM ping_logs
             WHERE timestamp > datetime('now', 'localtime', '-24 hours')
             GROUP BY host
-            """
-        )
-        
+            """)
+
         up_hosts = 0
         for row in c.fetchall():
             total = row["total"] or 0
             up_count = row["up_count"] or 0
             uptime = round((up_count / total * 100), 1) if total else None
-            
+
             if uptime and uptime >= 99:
                 up_hosts += 1
-            
+
             report["hosts"][row["host"]] = {
                 "uptime_pct": uptime,
                 "checks": total,
-                "up_checks": up_count
+                "up_checks": up_count,
             }
-        
-        c.execute(
-            """
+
+        c.execute("""
             SELECT COUNT(*) AS cnt FROM down_events
             WHERE started_at > datetime('now', 'localtime', '-24 hours')
-            """
-        )
+            """)
         down_events = c.fetchone()["cnt"] or 0
-        
-        c.execute(
-            """
+
+        c.execute("""
             SELECT COUNT(*) AS cnt FROM alert_history
             WHERE triggered_at > datetime('now', 'localtime', '-24 hours')
-            """
-        )
+            """)
         total_alerts = c.fetchone()["cnt"] or 0
-        
+
         report["summary"] = {
             "total_hosts": total_hosts,
             "healthy_hosts": up_hosts,
             "down_events": down_events,
-            "total_alerts": total_alerts
+            "total_alerts": total_alerts,
         }
     finally:
         conn.close()
-    
+
     return report
 
 
