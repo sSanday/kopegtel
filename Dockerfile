@@ -1,9 +1,9 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
-# Zona waktu WIB: scheduler (APScheduler Asia/Jakarta), datetime.now(),
-# dan SQLite localtime() harus satu jam dinding agar maintenance window,
-# mute_until, dan tampilan waktu cocok dengan input pengguna.
-ENV TZ=Asia/Jakarta
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TZ=Asia/Jakarta
 
 RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping curl \
     && rm -rf /var/lib/apt/lists/*
@@ -12,7 +12,8 @@ ARG UID=1000
 ARG GID=1000
 RUN groupadd -g ${GID} nms 2>/dev/null || true \
     && useradd -m -u ${UID} -g ${GID} nms 2>/dev/null || useradd -m nms \
-    && mkdir -p /app/backups && chown -R nms:nms /app
+    && mkdir -p /app/backups /var/lib/nms \
+    && chown -R nms:nms /app /var/lib/nms
 
 WORKDIR /app
 
@@ -23,9 +24,10 @@ COPY --chown=nms:nms . .
 
 USER nms
 
+ENV NMS_DB_PATH=/var/lib/nms/network.db
 EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:5000/health || exit 1
 
-CMD ["gunicorn", "-w", "1", "--threads", "4", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--workers", "2", "--threads", "4", "--timeout", "120", "--graceful-timeout", "30", "--access-logfile", "-", "--error-logfile", "-", "-b", "0.0.0.0:5000", "app:app"]

@@ -27,6 +27,7 @@
 
     <nav class="nav" aria-label="Bagian halaman">
       <a href="#ringkasan">Ringkasan</a>
+      <a href="#analitik">Analitik</a>
       <a href="#host">Host</a>
       <a href="#latensi">Latensi</a>
       <a href="#gangguan">Gangguan</a>
@@ -106,7 +107,16 @@
         </div>
       </section>
 
-      <!-- ============ 2. Daftar host ============ -->
+      <!-- ============ 2. Analitik prediktif ============ -->
+      <section class="panel" id="analitik" aria-labelledby="jAnalitik">
+        <h2 id="jAnalitik">AIOps & Analitik Prediktif</h2>
+        <p class="petunjuk">Deteksi anomali berbasis baseline median dan MAD dari metrik historis host.</p>
+        <div id="daftarAnomali" class="timeline">
+          <p class="kosong">Memuat analitik...</p>
+        </div>
+      </section>
+
+      <!-- ============ 3. Daftar host ============ -->
       <section class="host-seksi" id="host" aria-labelledby="jHost">
         <h2 id="jHost">Host</h2>
         <p class="petunjuk">Daftar dikelompokkan berdasarkan jenis. Pilih baris untuk menyorot host di grafik.</p>

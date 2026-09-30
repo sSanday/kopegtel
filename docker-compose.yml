@@ -1,13 +1,36 @@
 services:
   nms-dashboard:
-    build: .
-    container_name: nms-dashboard
-    restart: always
+    build:
+      context: .
+      args:
+        UID: 1000
+        GID: 1000
+    image: nms-dashboard:local
+    restart: unless-stopped
     env_file:
       - .env
     environment:
-      - TZ=Asia/Jakarta
+      TZ: Asia/Jakarta
+      NMS_DB_PATH: /var/lib/nms/network.db
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
-      - ./:/app
+      - nms-data:/var/lib/nms
+      - nms-backups:/app/backups
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  nms-data:
+  nms-backups:

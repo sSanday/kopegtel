@@ -2,8 +2,14 @@
 .env.bak*
 .env.backup*
 env/
+venv/
+env_new/
+.venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
 network.db
 network.db-journal
 network.db-wal
@@ -14,3 +20,6 @@ backups/
 _refactor_wip/
 .vscode/
 agent-cron.log
+logs/*.log
+*.sqlite3-shm
+*.sqlite3-wal

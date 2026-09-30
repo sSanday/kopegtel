@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NMS Metrics</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07111f;--card:#101d2f;--line:#263b55;--text:#e7f0fb;--muted:#8da2ba;--good:#35d39a;--bad:#ff6b76;--warn:#f5c15d;--blue:#60a5fa}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#15304e 0,#07111f 42%);color:var(--text);font:14px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+    .wrap{max-width:1180px;margin:auto;padding:32px 20px}.top{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:28px}.eyebrow{color:var(--blue);font:12px monospace;letter-spacing:.12em;text-transform:uppercase}.top h1{font-size:30px;margin:8px 0}.sub{color:var(--muted);margin:0}.links a{color:var(--text);text-decoration:none;border:1px solid var(--line);padding:9px 12px;border-radius:8px;margin-left:8px}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}.card,.table{background:rgba(16,29,47,.88);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 35px #0002}.card{padding:18px}.label{color:var(--muted);font-size:12px}.value{font-size:28px;font-weight:700;margin-top:8px}.table{overflow:hidden}.table-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.live{color:var(--good);font-size:12px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:15px 20px;border-bottom:1px solid #20334a}th{color:var(--muted);font-size:12px;font-weight:500}tr:last-child td{border-bottom:0}.host{font-family:ui-monospace,monospace}.pill{display:inline-flex;padding:5px 9px;border-radius:99px;font-size:12px;font-weight:700}.up{background:#35d39a22;color:var(--good)}.down{background:#ff6b7622;color:var(--bad)}.meter{height:7px;background:#243750;border-radius:9px;min-width:100px;overflow:hidden}.meter i{display:block;height:100%;background:var(--blue);border-radius:inherit}.empty{color:var(--muted);padding:30px;text-align:center}@media(max-width:700px){.top{display:block}.links{margin-top:18px}.links a{display:inline-block;margin:0 6px 0 0}.summary{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top"><div><div class="eyebrow">observability / metrics</div><h1>Telemetry Metrics</h1><p class="sub">Ringkasan kesehatan host dari Prometheus exporter NMS.</p></div><div class="links"><a href="/">Dashboard</a><a href="/metrics">Raw metrics</a></div></header>
+    <section class="summary">
+      <div class="card"><div class="label">TOTAL HOST</div><div class="value">{{ metrics|length }}</div></div>
+      <div class="card"><div class="label">HOST UP</div><div class="value" style="color:var(--good)">{{ metrics|selectattr('up')|list|length }}</div></div>
+      <div class="card"><div class="label">HOST DOWN</div><div class="value" style="color:var(--bad)">{{ metrics|rejectattr('up')|list|length }}</div></div>
+    </section>
+    <section class="table"><div class="table-head"><strong>Host telemetry</strong><span class="live">● LIVE · refresh 10s</span></div><div class="scroll"><table><thead><tr><th>HOST</th><th>STATUS</th><th>LATENCY</th><th>CPU</th><th>RAM</th></tr></thead><tbody id="metricsBody">{% for item in metrics %}<tr><td class="host">{{ item.host }}</td><td><span class="pill {{ 'up' if item.up else 'down' }}">{{ 'UP' if item.up else 'DOWN' }}</span></td><td>{{ '%.2f ms'|format(item.latency) }}</td><td>{% if item.cpu is not none %}<div>{{ '%.1f'|format(item.cpu) }}%</div><div class="meter"><i style="width:{{ [item.cpu, 100]|min }}%"></i></div>{% else %}—{% endif %}</td><td>{% if item.ram is not none %}<div>{{ '%.1f'|format(item.ram) }}%</div><div class="meter"><i style="width:{{ [item.ram, 100]|min }}%"></i></div>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="5" class="empty">Belum ada data host.</td></tr>{% endfor %}</tbody></table></div></section>
+  </main>
+  <script>setTimeout(()=>location.reload(),10000);</script>
+</body>
+</html>

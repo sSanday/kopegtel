@@ -1080,6 +1080,18 @@ a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
       <div class="chart-wrap"><canvas id="latencyChart"></canvas></div>
     </div>
 
+    <!-- AIOps & Analitik Prediktif -->
+    <div class="sec-row" style="margin-top:22px">
+      <div class="sec-label">aiops_anomaly_analysis</div>
+    </div>
+    <div class="term-card" id="aiopsPanel">
+      <div class="term-topbar">
+        <div class="term-title">predictive_analytics.log</div>
+        <div class="tail-ind"><span class="tail-dot"></span>live</div>
+      </div>
+      <div id="aiopsBody"><p class="no-events">$ anomaly scan → loading...</p></div>
+    </div>
+
     <!-- Events -->
     <div class="sec-row" style="margin-top:22px">
       <div class="sec-label">down_events.log <span class="ev-count" id="evCount"></span></div>
@@ -1787,6 +1799,36 @@ async function fetchChart(){
   }catch(e){console.error(e)}
 }
 
+async function loadAiops(hosts){
+  const body=document.getElementById('aiopsBody');
+  if(!body) return;
+  const results=[];
+  await Promise.all((hosts||[]).map(async h=>{
+    try{
+      const r=await fetch(`/api/host/${encodeURIComponent(h.ip)}/anomalies?hours=24&metric=latency`);
+      if(!r.ok) return;
+      const d=await r.json();
+      (d.anomalies||[]).slice(-3).forEach(a=>results.push({host:h.alias||h.ip,a}));
+    }catch(e){}
+  }));
+  results.sort((x,y)=>(y.a.score||0)-(x.a.score||0));
+  if(!results.length){body.innerHTML='<p class="no-events">$ anomaly scan → tidak ada anomali dalam 24 jam terakhir</p>';return;}
+  body.innerHTML=results.slice(0,8).map(x=>`<p class="no-events" style="color:var(--warn)">[${x.a.severity}] ${x.host} · ${x.a.timestamp||'—'} · nilai ${Number(x.a.value).toFixed(2)} · baseline ${Number(x.a.baseline).toFixed(2)} · skor ${Number(x.a.score).toFixed(2)}</p>`).join('');
+}
+
+function connectTelemetryStream(){
+  if(!window.EventSource) return;
+  const stream=new EventSource('/api/telemetry/stream');
+  stream.addEventListener('telemetry', event=>{
+    try{
+      const items=JSON.parse(event.data)||[];
+      const live=document.querySelector('.live-pill');
+      if(live) live.title=`telemetry stream: ${items.length} host`;
+    }catch(_){ }
+  });
+  stream.onerror=()=>{ stream.close(); setTimeout(connectTelemetryStream, 15000); };
+}
+
 async function refresh(){
   try{
     const [mRes,sRes,eRes,aRes,hRes,maintRes,fRes,mtRes]=await Promise.all([
@@ -1841,6 +1883,7 @@ async function refresh(){
 
     renderStats(sData || {});
     renderEvents(Array.isArray(eData) ? eData : []);
+    loadAiops(hData || []);
     try{
       if(fRes && fRes.ok){
         const fData=await fRes.json();
@@ -2309,6 +2352,7 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
 });
 
 refresh();
+connectTelemetryStream();
 setInterval(refresh,30000);
 </script>
 <script>

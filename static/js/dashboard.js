@@ -481,6 +481,37 @@
     });
   }
 
+  /* ---------- Analitik ---------- */
+  function renderAnomali(daftar) {
+    var wadah = document.getElementById("daftarAnomali");
+    if (!wadah) return;
+    var hasil = [];
+    var selesai = daftar.map(function (h) {
+      return ambil("/api/host/" + encodeURIComponent(h.ip) + "/anomalies?hours=24&metric=latency").then(function (data) {
+        (data.anomalies || []).slice(-3).forEach(function (a) {
+          hasil.push({ host: h.alias || h.ip, data: a });
+        });
+      }).catch(function () {});
+    });
+    Promise.all(selesai).then(function () {
+      hasil.sort(function (a, b) { return (b.data.score || 0) - (a.data.score || 0); });
+      if (!hasil.length) {
+        wadah.innerHTML = '<p class="kosong">Belum ada anomali terdeteksi dalam 24 jam terakhir.</p>';
+        return;
+      }
+      wadah.innerHTML = "";
+      hasil.slice(0, 8).forEach(function (item) {
+        var li = document.createElement("li");
+        li.className = "tl";
+        li.innerHTML = '<span class="tl-titik" aria-hidden="true"></span><div class="tl-isi"><p class="tl-durasi mono"></p><p class="tl-host"></p><p class="tl-waktu mono"></p></div>';
+        li.querySelector(".tl-durasi").textContent = item.data.severity.toUpperCase() + " · skor " + fmtBilangan(item.data.score, 2);
+        li.querySelector(".tl-host").textContent = item.host;
+        li.querySelector(".tl-waktu").textContent = (item.data.timestamp || "—") + " · nilai " + fmtBilangan(item.data.value, 2) + " · baseline " + fmtBilangan(item.data.baseline, 2);
+        wadah.appendChild(li);
+      });
+    });
+  }
+
   /* ---------- Muat awal ---------- */
   var statusSebelum = {};
   function segarkan() {
@@ -490,6 +521,7 @@
         Object.keys(stats).forEach(function (ip) { statusSebelum[ip] = statusDari(stats[ip]); });
         renderRingkasan(hosts, stats);
         renderKelompok(hosts, stats);
+        renderAnomali(hosts);
         // Spark memakai ekor riwayat 1 jam bila tersedia.
         return ambil("/api/history?hours=1").then(function (j) {
           cacheRiwayat[1] = { labels: j.labels || [], datasets: j.datasets || {} };

@@ -10,3 +10,5 @@ __pycache__/
 .vscode/
 .env
 *.bak
+.pytest_cache/
+logs/

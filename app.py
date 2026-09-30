@@ -21,6 +21,7 @@ from flask import (
     jsonify,
     redirect,
     render_template,
+    stream_with_context,
     request,
     session,
     url_for,
@@ -90,6 +91,7 @@ from nms.db import (
 )
 from nms.notify import audit, send_telegram_alert
 from nms.validators import validate_backup_filename
+from nms.anomaly import summarize_anomalies
 from nms.query_helpers import (
     get_all_agent_metrics,
     get_all_host_stats,
@@ -188,14 +190,14 @@ if not SECRET_KEY:
 app.secret_key = SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=1)
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=7)
 app.config["REMEMBER_COOKIE_HTTPONLY"] = True
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Strict"
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-app.config["SESSION_COOKIE_SECURE"] = COOKIE_SECURE or True
-app.config["REMEMBER_COOKIE_SECURE"] = COOKIE_SECURE or True
+app.config["SESSION_COOKIE_SECURE"] = COOKIE_SECURE
+app.config["REMEMBER_COOKIE_SECURE"] = COOKIE_SECURE
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app_start_time = datetime.now()
 
@@ -205,7 +207,7 @@ if LIMITER_AVAILABLE:
     limiter = Limiter(
         app=app,
         key_func=get_remote_address,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=["20000 per day", "2000 per hour"],
         storage_uri="memory://",
     )
 else:
@@ -247,11 +249,10 @@ def log_request():
         if last_activity is None:
             session["_last_activity"] = now
         elif (now - last_activity) > 3600:
+            uname = getattr(current_user, "username", "unknown")
             logout_user()
             session.pop("admin_v", None)
-            logger.warning(
-                f"Session timeout for {current_user.username} (idle > 1 hour)"
-            )
+            logger.warning(f"Session timeout for {uname} (idle > 1 hour)")
             return redirect(url_for("login"))
         else:
             session["_last_activity"] = now
@@ -373,22 +374,62 @@ def _verify_admin(username, password):
 
 def _seed_admin_from_env():
     try:
-        from werkzeug.security import generate_password_hash
+        from werkzeug.security import check_password_hash, generate_password_hash
 
         conn, c = get_db()
         try:
+            c.execute("SELECT value FROM settings WHERE key='admin_user'")
+            r = c.fetchone()
+            db_user = r["value"] if r else None
             c.execute("SELECT value FROM settings WHERE key='admin_pass_hash'")
-            if c.fetchone():
+            r = c.fetchone()
+            db_hash = r["value"] if r else None
+            if not db_hash:
+                c.execute(
+                    "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_user', ?)",
+                    (DASHBOARD_USERNAME,),
+                )
+                c.execute(
+                    "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
+                    (generate_password_hash(DASHBOARD_PASSWORD),),
+                )
+                conn.commit()
+                print("[AUTH] admin awal dibuat dari .env")
                 return
-            c.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_user', ?)",
-                (DASHBOARD_USERNAME,),
-            )
-            c.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
-                (generate_password_hash(DASHBOARD_PASSWORD),),
-            )
-            conn.commit()
+            # Jangan timpa password yang diganti via UI secara diam-diam.
+            # Sinkron ulang hanya bila diminta eksplisit via NMS_RESET_ADMIN=1,
+            # agar kredensial .env selalu bisa dipakai untuk pemulihan.
+            if os.environ.get("NMS_RESET_ADMIN") == "1":
+                c.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_user', ?)",
+                    (DASHBOARD_USERNAME,),
+                )
+                c.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_pass_hash', ?)",
+                    (generate_password_hash(DASHBOARD_PASSWORD),),
+                )
+                conn.commit()
+                try:
+                    _bump_session_version()
+                except Exception:
+                    pass
+                print("[AUTH] admin direset dari .env (NMS_RESET_ADMIN=1)")
+                return
+            try:
+                env_match = (
+                    db_user or DASHBOARD_USERNAME
+                ) == DASHBOARD_USERNAME and check_password_hash(
+                    db_hash, DASHBOARD_PASSWORD
+                )
+            except Exception:
+                env_match = False
+            if not env_match:
+                print(
+                    "[WARN] password admin di DB beda dengan .env. "
+                    "Login pakai password yang diset via UI/lama. "
+                    "Untuk pakai password .env, jalankan sekali: "
+                    "NMS_RESET_ADMIN=1 ./env_new/bin/python app.py"
+                )
         finally:
             conn.close()
     except Exception as e:
@@ -1023,7 +1064,10 @@ def escalate_unacknowledged_alerts():
     return len(candidates)
 
 
-SCHEDULER_ENABLED = os.environ.get("NMS_DISABLE_SCHEDULER", "0") != "1"
+SCHEDULER_ENABLED = (
+    os.environ.get("NMS_DISABLE_SCHEDULER", "0") != "1"
+    and os.environ.get("NMS_ROLE", "worker") == "worker"
+)
 try:
     LOCAL_TZ = ZoneInfo("Asia/Jakarta")
 except Exception:
@@ -1157,6 +1201,7 @@ def login():
             remember = request.form.get("remember") == "1"
             login_user(user, remember=remember, duration=timedelta(days=7))
             session["admin_v"] = _get_session_version()
+            session["_last_activity"] = time.time()
             try:
                 audit(user.username, "auth.login", f"from {client_ip}")
             except Exception:
@@ -1291,6 +1336,42 @@ def api_host_history(ip):
     return jsonify(
         {"labels": labels, "values": values, "metric": metric, "hours": hours}
     )
+
+
+@app.route("/api/host/<path:ip>/anomalies")
+@login_required
+def api_host_anomalies(ip):
+    try:
+        hours = int(request.args.get("hours", 24))
+        sensitivity = float(request.args.get("sensitivity", 3.0))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours dan sensitivity harus angka"}), 400
+    hours = max(1, min(hours, 168))
+    sensitivity = max(2.0, min(sensitivity, 8.0))
+    metric = request.args.get("metric", "latency")
+    valid_metrics = {
+        "latency": ("ping_logs", "latency"),
+        "cpu": ("agent_metrics", "cpu_percent"),
+        "ram": ("agent_metrics", "ram_percent"),
+        "disk": ("agent_metrics", "disk_percent"),
+        "net_in": ("agent_metrics", "net_in"),
+        "net_out": ("agent_metrics", "net_out"),
+    }
+    source = valid_metrics.get(metric)
+    if not source:
+        return jsonify({"error": "metric tidak valid"}), 400
+    table, column = source
+    conn, c = get_db()
+    c.execute(
+        f"SELECT timestamp, {column} AS val FROM {table} WHERE host=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+        (ip, f"-{hours} hours"),
+    )
+    rows = c.fetchall()
+    conn.close()
+    labels = [row["timestamp"] for row in rows]
+    values = [row["val"] for row in rows]
+    result = summarize_anomalies(labels, values, sensitivity=sensitivity)
+    return jsonify({"host": ip, "metric": metric, "hours": hours, **result})
 
 
 @app.route("/api/host/<path:ip>/stats")
@@ -2321,6 +2402,107 @@ def _align_series(per_host, label_fmt):
             vals[idx[ts]] = v
         datasets[host] = vals
     return labels, datasets
+
+
+def _prometheus_label(value):
+    return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+@app.route("/metrics")
+@api_login_required
+def prometheus_metrics():
+    conn, c = get_db()
+    dashboard_rows = []
+    lines = [
+        "# HELP nms_hosts_total Number of configured hosts.",
+        "# TYPE nms_hosts_total gauge",
+        f"nms_hosts_total {len(get_target_hosts())}",
+        "# HELP nms_host_latency_ms Latest host latency in milliseconds.",
+        "# TYPE nms_host_latency_ms gauge",
+        "# HELP nms_host_up Host reachability, 1 when reachable.",
+        "# TYPE nms_host_up gauge",
+        "# HELP nms_agent_cpu_percent Latest agent CPU percentage.",
+        "# TYPE nms_agent_cpu_percent gauge",
+        "# HELP nms_agent_ram_percent Latest agent RAM percentage.",
+        "# TYPE nms_agent_ram_percent gauge",
+    ]
+    for host in get_target_hosts():
+        label = _prometheus_label(host)
+        c.execute(
+            "SELECT latency FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1",
+            (host,),
+        )
+        ping = c.fetchone()
+        latency = ping["latency"] if ping and ping["latency"] != -1 else 0
+        up = 1 if ping and ping["latency"] != -1 else 0
+        c.execute(
+            "SELECT cpu_percent, ram_percent FROM agent_metrics WHERE host=? ORDER BY id DESC LIMIT 1",
+            (host,),
+        )
+        agent = c.fetchone()
+        dashboard_rows.append(
+            {
+                "host": host,
+                "latency": latency,
+                "up": up,
+                "cpu": (
+                    agent["cpu_percent"]
+                    if agent and agent["cpu_percent"] is not None
+                    else None
+                ),
+                "ram": (
+                    agent["ram_percent"]
+                    if agent and agent["ram_percent"] is not None
+                    else None
+                ),
+            }
+        )
+        lines.extend(
+            [
+                f'nms_host_latency_ms{{host="{label}"}} {latency or 0}',
+                f'nms_host_up{{host="{label}"}} {up}',
+                f'nms_agent_cpu_percent{{host="{label}"}} {(agent["cpu_percent"] if agent and agent["cpu_percent"] is not None else 0)}',
+                f'nms_agent_ram_percent{{host="{label}"}} {(agent["ram_percent"] if agent and agent["ram_percent"] is not None else 0)}',
+            ]
+        )
+    conn.close()
+    if request.args.get("format") == "json":
+        return jsonify({"hosts": dashboard_rows, "total": len(dashboard_rows)})
+    if request.args.get("view") == "ui":
+        return render_template("metrics.html", metrics=dashboard_rows)
+    return Response("\\n".join(lines) + "\\n", mimetype="text/plain; version=0.0.4")
+
+
+@app.route("/api/telemetry/stream")
+@api_login_required
+def telemetry_stream():
+    def events():
+        while True:
+            conn, c = get_db()
+            payload = []
+            for host in get_target_hosts():
+                c.execute(
+                    "SELECT latency, timestamp FROM ping_logs WHERE host=? ORDER BY id DESC LIMIT 1",
+                    (host,),
+                )
+                row = c.fetchone()
+                if row:
+                    payload.append(
+                        {
+                            "host": host,
+                            "latency": row["latency"],
+                            "timestamp": row["timestamp"],
+                        }
+                    )
+            conn.close()
+            yield f"event: telemetry\\ndata: {json.dumps(payload)}\\n\\n"
+            time.sleep(10)
+
+    return Response(
+        stream_with_context(events()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/api/agent/metrics")

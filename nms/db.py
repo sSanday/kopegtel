@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 
 from nms.config import BASE_DIR
+from nms.database import backend_name, commit_with_retry, connect
 
 db_lock = threading.Lock()
 
@@ -18,34 +19,24 @@ def resolve_db_path():
 
 
 def get_db():
-    conn = sqlite3.connect(resolve_db_path(), timeout=30, check_same_thread=False)
-    conn.execute("PRAGMA busy_timeout=30000")
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.OperationalError as e:
-        print(f"[DB] journal_mode=WAL gagal ({e}), lanjut mode default")
-    conn.execute("PRAGMA synchronous=NORMAL")
-
-    try:
-        conn.execute("PRAGMA wal_autocheckpoint=1000")
-        conn.execute("PRAGMA journal_size_limit=33554432")
-    except Exception:
-        pass
-    conn.row_factory = sqlite3.Row
+    conn = connect(database_path=resolve_db_path())
+    if backend_name() == "sqlite":
+        conn.execute("PRAGMA busy_timeout=30000")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError as e:
+            print(f"[DB] journal_mode=WAL gagal ({e}), lanjut mode default")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        try:
+            conn.execute("PRAGMA wal_autocheckpoint=1000")
+            conn.execute("PRAGMA journal_size_limit=33554432")
+        except Exception:
+            pass
     return conn, conn.cursor()
 
 
 def _commit_with_retry(conn, retries=5):
-    for attempt in range(retries):
-        try:
-            conn.commit()
-            return True
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower() and attempt < retries - 1:
-                time.sleep(0.2 * (attempt + 1))
-                continue
-            raise
-    return False
+    return commit_with_retry(conn, retries=retries)
 
 
 def _insert_system_log(c, event_type, host, message, timestamp=None):

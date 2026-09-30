@@ -7,8 +7,12 @@ from nms.db import log_system_event
 
 
 def send_telegram_alert(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[WARN] Token/Chat ID Telegram belum dikonfigurasi.")
+    if (
+        not TELEGRAM_BOT_TOKEN
+        or not TELEGRAM_CHAT_ID
+        or TELEGRAM_BOT_TOKEN == "your_telegram_bot_token_here"
+        or TELEGRAM_CHAT_ID == "your_telegram_chat_id_here"
+    ):
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}

@@ -140,6 +140,19 @@ class NmsTest(unittest.TestCase):
         m.down_since.pop("10.99.99.99", None)
         self.assertEqual(n, 1)
 
+    def test_prometheus_metrics_endpoint(self):
+        r = self.client.get("/metrics")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("nms_hosts_total", r.text)
+        self.assertIn("nms_host_up", r.text)
+        self.assertIn("text/plain", r.content_type)
+
+    def test_telemetry_stream_endpoint(self):
+        r = self.client.get("/api/telemetry/stream")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/event-stream", r.content_type)
+        r.response.close()
+
     def test_agent_metrics_null_disk_tidak_500(self):
         conn, c = m.get_db()
         c.execute(
