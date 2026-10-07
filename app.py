@@ -267,6 +267,9 @@ def log_response(response):
             f"{request.method} {request.path} - Status: {response.status_code} - "
             f"Time: {elapsed:.2f}ms - IP: {client_ip}"
         )
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
 
