@@ -47,7 +47,7 @@ def get_dashboard_summary():
                 else 0
             )
 
-            alerts = get_active_alerts(c)
+            alerts = get_active_alerts()
 
             return jsonify(
                 {
