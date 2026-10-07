@@ -1181,6 +1181,7 @@ def trigger_manual_service_check():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10/minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
