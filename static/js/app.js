@@ -130,11 +130,6 @@
     requestAnimationFrame(frame);
   }
 
-  function setBar(id, pct) {
-    var el = $(id);
-    if (el) el.style.width = Math.max(0, Math.min(100, Number(pct) || 0)) + "%";
-  }
-
   /* ---------- Tren KPI (riwayat lokal) ---------- */
   var TREND_KEY = "nms_kpi_hist";
   var TREND_MAX = 288;           // 288 titik x 5 menit = 24 jam
