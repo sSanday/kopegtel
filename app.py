@@ -1739,7 +1739,10 @@ def bulk_import():
         from io import TextIOWrapper
         import csv as csv_module
 
-        stream = TextIOWrapper(file.stream, encoding="utf-8")
+        if request.content_length and request.content_length > 1024 * 1024:
+            return jsonify({"error": "Ukuran file CSV maksimal 1 MB"}), 400
+
+        stream = TextIOWrapper(file.stream, encoding="utf-8-sig")
         reader = csv_module.DictReader(stream)
 
         hosts_data = []
@@ -1749,6 +1752,17 @@ def bulk_import():
 
         if not hosts_data:
             return jsonify({"error": "CSV kosong"}), 400
+        if len(hosts_data) > 1000:
+            return jsonify({"error": "Maksimal 1000 baris per impor"}), 400
+
+        for idx, row in enumerate(hosts_data, start=1):
+            if not isinstance(row, dict):
+                return jsonify({"error": f"Baris {idx} tidak valid"}), 400
+            for key, value in list(row.items()):
+                if key:
+                    row[key.strip()] = str(value or "").strip()[:512]
+                if len(str(value or "")) > 512:
+                    return jsonify({"error": f"Baris {idx} terlalu panjang"}), 400
 
         success, failed, errors = bulk_import_hosts(hosts_data)
 
