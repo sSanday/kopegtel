@@ -8,7 +8,6 @@ import socket
 import sqlite3
 import threading
 import time
-from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -75,12 +74,10 @@ from nms.db import (
     get_host_threshold,
     get_setting,
     get_target_hosts,
-    get_user,
     init_db,
     list_backups,
     list_host_thresholds,
     list_users,
-    log_alert,
     log_system_event,
     resolve_alert,
     restore_database,
@@ -95,7 +92,6 @@ from nms.anomaly import summarize_anomalies
 from nms.query_helpers import (
     get_all_agent_metrics,
     get_all_host_stats,
-    get_service_uptime_map,
 )
 from nms.crypto import encrypt_secret
 from nms.monitor import (
@@ -106,12 +102,6 @@ from nms.monitor import (
     fiber_parent_down,
     last_down_telegram,
     status_memory,
-)
-from nms.exceptions import (
-    AuthenticationError,
-    DatabaseError,
-    safe_db_operation,
-    log_exception,
 )
 from nms.thread_safe import ThreadSafeDict
 from nms.monitor import agent_offline_memory, check_agent_heartbeat
@@ -174,8 +164,6 @@ from nms.mikrotik_routes import mikrotik_bp
 from nms.fiber_routes import fiber_bp
 from nms.blueprints import api_bp
 from nms.power import (
-    POWER_DEFAULT_TARIFF,
-    POWER_DEFAULT_THRESHOLD,
     get_power_history,
     get_power_settings,
     get_power_summary,

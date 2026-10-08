@@ -1,7 +1,6 @@
 """nms.exceptions — Custom exception types for structured error handling."""
 
 import logging
-import traceback
 from functools import wraps
 
 logger = logging.getLogger(__name__)

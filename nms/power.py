@@ -4,7 +4,7 @@ Opsi 4: gabungan input manual dan polling SNMP otomatis.
 Energi dihitung dengan integrasi trapezoid antar sampel agar kWh realistis.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from nms.db import db_lock, get_db, get_setting
 

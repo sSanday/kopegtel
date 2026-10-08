@@ -3,7 +3,6 @@
 import requests
 
 from nms.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from nms.db import log_system_event
 
 
 def send_telegram_alert(message):
