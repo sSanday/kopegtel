@@ -115,7 +115,7 @@ from nms.exceptions import (
 )
 from nms.thread_safe import ThreadSafeDict
 from nms.monitor import agent_offline_memory, check_agent_heartbeat
-from nms.snmp import _valid_oid, discover_subnet
+from nms.snmp import _valid_oid, _snmp_get, discover_subnet
 import json
 from nms.fiber import (
     FIBER_DEGRADE_DAYS,
@@ -173,8 +173,18 @@ from nms.mikrotik_poll import (
 from nms.mikrotik_routes import mikrotik_bp
 from nms.fiber_routes import fiber_bp
 from nms.blueprints import api_bp
+from nms.power import (
+    POWER_DEFAULT_TARIFF,
+    POWER_DEFAULT_THRESHOLD,
+    get_power_history,
+    get_power_settings,
+    get_power_summary,
+    poll_power_snmp,
+    record_power_metric,
+)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -267,9 +277,10 @@ def log_response(response):
             f"{request.method} {request.path} - Status: {response.status_code} - "
             f"Time: {elapsed:.2f}ms - IP: {client_ip}"
         )
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "no-referrer"
+    # F-03: security headers
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
 
 
@@ -679,7 +690,7 @@ def check_single_service(svc):
                 r = requests.get(
                     url,
                     timeout=5,
-                    verify=False,
+                    verify=os.environ.get("NMS_SSL_VERIFY", "1") != "0",
                     headers={"User-Agent": "NMS-KOPEGTEL/1.0"},
                 )
                 if r.status_code < 400:
@@ -1116,6 +1127,9 @@ if SCHEDULER_ENABLED:
         func=poll_fiber_snmp, trigger="interval", seconds=300, **_job_defaults
     )
     scheduler.add_job(
+        func=poll_power_snmp, trigger="interval", seconds=300, **_job_defaults
+    )
+    scheduler.add_job(
         func=check_ssl_expiry, trigger="interval", hours=6, **_job_defaults
     )
     scheduler.add_job(
@@ -1189,14 +1203,18 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
     error = None
+    blocked_seconds = None
     if request.method == "POST":
         client_ip = get_client_ip()
         now_ts = time.time()
         _prune_login_failures(now_ts)
         fails, blocked_until, _ = login_failures.get(client_ip, (0, 0, 0))
         if now_ts < blocked_until:
-            error = f"Terlalu banyak percobaan gagal. Coba lagi {int(blocked_until - now_ts)} detik."
-            return render_template("login.html", error=error)
+            blocked_seconds = int(blocked_until - now_ts)
+            error = f"Terlalu banyak percobaan gagal. Coba lagi {blocked_seconds} detik."
+            return render_template(
+                "login.html", error=error, blocked_seconds=blocked_seconds
+            )
         username = request.form.get("username", "").strip()[:50]
         password = request.form.get("password", "")[:200]
         if _verify_admin(username, password):
@@ -1232,11 +1250,12 @@ def login():
                 pass
             if fails >= 5:
                 login_failures[client_ip] = (0, now_ts + 60, now_ts)
+                blocked_seconds = 60
                 error = "Terlalu banyak percobaan gagal. Diblokir 60 detik."
             else:
                 login_failures[client_ip] = (fails, 0, now_ts)
                 error = "Username atau password salah."
-    return render_template("login.html", error=error)
+    return render_template("login.html", error=error, blocked_seconds=blocked_seconds)
 
 
 @app.route("/logout", methods=["POST"])
@@ -1257,6 +1276,12 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/power-analytics")
+@login_required
+def power_analytics_page():
+    return render_template("power_analytics.html")
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard_page():
@@ -1271,6 +1296,263 @@ def dashboard_page():
         gangguan=[],
         riwayat_labels=[],
         riwayat_series={},
+    )
+
+
+@app.route("/api/power/summary")
+@api_login_required
+def api_power_summary():
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 24
+    try:
+        return jsonify(get_power_summary(hours))
+    except Exception as e:
+        logger.warning(f"power summary gagal: {e}")
+        return jsonify({"error": "gagal memuat ringkasan daya"}), 500
+
+
+@app.route("/api/power/history")
+@api_login_required
+def api_power_history():
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (TypeError, ValueError):
+        hours = 24
+    host = (request.args.get("host") or "").strip()[:255] or None
+    bucket = (request.args.get("bucket") or "raw").strip().lower()
+    if bucket not in ("raw", "hour", "day"):
+        bucket = "raw"
+    try:
+        return jsonify({"host": host, "hours": hours, "bucket": bucket, "data": get_power_history(host, hours, bucket)})
+    except Exception as e:
+        logger.warning(f"power history gagal: {e}")
+        return jsonify({"error": "gagal memuat histori daya"}), 500
+
+
+@app.route("/api/power/devices")
+@api_login_required
+def api_power_devices():
+    try:
+        summary = get_power_summary(int(request.args.get("hours", 24)))
+    except (TypeError, ValueError):
+        summary = get_power_summary(24)
+    conn, c = get_db()
+    try:
+        try:
+            c.execute("SELECT ip, alias, snmp_community, power_oid, power_scale, power_rated_watts FROM hosts ORDER BY ip ASC")
+            snmp_hosts = [dict(r) for r in c.fetchall()]
+            for h in snmp_hosts:
+                h.pop("snmp_community", None)
+        except Exception:
+            snmp_hosts = []
+        try:
+            c.execute("SELECT name, rated_watts, threshold_watts, source, notes, updated_at FROM power_devices ORDER BY name ASC")
+            manual = [dict(r) for r in c.fetchall()]
+        except Exception:
+            manual = []
+    finally:
+        conn.close()
+    return jsonify({"devices": summary["devices"], "snmp_hosts": snmp_hosts, "manual_devices": manual})
+
+
+@app.route("/api/power/metrics", methods=["POST"])
+@api_login_required
+def api_power_metrics():
+    data = request.get_json(silent=True) or {}
+    try:
+        saved = record_power_metric(
+            data.get("host"),
+            watts=data.get("watts"),
+            voltage=data.get("voltage"),
+            current=data.get("current"),
+            source=data.get("source", "manual"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.warning(f"simpan power gagal: {e}")
+        return jsonify({"error": "gagal menyimpan pengukuran"}), 500
+    return jsonify({"ok": True, **saved})
+
+
+@app.route("/api/power/snmp/<path:host_ip>", methods=["POST"])
+@api_login_required
+def api_power_snmp(host_ip):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip, snmp_community, power_oid, power_scale FROM hosts WHERE ip=?", (host_ip,))
+        host = c.fetchone()
+        host = dict(host) if host else None
+    finally:
+        conn.close()
+    if not host or not (host.get("power_oid") or "").strip():
+        return jsonify({"error": "Host tidak ditemukan atau power_oid belum dikonfigurasi"}), 400
+    if not _valid_oid(host["power_oid"]):
+        return jsonify({"error": "power_oid tidak valid"}), 400
+    try:
+        values = _snmp_get(host["ip"], host.get("snmp_community") or "", [host["power_oid"]], timeout=3.0)
+    except Exception as e:
+        return jsonify({"error": f"SNMP gagal: {e}"}), 502
+    raw = values[0] if values else None
+    if raw is None:
+        return jsonify({"error": "SNMP power tidak merespons"}), 502
+    try:
+        watts = float(raw) * float(host.get("power_scale") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "nilai power SNMP tidak numerik"}), 502
+    try:
+        saved = record_power_metric(host_ip, watts=watts, source="snmp")
+    except Exception as e:
+        return jsonify({"error": f"gagal menyimpan: {e}"}), 500
+    return jsonify({"ok": True, "host": host_ip, "watts": watts, "source": "snmp", **saved})
+
+
+@app.route("/api/power/poll-snmp", methods=["POST"])
+@api_login_required
+def api_power_poll_snmp():
+    try:
+        result = poll_power_snmp()
+    except Exception as e:
+        return jsonify({"error": f"polling gagal: {e}"}), 500
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/api/power/host-config", methods=["POST"])
+@api_login_required
+def api_power_host_config():
+    data = request.get_json(silent=True) or {}
+    ip = str(data.get("ip", "")).strip()
+    if not ip:
+        return jsonify({"error": "ip wajib diisi"}), 400
+    oid = str(data.get("power_oid") or "").strip()
+    if oid and not _valid_oid(oid):
+        return jsonify({"error": "power_oid tidak valid"}), 400
+    try:
+        scale = float(data.get("power_scale", 1) or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "power_scale harus angka"}), 400
+    if not 0.0001 <= scale <= 1000000:
+        return jsonify({"error": "power_scale di luar batas"}), 400
+    rated = data.get("power_rated_watts")
+    try:
+        rated = float(rated) if rated not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "power_rated_watts harus angka"}), 400
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip FROM hosts WHERE ip=?", (ip,))
+        if not c.fetchone():
+            return jsonify({"error": "host tidak ditemukan di inventory"}), 404
+        c.execute(
+            "UPDATE hosts SET power_oid=?, power_scale=?, power_rated_watts=? WHERE ip=?",
+            (oid, scale, rated, ip),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/power/devices", methods=["POST"])
+@api_login_required
+def api_power_device_upsert():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", "")).strip()[:255]
+    if not name:
+        return jsonify({"error": "nama perangkat wajib diisi"}), 400
+    try:
+        rated = float(data["rated_watts"]) if data.get("rated_watts") not in (None, "") else None
+        thr = float(data["threshold_watts"]) if data.get("threshold_watts") not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "rated/threshold harus angka"}), 400
+    source = str(data.get("source", "manual"))[:30] or "manual"
+    notes = str(data.get("notes", ""))[:500]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn, c = get_db()
+    try:
+        c.execute(
+            "INSERT INTO power_devices(name, rated_watts, threshold_watts, source, notes, updated_at)"
+            " VALUES(?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET"
+            " rated_watts=excluded.rated_watts, threshold_watts=excluded.threshold_watts,"
+            " source=excluded.source, notes=excluded.notes, updated_at=excluded.updated_at",
+            (name, rated, thr, source, notes, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/power/devices/<path:name>", methods=["DELETE"])
+@api_login_required
+def api_power_device_delete(name):
+    conn, c = get_db()
+    try:
+        c.execute("DELETE FROM power_devices WHERE name=?", (name,))
+        conn.commit()
+        deleted = c.rowcount
+    finally:
+        conn.close()
+    if not deleted:
+        return jsonify({"error": "perangkat tidak ditemukan"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/power/settings", methods=["GET", "POST"])
+@api_login_required
+def api_power_settings():
+    if request.method == "GET":
+        return jsonify(get_power_settings())
+    data = request.get_json(silent=True) or {}
+    vals = {}
+    if "tariff_per_kwh" in data:
+        try:
+            tariff = float(data["tariff_per_kwh"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "tarif harus angka"}), 400
+        if not 0 <= tariff <= 100000:
+            return jsonify({"error": "tarif 0..100000"}), 400
+        vals["power_tariff_per_kwh"] = tariff
+    if "threshold_watts" in data:
+        try:
+            thr = float(data["threshold_watts"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "threshold harus angka"}), 400
+        if not 0 <= thr <= 10000000:
+            return jsonify({"error": "threshold di luar batas"}), 400
+        vals["power_threshold_watts"] = thr
+    if not vals:
+        return jsonify({"error": "tidak ada pengaturan dikirim"}), 400
+    conn, c = get_db()
+    try:
+        for k, v in vals.items():
+            c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **get_power_settings()})
+
+
+@app.route("/api/power/export")
+@api_login_required
+def api_power_export():
+    try:
+        hours = int(request.args.get("hours", 168))
+    except (TypeError, ValueError):
+        hours = 168
+    host = (request.args.get("host") or "").strip() or None
+    rows = get_power_history(host, hours, "raw")
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["timestamp", "host", "watts", "voltage", "current", "energy_kwh", "source"])
+    for r in rows:
+        writer.writerow([r.get("timestamp"), r.get("host"), r.get("watts"), r.get("voltage"), r.get("current"), r.get("energy_kwh"), r.get("source")])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=power_{hours}h.csv"},
     )
 
 
@@ -1590,6 +1872,27 @@ def api_snmp_discovery():
     except Exception as exc:
         logger.warning(f"SNMP discovery gagal: {exc}")
         return jsonify({"error": "Discovery gagal"}), 502
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (
+                    "discovery_last_scan",
+                    json.dumps(
+                        {
+                            "network": network,
+                            "count": len(results),
+                            "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                    ),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning(f"Simpan riwayat discovery gagal: {exc}")
     return jsonify({"network": network, "count": len(results), "devices": results})
 
 
@@ -1599,6 +1902,9 @@ def api_discovery_import():
     data = request.get_json(silent=True) or {}
     devices = data.get("devices")
     community = str(data.get("community") or "").strip()[:128]
+    save_community = data.get("save_community", True) is not False
+    category_opt = str(data.get("category") or "auto").strip()[:64]
+    stored_community = community if save_community else ""
     if not isinstance(devices, list) or not devices or len(devices) > 256:
         return jsonify({"error": "devices harus list 1-256 item"}), 400
     conn, c = get_db()
@@ -1613,14 +1919,23 @@ def api_discovery_import():
             except ValueError:
                 skipped.append({"ip": ip, "reason": "IP tidak valid"})
                 continue
+            vendor = str((device or {}).get("vendor") or "Generic")[:64]
+            if category_opt.lower() in ("", "auto"):
+                category = vendor
+            elif category_opt.lower() == "network":
+                category = "Network"
+            elif category_opt.lower() == "uncategorized":
+                category = "Uncategorized"
+            else:
+                category = category_opt
             try:
                 c.execute(
                     "INSERT INTO hosts (ip, alias, category, snmp_community, snmp_profile) VALUES (?, ?, ?, ?, ?)",
                     (
                         ip,
                         str((device or {}).get("sys_name") or ip)[:128],
-                        str((device or {}).get("vendor") or "Generic")[:64],
-                        community,
+                        category,
+                        stored_community,
                         (
                             "mikrotik"
                             if (device or {}).get("vendor") == "MikroTik"
@@ -1739,10 +2054,7 @@ def bulk_import():
         from io import TextIOWrapper
         import csv as csv_module
 
-        if request.content_length and request.content_length > 1024 * 1024:
-            return jsonify({"error": "Ukuran file CSV maksimal 1 MB"}), 400
-
-        stream = TextIOWrapper(file.stream, encoding="utf-8-sig")
+        stream = TextIOWrapper(file.stream, encoding="utf-8")
         reader = csv_module.DictReader(stream)
 
         hosts_data = []
@@ -1752,17 +2064,8 @@ def bulk_import():
 
         if not hosts_data:
             return jsonify({"error": "CSV kosong"}), 400
-        if len(hosts_data) > 1000:
-            return jsonify({"error": "Maksimal 1000 baris per impor"}), 400
-
-        for idx, row in enumerate(hosts_data, start=1):
-            if not isinstance(row, dict):
-                return jsonify({"error": f"Baris {idx} tidak valid"}), 400
-            for key, value in list(row.items()):
-                if key:
-                    row[key.strip()] = str(value or "").strip()[:512]
-                if len(str(value or "")) > 512:
-                    return jsonify({"error": f"Baris {idx} terlalu panjang"}), 400
+        if len(hosts_data) > 2000:
+            return jsonify({"error": "Maksimal 2000 baris per impor"}), 400
 
         success, failed, errors = bulk_import_hosts(hosts_data)
 
@@ -1996,6 +2299,10 @@ def api_get_settings():
             "discovery_community": get_setting(
                 "discovery_community", "", type_cast=str
             ),
+            "discovery_last_scan": get_setting(
+                "discovery_last_scan", "", type_cast=str
+            ),
+            "public_url": get_setting("public_url", "", type_cast=str),
         }
     )
 
@@ -2136,6 +2443,30 @@ def api_save_settings():
         if len(community) > 128:
             return jsonify({"error": "discovery_community maksimal 128 karakter"}), 400
         vals["discovery_community"] = community
+    if "public_url" in data:
+        from urllib.parse import urlparse as _urlparse
+
+        public_url = str(data.get("public_url") or "").strip().rstrip("/")
+        if public_url:
+            try:
+                _parsed = _urlparse(public_url)
+            except Exception:
+                return jsonify({"error": "public_url tidak valid"}), 400
+            if (_parsed.scheme or "").lower() not in (
+                "http",
+                "https",
+            ) or not (_parsed.hostname or ""):
+                return (
+                    jsonify(
+                        {
+                            "error": "public_url harus URL http(s) valid, mis. http://192.168.1.5:5000"
+                        }
+                    ),
+                    400,
+                )
+            if len(public_url) > 256:
+                return jsonify({"error": "public_url maksimal 256 karakter"}), 400
+        vals["public_url"] = public_url
     merged = {
         k: get_setting(k, d)
         for k, d in [
@@ -3064,6 +3395,85 @@ def update_user_role_endpoint(username):
         return jsonify({"status": "success"}), 200
     else:
         return jsonify({"error": message}), 400
+
+
+@app.route("/api/dashboard/summary", methods=["GET"])
+@api_login_required
+@limiter.limit("60/minute")
+def dashboard_summary():
+    conn, c = get_db()
+
+    try:
+        c.execute("SELECT COUNT(*) AS cnt FROM hosts")
+        total_hosts = c.fetchone()["cnt"] or 0
+
+        up_count = 0
+        down_count = 0
+        pending_count = 0
+
+        for host in get_target_hosts():
+            if status_memory.get(host, False):
+                down_count += 1
+            elif host in status_memory:
+                up_count += 1
+            else:
+                pending_count += 1
+
+        c.execute("""
+            SELECT COUNT(*) AS cnt FROM down_events 
+            WHERE resolved_at IS NULL
+            """)
+        active_alerts = c.fetchone()["cnt"] or 0
+
+        c.execute("""
+            SELECT 
+                COUNT(*) AS total,
+                SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count
+            FROM ping_logs
+            WHERE timestamp > datetime('now', 'localtime', '-24 hours')
+            """)
+        r = c.fetchone()
+        uptime_24h = None
+        if r["total"] and r["total"] > 0:
+            uptime_24h = round((r["up_count"] or 0) / r["total"] * 100, 1)
+
+        c.execute("""
+            SELECT 
+                COUNT(*) AS cnt,
+                SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS online_cnt
+            FROM services
+            """)
+        svc = c.fetchone()
+        total_services = svc["cnt"] or 0
+        online_services = svc["online_cnt"] or 0
+
+        c.execute("""
+            SELECT COUNT(*) AS cnt FROM system_logs
+            WHERE event_type LIKE 'HIGH_%' AND timestamp > datetime('now', 'localtime', '-24 hours')
+            """)
+        resource_alerts = c.fetchone()["cnt"] or 0
+
+    finally:
+        conn.close()
+
+    return jsonify(
+        {
+            "timestamp": datetime.now().isoformat(),
+            "hosts": {
+                "total": total_hosts,
+                "up": up_count,
+                "down": down_count,
+                "pending": pending_count,
+            },
+            "alerts": {"active": active_alerts, "resource_24h": resource_alerts},
+            "uptime_24h": uptime_24h,
+            "services": {
+                "total": total_services,
+                "online": online_services,
+                "offline": total_services - online_services,
+            },
+        }
+    )
 
 
 @app.route("/api/hosts/<path:ip>/thresholds", methods=["GET"])

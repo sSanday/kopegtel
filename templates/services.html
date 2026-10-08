@@ -1,648 +1,241 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Service Monitoring — NMS KOPEGTEL</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#080c14;
-      --surface:#0c1220;
-      --card:rgba(12,18,32,0.8);
-      --border:rgba(0,255,136,0.1);
-      --border2:rgba(255,255,255,0.06);
-      --accent:#00a2ff;
-      --accent2:#00ff88;
-      --t1:#e0f0ff;
-      --t2:#6a8aaa;
-      --t3:#2a4060;
-      --mono:'JetBrains Mono',monospace;
-      --danger:#ff4444;
-      --success:#00ff88;
-      --warn:#ffaa00;
-      --info:#00a2ff;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="Monitoring layanan dan riwayat latency — NMS Kopegtel">
+<title>Services · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
     }
-    ::-webkit-scrollbar{width:4px}
-    ::-webkit-scrollbar-track{background:var(--bg)}
-    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
-
-    body{
-      font-family:'Inter',sans-serif;
-      background:var(--bg);color:var(--t1);
-      min-height:100vh;overflow-x:hidden;
-    }
-
-    body::before{
-      content:'';position:fixed;inset:0;
-      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
-      pointer-events:none;z-index:9999;
-    }
-    body::after{
-      content:'';position:fixed;inset:0;
-      background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);
-      pointer-events:none;z-index:0;
-    }
-
-    .topbar{
-      position:sticky;top:0;z-index:100;
-      height:52px;background:rgba(8,12,20,0.97);
-      border-bottom:1px solid var(--border2);
-      backdrop-filter:blur(12px);
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0 24px;
-    }
-    .tb-brand{
-      display:flex;align-items:center;gap:12px;
-      font-family:var(--mono);font-size:.72rem;
-    }
-    .tb-logo{
-      width:26px;height:26px;
-      background:linear-gradient(135deg,#00a2ff,#00ff88);
-      border-radius:5px;display:flex;align-items:center;justify-content:center;
-      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
-    }
-    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
-    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
-    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
-    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
-    .tb-sep{color:var(--t3);font-size:.62rem}
-    .back-btn{
-      display:flex;align-items:center;gap:6px;
-      background:rgba(0,0,0,.2);border:1px solid var(--border2);
-      color:var(--t2);padding:6px 14px;border-radius:6px;
-      font-family:var(--mono);font-size:.65rem;
-      text-decoration:none;transition:.15s;
-    }
-    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
-
-    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
-
-    .sec-label{
-      font-family:var(--mono);font-size:.62rem;font-weight:600;
-      text-transform:uppercase;letter-spacing:2px;
-      color:var(--t3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-      margin-bottom:12px;
-    }
-    .sec-label::before{content:'//';color:var(--accent2)}
-
-    .filter-bar{
-      display:flex;flex-direction:column;gap:10px;
-      padding:14px 16px;
-      background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;margin-bottom:20px;
-      backdrop-filter:blur(8px);
-    }
-    .t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .filter-btns{display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-    .filter-btns .range-btn{border-color:transparent;border-radius:4px}
-    .pg-bar{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-variant-numeric:tabular-nums;background:rgba(0,0,0,.15)}
-    .filter-btn{
-      background:transparent;border:1px solid transparent;
-      color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
-      padding:4px 10px;border-radius:4px;cursor:pointer;transition:.15s;
-    }
-    .filter-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
-    .filter-btn.active{background:rgba(0,255,136,0.12);border-color:rgba(0,255,136,0.45);color:var(--success)}
-    .filter-search{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:6px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;
-      min-width:160px;flex:1;outline:none;transition:.2s;
-    }
-    .filter-search:focus{border-color:rgba(0,162,255,0.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-    .filter-search::placeholder{color:var(--t3)}
-    .filter-select{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:6px 8px;border-radius:6px;font-family:var(--mono);font-size:.62rem;outline:none;transition:.2s;
-    }
-    .filter-select:focus{border-color:rgba(0,162,255,0.45)}
-    .filter-stats{margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);display:flex;gap:6px;flex-wrap:wrap}
-    .filter-stats span{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:99px;padding:3px 11px;font-variant-numeric:tabular-nums}
-    .filter-stats span::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
-    .filter-stats b{color:var(--t1)}
-    .filter-stats .cs-on{color:var(--success)}
-    .filter-stats .cs-off{color:var(--danger)}
-    .filter-stats .cs-pen{color:var(--warn)}
-    .table-scroll{overflow:auto;max-height:430px}
-    .table-scroll table{min-width:860px}
-    .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3)}
-    .add-btn {
-      background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.3);
-      color:var(--accent);padding:8px 16px;border-radius:5px;
-      font-family:var(--mono);font-size:.7rem;cursor:pointer;
-      transition:.2s;display:flex;align-items:center;gap:6px;margin-left:auto;
-    }
-    .add-btn:hover {background:rgba(0,162,255,0.2);color:#fff;border-color:rgba(0,162,255,0.5)}
-
-    .log-card{
-      background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
-    }
-    .term-topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
-    }
-    .term-dots{display:flex;gap:5px}
-    .term-dot{width:10px;height:10px;border-radius:50%}
-    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
-    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
-    
-    .refresh-btn {
-      background:transparent;border:1px solid rgba(0,255,136,0.3);
-      color:var(--accent2);padding:4px 10px;border-radius:4px;
-      font-family:var(--mono);font-size:.6rem;cursor:pointer;
-      transition:.2s;display:flex;align-items:center;gap:4px;
-    }
-    .refresh-btn:hover {background:rgba(0,255,136,0.1);color:#fff}
-    .refresh-btn.spin svg {animation:spin 1s linear infinite}
-    @keyframes spin {100%{transform:rotate(360deg)}}
-
-    table{width:100%;border-collapse:collapse}
-    th{
-      text-align:left;color:var(--t3);font-weight:600;
-      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
-      padding:10px 14px;border-bottom:1px solid var(--border2);
-      background:#0d1424;white-space:nowrap;
-      position:sticky;top:0;z-index:1;
-    }
-    td{
-      padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
-      font-family:var(--mono);font-size:.7rem;color:var(--t2);
-      transition:.12s;vertical-align:middle;
-    }
-    tr:last-child td{border-bottom:none}
-    tr:hover td{background:rgba(0,162,255,0.05);color:var(--t1)}
-    #servicesBody tr td:first-child{box-shadow:inset 2px 0 0 transparent}
-    #servicesBody tr.svc-off td{background:rgba(255,68,68,.04)}
-    #servicesBody tr.svc-off td:first-child{box-shadow:inset 2px 0 0 var(--danger)}
-    #servicesBody tr.svc-off:hover td{background:rgba(255,68,68,.08)}
-    
-    .col-name{color:var(--t1)!important;font-weight:500;}
-    
-    .tag{
-      font-family:var(--mono);font-size:.55rem;font-weight:700;
-      text-transform:uppercase;letter-spacing:.8px;
-      border-radius:3px;padding:3px 8px;white-space:nowrap;
-      display:inline-block;
-    }
-    .tag.tcp{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
-    .tag.http{background:rgba(170,0,255,0.1);color:#a0f;border:1px solid rgba(170,0,255,0.25)}
-    .tag.online{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
-    .tag.offline{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
-    .tag.pending{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.25)}
-    .tag.ssl-ok{background:rgba(0,255,136,0.1);color:var(--success);border:1px solid rgba(0,255,136,0.25)}
-    .tag.ssl-warn{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
-    .tag.ssl-high{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
-    .tag.ssl-exp{background:rgba(255,0,85,0.15);color:#ff5588;border:1px solid rgba(255,0,85,0.4)}
-    .tag.ssl-na{background:transparent;color:var(--t3);border:1px solid var(--border2)}
-
-    .chart-card{
-      margin-top:16px;
-      background:var(--card);border:1px solid var(--border2);border-radius:8px;
-      padding:18px 20px;backdrop-filter:blur(8px);
-    }
-    .chart-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
-    .chart-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
-    .chart-sub{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin-top:2px}
-    .chart-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-    .chart-ctl select{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;outline:none;max-width:220px;
-    }
-    .range-btn{
-      background:transparent;border:1px solid var(--border2);
-      color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
-      padding:4px 9px;border-radius:4px;cursor:pointer;
-    }
-    .range-btn.active,.range-btn:hover{background:rgba(0,162,255,0.1);border-color:rgba(0,162,255,0.4);color:var(--accent)}
-    .chart-wrap{position:relative;height:240px}
-    
-    .action-btn {
-      background:transparent;border:none;color:var(--t3);cursor:pointer;
-      transition:.2s;padding:4px;border-radius:4px;
-    }
-    .action-btn:hover {color:var(--danger);background:rgba(255,68,68,0.1)}
-
-    /* Modal Overlay */
-    .modal-overlay {
-      position:fixed;inset:0;background:rgba(0,0,0,0.6);
-      backdrop-filter:blur(4px);z-index:999;
-      display:flex;align-items:center;justify-content:center;
-      opacity:0;pointer-events:none;transition:0.3s;
-    }
-    .modal-overlay.active {opacity:1;pointer-events:auto;}
-    .modal {
-      background:var(--surface);width:400px;border-radius:8px;
-      border:1px solid var(--border2);box-shadow:0 10px 40px rgba(0,0,0,0.5);
-      transform:translateY(20px);transition:0.3s;
-    }
-    .modal-overlay.active .modal {transform:translateY(0);}
-    .modal-header {
-      padding:16px 20px;border-bottom:1px solid var(--border2);
-      font-family:var(--mono);font-size:0.8rem;color:var(--t1);
-      display:flex;justify-content:space-between;align-items:center;
-    }
-    .modal-body {padding:20px;}
-    .form-group {margin-bottom:15px;}
-    .form-group label {display:block;font-size:0.7rem;color:var(--t2);margin-bottom:6px;font-family:var(--mono)}
-    .form-group input, .form-group select {
-      width:100%;background:rgba(0,0,0,0.3);border:1px solid var(--border2);
-      color:var(--t1);padding:10px;border-radius:5px;font-family:var(--mono);font-size:0.75rem;
-    }
-    .form-group input:focus, .form-group select:focus {
-      outline:none;border-color:rgba(0,162,255,0.4);
-    }
-    .btn-row {display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
-    .btn {padding:8px 16px;border-radius:5px;font-size:0.75rem;font-family:var(--mono);cursor:pointer;border:none;}
-    .btn-cancel {background:transparent;color:var(--t2);border:1px solid var(--border2);}
-    .btn-submit {background:var(--accent);color:#fff;}
-    
-    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-    tbody tr{animation:fadeIn .25s ease both}
-  </style>
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/services.js') }}" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
 
-  <div class="topbar">
-    <div class="tb-brand">
-      <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="tb-path">
-        <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
-        <span class="tb-sep">›</span>
-        <a class="crumb" href="/" title="Dashboard utama">dashboard</a>
-        <span class="tb-sep">›</span>
-        <span class="crumb active">services</span>
-      </div>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
     </div>
-    <a href="/" class="back-btn">
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
-      cd ..
-    </a>
-  </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <a href="/triggers" class="nav-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+      <a href="/services" class="nav-link active" data-nav="services" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+      <a href="/inventory" class="nav-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+      <a href="/reports" class="nav-link" data-nav="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+      <a href="/power-analytics" class="nav-link" data-nav="power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+      <a href="/logs" class="nav-link" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+      <a href="/triggers?severity=disaster,high" class="nav-link" data-nav="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
+      <div class="nav-group">Kelola</div>
+      <a href="/discovery" class="nav-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
 
-  <div class="wrap">
-    <div class="sec-label">service_monitor.list</div>
-    <div class="filter-bar">
-      <div class="t-row">
-        <div class="filter-btns" id="statusBtns">
-          <button class="filter-btn active" data-status="all">all</button>
-          <button class="filter-btn" data-status="online">online</button>
-          <button class="filter-btn" data-status="offline">offline</button>
-          <button class="filter-btn" data-status="pending">pending</button>
-        </div>
-        <div class="filter-stats"><span class="cs-on">ONLINE <b id="cnt-online">0</b></span><span class="cs-off">OFFLINE <b id="cnt-offline">0</b></span><span class="cs-pen">PENDING <b id="cnt-pending">0</b></span></div>
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title">Services</h1>
+        <p class="page-sub">Pantau ketersediaan, latency, dan masa berlaku SSL layanan Anda</p>
       </div>
-      <div class="t-row">
-        <select class="filter-select" id="typeSelect" title="Filter tipe">
-          <option value="all">type: all</option>
-          <option value="tcp">tcp</option>
-          <option value="http">http</option>
-        </select>
-        <input class="filter-search" id="svcSearch" type="text" placeholder="grep service..." autocomplete="off">
-        <button class="add-btn" onclick="openModal()" style="margin-left:auto">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v12M2 8h12"/></svg>
-          Add Service
+      <div class="header-actions" style="margin-left:auto">
+        <span class="updated-note" id="updatedNote">—</span>
+        <button class="btn" id="btnRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Refresh</button>
+        <button class="btn btn-primary" id="btnAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Tambah Service</button>
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"></button>
+      </div>
+    </header>
+
+    <main class="page" id="konten">
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a><span class="sep">/</span><span class="cur">Services</span></nav>
+
+      <!-- Strip ringkasan -->
+      <section class="sev-strip" aria-label="Ringkasan status" style="margin-top:14px">
+        <button class="sev-chip ok" id="chip-online" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-online">0</span><br><span class="t">Online</span></span>
         </button>
-      </div>
-    </div>
-
-    <div class="log-card">
-      <div class="term-topbar">
-        <div class="term-dots">
-          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
-        </div>
-        <div class="term-title">services_status.sh</div>
-        <button class="refresh-btn" onclick="fetchServices()" id="refBtn">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
-          refresh
+        <button class="sev-chip bad" id="chip-offline" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-offline">0</span><br><span class="t">Offline</span></span>
         </button>
-      </div>
-      
-      <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:220px">Service Name</th>
-            <th style="width:80px">Type</th>
-            <th style="width:200px">Target</th>
-            <th style="width:110px">Status</th>
-            <th style="width:90px">Latency</th>
-            <th style="width:130px">SSL</th>
-            <th style="width:140px">Last Checked</th>
-            <th style="width:50px"></th>
-          </tr>
-        </thead>
-        <tbody id="servicesBody"></tbody>
-      </table>
-      </div>
-      <div class="pg-bar"><span class="last-updated">updated: <span id="lastUpdated">—</span></span></div>
-    </div>
+        <button class="sev-chip warn" id="chip-pending" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-pending">0</span><br><span class="t">Pending</span></span>
+        </button>
+      </section>
 
-    <div class="sec-label" style="margin-top:20px">service_latency.history</div>
-    <div class="chart-card">
-      <div class="chart-hd">
-        <div>
-          <div class="chart-title" id="histTitle">latency_history.ts</div>
-          <div class="chart-sub">// pilih service untuk melihat riwayat latency (OFFLINE = gap)</div>
+      <!-- Toolbar filter -->
+      <div class="toolbar-card" role="search">
+        <div class="seg" id="statusSeg" role="group" aria-label="Filter status">
+          <button class="seg-btn active" data-status="all">Semua</button>
+          <button class="seg-btn" data-status="online">Online</button>
+          <button class="seg-btn" data-status="offline">Offline</button>
+          <button class="seg-btn" data-status="pending">Pending</button>
         </div>
-        <div class="chart-ctl">
-          <select id="histSvc" onchange="fetchSvcHistory()" title="Pilih service"></select>
-          <div class="filter-btns" role="group" aria-label="Rentang">
-            <button class="range-btn active" data-h="1" onclick="setHistRange(this,1)">1H</button>
-            <button class="range-btn" data-h="6" onclick="setHistRange(this,6)">6H</button>
-            <button class="range-btn" data-h="24" onclick="setHistRange(this,24)">24H</button>
-            <button class="range-btn" data-h="168" onclick="setHistRange(this,168)">7D</button>
+        <div class="select-wrap">
+          <select id="typeSelect" aria-label="Filter tipe service">
+            <option value="all">Semua tipe</option>
+            <option value="tcp">TCP Port</option>
+            <option value="http">HTTP URL</option>
+          </select>
+        </div>
+        <label class="search" style="margin-left:0;flex:1;min-width:200px;max-width:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <input type="search" id="svcSearch" placeholder="Cari service atau target…" aria-label="Cari service" autocomplete="off">
+        </label>
+        <button class="reset-btn" id="resetFilter">Reset filter</button>
+      </div>
+
+      <!-- Tabel service -->
+      <section class="card" aria-label="Daftar service">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Daftar Service</h2>
+            <p class="card-desc">Diperbarui otomatis tiap 10 detik · klik baris untuk melihat riwayat latency</p>
           </div>
         </div>
-      </div>
-      <div class="chart-wrap"><canvas id="svcChart"></canvas></div>
-    </div>
-  </div>
+        <div class="alarm-wrap">
+          <table class="alarm-table">
+            <caption class="sr-only">Daftar service yang dipantau</caption>
+            <thead>
+              <tr>
+                <th scope="col" style="width:230px">Service</th>
+                <th scope="col" style="width:90px">Tipe</th>
+                <th scope="col" style="width:240px">Target</th>
+                <th scope="col" style="width:110px">Status</th>
+                <th scope="col" style="width:100px">Latency</th>
+                <th scope="col" style="width:150px">SSL</th>
+                <th scope="col" style="width:130px">Cek terakhir</th>
+                <th scope="col" style="width:56px"><span class="sr-only">Aksi</span></th>
+              </tr>
+            </thead>
+            <tbody id="servicesBody">
+              <tr><td colspan="8"><div class="skeleton" style="height:140px"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-  <div class="modal-overlay" id="modalOverlay">
-    <div class="modal">
-      <div class="modal-header">
-        <span>Add New Service Monitor</span>
-        <button onclick="closeModal()" aria-label="Tutup" style="background:none;border:none;color:var(--t3);cursor:pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
-      </div>
-      <div class="modal-body">
-        <form id="addForm" onsubmit="submitForm(event)">
-          <div class="form-group">
-            <label>Service Name (e.g. Web Server)</label>
-            <input type="text" id="svcName" required>
+      <!-- Riwayat latency -->
+      <section class="section" id="histSection" aria-label="Riwayat latency">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title" id="histTitle">Riwayat Latency</h2>
+              <p class="card-desc" id="histSub">Pilih service untuk melihat riwayat latency — OFFLINE ditampilkan sebagai gap</p>
+            </div>
+            <div class="card-controls">
+              <div class="select-wrap">
+                <select id="histSvc" aria-label="Pilih service untuk grafik"></select>
+              </div>
+              <div class="select-wrap">
+                <select id="histSvc2" aria-label="Bandingkan dengan service lain (opsional)"></select>
+              </div>
+              <div class="seg" id="rangeSeg" role="group" aria-label="Rentang waktu">
+                <button class="seg-btn active" data-h="1">1 jam</button>
+                <button class="seg-btn" data-h="6">6 jam</button>
+                <button class="seg-btn" data-h="24">24 jam</button>
+                <button class="seg-btn" data-h="168">7 hari</button>
+              </div>
+              <button class="btn" id="btnExpPng" type="button" disabled aria-label="Ekspor grafik sebagai PNG">PNG</button>
+              <button class="btn" id="btnExpCsv" type="button" disabled aria-label="Ekspor data riwayat sebagai CSV">CSV</button>
+            </div>
           </div>
-          <div class="form-group">
-            <label>Type</label>
-            <select id="svcType" onchange="toggleFields()">
+          <div class="hist-summary" id="histSummary">
+            <span class="hs"><span class="k">Rata-rata</span><br><span class="v" id="sumAvg">—</span></span>
+            <span class="hs"><span class="k">Min</span><br><span class="v" id="sumMin">—</span></span>
+            <span class="hs"><span class="k">Maks</span><br><span class="v" id="sumMax">—</span></span>
+            <span class="hs"><span class="k">Uptime</span><br><span class="v" id="sumUptime">—</span></span>
+          </div>
+          <div class="chart-wrap" style="height:320px">
+            <div class="chart-empty" id="histEmpty" role="status"></div>
+            <div id="histCanvasWrap" style="display:none;position:absolute;inset:0"><canvas id="svcChart" role="img" aria-label="Grafik riwayat latency service"></canvas></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ============ MODAL TAMBAH SERVICE ============ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="addTitle">Tambah Service</div><div class="modal-sub">Pantau endpoint TCP port atau URL HTTP</div></div>
+      <button class="modal-close" id="btnCloseModal" aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="addForm" novalidate>
+        <div class="field">
+          <label for="svcName">Nama service</label>
+          <input type="text" id="svcName" placeholder="misal: Web Server Utama" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="svcType">Tipe</label>
+          <div class="select-wrap" style="width:100%">
+            <select id="svcType" style="width:100%">
               <option value="tcp">TCP Port</option>
               <option value="http">HTTP URL</option>
             </select>
           </div>
-          <div class="form-group">
-            <label>Host IP / Domain</label>
-            <input type="text" id="svcIp" required>
-          </div>
-          <div class="form-group" id="portGroup">
-            <label>TCP Port</label>
-            <input type="number" id="svcPort">
-          </div>
-          <div class="form-group" id="urlGroup" style="display:none">
-            <label>URL (e.g. https://example.com)</label>
-            <input type="url" id="svcUrl">
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn btn-cancel" onclick="closeModal()">Cancel</button>
-            <button type="submit" class="btn btn-submit" id="submitBtn">Add Service</button>
-          </div>
-        </form>
-      </div>
+        </div>
+        <div class="field">
+          <label for="svcIp">Host IP / domain</label>
+          <input type="text" id="svcIp" placeholder="misal: 192.168.1.10" required autocomplete="off">
+        </div>
+        <div class="field" id="portGroup">
+          <label for="svcPort">TCP Port</label>
+          <input type="number" id="svcPort" placeholder="misal: 443" min="1" max="65535">
+        </div>
+        <div class="field" id="urlGroup" style="display:none">
+          <label for="svcUrl">URL</label>
+          <input type="url" id="svcUrl" placeholder="https://example.com">
+        </div>
+        <div class="form-error" id="formError" role="alert" style="display:none"></div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="btnCancelModal">Batal</button>
+      <button type="submit" form="addForm" class="btn btn-primary" id="submitBtn">Simpan</button>
     </div>
   </div>
+</div>
 
-  <script>
-    let allServices = [];
-    let statusFilter = 'all';
-    let typeFilter = 'all';
-    let searchQuery = '';
-    let svcChart = null;
-    let histHours = 1;
-    function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-    function sslBadge(s){
-      const isHttps = String(s.type||'').toLowerCase()==='http' && String(s.url||'').toLowerCase().startsWith('https://');
-      if(!isHttps) return `<span class="tag ssl-na">—</span>`;
-      const d = s.ssl_days_left;
-      if(d === null || d === undefined) return `<span class="tag ssl-na" title="Belum dicek (tunggu scheduler 6 jam / tambah ulang)">…</span>`;
-      const n = Number(d);
-      const exp = esc(s.ssl_expires_at || '');
-      if(n < 0) return `<span class="tag ssl-exp" title="Expired ${exp}">EXP</span>`;
-      if(n <= 7) return `<span class="tag ssl-high" title="Expire ${exp}">H-${n}</span>`;
-      if(n <= 30) return `<span class="tag ssl-warn" title="Expire ${exp}">H-${n}</span>`;
-      return `<span class="tag ssl-ok" title="Expire ${exp}">${n}d</span>`;
-    }
-    function openModal(){
-      document.getElementById('modalOverlay').classList.add('active');
-      setTimeout(()=>{ const el=document.getElementById('svcName'); if(el) el.focus(); }, 60);
-    }
-    function closeModal(){ document.getElementById('modalOverlay').classList.remove('active'); document.getElementById('addForm').reset(); toggleFields(); const btn=document.getElementById('submitBtn'); if(btn) btn.disabled=false; }
-    function toggleFields(){
-      const t = document.getElementById('svcType').value;
-      if(t === 'tcp'){
-        document.getElementById('portGroup').style.display = 'block';
-        document.getElementById('urlGroup').style.display = 'none';
-        document.getElementById('svcPort').required = true;
-        document.getElementById('svcUrl').required = false;
-      }else{
-        document.getElementById('portGroup').style.display = 'none';
-        document.getElementById('urlGroup').style.display = 'block';
-        document.getElementById('svcPort').required = false;
-        document.getElementById('svcUrl').required = true;
-      }
-    }
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
 
-    function getFilteredServices(){
-      const q = (searchQuery || '').toLowerCase().trim();
-      return (allServices || []).filter(s=>{
-        const st = String(s.status || 'pending').toLowerCase();
-        if(statusFilter !== 'all' && st !== statusFilter) return false;
-        if(typeFilter !== 'all' && String(s.type || '').toLowerCase() !== typeFilter) return false;
-        if(q){
-          const target = s.type === 'tcp' ? `${s.ip}:${s.port}` : (s.url || '');
-          const hay = `${s.name} ${s.ip} ${target} ${s.type}`.toLowerCase();
-          if(!hay.includes(q)) return false;
-        }
-        return true;
-      });
-    }
-    function renderServices(){
-      const tbody = document.getElementById('servicesBody');
-      let on=0, off=0, pen=0;
-      (allServices || []).forEach(s=>{
-        const st = String(s.status || 'pending').toLowerCase();
-        if(st === 'online') on++; else if(st === 'offline') off++; else pen++;
-      });
-      document.getElementById('cnt-online').textContent = on;
-      document.getElementById('cnt-offline').textContent = off;
-      document.getElementById('cnt-pending').textContent = pen;
-      const rows = getFilteredServices();
-      let html = '';
-      if(!allServices || allServices.length === 0){
-        html = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">No services configured. Click Add Service to start monitoring.</td></tr>`;
-      } else if(!rows.length){
-        html = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono)">$ filter = NO_MATCH — tidak ada service yang cocok.</td></tr>`;
-      } else {
-        rows.forEach(s => {
-          const target = s.type === 'tcp' ? `${s.ip}:${s.port ?? '-'}` : (s.url || '-');
-          const statusRaw = String(s.status || 'PENDING');
-          const statusClass = statusRaw.toLowerCase();
-          const latStr = (statusRaw.toUpperCase() !== 'ONLINE') ? '-' : (s.latency === null || s.latency === undefined ? '-' : `${Number(s.latency).toFixed(1)} ms`);
-
-          html += `<tr${statusRaw.toUpperCase()==='OFFLINE'?' class="svc-off"':''}>
-            <td class="col-name"><a href="#" onclick="selectSvcHistory(${Number(s.id)});return false;" style="color:inherit" title="Lihat riwayat latency">${esc(s.name)}</a></td>
-            <td><span class="tag ${esc(String(s.type || ''))}">${esc(String(s.type || '').toUpperCase())}</span></td>
-            <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc(target)}</span></td>
-            <td><span class="tag ${esc(statusClass)}">${esc(statusRaw)}</span></td>
-            <td style="font-family:var(--mono);font-size:0.65rem;color:var(--t1)">${esc(latStr)}</td>
-            <td>${sslBadge(s)}</td>
-            <td style="font-size:0.6rem">${esc(s.last_checked || '-')}</td>
-            <td>
-              <button class="action-btn" onclick="deleteService(${Number(s.id)})" title="Delete Service">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M5 4V2h6v2M6 7v6M10 7v6M4 4v10h8V4"/></svg>
-              </button>
-            </td>
-          </tr>`;
-        });
-      }
-      tbody.innerHTML = html;
-      syncHistSelect();
-    }
-
-    function syncHistSelect(){
-      const sel = document.getElementById('histSvc');
-      if(!sel) return;
-      const cur = sel.value;
-      sel.innerHTML = (allServices || []).map(s => `<option value="${Number(s.id)}">${esc(s.name)} #${Number(s.id)}</option>`).join('');
-      if(cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
-      if(!sel.value && sel.options.length) fetchSvcHistory();
-    }
-    function selectSvcHistory(id){
-      const sel = document.getElementById('histSvc');
-      if(sel){ sel.value = String(id); fetchSvcHistory(); }
-      document.getElementById('svcChart').scrollIntoView({behavior:'smooth', block:'center'});
-    }
-    function setHistRange(btn, h){
-      histHours = h;
-      document.querySelectorAll('.chart-ctl .range-btn').forEach(b => b.classList.remove('active'));
-      if(btn) btn.classList.add('active');
-      fetchSvcHistory();
-    }
-    async function fetchSvcHistory(){
-      const sel = document.getElementById('histSvc');
-      const sid = sel ? sel.value : null;
-      if(!sid) return;
-      try{
-        const res = await fetch(`/api/services/${encodeURIComponent(sid)}/history?hours=${histHours}`);
-        if(res.status === 401) return;
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = await res.json();
-        const title = document.getElementById('histTitle');
-        if(title && j.service) title.textContent = `${j.service.name} — last ${j.hours}h (${j.count} pts)`;
-        drawSvcChart(j.labels || [], j.values || []);
-      } catch(e){ console.error(e); }
-    }
-    function drawSvcChart(labels, values){
-      const ctx = document.getElementById('svcChart');
-      if(!ctx || typeof Chart === 'undefined') return;
-      if(svcChart) svcChart.destroy();
-      svcChart = new Chart(ctx, {
-        type: 'line',
-        data: {labels, datasets: [{label: 'latency ms (gap=OFFLINE)', data: values, borderColor: '#00a2ff', backgroundColor: 'rgba(0,162,255,0.08)', fill: true, tension: 0.25, pointRadius: 0, spanGaps: false}]},
-        options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {x: {ticks: {color: '#2a4060', maxTicksLimit: 10}, grid: {color: 'rgba(255,255,255,0.04)'}}, y: {ticks: {color: '#6a8aaa'}, grid: {color: 'rgba(255,255,255,0.04)'}, beginAtZero: true}}}
-      });
-    }
-
-    async function fetchServices(){
-      const btn = document.getElementById('refBtn');
-      const tbody = document.getElementById('servicesBody');
-      if(btn) btn.classList.add('spin');
-
-      try{
-        const res = await fetch('/api/services');
-        if(res.status === 401) return;
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        allServices = await res.json() || [];
-        renderServices();
-        const sel = document.getElementById('histSvc');
-        if(sel && sel.value) fetchSvcHistory();
-        const lu = document.getElementById('lastUpdated');
-        if(lu) lu.textContent = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-      } catch(e){
-        console.error(e);
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--danger)">Error loading services: ${esc(e.message)}</td></tr>`;
-      } finally {
-        if(btn) setTimeout(() => btn.classList.remove('spin'), 400);
-      }
-    }
-
-    async function submitForm(e){
-      e.preventDefault();
-      const btn = document.getElementById('submitBtn');
-      const svcType = document.getElementById('svcType').value;
-      const payload = {
-        name: document.getElementById('svcName').value.trim(),
-        type: svcType,
-        ip: document.getElementById('svcIp').value.trim(),
-        port: document.getElementById('svcPort').value,
-        url: document.getElementById('svcUrl').value.trim()
-      };
-      if(svcType === 'tcp'){
-        const p = parseInt(payload.port, 10);
-        if(!Number.isFinite(p) || p < 1 || p > 65535){ alert('Error: TCP Port harus 1-65535'); return; }
-        payload.port = p;
-      } else {
-        if(!/^https?:\/\/\S+$/i.test(payload.url)){ alert('Error: URL harus diawali http(s)://'); return; }
-      }
-      if(btn) btn.disabled = true;
-      try {
-        const r = await fetch('/api/services', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
-        });
-        let msg = '';
-        try{ const j = await r.json(); msg = j.error || ''; if(j.id) payload.id = j.id; }catch(_){}
-        if(r.ok){
-          closeModal();
-          fetchServices();
-        } else {
-          alert(msg ? 'Error: ' + msg : 'Failed to add service');
-        }
-      } catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
-      finally { if(btn) btn.disabled = false; }
-    }
-
-    async function deleteService(id){
-      if(!confirm('Delete this service monitor?')) return;
-      try{
-        const r = await fetch(`/api/services/${encodeURIComponent(id)}`, {method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
-        if(!r.ok && r.status !== 404){
-          let m = 'Gagal hapus service';
-          try{ const j = await r.json(); m = j.error || m; }catch(_){}
-          alert('Error: ' + m); return;
-        }
-        fetchServices();
-      }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('#statusBtns .filter-btn').forEach(b=>{
-        b.addEventListener('click', ()=>{
-          document.querySelectorAll('#statusBtns .filter-btn').forEach(x=>x.classList.remove('active'));
-          b.classList.add('active');
-          statusFilter = b.getAttribute('data-status');
-          renderServices();
-        });
-      });
-      const ts = document.getElementById('typeSelect');
-      if(ts) ts.addEventListener('change', ()=>{ typeFilter = ts.value; renderServices(); });
-      const si = document.getElementById('svcSearch');
-      let deb = null;
-      if(si) si.addEventListener('input', ()=>{ clearTimeout(deb); deb=setTimeout(()=>{ searchQuery=si.value; renderServices(); }, 180); });
-      document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
-      document.addEventListener('keydown', (e)=>{
-        if(e.key === 'Escape') closeModal();
-        const tag=(document.activeElement&&document.activeElement.tagName)||'';
-        if(e.key==='/' && tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT'){ e.preventDefault(); const s=document.getElementById('svcSearch'); if(s) s.focus(); }
-      });
-      toggleFields();
-      fetchServices();
-      setInterval(fetchServices, 10000); // refresh every 10s
-    });
-  </script>
 <script>
-// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
+// Redirect otomatis ke /login jika sesi habis (API 401)
 (function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
 </script>
 </body>

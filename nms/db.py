@@ -70,6 +70,38 @@ def init_db():
         value TEXT NOT NULL
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS power_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        host TEXT NOT NULL,
+        watts REAL,
+        voltage REAL,
+        current REAL,
+        energy_kwh REAL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'manual',
+        timestamp TEXT NOT NULL
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_power_host_clock ON power_metrics(host, timestamp)")
+    c.execute("""CREATE TABLE IF NOT EXISTS power_devices (
+        name TEXT PRIMARY KEY,
+        rated_watts REAL,
+        threshold_watts REAL,
+        source TEXT NOT NULL DEFAULT 'manual',
+        notes TEXT DEFAULT '',
+        updated_at TEXT NOT NULL
+    )""")
+    try:
+        c.execute("ALTER TABLE hosts ADD COLUMN power_oid TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE hosts ADD COLUMN power_scale REAL DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE hosts ADD COLUMN power_rated_watts REAL DEFAULT NULL")
+    except sqlite3.OperationalError:
+        pass
+
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
@@ -716,6 +748,14 @@ def cleanup_old_data():
             except Exception as e:
                 print(f"[CLEANUP] iface_traffic gagal: {e}")
                 deleted_iface = 0
+            try:
+                c.execute(
+                    "DELETE FROM power_metrics WHERE timestamp < datetime('now', 'localtime', '-90 days')"
+                )
+                deleted_power = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] power_metrics gagal: {e}")
+                deleted_power = 0
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
             print(f"[DB LOCK] cleanup gagal: {e}")
@@ -735,7 +775,7 @@ def cleanup_old_data():
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
     print(
-        f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} baris lama dihapus."
+        f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} power={deleted_power} baris lama dihapus."
     )
 
 

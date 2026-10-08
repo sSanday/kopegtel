@@ -1,0 +1,102 @@
+/* ══════════════════════════════════════════════════════════════
+   tokens.css — satu sumber untuk warna, elevasi, radius,
+   spacing, tipografi, dan bayangan di seluruh halaman NMS.
+   Dark = default, light via [data-theme="light"].
+   ══════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ── Warna dasar ── */
+  --bg:        #0B0F14;   /* latar halaman */
+  --surface:   #121821;   /* kartu */
+  --card:      #121821;
+  --card2:     #161e2a;   /* kartu nested / baris hover */
+  --raised:    #1b2635;   /* elemen terangkat: popover, input fokus */
+  --border:    #1E2733;   /* hairline kartu */
+  --border2:   #2c3a4d;   /* border kuat (input, tombol) */
+  --input-bd:  #33405a;   /* border input — kontras naik */
+
+  --t1: #E6EAF0;  /* teks utama */
+  --t2: #9AA6B5;  /* teks sekunder */
+  --t3: #74839a;  /* teks tersier — cukup kontras AA */
+
+  --accent:  #2dd4bf;
+  --accent2: #4ade80;
+
+  --primary:       #0d9488;
+  --primary-hover: #0f766e;
+  --primary-active:#115e59;
+  --on-primary:    #ffffff;
+
+  --danger:  #f87171;
+  --success: #4ade80;
+  --warn:    #fbbf24;
+  --info:    #22d3ee;
+  --violet:  #b79cff;
+  --magenta: #ff66dd;
+
+  /* ── Elevasi 3 lapis ── */
+  --shadow-card:   0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
+  --shadow-raised: 0 12px 32px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+  --shadow-pop:    0 24px 64px rgba(0,0,0,.55);
+
+  /* ── Radius ── */
+  --r-card: 12px;
+  --r-input: 10px;
+  --r-pill: 999px;
+
+  /* ── Spacing (4/8/12/16/24/32/48) ── */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;
+  --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+
+  /* ── Tipografi ── */
+  --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --fs-h1: 28px; --fs-h2: 16px; --fs-body: 14px; --fs-label: 12.5px;
+
+  --focus-ring: 0 0 0 3px rgba(45,212,191,.18);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:      #eef1f6;
+  --surface: #ffffff;
+  --card:    #ffffff;
+  --card2:   #f6f8fc;
+  --raised:  #ffffff;
+  --border:  #e2e8f0;
+  --border2: #cbd5e1;
+  --input-bd:#b6c2d4;
+
+  --t1: #0f172a;
+  --t2: #475569;
+  --t3: #64748b;
+
+  --accent:  #0d9488;
+  --accent2: #15803d;
+
+  --primary:       #0d9488;
+  --primary-hover: #0f766e;
+  --primary-active:#115e59;
+  --on-primary:    #ffffff;
+
+  --danger:  #dc2626;
+  --success: #15803d;
+  --warn:    #b45309;
+  --info:    #0e7490;
+  --violet:  #7c3aed;
+  --magenta: #db2777;
+
+  --shadow-card:   0 1px 2px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.7);
+  --shadow-raised: 0 12px 32px rgba(15,23,42,.12);
+  --shadow-pop:    0 24px 64px rgba(15,23,42,.18);
+
+  --focus-ring: 0 0 0 3px rgba(13,148,136,.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

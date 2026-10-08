@@ -1,2363 +1,450 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NMS KOPEGTEL — Network Operations Center</title>
-<meta name="description" content="Network Monitoring System - Real-time uptime and latency dashboard">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#080c14;
-  --bg2:#0c1220;
-  --surface:#0f1928;
-  --card:rgba(15,25,40,0.8);
-  --card-h:rgba(20,32,52,0.9);
-  --border:rgba(0,255,136,0.12);
-  --border2:rgba(255,255,255,0.06);
-  --glow:rgba(0,255,136,0.4);
-  --glow-blue:rgba(0,162,255,0.4);
-  --up:#00ff88;
-  --up-dim:rgba(0,255,136,0.1);
-  --down:#ff4444;
-  --down-dim:rgba(255,68,68,0.1);
-  --warn:#ffaa00;
-  --accent:#00a2ff;
-  --accent2:#00ff88;
-  --t1:#e0f0ff;
-  --t2:#6a8aaa;
-  --t3:#2a4060;
-  --mono:'JetBrains Mono',monospace;
-  --sans:'Inter',sans-serif;
-}
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
-::-webkit-scrollbar-thumb:hover{background:rgba(0,255,136,0.4)}
-
-body{
-  font-family:var(--sans);
-  background:var(--bg);
-  min-height:100vh;
-  color:var(--t1);
-  overflow-x:hidden;
-}
-
-/* Scan lines overlay */
-body::before{
-  content:'';position:fixed;inset:0;
-  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
-  pointer-events:none;z-index:9999;
-}
-
-/* Ambient glow */
-body::after{
-  content:'';position:fixed;inset:0;
-  background:
-    radial-gradient(ellipse 80% 60% at 10% 5%,rgba(0,162,255,0.05) 0%,transparent 60%),
-    radial-gradient(ellipse 60% 50% at 90% 90%,rgba(0,255,136,0.04) 0%,transparent 60%);
-  pointer-events:none;z-index:0;
-}
-
-.wrap{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 24px 64px}
-
-/* ── TOPBAR ── */
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 0;
-  height:56px;
-  border-bottom:1px solid var(--border);
-  margin-bottom:0;
-  background:rgba(8,12,20,0.95);
-  position:sticky;top:0;z-index:100;
-  backdrop-filter:blur(12px);
-}
-.tb-left{display:flex;align-items:center;gap:0}
-.tb-logo{
-  display:flex;align-items:center;gap:10px;
-  padding:0 24px;
-  height:56px;
-  border-right:1px solid var(--border);
-}
-.logo-icon{
-  width:28px;height:28px;
-  background:linear-gradient(135deg,#00a2ff,#00ff88);
-  border-radius:6px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:14px;
-  box-shadow:0 0 16px rgba(0,162,255,0.5);
-}
-.logo-name{
-  font-family:var(--mono);font-size:.78rem;font-weight:700;
-  color:var(--t1);letter-spacing:1px;text-transform:uppercase;
-}
-.logo-name span{color:var(--accent2);margin-left:2px}
-
-.tb-path{
-  padding:0 20px;height:56px;
-  display:flex;align-items:center;gap:8px;
-  font-family:var(--mono);font-size:.72rem;color:var(--t2);
-  border-right:1px solid var(--border);
-}
-.tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
-.tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
-.tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
-.tb-sep{color:var(--t3);font-size:.62rem}
-
-.tb-search{
-  display:flex;align-items:center;
-  background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:99px;
-  padding:6px 14px;margin-left:16px;
-  transition:.2s;
-}
-.tb-search:focus-within{border-color:rgba(0,162,255,.4);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-.tb-search input{
-  background:transparent;border:none;outline:none;
-  color:var(--t1);font-family:var(--mono);font-size:.72rem;
-  width:200px;transition:.2s;
-}
-.tb-search input::placeholder{color:var(--t3)}
-.tb-search input:focus{width:260px}
-
-.tb-right{display:flex;align-items:center;gap:10px;height:56px;padding:0 12px 0 0}
-.tb-group{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:8px;padding:3px}
-.tb-group form{display:flex;margin:0}
-.tb-group .tb-btn{height:auto;padding:7px 12px;border:none;border-radius:5px}
-.tb-group .tb-btn.active-notif{border-bottom:none;background:rgba(0,255,136,.14);box-shadow:inset 0 0 0 1px rgba(0,255,136,.4)}
-.tb-btn{
-  display:flex;align-items:center;gap:6px;
-  height:56px;padding:0 16px;
-  background:transparent;border:none;border-left:1px solid var(--border);
-  color:var(--t2);font-family:var(--mono);font-size:.72rem;
-  cursor:pointer;transition:.2s;text-decoration:none;white-space:nowrap;
-}
-.tb-btn:hover{color:var(--t1);background:rgba(255,255,255,0.04)}
-.tb-btn svg{width:14px;height:14px;flex-shrink:0}
-.tb-btn.danger{color:rgba(255,68,68,0.7)}
-.tb-btn.danger:hover{color:#ff4444;background:rgba(255,68,68,0.06)}
-.tb-btn.active-notif{color:var(--accent2);border-bottom:2px solid var(--accent2)}
-
-.live-pill{
-  display:flex;align-items:center;gap:6px;
-  background:rgba(0,255,136,0.08);
-  border:1px solid rgba(0,255,136,0.25);
-  border-radius:99px;
-  padding:4px 12px;
-  font-family:var(--mono);font-size:.65rem;font-weight:700;
-  color:var(--accent2);letter-spacing:1.5px;
-  margin:0;
-  box-shadow:0 0 12px rgba(0,255,136,.12);
-}
-.live-dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;animation:blink 1.2s step-end infinite;box-shadow:0 0 8px var(--accent2)}
-.live-pill.off{background:rgba(255,68,68,0.08);border-color:rgba(255,68,68,0.35);color:var(--down)}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-
-/* ── MAIN AREA ── */
-.main{display:flex;min-height:calc(100vh - 56px)}
-
-/* Sidebar */
-.sidebar{
-  width:220px;flex-shrink:0;
-  border-right:1px solid var(--border);
-  padding:20px 0;
-  background:rgba(8,12,20,0.6);
-  backdrop-filter:blur(8px);
-}
-.sb-section{padding:0 16px;margin-bottom:20px}
-.sb-label{
-  font-family:var(--mono);font-size:.6rem;font-weight:700;
-  text-transform:uppercase;letter-spacing:2px;
-  color:var(--t3);margin-bottom:10px;
-  padding-bottom:7px;border-bottom:1px solid var(--border2);
-}
-.sb-item{
-  display:flex;align-items:center;gap:9px;
-  padding:7px 10px;border-radius:6px;border:1px solid transparent;
-  font-family:var(--mono);font-size:.72rem;color:var(--t2);
-  cursor:pointer;transition:.15s;margin-bottom:2px;
-}
-.sb-item:hover{background:rgba(255,255,255,0.05);color:var(--t1);transform:translateX(2px)}
-.sb-item.active{background:rgba(0,255,136,0.08);color:var(--accent2);border-color:rgba(0,255,136,.2);box-shadow:inset 2px 0 0 var(--accent2)}
-.sb-item svg{width:13px;height:13px;flex-shrink:0;opacity:.75}
-.sb-item:hover svg,.sb-item.active svg{opacity:1}
-.sb-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.sb-dot.up{background:var(--up);box-shadow:0 0 6px var(--up)}
-.sb-dot.down{background:var(--down);box-shadow:0 0 6px var(--down)}
-.sb-dot.warn,.sb-dot.pending{background:var(--warn);box-shadow:0 0 6px var(--warn)}
-
-/* Content */
-.content{flex:1;min-width:0;padding:24px 28px}
-
-/* Section header */
-.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;margin-top:24px}
-.sec-row:first-child{margin-top:0}
-.sec-title,
-.sec-label{
-  font-family:var(--mono);font-size:.65rem;font-weight:600;
-  color:var(--t3);text-transform:uppercase;letter-spacing:2px;
-  margin-bottom:16px;display:flex;align-items:center;gap:8px;
-}
-.sec-title::before,.sec-label::before{content:'';display:block;width:24px;height:1px;background:var(--border2)}
-
-/* Category Grouping */
-.cat-group{margin-bottom:32px;animation:fadeUp .4s ease}
-.cat-header{
-  font-family:var(--mono);font-size:.75rem;font-weight:700;color:var(--t1);
-  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;
-  display:flex;align-items:center;gap:8px;
-}
-.cat-header::before{content:'///';color:var(--accent2)}
-.cat-count{margin-left:auto;font-size:.6rem;color:var(--t3);letter-spacing:1px;font-variant-numeric:tabular-nums}
-.cat-count b{color:var(--down)}
-.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-
-/* Grid & Cards — statusGrid is a vertical container, per-category grid inside */
-.status-grid{display:flex;flex-direction:column;gap:0;margin-bottom:4px}
-.status-grid > .skeleton{margin-bottom:12px}
-.sc{
-  position:relative;
-  background:var(--card);
-  border:1px solid var(--border2);
-  border-radius:8px;padding:18px 20px;
-  overflow:hidden;cursor:default;
-  transition:all .25s;
-  backdrop-filter:blur(8px);
-  animation:fadeUp .4s ease both;
-}
-.sc::after{
-  content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);
-}
-.sc:hover{transform:translateY(-2px);border-color:rgba(255,255,255,0.1)}
-.sc.up{border-color:rgba(0,255,136,0.18);box-shadow:0 0 30px rgba(0,255,136,0.04)}
-.sc.up:hover{border-color:rgba(0,255,136,0.35);box-shadow:0 4px 30px rgba(0,255,136,0.1)}
-.sc.down{border-color:rgba(255,68,68,0.18);box-shadow:0 0 30px rgba(255,68,68,0.04)}
-.sc.down:hover{border-color:rgba(255,68,68,0.35);box-shadow:0 4px 30px rgba(255,68,68,0.1)}
-.sc.pending{border-color:rgba(255,170,0,0.22);box-shadow:0 0 30px rgba(255,170,0,0.05)}
-.sc.pending:hover{border-color:rgba(255,170,0,0.4);box-shadow:0 4px 30px rgba(255,170,0,0.1)}
-
-.sc-glow{
-  position:absolute;top:-40px;right:-40px;width:120px;height:120px;
-  border-radius:50%;opacity:.06;transition:opacity .3s;
-}
-.sc.up .sc-glow{background:var(--up)}.sc.down .sc-glow{background:var(--down)}.sc.pending .sc-glow{background:var(--warn)}
-.sc:hover .sc-glow{opacity:.12}
-
-.sc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.sc-host{font-family:var(--mono);font-size:.8rem;color:var(--t2)}
-.sc-pill{
-  font-family:var(--mono);font-size:.6rem;font-weight:700;
-  letter-spacing:1.5px;border-radius:3px;padding:2px 8px;
-}
-.sc.up .sc-pill{background:rgba(0,255,136,0.12);color:var(--up);border:1px solid rgba(0,255,136,0.3)}
-.sc.down .sc-pill{background:rgba(255,68,68,0.12);color:var(--down);border:1px solid rgba(255,68,68,0.3)}
-.sc.pending .sc-pill{background:rgba(255,170,0,0.12);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
-
-.sc-value{font-family:var(--mono);font-size:2rem;font-weight:700;line-height:1;letter-spacing:-1px;margin-bottom:4px}
-.sc.up .sc-value{color:var(--up)}
-.sc.down .sc-value{color:var(--down)}
-.sc.pending .sc-value{color:var(--warn)}
-.sc-unit{font-size:.8rem;font-weight:400;margin-left:3px;opacity:.6}
-.sc-sub{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
-
-.sc-metrics{
-  display:flex;flex-direction:column;gap:7px;
-  margin-top:14px;padding-top:14px;
-  border-top:1px dashed rgba(255,255,255,0.06);
-}
-.mrow{display:grid;grid-template-columns:36px 1fr 54px;gap:8px;align-items:center;font-family:var(--mono);font-size:.68rem}
-.mrow .mk{color:var(--t3)}
-.mrow .mv{color:var(--t1);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
-.mbar{height:4px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden}
-.mbar>div{height:100%;border-radius:99px;transition:width .5s ease}
-.sc-bw{
-  grid-column:1/-1;
-  display:flex;gap:14px;
-  font-family:var(--mono);font-size:.68rem;
-}
-.sc-bw .in{color:var(--accent)}
-.sc-bw .out{color:var(--accent2)}
-.sc-link{font-family:var(--mono);font-size:.6rem;color:var(--accent);margin-top:12px;opacity:0;transition:.2s;transform:translateY(4px)}
-.sc:hover .sc-link{opacity:1;transform:translateY(0)}
-
-/* Pencil/Edit alias button */
-.sc-edit-btn{
-  background:rgba(0,162,255,0.07);border:1px solid rgba(0,162,255,0.18);
-  cursor:pointer;color:var(--accent);padding:3px 5px;border-radius:4px;
-  transition:.15s;flex-shrink:0;line-height:1;
-  opacity:0.55;transform:scale(1);
-  display:inline-flex;align-items:center;gap:3px;
-  font-family:var(--mono);font-size:.58rem;
-}
-.sc:hover .sc-edit-btn{opacity:1;border-color:rgba(0,162,255,0.45)}
-.sc-edit-btn:hover{color:#fff;background:rgba(0,162,255,0.22);border-color:rgba(0,162,255,0.6);transform:scale(1.05)}
-
-/* Rename modal */
-#renameModal{
-  position:fixed;inset:0;background:rgba(0,0,0,.7);
-  z-index:9000;display:none;align-items:center;justify-content:center;
-  backdrop-filter:blur(6px);
-}
-#renameModal.open{display:flex}
-.rename-box{
-  background:var(--surface);border:1px solid var(--border2);
-  border-radius:12px;width:360px;max-width:calc(100vw - 32px);padding:0;overflow:hidden;
-  box-shadow:0 0 60px rgba(0,162,255,0.12),0 24px 60px rgba(0,0,0,.7);
-  animation:fadeUp .2s ease;
-}
-.rename-header{
-  display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding:14px 18px;background:rgba(0,0,0,.3);border-bottom:1px solid var(--border2);
-}
-.rename-title{font-family:var(--mono);font-size:.75rem;font-weight:600;color:var(--t1)}
-.rename-sub{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-top:2px}
-.rename-close{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;flex-shrink:0}
-.rename-close:hover{color:var(--t1);background:rgba(255,255,255,.06)}
-.rename-body{padding:18px}
-.rename-ip{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.68rem;color:var(--t3);margin-bottom:16px;background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:6px;padding:8px 12px}
-.rip-dot{width:7px;height:7px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2);flex-shrink:0}
-.rename-ip .rip-val{color:var(--t1);font-weight:600;margin-left:auto;font-variant-numeric:tabular-nums}
-.rename-field{margin-bottom:12px}
-.rename-label{display:block;font-family:var(--mono);font-size:.6rem;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.rename-input{
-  width:100%;padding:10px 14px;border-radius:6px;
-  border:1px solid var(--border2);background:rgba(0,0,0,.4);
-  color:var(--t1);font-family:var(--mono);font-size:.82rem;
-  outline:none;transition:.2s;
-}
-.rename-input:focus{border-color:rgba(0,162,255,.6);background:rgba(0,162,255,.05);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-.rename-input::placeholder{color:var(--t3)}
-.rename-actions{display:flex;gap:8px;margin-top:16px}
-.rename-save{
-  flex:1;padding:10px;border-radius:6px;
-  background:linear-gradient(135deg,rgba(0,162,255,.9),rgba(0,100,200,.9));
-  border:none;color:#fff;font-family:var(--mono);font-size:.75rem;
-  font-weight:700;cursor:pointer;transition:.15s;
-  display:inline-flex;align-items:center;justify-content:center;gap:7px;
-}
-.rename-save:hover{opacity:.9;box-shadow:0 0 16px rgba(0,162,255,.3)}
-.rename-clear{
-  padding:10px 14px;border-radius:6px;
-  background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.2);
-  color:rgba(255,68,68,.7);font-family:var(--mono);font-size:.72rem;
-  cursor:pointer;transition:.15s;
-  display:inline-flex;align-items:center;gap:7px;
-}
-.rename-clear:hover{background:rgba(255,68,68,.15);color:#ff4444}
-
-/* Uptime Stats */
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.stat-card{
-  background:var(--card);border:1px solid var(--border2);border-radius:8px;
-  padding:14px 16px;backdrop-filter:blur(8px);
-  animation:fadeUp .4s ease .1s both;
-  transition:.2s;
-}
-.stat-card:hover{border-color:rgba(255,255,255,0.09);transform:translateY(-2px)}
-.stat-host{font-family:var(--mono);font-size:.75rem;color:var(--t2);margin-bottom:8px;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stat-host .sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.stat-uptime{font-family:var(--mono);font-size:1.3rem;font-weight:700;margin-bottom:6px;font-variant-numeric:tabular-nums}
-.upbar{height:4px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden;margin-bottom:8px}
-.upbar-fill{height:100%;border-radius:999px;transition:width .6s ease}
-.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-family:var(--mono);font-size:.65rem;color:var(--t3)}
-.stat-row span{display:flex;justify-content:space-between;gap:8px}
-.stat-row b{color:var(--t2);font-weight:500;font-variant-numeric:tabular-nums}
-
-/* Chart */
-.chart-card{
-  background:var(--card);border:1px solid var(--border2);border-radius:8px;
-  padding:20px 22px;backdrop-filter:blur(8px);
-  animation:fadeUp .4s ease .15s both;
-}
-.chart-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
-.chart-title{font-family:var(--mono);font-size:.85rem;font-weight:600;color:var(--t1)}
-.chart-sub{font-family:var(--mono);font-size:.65rem;color:var(--t3);margin-top:3px}
-.chart-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.range-btns{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-.range-btns .range-btn{border-color:transparent;border-radius:4px}
-.range-btn{
-  background:transparent;border:1px solid var(--border2);
-  color:var(--t3);font-family:var(--mono);font-size:.65rem;font-weight:600;
-  padding:4px 9px;border-radius:4px;cursor:pointer;transition:.15s;
-}
-.range-btn:hover,.range-btn.active{
-  background:rgba(0,162,255,0.1);border-color:rgba(0,162,255,0.4);color:var(--accent);
-}
-.ct-live{width:7px;height:7px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:blink 1.2s step-end infinite;display:inline-block;margin-right:8px;vertical-align:1px}
-.icon-btn{
-  display:flex;align-items:center;gap:5px;
-  background:transparent;border:1px solid var(--border2);
-  color:var(--t2);font-family:var(--mono);font-size:.65rem;font-weight:600;
-  padding:6px 12px;border-radius:6px;cursor:pointer;transition:.15s;
-}
-.icon-btn:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.14);color:var(--t1)}
-.chart-wrap{position:relative;height:260px}
-
-/* Terminal table (events) */
-.term-card{
-  background:var(--card);border:1px solid var(--border2);border-radius:8px;
-  overflow:hidden;backdrop-filter:blur(8px);
-  animation:fadeUp .4s ease .2s both;
-}
-.term-topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;
-  background:rgba(255,255,255,0.03);
-  border-bottom:1px solid var(--border2);
-}
-.term-dots{display:flex;gap:5px}
-.term-dot{width:10px;height:10px;border-radius:50%}
-.term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
-.term-title{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
-.tail-ind{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.6rem;color:var(--accent2);letter-spacing:1px;white-space:nowrap}
-.tail-dot{width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:blink 1.2s step-end infinite}
-.ev-count{font-family:var(--mono);font-size:.58rem;color:var(--t3);background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:99px;padding:1px 9px;letter-spacing:1px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#eventsBody{max-height:384px;overflow-y:auto}
-.events-table{width:100%;border-collapse:collapse;font-size:.72rem}
-.events-table thead th{position:sticky;top:0;z-index:1}
-.term-action{display:flex;gap:6px}
-.events-table{width:100%;border-collapse:collapse;font-size:.72rem}
-.events-table th{
-  text-align:left;color:var(--t3);font-weight:600;
-  font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:1.5px;
-  padding:10px 14px;border-bottom:1px solid var(--border2);background:#0d1424;white-space:nowrap;
-}
-.events-table td{
-  padding:9px 14px;border-bottom:1px solid rgba(255,255,255,0.03);
-  color:var(--t2);font-family:var(--mono);font-size:.7rem;
-  transition:.15s;
-}
-.events-table td:nth-child(2),.events-table td:nth-child(3),.events-table td:nth-child(4){font-variant-numeric:tabular-nums;white-space:nowrap}
-.events-table tr:hover td{background:rgba(0,162,255,.05)}
-.events-table tr.ev-ongoing td{background:rgba(255,68,68,.05)}
-.events-table tr.ev-ongoing:hover td{background:rgba(255,68,68,.09)}
-.events-table td:first-child{color:var(--t1)}
-.events-table tr:last-child td{border-bottom:none}
-.tag{
-  font-family:var(--mono);font-size:.6rem;font-weight:700;
-  text-transform:uppercase;letter-spacing:1px;border-radius:3px;padding:2px 7px;
-}
-.tag.resolved{background:rgba(0,255,136,0.1);color:var(--up);border:1px solid rgba(0,255,136,0.25)}
-.tag.ongoing{background:rgba(255,68,68,0.1);color:var(--down);border:1px solid rgba(255,68,68,0.25)}
-.no-events{text-align:center;color:var(--t3);padding:32px;font-family:var(--mono);font-size:.72rem}
-.del-btn{
-  display:inline-flex;align-items:center;justify-content:center;
-  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);
-  color:rgba(255,68,68,0.7);padding:4px;border-radius:4px;cursor:pointer;
-  font-family:var(--mono);font-size:.62rem;transition:.15s;
-}
-.del-btn:hover{background:rgba(255,68,68,0.18);color:#ff4444}
-.clear-btn{
-  display:inline-flex;align-items:center;gap:6px;
-  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);
-  color:rgba(255,68,68,0.7);padding:5px 11px;border-radius:4px;cursor:pointer;
-  font-family:var(--mono);font-size:.65rem;font-weight:600;transition:.15s;
-}
-.clear-btn:hover{background:rgba(255,68,68,0.18);color:#ff4444}
-
-/* Export dropdown */
-.export-wrap{position:relative}
-.export-menu{
-  display:none;position:absolute;right:0;top:calc(100% + 4px);
-  background:var(--surface);border:1px solid var(--border2);border-radius:6px;
-  min-width:190px;z-index:100;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5);
-}
-.export-wrap:hover .export-menu,.export-menu:hover{display:block}
-.export-item{
-  display:block;width:100%;text-align:left;background:transparent;border:none;
-  color:var(--t2);font-family:var(--mono);font-size:.68rem;padding:9px 14px;
-  cursor:pointer;transition:.12s;
-}
-.export-item:hover{background:rgba(255,255,255,0.04);color:var(--t1)}
-
-/* Error banner */
-.err-banner{
-  display:none;align-items:center;gap:8px;
-  background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);
-  border-radius:6px;padding:10px 14px;margin-bottom:16px;
-  font-family:var(--mono);font-size:.72rem;color:#ff4444;
-}
-.err-banner.on{display:flex}
-
-/* Skeleton */
-@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
-.skeleton{
-  background:linear-gradient(90deg,var(--card) 25%,rgba(255,255,255,.04) 50%,var(--card) 75%);
-  background-size:800px 100%;animation:shimmer 1.6s infinite;border-radius:8px;
-}
-
-/* Modal */
-.modal-overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);
-  z-index:1000;align-items:center;justify-content:center;
-}
-.modal-overlay.open{display:flex}
-.modal{
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:10px;padding:0;width:100%;max-width:440px;max-height:88vh;
-  display:flex;flex-direction:column;
-  animation:fadeUp .3s ease;overflow:hidden;
-  box-shadow:0 0 60px rgba(0,162,255,0.1),0 32px 80px rgba(0,0,0,.6);
-}
-.modal-body{padding:18px;overflow-y:auto}
-.modal-header{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:14px 18px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
-}
-.modal-title{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--t1)}
-.close-btn{background:none;border:none;color:var(--t3);cursor:pointer;font-size:1rem;transition:.15s}
-.close-btn:hover{color:var(--t1)}
-.host-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:300px;overflow-y:auto;padding-right:2px}
-.host-item{
-  display:flex;align-items:center;gap:12px;
-  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.32));
-  padding:10px 12px;border-radius:12px;
-  border:1px solid var(--border2);font-family:var(--mono);font-size:.75rem;
-  transition:.15s;
-}
-.host-item:hover{border-color:rgba(0,255,136,.35);transform:translateX(2px)}
-.hi-avatar{
-  width:38px;height:38px;border-radius:10px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--mono);font-size:.72rem;font-weight:700;color:#03121a;
-  box-shadow:0 2px 10px rgba(0,0,0,.4);
-}
-.hi-info{flex:1;min-width:0}
-.hi-title{color:var(--t1);font-weight:700;font-size:.76rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.hi-alias{color:var(--accent2);font-weight:400;font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
-.hi-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
-.hi-badge{
-  font-size:.58rem;font-weight:600;letter-spacing:.5px;
-  padding:2px 8px;border-radius:99px;border:1px solid var(--border2);
-  color:var(--t2);background:rgba(255,255,255,.02);
-  display:inline-flex;align-items:center;gap:5px;
-}
-.hi-badge.cat-network{color:#00a2ff;border-color:rgba(0,162,255,.4);background:rgba(0,162,255,.08)}
-.hi-badge.cat-hp{color:#c084fc;border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.08)}
-.hi-badge.cat-laptop{color:#ffaa00;border-color:rgba(255,170,0,.4);background:rgba(255,170,0,.08)}
-.hi-badge.snmp-on{color:var(--accent2);border-color:rgba(0,255,136,.3);background:rgba(0,255,136,.06)}
-.hi-badge.snmp-off{color:var(--t3)}
-.hi-badge.bk-ok{color:var(--accent2);border-color:rgba(0,255,136,.3)}
-.hi-badge.bk-fail{color:#ff6b6b;border-color:rgba(255,68,68,.4);background:rgba(255,68,68,.07)}
-.hi-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
-.hi-peek{background:none;border:none;cursor:pointer;color:inherit;padding:0;display:inline-flex;opacity:.7}
-.hi-peek:hover{opacity:1}
-.hi-actions{display:flex;gap:6px;flex-shrink:0}
-.hi-actions button{
-  cursor:pointer;display:inline-flex;align-items:center;gap:5px;
-  padding:7px 10px;border-radius:8px;font-family:var(--mono);font-size:.6rem;font-weight:700;letter-spacing:1px;
-  transition:.15s;
-}
-.hi-edit{color:var(--accent);background:rgba(0,162,255,.08);border:1px solid rgba(0,162,255,.3)}
-.hi-edit:hover{background:rgba(0,162,255,.2);border-color:rgba(0,162,255,.55)}
-.hi-del{color:#ff6b6b;background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.3)}
-.hi-del:hover{background:rgba(255,68,68,.2);color:#ff4444;border-color:rgba(255,68,68,.55)}
-.add-host-form{display:flex;gap:6px;flex-wrap:wrap}
-.add-host-form input{
-  flex:1;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);
-  background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.75rem;
-  transition:.2s;outline:none;min-width:120px;
-}
-.add-host-form input:focus{border-color:rgba(0,162,255,0.4);background:rgba(0,162,255,0.05)}
-.add-host-form input::placeholder{color:var(--t3)}
-.add-host-form button{
-  padding:9px 14px;border-radius:6px;background:linear-gradient(135deg,#00a2ff,#0066cc);
-  color:#000;border:none;font-family:var(--mono);font-weight:700;font-size:.72rem;cursor:pointer;transition:.15s;
-}
-.add-host-form button:hover{opacity:.85}
-
-/* ── Hosts PRO ── */
-#hostModal .modal{
-  max-width:660px;
-  border:1px solid rgba(0,255,136,.2);
-  border-radius:14px;
-  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 24px 80px rgba(0,0,0,.65),0 0 60px rgba(0,255,136,.06);
-}
-#hostModal .modal-header{
-  padding:16px 20px;
-  background:linear-gradient(180deg,rgba(0,255,136,.07),rgba(0,0,0,.35));
-  border-bottom:1px solid var(--border2);gap:12px;
-}
-.hst-count{
-  margin-left:auto;flex-shrink:0;
-  font-family:var(--mono);font-size:.62rem;font-weight:700;
-  color:var(--accent2);background:rgba(0,255,136,.08);
-  border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:4px 12px;
-}
-.hst-search{
-  display:flex;align-items:center;gap:8px;
-  background:rgba(0,0,0,.35);border:1px solid var(--border2);border-radius:8px;
-  padding:8px 12px;margin-bottom:10px;transition:.2s;
-}
-.hst-search:focus-within{border-color:rgba(0,255,136,.35);box-shadow:0 0 0 3px rgba(0,255,136,.07)}
-.hst-search input{background:transparent;border:none;outline:none;flex:1;color:var(--t1);font-family:var(--mono);font-size:.72rem}
-.hst-search input::placeholder{color:var(--t3)}
-.hst-sec{
-  background:rgba(0,0,0,.28);border:1px solid var(--border2);
-  border-radius:10px;overflow:hidden;margin-bottom:12px;
-}
-.hst-sec-h{
-  display:flex;align-items:center;gap:10px;padding:11px 14px;
-  background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);
-  font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--t1);
-}
-.hst-sec-h span{margin-left:auto;font-size:.6rem;font-weight:400;color:var(--t3);text-transform:none;letter-spacing:0}
-.hst-sec-b{padding:14px;display:grid;gap:10px}
-.hst-grid-2{grid-template-columns:1fr 1fr}
-.hst-grid-3{grid-template-columns:1fr 1fr 1fr}
-.hst-field{margin:0}
-.hst-field>label{display:block;font-family:var(--mono);font-size:.6rem;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
-.hst-field input,.hst-field select{
-  width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--border2);
-  background:rgba(0,0,0,.4);color:var(--t1);font-family:var(--mono);font-size:.74rem;
-  transition:.2s;outline:none;
-}
-.hst-field input:focus,.hst-field select:focus{border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.04)}
-.hst-field input::placeholder{color:var(--t3)}
-.hst-field select option{background:#0c1220}
-.hst-check{
-  display:flex;align-items:center;gap:9px;
-  font-family:var(--mono);font-size:.68rem;color:var(--t2);
-  background:rgba(0,255,136,.05);border:1px dashed rgba(0,255,136,.25);
-  border-radius:7px;padding:9px 12px;cursor:pointer;user-select:none;
-}
-.hst-check input{accent-color:#00ff88;width:15px;height:15px;cursor:pointer}
-.hst-oid-toggle{margin:0;border:1px solid var(--border2);border-radius:10px;background:rgba(0,0,0,.2);overflow:hidden}
-.hst-oid-toggle summary{
-  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
-  padding:11px 14px;font-family:var(--mono);font-size:.66rem;color:var(--t2);
-}
-.hst-oid-toggle summary::-webkit-details-marker{display:none}
-.hst-oid-toggle summary:hover{color:var(--t1)}
-.hst-oid-body{padding:0 14px 14px;display:grid;gap:10px}
-.hst-oid-hint{font-family:var(--mono);font-size:.6rem;line-height:1.7;color:var(--t3)}
-.hst-oid-hint code{color:var(--accent);background:rgba(0,162,255,.08);padding:1px 6px;border-radius:4px;font-size:.6rem}
-#hostModal .modal-body{padding:18px 20px 0}
-.hst-foot{
-  position:sticky;bottom:0;display:flex;gap:10px;
-  padding:14px 20px;margin:0 -20px;
-  background:rgba(8,12,20,.96);backdrop-filter:blur(12px);
-  border-top:1px solid var(--border2);
-}
-.hst-foot .btn-ghost{
-  flex:1;padding:11px;border-radius:8px;background:transparent;color:var(--t2);
-  border:1px solid var(--border2);font-family:var(--mono);font-weight:600;font-size:.74rem;cursor:pointer;transition:.15s;
-}
-.hst-foot .btn-ghost:hover{color:var(--t1);border-color:rgba(255,255,255,.2)}
-.hst-foot .btn-add{
-  flex:2;padding:11px;border-radius:8px;border:none;cursor:pointer;
-  background:linear-gradient(135deg,#00ff88,#00a2ff);color:#03121a;
-  font-family:var(--mono);font-weight:700;font-size:.76rem;
-  display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s;
-  box-shadow:0 4px 20px rgba(0,255,136,.2);
-}
-.hst-foot .btn-add:hover{filter:brightness(1.1);transform:translateY(-1px)}
-@media(max-width:640px){
-  #hostModal .modal{max-width:94vw}
-  .hst-grid-2,.hst-grid-3{grid-template-columns:1fr 1fr}
-}
-@media(max-width:440px){.hst-grid-2,.hst-grid-3{grid-template-columns:1fr}}
-.form-field{margin-bottom:12px}
-.form-label{display:block;font-family:var(--mono);font-size:.65rem;font-weight:600;color:var(--t3);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
-.form-input{
-  width:100%;padding:9px 12px;border-radius:6px;border:1px solid var(--border2);
-  background:rgba(0,0,0,0.4);color:var(--t1);font-family:var(--mono);font-size:.78rem;
-  transition:.2s;outline:none;
-}
-.form-input:focus{border-color:rgba(0,162,255,0.4);background:rgba(0,162,255,0.05)}
-.btn-primary{
-  width:100%;padding:10px;border-radius:6px;
-  background:linear-gradient(135deg,#00a2ff,#0066cc);
-  color:#000;border:none;font-family:var(--mono);font-weight:700;font-size:.78rem;
-  cursor:pointer;transition:.15s;margin-top:4px;
-}
-.btn-primary:hover{opacity:.85}
-
-/* ── System Settings PRO ── */
-#settingsModal .modal{
-  max-width:700px;
-  border:1px solid rgba(0,162,255,.22);
-  border-radius:14px;
-  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 24px 80px rgba(0,0,0,.65),0 0 60px rgba(0,162,255,.08);
-}
-#settingsModal .modal-header{
-  padding:16px 20px;
-  background:linear-gradient(180deg,rgba(0,162,255,.08),rgba(0,0,0,.35));
-  border-bottom:1px solid var(--border2);
-  gap:12px;
-}
-.set-head{display:flex;align-items:center;gap:12px;min-width:0}
-.set-ico{
-  width:38px;height:38px;border-radius:10px;flex-shrink:0;
-  background:linear-gradient(135deg,#00a2ff,#00ff88);
-  display:flex;align-items:center;justify-content:center;color:#03121a;
-  box-shadow:0 4px 18px rgba(0,162,255,.35);
-}
-.set-title{font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--t1);letter-spacing:.5px}
-.set-sub{font-family:var(--mono);font-size:.62rem;color:var(--t2);margin-top:2px}
-.set-tag{
-  margin-left:auto;flex-shrink:0;
-  font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:1.2px;
-  color:var(--accent2);background:rgba(0,255,136,.08);
-  border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:4px 10px;
-  display:flex;align-items:center;gap:6px;
-}
-.set-tag i{width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 8px var(--accent2);animation:blink 1.4s step-end infinite}
-#settingsModal .modal-body{padding:18px 20px 0}
-.set-grid{display:grid;gap:12px;padding-bottom:16px}
-.set-card{
-  background:rgba(0,0,0,.28);
-  border:1px solid var(--border2);
-  border-radius:10px;
-  overflow:hidden;
-}
-.set-card-h{
-  display:flex;align-items:center;gap:10px;
-  padding:11px 14px;
-  background:rgba(255,255,255,.02);
-  border-bottom:1px solid var(--border2);
-}
-.set-num{
-  font-family:var(--mono);font-size:.6rem;font-weight:700;color:#03121a;
-  background:linear-gradient(135deg,#00a2ff,#00ff88);
-  border-radius:6px;min-width:24px;height:24px;
-  display:flex;align-items:center;justify-content:center;padding:0 6px;
-}
-.set-card-h b{font-family:var(--mono);font-size:.68rem;letter-spacing:1.2px;text-transform:uppercase;color:var(--t1)}
-.set-card-h span{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-left:auto}
-.set-card-b{padding:14px;display:grid;gap:10px}
-.set-cols-3{grid-template-columns:repeat(3,1fr)}
-.set-cols-2{grid-template-columns:repeat(2,1fr)}
-.set-field{margin:0}
-.set-field label{
-  display:flex;align-items:center;justify-content:space-between;
-  font-family:var(--mono);font-size:.6rem;font-weight:600;
-  color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;
-}
-.set-field label em{font-style:normal;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0}
-.set-input{position:relative}
-.set-input .unit{
-  position:absolute;right:11px;top:50%;transform:translateY(-50%);
-  font-family:var(--mono);font-size:.62rem;color:var(--t3);pointer-events:none;
-}
-.set-input .form-input{padding-right:38px}
-.set-input.no-unit .form-input{padding-right:12px}
-.set-input .form-input.mono-sm{font-size:.68rem}
-.set-hint{
-  font-family:var(--mono);font-size:.6rem;color:var(--t2);
-  background:rgba(0,162,255,.06);border:1px dashed rgba(0,162,255,.25);
-  border-radius:6px;padding:7px 10px;line-height:1.6;
-}
-.set-hint b{color:var(--accent2)}
-.set-notes{
-  background:rgba(0,255,136,.04);
-  border:1px solid rgba(0,255,136,.14);
-  border-radius:10px;padding:12px 14px;
-  display:flex;flex-direction:column;gap:8px;
-  margin-bottom:16px;
-}
-.set-note{display:flex;gap:9px;font-family:var(--mono);font-size:.62rem;line-height:1.65;color:var(--t2)}
-.set-note svg{flex-shrink:0;margin-top:2px;color:var(--accent2)}
-.set-note b{color:var(--t1);font-weight:600}
-.set-foot{
-  position:sticky;bottom:0;
-  display:flex;gap:10px;align-items:center;
-  padding:14px 20px;margin:0 -20px;
-  background:rgba(8,12,20,.96);backdrop-filter:blur(12px);
-  border-top:1px solid var(--border2);
-}
-.set-foot .btn-ghost{
-  flex:1;padding:11px;border-radius:8px;
-  background:transparent;color:var(--t2);
-  border:1px solid var(--border2);
-  font-family:var(--mono);font-weight:600;font-size:.74rem;cursor:pointer;transition:.15s;
-}
-.set-foot .btn-ghost:hover{color:var(--t1);border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.03)}
-.set-foot .btn-primary{flex:2;margin-top:0;padding:11px;display:flex;align-items:center;justify-content:center;gap:8px;color:#03121a;border-radius:8px}
-@media(max-width:640px){
-  #settingsModal .modal{max-width:94vw}
-  .set-cols-3,.set-cols-2{grid-template-columns:1fr 1fr}
-  .set-tag{display:none}
-}
-@media(max-width:440px){
-  .set-cols-3,.set-cols-2{grid-template-columns:1fr}
-}
-
-/* Footer */
-.footer{
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
-  padding:10px 16px;background:rgba(0,0,0,0.3);border:1px solid var(--border2);
-  border-radius:99px;font-family:var(--mono);font-size:.65rem;color:var(--t3);
-  margin-top:24px;font-variant-numeric:tabular-nums;
-}
-.footer .fi{display:flex;align-items:center;gap:6px}
-.footer .fi b{color:var(--accent2);font-weight:700}
-#last-updated{color:var(--t1)}
-.footer-blink{animation:blink 1.5s step-end infinite}
-
-/* Summary row */
-.summary-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-.sum-card{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:12px 14px 12px 17px;backdrop-filter:blur(8px);min-height:88px;display:flex;flex-direction:column;justify-content:center;transition:.2s}
-.sum-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--t3);opacity:.6}
-.sum-card.total::before{background:var(--t2)}
-.sum-card.up::before{background:var(--up)}
-.sum-card.down::before{background:var(--down)}
-.sum-card.avg::before{background:var(--accent)}
-#fiberCard::before{background:var(--warn)}
-#mtCard::before{background:var(--accent2)}
-.sum-card .sk{font-family:var(--mono);font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
-.sum-card .sk::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--t3);flex-shrink:0}
-.sum-card.total .sk::before{background:var(--t2)}
-.sum-card.up .sk::before{background:var(--up);box-shadow:0 0 6px rgba(0,255,136,.6)}
-.sum-card.down .sk::before{background:var(--down);box-shadow:0 0 6px rgba(255,68,68,.6)}
-.sum-card.avg .sk::before{background:var(--accent);box-shadow:0 0 6px rgba(0,162,255,.6)}
-#fiberCard .sk::before{background:var(--warn)}
-#mtCard .sk::before{background:var(--accent2)}
-.sum-card .sv{font-family:var(--mono);font-size:1.5rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-a.sum-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.14)}
-.sum-card.alert{border-color:rgba(255,68,68,.45);box-shadow:0 0 16px rgba(255,68,68,.15)}
-.sum-card.calm{opacity:.65}
-.sum-card.total .sv{color:var(--t1)}
-.sum-card.up{border-color:rgba(0,255,136,.2)}
-.sum-card.up .sv{color:var(--up)}
-.sum-card.down{border-color:rgba(255,68,68,.2)}
-.sum-card.down .sv{color:var(--down)}
-.sum-card.avg .sv{color:var(--accent)}
-.lan-hint{font-family:var(--mono);font-size:.68rem;line-height:1.7;color:var(--warn);background:rgba(255,176,0,.06);border:1px solid rgba(255,176,0,.3);border-radius:8px;padding:10px 14px;margin:-8px 0 20px}
-
-/* Disabled sidebar items */
-.sb-item.sb-disabled{opacity:.38;cursor:not-allowed}
-.sb-item.sb-disabled:hover{background:transparent;color:var(--t2)}
-.soon-badge{margin-left:auto;font-size:.55rem;border:1px solid var(--border2);border-radius:99px;padding:1px 8px;color:var(--t3);letter-spacing:1px;background:rgba(0,0,0,.2)}
-
-.hamburger{display:none;background:transparent;border:none;border-right:1px solid var(--border);color:var(--t2);padding:0 14px;height:56px;cursor:pointer;font-size:1.1rem}
-
-@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-
-@media(max-width:1024px){
-  .tb-path{display:none}
-  .tb-search input{width:120px}
-  .tb-search input:focus{width:160px}
-}
-@media(max-width:768px){
-  .topbar{padding:0;overflow-x:auto}
-  .tb-left{flex-shrink:0}
-  .tb-logo{padding:0 14px}
-  .tb-search{display:none}
-  .tb-right{flex-shrink:0}
-  .live-pill{margin:0 8px}
-  .hamburger{display:block}
-  .main{flex-direction:column}
-  .sidebar{position:fixed;top:56px;left:0;bottom:0;width:240px;z-index:500;transform:translateX(-100%);transition:transform .25s ease;background:rgba(8,12,20,.98)}
-  .sidebar.open{transform:translateX(0);box-shadow:20px 0 60px rgba(0,0,0,.5)}
-  .content{padding:16px}
-  .cat-grid{grid-template-columns:1fr 1fr}
-}
-@media(max-width:480px){
-  .cat-grid,.stats-grid,.summary-row{grid-template-columns:1fr}
-}
-</style>
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Dasbor monitoring ketersediaan dan latensi jaringan">
+<title>Dasbor · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
 
-<!-- TOPBAR -->
-<div class="topbar">
-  <div class="tb-left">
-    <button class="hamburger" onclick="toggleSidebar()" title="Menu" aria-label="Menu"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4.5h12M2 8h12M2 11.5h12"/></svg></button>
-    <div class="tb-logo">
-      <div class="logo-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="logo-name">NMS<span>KOPEGTEL</span></div>
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
     </div>
-    <div class="tb-path">
-      <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
-      <span class="tb-sep">›</span>
-      <span class="crumb active">dashboard</span>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <a href="/triggers" class="nav-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+      <a href="/services" class="nav-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+      <a href="/inventory" class="nav-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+      <a href="/reports" class="nav-link" data-nav="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+      <a href="/power-analytics" class="nav-link" data-nav="power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+      <a href="/logs" class="nav-link" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+      <a href="/triggers?severity=disaster,high" class="nav-link" data-nav="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
+      <div class="nav-group">Kelola</div>
+      <a href="/discovery" class="nav-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
     </div>
-    <div class="tb-search">
-      <span style="color:var(--accent);margin-right:6px">❯</span>
-      <input type="text" id="hostSearch" placeholder="grep host..." oninput="filterHosts()">
-    </div>
-  </div>
-  <div class="tb-right">
-    <div class="live-pill"><div class="live-dot"></div>LIVE</div>
-    <div class="tb-group">
-    <a href="/logs" class="tb-btn">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-      logs
-    </a>
-    <button class="tb-btn" onclick="openSettingsModal()">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
-      settings
-    </button>
-    <button class="tb-btn" onclick="openHostModal()">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M5 7h6M5 10h4"/></svg>
-      hosts
-    </button>
-    <button class="tb-btn" id="notifBtn" onclick="toggleNotif()">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1a5 5 0 015 5v3l1.5 2.5H1.5L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg>
-      notif
-    </button>
-    <form action="/logout" method="post" style="display:flex" onsubmit="return confirm('Yakin ingin logout?')">
-      <button type="submit" class="tb-btn danger">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2H2v12h4M11 11l3-3-3-3M14 8H6"/></svg>
-        logout
-      </button>
-    </form>
-    </div>
-  </div>
-</div>
+  </aside>
 
-<!-- MAIN -->
-<div class="main">
-
-  <!-- Sidebar -->
-  <div class="sidebar" id="sidebar" style="overflow-y: auto;">
-    <div class="sb-section">
-      <div class="sb-label">ZABBIX</div>
-      <a href="/" class="sb-item" data-nav="dashboard" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-        Dashboards
-      </a>
-      <a href="/triggers" class="sb-item" data-nav="monitoring" title="Semua trigger aktif" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 4v4l2 2"/></svg>
-        Monitoring
-      </a>
-      <a href="/services" class="sb-item" data-nav="services" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 4H2v8h12V4z"/><path d="M6 16v-4M10 16v-4M4 16h8"/></svg>
-        Services
-      </a>
-      <a href="/inventory" class="sb-item" data-nav="inventory" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 7h12"/></svg>
-        Inventory
-      </a>
-      <a href="/fiber" class="sb-item" data-nav="fiber" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12c3-1 4-6 6-6s3 5 6 4"/><circle cx="2" cy="12" r="1.2"/><circle cx="14" cy="10" r="1.2"/></svg>
-        Fiber
-      </a>
-      <a href="/mikrotik" class="sb-item" data-nav="mikrotik" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 12v2M11 12v2M8 9v5M4 5.5h8"/></svg>
-        MikroTik
-      </a>
-      <a href="/reports" class="sb-item" data-nav="reports" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12V4h8v8M4 16h8M6 8h4"/></svg>
-        Reports
-      </a>
-      <a href="/logs" class="sb-item" data-nav="logs" title="Audit & system logs" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h8M2 12h10"/></svg>
-        Logs
-      </a>
-      <a href="/triggers?severity=disaster,high" class="sb-item" data-nav="alerts" title="Hanya disaster & high" style="text-decoration:none;color:inherit">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 00-4 4v3l-2 2v1h12v-1l-2-2V6a4 4 0 00-4-4z"/><path d="M6 13a2 2 0 004 0"/></svg>
-        Alerts
-      </a>
-      <div class="sb-item sb-disabled" title="Segera hadir">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
-        Users
-        <span class="soon-badge">soon</span>
-      </div>
-      <div class="sb-item sb-disabled" title="Segera hadir">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 12a4 4 0 100-8 4 4 0 000 8z"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.75 3.75l1.5 1.5M10.75 10.75l1.5 1.5M3.75 12.25l1.5-1.5M10.75 5.25l1.5-1.5"/></svg>
-        Administration
-        <span class="soon-badge">soon</span>
-      </div>
-    </div>
-    <div class="sb-section">
-      <div class="sb-label">Nodes</div>
-      <div id="sidebarHosts">
-        <div class="sb-item"><div class="sb-dot warn"></div>loading...</div>
-      </div>
-    </div>
-    <div class="sb-section" style="margin-top:auto;border-top:1px solid var(--border2);padding-top:16px;padding-bottom:16px;">
-      <div class="sb-item sb-disabled" title="Segera hadir">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 14A6 6 0 108 2a6 6 0 000 12z"/><path d="M8 11v.01M8 5a2 2 0 012 2c0 1-1 1.5-1 2"/></svg>
-        Support
-        <span class="soon-badge">soon</span>
-      </div>
-      <div class="sb-item sb-disabled" title="Segera hadir">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h8M8 4v8"/></svg>
-        Integrations
-        <span class="soon-badge">soon</span>
-      </div>
-      <div class="sb-item sb-disabled" title="Segera hadir">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="7"/><path d="M8 12v-1M8 5a2 2 0 012 2c0 1-1 1.5-1 2"/></svg>
-        Help
-        <span class="soon-badge">soon</span>
-      </div>
-      
-      <div class="sb-item" id="userSettingsToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="userSubmenu" onclick="toggleUserMenu()" onkeydown="if(event.key==='Enter'||event.key===' ') {event.preventDefault();toggleUserMenu();}">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5"/></svg>
-        User settings
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:auto"><path d="M4 6l4 4 4-4"/></svg>
-      </div>
-      <div id="userSubmenu" style="display:none; padding-left: 15px; margin-top: 2px;">
-        <div class="sb-item sb-disabled" style="font-size: 0.9em;" title="Segera hadir">Profile <span class="soon-badge">soon</span></div>
-        <div class="sb-item sb-disabled" style="font-size: 0.9em;" title="Segera hadir">API tokens <span class="soon-badge">soon</span></div>
-      </div>
-
-      <div class="sb-item" role="button" tabindex="0" title="Muat ulang data (R)" onclick="refresh()" onkeydown="if(event.key==='Enter'||event.key===' ') {event.preventDefault();refresh();}" style="margin-top:8px;">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 8A6 6 0 112 8"/><path d="M14 4v4h-4"/></svg>
-        refresh
-      </div>
-    </div>
-  </div>
-
-  <!-- Content -->
-  <div class="content">
-
-    <!-- Error Banner -->
-    <div id="errBanner" class="err-banner">
-      <span>ERR</span><span id="errMsg">Gagal mengambil data dari server.</span>
-    </div>
-
-    <!-- Status Cards -->
-    <div class="sec-row">
-      <div class="sec-title">node_status</div>
-    </div>
-    <div id="summaryRow" class="summary-row">
-      <div class="sum-card total"><div class="sk">total nodes</div><div class="sv" id="sumTotal">—</div></div>
-      <div class="sum-card up"><div class="sk">up</div><div class="sv" id="sumUp">—</div></div>
-      <div class="sum-card down"><div class="sk">down</div><div class="sv" id="sumDown">—</div></div>
-      <div class="sum-card avg"><div class="sk">avg uptime 24h</div><div class="sv" id="sumUptime">—</div></div>
-      <a href="/fiber" class="sum-card" id="fiberCard" title="Lihat monitoring fiber" style="text-decoration:none"><div class="sk">fiber alarm</div><div class="sv" id="sumFiber">—</div></a>
-      <a href="/mikrotik" class="sum-card" id="mtCard" title="Lihat health MikroTik" style="text-decoration:none"><div class="sk">mikrotik alarm</div><div class="sv" id="sumMt">—</div></a>
-    </div>
-    <div id="lanHint" class="lan-hint" style="display:none">⚠️ semua node unreachable — kemungkinan server kehilangan koneksi ke subnet LAN (cek WiFi/kabel server), bukan app yang rusak.</div>
-    <div id="statusGrid" class="status-grid">
-      <div class="skeleton" style="height:130px"></div>
-      <div class="skeleton" style="height:130px;animation-delay:.12s"></div>
-      <div class="skeleton" style="height:130px;animation-delay:.24s"></div>
-    </div>
-
-    <!-- Uptime Stats -->
-    <div class="sec-row" style="margin-top:22px">
-      <div class="sec-label">uptime_stats <span style="color:var(--t3);font-weight:400">[24h]</span></div>
-    </div>
-    <div id="statsGrid" class="stats-grid">
-      <div class="skeleton" style="height:80px"></div>
-      <div class="skeleton" style="height:80px;animation-delay:.1s"></div>
-      <div class="skeleton" style="height:80px;animation-delay:.2s"></div>
-    </div>
-
-    <!-- Chart -->
-    <div class="sec-row" style="margin-top:22px">
-      <div class="sec-label">performance_history</div>
-    </div>
-    <div class="chart-card">
-      <div class="chart-hd">
-        <div>
-          <div class="chart-title"><span class="ct-live"></span><span id="chartTitle">latency_monitor.ts</span></div>
-          <div class="chart-sub" id="chartSub">// realtime data stream — ms</div>
-        </div>
-        <div class="chart-actions">
-          <div class="range-btns" id="metricBtns">
-            <button class="range-btn active" id="mLatency" onclick="setMetric(this,'latency')">ping</button>
-            <button class="range-btn" id="mCpu" onclick="setMetric(this,'cpu')">cpu</button>
-            <button class="range-btn" id="mRam" onclick="setMetric(this,'ram')">ram</button>
-            <button class="range-btn" id="mDisk" onclick="setMetric(this,'disk')">disk</button>
-            <button class="range-btn" id="mBw" onclick="setMetric(this,'bandwidth')">bw</button>
-          </div>
-          <div class="range-btns" id="rangeBtns">
-            <button class="range-btn" id="r1h" onclick="setRange(this,1)">1H</button>
-            <button class="range-btn active" id="r6h" onclick="setRange(this,6)">6H</button>
-            <button class="range-btn" id="r24h" onclick="setRange(this,24)">24H</button>
-          </div>
-          <button class="icon-btn" onclick="refresh()">
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 8A6 6 0 112 8"/><path d="M14 4v4h-4"/></svg>
-            refresh
-          </button>
-          <div class="export-wrap">
-            <button class="icon-btn">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1v9M5 7l3 3 3-3M1 12v2a1 1 0 001 1h12a1 1 0 001-1v-2"/></svg>
-              export
-            </button>
-            <div class="export-menu" id="exportMenu"></div>
-          </div>
-        </div>
-      </div>
-      <div class="chart-wrap"><canvas id="latencyChart"></canvas></div>
-    </div>
-
-    <!-- AIOps & Analitik Prediktif -->
-    <div class="sec-row" style="margin-top:22px">
-      <div class="sec-label">aiops_anomaly_analysis</div>
-    </div>
-    <div class="term-card" id="aiopsPanel">
-      <div class="term-topbar">
-        <div class="term-title">predictive_analytics.log</div>
-        <div class="tail-ind"><span class="tail-dot"></span>live</div>
-      </div>
-      <div id="aiopsBody"><p class="no-events">$ anomaly scan → loading...</p></div>
-    </div>
-
-    <!-- Events -->
-    <div class="sec-row" style="margin-top:22px">
-      <div class="sec-label">down_events.log <span class="ev-count" id="evCount"></span></div>
-      <button class="clear-btn" onclick="clearAllEvents()" title="Hapus semua event">
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M5.5 4V2.5h5V4M4 4l.7 10h6.6L12 4"/></svg>
-        clear_all
-      </button>
-    </div>
-    <div class="term-card">
-      <div class="term-topbar">
-        <div class="term-dots">
-          <div class="term-dot r"></div>
-          <div class="term-dot y"></div>
-          <div class="term-dot g"></div>
-        </div>
-        <div class="term-title">bash — nms@kopegtel:~/logs</div>
-        <div class="tail-ind"><span class="tail-dot"></span>tail -f</div>
-      </div>
-      <div id="eventsBody"><p class="no-events">$ cat events.log → loading...</p></div>
-    </div>
-
-    <!-- Footer -->
-    <div class="footer">
-      <div class="fi">
-        <span class="footer-blink" style="color:var(--accent2)">▌</span>
-        auto-refresh <b style="color:var(--t2)">30s</b>
-      </div>
-      <div class="fi">
-        last_ping: <span id="last-updated">--:--:--</span>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- Rename / Alias Modal -->
-<div id="renameModal">
-  <div class="rename-box">
-    <div class="rename-header">
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
       <div>
-        <div class="rename-title">rename_host()</div>
-        <div class="rename-sub">alias & kategori perangkat</div>
+        <h1 class="page-title">Dasbor</h1>
+        <p class="page-sub">Pantau ketersediaan dan latensi host jaringan</p>
       </div>
-      <button class="rename-close" onclick="closeRenameModal()" aria-label="Tutup"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <div class="header-meta">
+        <label class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <input type="search" id="hostSearch" placeholder="Cari host, IP, atau kategori…" aria-label="Cari host" autocomplete="off">
+        </label>
+      </div>
+      <div class="header-actions">
+        <span class="live-badge"><span class="dot" aria-hidden="true"></span><span data-live-label>Live</span></span>
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" aria-pressed="true" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <button class="icon-btn" id="notifBtn" aria-label="Notifikasi browser" aria-pressed="false" title="Notifikasi browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="avatar" aria-hidden="true">A</span>
+            <span style="font-size:13.5px;font-weight:600">Admin</span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu">
+            <button type="button" id="menuSettings" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Pengaturan</button>
+            <button type="button" id="menuHosts" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/></svg>Kelola Host</button>
+            <button type="button" id="menuPassword" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3l6 6-9 9H6v-6l9-9z"/><path d="M13 5l6 6"/></svg>Ganti Password</button>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" class="danger" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H6v16h8M11 12H3M7 8l-4 4 4 4"/></svg>Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page" id="konten">
+      <div class="err-banner" id="errBanner" role="alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <span id="errMsg">Gagal mengambil data dari server.</span>
+      </div>
+
+      <!-- KPI -->
+      <section aria-label="Ringkasan">
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span class="kpi-label">Total Host</span></div>
+            <div class="kpi-value" id="sumTotal" data-v="0">—</div>
+            <div class="kpi-sub" id="sumTotalSub">—</div>
+            <div class="kpi-spark"><canvas class="spark" id="sparkTotal" width="220" height="60" aria-hidden="true"></canvas><span class="delta flat" id="deltaTotal">—</span></div>
+          </div>
+          <div class="kpi kpi-up">
+            <div class="kpi-top"><span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 5-6"/></svg></span><span class="kpi-label">Host Up</span></div>
+            <div class="kpi-value" id="sumUp" data-v="0">—</div>
+            <div class="kpi-sub" id="sumUpSub">—</div>
+            <div class="kpi-spark"><canvas class="spark" id="sparkUp" width="220" height="60" aria-hidden="true"></canvas><span class="delta flat" id="deltaUp">—</span></div>
+          </div>
+          <div class="kpi" id="kpiDown">
+            <div class="kpi-top"><span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4L2.5 20h19L12 4z"/><path d="M12 10v4M12 17.5v.5"/></svg></span><span class="kpi-label">Host Down</span></div>
+            <div class="kpi-value" id="sumDown" data-v="0">—</div>
+            <div class="kpi-sub" id="sumDownSub">—</div>
+            <div class="kpi-spark"><canvas class="spark" id="sparkDown" width="220" height="60" aria-hidden="true"></canvas><span class="delta flat" id="deltaDown">—</span></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="kpi-label">Rata-rata Uptime 24 Jam</span></div>
+            <div class="kpi-value" id="sumUptime">—</div>
+            <div class="kpi-sub">Periode 24 jam terakhir</div>
+            <div class="kpi-spark"><canvas class="spark" id="sparkUptime" width="220" height="60" aria-hidden="true"></canvas><span class="delta flat" id="deltaUptime">—</span></div>
+          </div>
+        </div>
+
+        <div class="alert-banner" id="lanHint" style="display:none" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4L2.5 20h19L12 4z"/><path d="M12 10v4M12 17.5v.5"/></svg>
+          <div class="alert-text">Semua host tidak merespons.<small>Aplikasi berjalan normal — yang terputus jalur server ke host.</small></div>
+          <button class="alert-toggle" id="alertToggle" aria-expanded="false" aria-controls="troubleshoot">Lihat langkah</button>
+        </div>
+        <div class="accordion" id="troubleshoot">
+          <ol>
+            <li><span>Periksa koneksi <b>WiFi / kabel</b> server — apakah alamat IP server berubah?</span></li>
+            <li><span>Pastikan <b>host menyala</b> dan berada di jaringan yang sama dengan server.</span></li>
+            <li><span>Periksa <b>firewall</b> host mengizinkan ping (ICMP).</span></li>
+            <li><span>Perbarui alamat IP melalui halaman <b><a href="/discovery">Discovery</a></b>.</span></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- HOST -->
+      <section class="section" aria-label="Daftar host">
+        <div class="section-head">
+          <div><h2 class="section-title">Daftar Host</h2><p class="section-hint" id="hostsCount">Memuat…</p></div>
+        </div>
+        <div class="hosts-toolbar">
+          <div class="seg" id="filterSeg" role="group" aria-label="Filter status host">
+            <button class="seg-btn active" data-filter="all">Semua <span class="n" id="countAll">0</span></button>
+            <button class="seg-btn" data-filter="up">Up <span class="n" id="countUp">0</span></button>
+            <button class="seg-btn" data-filter="down">Down <span class="n" id="countDown">0</span></button>
+          </div>
+          <span class="toolbar-spacer"></span>
+          <a class="btn" href="/discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>Discovery</a>
+          <button class="btn btn-primary" id="btnAddHost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Tambah Host</button>
+        </div>
+        <div id="statusGrid" style="margin-top:16px">
+          <div class="skeleton" style="height:150px"></div>
+        </div>
+      </section>
+
+      <!-- GRAFIK -->
+      <section class="section" aria-label="Grafik latensi">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title"><span class="pulse-dot" aria-hidden="true"></span><span id="chartTitle">Latensi Jaringan</span></h2>
+              <p class="card-desc" id="chartSub">Aliran data ping waktu nyata</p>
+            </div>
+            <div class="card-controls">
+              <div class="seg" id="metricBtns" role="group" aria-label="Pilih metrik">
+                <button class="seg-btn active" data-metric="latency">Ping</button>
+                <button class="seg-btn" data-metric="cpu">CPU</button>
+                <button class="seg-btn" data-metric="ram">RAM</button>
+                <button class="seg-btn" data-metric="disk">Disk</button>
+                <button class="seg-btn" data-metric="bandwidth">Bandwidth</button>
+              </div>
+              <div class="seg" id="rangeBtns" role="group" aria-label="Pilih rentang waktu">
+                <button class="seg-btn" data-range="1">1 jam</button>
+                <button class="seg-btn active" data-range="6">6 jam</button>
+                <button class="seg-btn" data-range="24">24 jam</button>
+              </div>
+              <button class="btn" id="btnRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Refresh</button>
+              <span style="position:relative">
+                <button class="btn" id="exportBtn" aria-haspopup="menu" aria-label="Ekspor data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 19v2h16v-2"/></svg>Ekspor</button>
+                <span class="menu-pop" id="exportMenu" role="menu" style="min-width:230px"></span>
+              </span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="latencyChart" role="img" aria-label="Grafik latensi host"></canvas>
+            <div class="chart-empty" id="chartEmpty" style="display:none" role="status">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l5-5 3 3 5-6 5 5"/><path d="M3 21h18"/></svg>
+              <b>Belum ada data pada rentang ini</b>
+              <span>Coba pilih rentang waktu lain atau tunggu pembaruan berikutnya.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ANOMALI (kartu fiber & mikrotik tetap sebagai konteks alarm) -->
+      <section class="section" aria-label="Kesehatan tambahan">
+        <div class="host-grid">
+          <a href="/fiber" class="host-card" id="fiberCard" style="text-decoration:none" aria-label="Buka monitoring fiber">
+            <div class="host-top"><div style="flex:1;min-width:0"><div class="host-name">Alarm Fiber</div><div class="host-ip">Redaman di luar batas</div></div></div>
+            <div class="host-main"><span class="host-lat" id="sumFiber">—</span></div>
+          </a>
+          <a href="/mikrotik" class="host-card" id="mtCard" style="text-decoration:none" aria-label="Buka health MikroTik">
+            <div class="host-top"><div style="flex:1;min-width:0"><div class="host-name">Alarm MikroTik</div><div class="host-ip">Suhu &amp; resource</div></div></div>
+            <div class="host-main"><span class="host-lat" id="sumMt">—</span></div>
+          </a>
+        </div>
+      </section>
+
+      <!-- AIOPS -->
+      <section class="section" aria-label="Analisis anomali">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Analisis Anomali</h2>
+              <p class="card-desc">Deteksi perilaku tidak wajar dalam 24 jam terakhir</p>
+            </div>
+          </div>
+          <div id="aiopsBody"><p style="color:var(--text-2);font-size:13.5px">Memuat analisis…</p></div>
+        </div>
+      </section>
+
+      <!-- KEJADIAN DOWN -->
+      <section class="section" aria-label="Kejadian down">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Kejadian Down <span class="count-badge" id="evCount"></span></h2>
+              <p class="card-desc">Riwayat host yang sempat tidak merespons</p>
+            </div>
+            <button class="btn btn-danger-ghost" id="btnClearEvents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>Hapus semua</button>
+          </div>
+          <div class="table-wrap">
+            <div id="eventsBody"><p style="color:var(--text-2);font-size:13.5px">Memuat kejadian…</p></div>
+          </div>
+          <div class="table-foot">
+            <span class="table-info" id="eventsInfo"></span>
+            <button class="btn" id="btnShowMore" style="display:none">Tampilkan lebih banyak</button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer-bar">
+        <span>Refresh otomatis 30 detik · <b id="countdown">Refresh dalam 30 dtk</b></span>
+        <span>Ping terakhir: <b id="last-updated">--:--:--</b></span>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<!-- ============ MODAL UBAH HOST ============ -->
+<div class="modal-overlay" id="renameModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="renameTitle">Ubah Host</div><div class="modal-sub">Nama tampilan &amp; kategori perangkat</div></div>
+      <button class="modal-close" id="btnCloseRename" aria-label="Tutup">✕</button>
     </div>
-    <div class="rename-body">
-      <div class="rename-ip"><span class="rip-dot"></span>IP<span id="renameIpDisplay" class="rip-val"></span></div>
-      <div class="rename-field">
-        <label class="rename-label" for="renameInput">device hostname</label>
-        <input class="rename-input" id="renameInput" type="text" placeholder="misal: HP Infinix Sandy" autocomplete="off">
+    <div class="modal-body">
+      <div class="field">
+        <label>Alamat IP</label>
+        <div class="mono" id="renameIpDisplay" style="font-size:13px"></div>
       </div>
-      <div class="rename-field">
-        <label class="rename-label" for="renameCategoryInput">kategori</label>
-        <input class="rename-input" id="renameCategoryInput" type="text" placeholder="misal: HP, Laptop, Network" autocomplete="off">
+      <div class="field">
+        <label for="renameInput">Nama tampilan</label>
+        <input id="renameInput" type="text" placeholder="misal: Router Lantai 2" autocomplete="off">
       </div>
-      <div class="rename-actions">
-        <button class="rename-save" onclick="saveAlias()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg>save_alias()</button>
-        <button class="rename-clear" onclick="clearAlias()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M5.5 4V2.5h5V4M4 4l.7 10h6.6L12 4"/></svg>rm alias</button>
+      <div class="field">
+        <label for="renameCategoryInput">Kategori</label>
+        <input id="renameCategoryInput" type="text" placeholder="misal: Network, Laptop, HP" autocomplete="off">
       </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnClearAlias">Hapus nama</button>
+      <button class="btn btn-primary" id="btnSaveAlias">Simpan</button>
     </div>
   </div>
 </div>
 
-<!-- Host Modal -->
+<!-- ============ MODAL GANTI PASSWORD ============ -->
+<div class="modal-overlay" id="passwordModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="pwTitle">Ganti Password</div><div class="modal-sub">Sesi di perangkat lain akan dikeluarkan otomatis</div></div>
+      <button class="modal-close" id="btnClosePassword" aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="passwordForm">
+        <div class="field">
+          <label for="pwCurrent">Password saat ini</label>
+          <input type="password" id="pwCurrent" autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="pwNew">Password baru (min. 8 karakter)</label>
+          <input type="password" id="pwNew" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label for="pwNew2">Ulangi password baru</label>
+          <input type="password" id="pwNew2" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label for="pwUser">Username baru <span style="font-weight:400;color:var(--text-3)">(opsional)</span></label>
+          <input type="text" id="pwUser" placeholder="Biarkan kosong untuk tetap" autocomplete="off">
+        </div>
+        <div class="form-error" id="pwError" role="alert" style="display:none"></div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnCancelPassword" type="button">Batal</button>
+      <button class="btn btn-primary" id="btnSavePassword" type="submit" form="passwordForm">Simpan Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL KELOLA HOST ============ -->
 <div class="modal-overlay" id="hostModal">
-  <div class="modal">
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="hostTitle">
     <div class="modal-header">
-      <div class="set-head">
-        <div class="set-ico" style="background:linear-gradient(135deg,#00ff88,#00a2ff)"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="3" width="13" height="8" rx="1.5"/><path d="M5 13.5h6M5.5 6.5h5M5.5 8.5h3"/></svg></div>
-        <div>
-          <div class="set-title">Hosts Config</div>
-          <div class="set-sub">// hosts.config — perangkat yang dipantau</div>
-        </div>
-      </div>
-      <div class="hst-count" id="hostCount">0 host</div>
-      <button class="close-btn" onclick="closeHostModal()" aria-label="Tutup"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <div><div class="modal-title" id="hostTitle">Kelola Host</div><div class="modal-sub" id="hostCount">0 host</div></div>
+      <button class="modal-close" id="btnCloseHosts" aria-label="Tutup">✕</button>
     </div>
     <div class="modal-body">
-      <div class="hst-search">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
-        <input type="text" id="hostFilter" placeholder="filter host / alias / kategori..." oninput="filterHostList()">
+      <div class="field">
+        <label class="sr-only" for="hostFilter">Saring host</label>
+        <input id="hostFilter" type="search" placeholder="Saring host, nama, atau kategori…" autocomplete="off">
       </div>
-      <div class="host-list" id="hostList"><div style="color:var(--t3);font-family:var(--mono);font-size:.72rem">loading...</div></div>
-      <form class="add-host-form" onsubmit="addHost(event)">
-        <div class="hst-sec" style="grid-column:1/-1;width:100%">
-          <div class="hst-sec-h"><span class="set-num">+</span>Tambah Host<span>IP wajib · lainnya opsional</span></div>
-          <div class="hst-sec-b">
-            <div class="hst-sec-b hst-grid-2" style="padding:0">
-              <div class="hst-field"><label>IP / Domain *</label><input type="text" id="newHostIp" placeholder="192.168.1.10" required></div>
-              <div class="hst-field"><label>Alias / Nama</label><input type="text" id="newHostAlias" placeholder="misal: Router Utama" title="Nama Perangkat"></div>
-              <div class="hst-field"><label>Kategori</label><input type="text" id="newHostCategory" placeholder="Network / Laptop / HP" title="Kategori Perangkat"></div>
-              <div class="hst-field"><label>SNMP Community</label><input type="text" id="newHostSnmp" placeholder="public (opsional)" title="SNMP Community"></div>
-              <div class="hst-field"><label>Interface Index</label><input type="number" id="newHostIfIndex" value="1" title="SNMP Interface Index"></div>
-              <div class="hst-field"><label>Profil SNMP</label><select id="newHostProfile" title="Profil SNMP">
-                <option value="auto">snmp: auto</option>
-                <option value="mikrotik">mikrotik</option>
-                <option value="generic">generic</option>
-              </select></div>
+      <div class="host-list" id="hostList"><div style="color:var(--text-3);font-size:13px">Memuat…</div></div>
+      <form id="addHostForm">
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">+</span>Tambah Host<span>IP wajib · lainnya opsional</span></div>
+          <div class="set-card-b">
+            <div class="field-row">
+              <div class="field"><label for="newHostIp">IP / Domain *</label><input type="text" id="newHostIp" placeholder="192.168.1.10" required></div>
+              <div class="field"><label for="newHostAlias">Nama tampilan</label><input type="text" id="newHostAlias" placeholder="misal: Router Utama"></div>
+              <div class="field"><label for="newHostCategory">Kategori</label><input type="text" id="newHostCategory" placeholder="Network / Laptop / HP"></div>
+              <div class="field"><label for="newHostSnmp">SNMP community</label><input type="text" id="newHostSnmp" placeholder="public (opsional)"></div>
+              <div class="field"><label for="newHostIfIndex">Index interface</label><input type="number" id="newHostIfIndex" value="1"></div>
+              <div class="field"><label for="newHostProfile">Profil SNMP</label><select id="newHostProfile"><option value="auto">Otomatis</option><option value="mikrotik">MikroTik</option><option value="generic">Generik</option></select></div>
             </div>
-            <div class="hst-sec-b hst-grid-3" style="padding:0">
-              <div class="hst-field"><label>SSH User</label><input type="text" id="newHostSshUser" placeholder="(opt)" title="SSH user MikroTik (untuk backup konfigurasi)"></div>
-              <div class="hst-field"><label>SSH Pass</label><input type="password" id="newHostSshPass" placeholder="(opt)" title="SSH password" autocomplete="new-password"></div>
-              <div class="hst-field"><label>SSH Port</label><input type="number" id="newHostSshPort" value="22" title="SSH port"></div>
+            <div class="field-row cols-3">
+              <div class="field"><label for="newHostSshUser">User SSH</label><input type="text" id="newHostSshUser" placeholder="opsional" autocomplete="off"></div>
+              <div class="field"><label for="newHostSshPass">Sandi SSH</label><input type="password" id="newHostSshPass" placeholder="opsional" autocomplete="new-password"></div>
+              <div class="field"><label for="newHostSshPort">Port SSH</label><input type="number" id="newHostSshPort" value="22"></div>
             </div>
-            <label class="hst-check" title="Backup konfigurasi otomatis tiap 02:00"><input type="checkbox" id="newHostBackup"> Backup otomatis 02:00 (butuh SSH user + pass)</label>
+            <div class="field"><label style="display:flex;align-items:center;gap:9px;font-weight:500;text-transform:none;letter-spacing:0"><input type="checkbox" id="newHostBackup" style="width:17px;height:17px;accent-color:var(--accent-btn)"> Backup otomatis pukul 02:00 (butuh user + sandi SSH)</label></div>
+            <details>
+              <summary style="cursor:pointer;font-size:13px;color:var(--text-2);margin-bottom:10px">OID kustom untuk unit lama (opsional)</summary>
+              <div class="field-row">
+                <div class="field"><label for="newHostCpuOid">OID CPU</label><input type="text" id="newHostCpuOid" class="mono" placeholder="1.3.6.1.4.1…"></div>
+                <div class="field"><label for="newHostMemOid">OID memori</label><input type="text" id="newHostMemOid" class="mono" placeholder="1.3.6.1.4.1…"></div>
+                <div class="field"><label for="newHostStoOid">OID penyimpanan</label><input type="text" id="newHostStoOid" class="mono" placeholder="1.3.6.1.4.1…"></div>
+                <div class="field"><label for="newHostTempOid">OID suhu</label><input type="text" id="newHostTempOid" class="mono" placeholder="1.3.6.1.4.1…"></div>
+              </div>
+              <p class="set-hint">Untuk host yang sudah ada, ubah lewat API: <span class="mono">PATCH /api/hosts/&lt;ip&gt;/snmp</span></p>
+            </details>
           </div>
         </div>
-        <details class="hst-oid-toggle" style="width:100%">
-          <summary><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4l-4 4 4 4M10 4l4 4-4 4"/></svg>oid override — unit lama (isi dari /system/health/print oid)</summary>
-          <div class="hst-oid-body hst-grid-2">
-            <div class="hst-field"><label>OID CPU</label><input type="text" id="newHostCpuOid" placeholder="1.3.6.1.4.1..."></div>
-            <div class="hst-field"><label>OID Memory</label><input type="text" id="newHostMemOid" placeholder="1.3.6.1.4.1..."></div>
-            <div class="hst-field"><label>OID Storage</label><input type="text" id="newHostStoOid" placeholder="1.3.6.1.4.1..."></div>
-            <div class="hst-field"><label>OID Suhu</label><input type="text" id="newHostTempOid" placeholder="1.3.6.1.4.1..."></div>
-            <div class="hst-oid-hint" style="grid-column:1/-1">Untuk host yang sudah ada, edit via API: <code>PATCH /api/hosts/&lt;ip&gt;/snmp</code> (termasuk ssh_user, ssh_pass, ssh_port, backup_enable).</div>
-          </div>
-        </details>
-        <div class="hst-foot" style="width:100%">
-          <button type="button" class="btn-ghost" onclick="closeHostModal()">Tutup</button>
-          <button type="submit" class="btn-add"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>add_host()</button>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="btnCloseHosts2">Tutup</button>
+          <button type="submit" class="btn btn-primary">Tambah Host</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<!-- Settings Modal -->
+<!-- ============ MODAL PENGATURAN ============ -->
 <div class="modal-overlay" id="settingsModal">
-  <div class="modal">
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="setTitle">
     <div class="modal-header">
-      <div class="set-head">
-        <div class="set-ico"><svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.2v1.9M8 12.9v1.9M1.2 8h1.9M12.9 8h1.9M3.2 3.2l1.3 1.3M11.5 11.5l1.3 1.3M3.2 12.8l1.3-1.3M11.5 4.5l1.3-1.3"/></svg></div>
-        <div>
-          <div class="set-title">System Settings</div>
-          <div class="set-sub">// system.settings — threshold alarm &amp; monitoring</div>
-        </div>
-      </div>
-      <div class="set-tag"><i></i>CONFIG</div>
-      <button class="close-btn" onclick="closeSettingsModal()" aria-label="Tutup"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+      <div><div class="modal-title" id="setTitle">Pengaturan Sistem</div><div class="modal-sub">Ambang alarm &amp; monitoring</div></div>
+      <button class="modal-close" id="btnCloseSettings" aria-label="Tutup">✕</button>
     </div>
     <div class="modal-body">
-      <form id="settingsForm" onsubmit="saveSettings(event)">
-        <div class="set-grid">
-          <!-- 01 Performance -->
-          <div class="set-card">
-            <div class="set-card-h"><span class="set-num">01</span><b>Performance Threshold</b><span>alarm CPU / RAM / Disk</span></div>
-            <div class="set-card-b set-cols-3">
-              <div class="form-field set-field">
-                <label>CPU <em>alarm &gt;</em></label>
-                <div class="set-input"><input type="number" id="cpuThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
-              </div>
-              <div class="form-field set-field">
-                <label>RAM <em>alarm &gt;</em></label>
-                <div class="set-input"><input type="number" id="ramThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
-              </div>
-              <div class="form-field set-field">
-                <label>Disk <em>alarm &gt;</em></label>
-                <div class="set-input"><input type="number" id="diskThreshold" class="form-input" step="0.1" min="1" max="100" required><span class="unit">%</span></div>
-              </div>
-            </div>
-          </div>
-          <!-- 02 Fiber redaman -->
-          <div class="set-card">
-            <div class="set-card-h"><span class="set-num">02</span><b>Fiber Redaman</b><span>Rx / Tx · dBm</span></div>
-            <div class="set-card-b set-cols-2">
-              <div class="form-field set-field"><label>Rx overload <em>&gt; perlu peredam</em></label><div class="set-input"><input type="number" id="fiberOverload" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="form-field set-field"><label>Rx target <em>ideal</em></label><div class="set-input"><input type="number" id="fiberTarget" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="form-field set-field"><label>Rx warning <em>&lt;</em></label><div class="set-input"><input type="number" id="fiberWarn" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="form-field set-field"><label>Rx critical <em>&lt;</em></label><div class="set-input"><input type="number" id="fiberCrit" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="form-field set-field"><label>Tx min</label><div class="set-input"><input type="number" id="fiberTxMin" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="form-field set-field"><label>Tx max</label><div class="set-input"><input type="number" id="fiberTxMax" class="form-input" step="0.1" required><span class="unit">dBm</span></div></div>
-              <div class="set-hint" style="grid-column:1/-1">Urutan wajib: <b>crit &lt; warn ≤ overload</b> · contoh <b>-27 &lt; -25 ≤ -8</b> · Rx &gt; overload = sinyal terlalu kuat.</div>
-            </div>
-          </div>
-          <!-- 03 Fiber analisis -->
-          <div class="set-card">
-            <div class="set-card-h"><span class="set-num">03</span><b>Fiber Analisis</b><span>degradasi · stale · flap</span></div>
-            <div class="set-card-b set-cols-2">
-              <div class="form-field set-field"><label>Degradasi <em>≥ dB</em></label><div class="set-input"><input type="number" id="fiberDegDb" class="form-input" step="0.1" min="0.5" max="10" required><span class="unit">dB</span></div></div>
-              <div class="form-field set-field"><label>Degradasi window</label><div class="set-input"><input type="number" id="fiberDegDays" class="form-input" step="1" min="1" max="30" required><span class="unit">hari</span></div></div>
-              <div class="form-field set-field"><label>Stale <em>≥ menit</em></label><div class="set-input"><input type="number" id="fiberStaleMin" class="form-input" step="1" min="10" max="10080" required><span class="unit">mnt</span></div></div>
-              <div class="form-field set-field"><label>Induk massal <em>≥ ONT</em></label><div class="set-input"><input type="number" id="fiberParentMin" class="form-input" step="1" min="2" max="50" required><span class="unit">ONT</span></div></div>
-              <div class="form-field set-field"><label>Flap <em>≥ flip</em></label><div class="set-input"><input type="number" id="fiberFlapFlips" class="form-input" step="1" min="2" max="20" required><span class="unit">flip</span></div></div>
-              <div class="form-field set-field"><label>Flap window</label><div class="set-input"><input type="number" id="fiberFlapHours" class="form-input" step="1" min="1" max="72" required><span class="unit">jam</span></div></div>
-            </div>
-          </div>
-          <!-- 04 Mikrotik -->
-          <div class="set-card">
-            <div class="set-card-h"><span class="set-num">04</span><b>MikroTik SNMP</b><span>suhu · OID · retensi</span></div>
-            <div class="set-card-b set-cols-2">
-              <div class="form-field set-field"><label>Suhu warning</label><div class="set-input"><input type="number" id="tempWarn" class="form-input" step="0.5" required><span class="unit">°C</span></div></div>
-              <div class="form-field set-field"><label>Suhu critical</label><div class="set-input"><input type="number" id="tempCrit" class="form-input" step="0.5" required><span class="unit">°C</span></div></div>
-              <div class="form-field set-field"><label>OID CPU</label><div class="set-input no-unit"><input type="text" id="mtCpuOid" class="form-input mono-sm"></div></div>
-              <div class="form-field set-field"><label>OID Memory</label><div class="set-input no-unit"><input type="text" id="mtMemOid" class="form-input mono-sm"></div></div>
-              <div class="form-field set-field"><label>OID Storage</label><div class="set-input no-unit"><input type="text" id="mtStoOid" class="form-input mono-sm"></div></div>
-              <div class="form-field set-field"><label>OID Suhu</label><div class="set-input no-unit"><input type="text" id="mtTempOid" class="form-input mono-sm"></div></div>
-              <div class="form-field set-field"><label>Pembagi suhu</label><div class="set-input"><input type="number" id="mtTempDiv" class="form-input" step="1" min="1" max="1000" required><span class="unit">÷</span></div></div>
-              <div class="form-field set-field"><label>MT stale <em>3–1440</em></label><div class="set-input"><input type="number" id="mtStaleMin" class="form-input" step="1" min="3" max="1440" required><span class="unit">mnt</span></div></div>
-              <div class="form-field set-field" style="grid-column:1/-1"><label>Backup simpan versi <em>3–50</em></label><div class="set-input"><input type="number" id="mtBackupKeep" class="form-input" step="1" min="3" max="50" required><span class="unit">versi</span></div></div>
-            </div>
-          </div>
-          <div class="set-notes">
-            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v3.4M8 5v.2"/></svg><span><b>Hysteresis 5</b> — alarm saat &gt; batas, pulih saat ≤ batas−5 agar tidak flapping.</span></div>
-            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 1a5 5 0 015 5v3l1.5 2.5h-13L3 9V6a5 5 0 015-5zM6.5 13.5a1.5 1.5 0 003 0"/></svg><span><b>Telegram DOWN</b> — maksimal 1×/10 menit per host saat flapping.</span></div>
-            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h3l2-4 3 8 2-4h2"/></svg><span><b>Fiber</b> — degradasi = Rx turun ≥ dB dalam N hari · stale = tanpa data baru ≥ N menit · flap = bolak-balik normal↔terganggu ≥ N flip.</span></div>
-            <div class="set-note"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="12" height="8" rx="1.5"/><path d="M5 13h6"/></svg><span><b>MikroTik</b> — suhu mentah SNMP dibagi pembagi (umumnya 10). OID beda per unit lama → override per host di menu hosts.</span></div>
+      <form id="settingsForm">
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">01</span>Ambang Kinerja<span>Alarm CPU / RAM / Disk</span></div>
+          <div class="set-card-b field-row cols-3">
+            <div class="field"><label for="cpuThreshold">CPU (alarm di atas)</label><div class="input-wrap"><input type="number" id="cpuThreshold" step="0.1" min="1" max="100" required><span class="unit">%</span></div></div>
+            <div class="field"><label for="ramThreshold">RAM (alarm di atas)</label><div class="input-wrap"><input type="number" id="ramThreshold" step="0.1" min="1" max="100" required><span class="unit">%</span></div></div>
+            <div class="field"><label for="diskThreshold">Disk (alarm di atas)</label><div class="input-wrap"><input type="number" id="diskThreshold" step="0.1" min="1" max="100" required><span class="unit">%</span></div></div>
           </div>
         </div>
-        <div class="set-foot">
-          <button type="button" class="btn-ghost" onclick="closeSettingsModal()">Batal</button>
-          <button type="submit" class="btn-primary"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg>save_settings()</button>
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">02</span>Redaman Fiber<span>Rx / Tx · dBm</span></div>
+          <div class="set-card-b field-row">
+            <div class="field"><label for="fiberOverload">Rx overload</label><div class="input-wrap"><input type="number" id="fiberOverload" step="0.1" required><span class="unit">dBm</span></div></div>
+            <div class="field"><label for="fiberTarget">Rx target ideal</label><div class="input-wrap"><input type="number" id="fiberTarget" step="0.1" required><span class="unit">dBm</span></div></div>
+            <div class="field"><label for="fiberWarn">Rx warning (di bawah)</label><div class="input-wrap"><input type="number" id="fiberWarn" step="0.1" required><span class="unit">dBm</span></div></div>
+            <div class="field"><label for="fiberCrit">Rx critical (di bawah)</label><div class="input-wrap"><input type="number" id="fiberCrit" step="0.1" required><span class="unit">dBm</span></div></div>
+            <div class="field"><label for="fiberTxMin">Tx minimum</label><div class="input-wrap"><input type="number" id="fiberTxMin" step="0.1" required><span class="unit">dBm</span></div></div>
+            <div class="field"><label for="fiberTxMax">Tx maksimum</label><div class="input-wrap"><input type="number" id="fiberTxMax" step="0.1" required><span class="unit">dBm</span></div></div>
+          </div>
+          <p class="set-hint" style="margin:0 15px 15px">Urutan wajib: <b>critical &lt; warning ≤ overload</b> · contoh -27 &lt; -25 ≤ -8.</p>
+        </div>
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">03</span>Analisis Fiber<span>Degradasi · stale · flap</span></div>
+          <div class="set-card-b field-row">
+            <div class="field"><label for="fiberDegDb">Degradasi (dB)</label><div class="input-wrap"><input type="number" id="fiberDegDb" step="0.1" min="0.5" max="10" required><span class="unit">dB</span></div></div>
+            <div class="field"><label for="fiberDegDays">Jendela degradasi</label><div class="input-wrap"><input type="number" id="fiberDegDays" step="1" min="1" max="30" required><span class="unit">hari</span></div></div>
+            <div class="field"><label for="fiberStaleMin">Batas stale</label><div class="input-wrap"><input type="number" id="fiberStaleMin" step="1" min="10" max="10080" required><span class="unit">mnt</span></div></div>
+            <div class="field"><label for="fiberParentMin">Batas induk massal</label><div class="input-wrap"><input type="number" id="fiberParentMin" step="1" min="2" max="50" required><span class="unit">ONT</span></div></div>
+            <div class="field"><label for="fiberFlapFlips">Batas flap</label><div class="input-wrap"><input type="number" id="fiberFlapFlips" step="1" min="2" max="20" required><span class="unit">x</span></div></div>
+            <div class="field"><label for="fiberFlapHours">Jendela flap</label><div class="input-wrap"><input type="number" id="fiberFlapHours" step="1" min="1" max="72" required><span class="unit">jam</span></div></div>
+          </div>
+        </div>
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">04</span>SNMP MikroTik<span>Suhu · OID · retensi</span></div>
+          <div class="set-card-b field-row">
+            <div class="field"><label for="tempWarn">Suhu warning</label><div class="input-wrap"><input type="number" id="tempWarn" step="0.5" required><span class="unit">°C</span></div></div>
+            <div class="field"><label for="tempCrit">Suhu critical</label><div class="input-wrap"><input type="number" id="tempCrit" step="0.5" required><span class="unit">°C</span></div></div>
+            <div class="field"><label for="mtCpuOid">OID CPU</label><input type="text" id="mtCpuOid" class="mono mono-sm"></div>
+            <div class="field"><label for="mtMemOid">OID memori</label><input type="text" id="mtMemOid" class="mono mono-sm"></div>
+            <div class="field"><label for="mtStoOid">OID penyimpanan</label><input type="text" id="mtStoOid" class="mono mono-sm"></div>
+            <div class="field"><label for="mtTempOid">OID suhu</label><input type="text" id="mtTempOid" class="mono mono-sm"></div>
+            <div class="field"><label for="mtTempDiv">Pembagi suhu</label><div class="input-wrap"><input type="number" id="mtTempDiv" step="1" min="1" max="1000" required><span class="unit">÷</span></div></div>
+            <div class="field"><label for="mtStaleMin">Batas stale MT</label><div class="input-wrap"><input type="number" id="mtStaleMin" step="1" min="3" max="1440" required><span class="unit">mnt</span></div></div>
+            <div class="field" style="grid-column:1/-1"><label for="mtBackupKeep">Versi backup disimpan</label><div class="input-wrap"><input type="number" id="mtBackupKeep" step="1" min="3" max="50" required><span class="unit">versi</span></div></div>
+          </div>
+        </div>
+        <div class="set-card">
+          <div class="set-card-h"><span class="set-num">05</span>Tautan Publik<span>Notifikasi Telegram</span></div>
+          <div class="set-card-b">
+            <div class="field"><label for="publicUrl">URL publik dasbor (opsional)</label><input type="text" id="publicUrl" class="mono mono-sm" placeholder="mis. http://192.168.1.5:5000" autocomplete="off"></div>
+            <p class="set-hint">Dipakai untuk tombol "Buka halaman host" di notifikasi Telegram. Kosongkan untuk menonaktifkan tautan.</p>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="btnCancelSettings">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Pengaturan</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<script>
-const PALETTE=['#00a2ff','#00ff88','#ff4444','#ffaa00','#a855f7'];
-let myChart, currentRange=6, currentMetric='latency', hosts=[];
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
 
-const METRIC_CONFIG = {
-  latency:   { title:'latency_monitor.ts',       sub:'// realtime ping data stream — ms',   unit:'ms',   color: null },
-  cpu:       { title:'cpu_usage.ts',             sub:'// cpu utilization over time — %',    unit:'%',    color: '#ff4444' },
-  ram:       { title:'ram_usage.ts',             sub:'// memory usage over time — %',       unit:'%',    color: '#ffaa00' },
-  disk:      { title:'disk_usage.ts',            sub:'// disk utilization over time — %',   unit:'%',    color: '#a855f7' },
-  bandwidth: { title:'bandwidth_monitor.ts',     sub:'// network throughput — Mbps',        unit:'Mbps', color: '#00ff88' },
-};
-
-function showErr(msg){document.getElementById('errMsg').textContent=msg;document.getElementById('errBanner').classList.add('on')}
-function hideErr(){document.getElementById('errBanner').classList.remove('on')}
-
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-const ICON_EYE='<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M1.5 8S4 4.2 8 4.2 14.5 8 14.5 8 12 11.8 8 11.8 1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="1.8"/></svg>';
-const ICON_EYE_OFF='<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M1.5 8S4 4.2 8 4.2c1.4 0 2.7.4 3.8 1M14.5 8S12 11.8 8 11.8c-1.4 0-2.7-.4-3.8-1"/><path d="M2.5 2.5l11 11"/></svg>';
-const NOTIF_ICON='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="%23081220"/><circle cx="50" cy="50" r="26" fill="none" stroke="%2300a2ff" stroke-width="7"/><circle cx="50" cy="50" r="9" fill="%2300ff88"/></svg>';
-function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
-function toggleUserMenu(){
-  const sub = document.getElementById('userSubmenu');
-  const tgl = document.getElementById('userSettingsToggle');
-  if(!sub) return;
-  const isHidden = sub.style.display === 'none' || sub.style.display === '';
-  sub.style.display = isHidden ? 'block' : 'none';
-  if(tgl) tgl.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
-}
-function setActiveNav(){
-  // Dashboard index selalu aktif sebagai Dashboards; dukung juga pola path lain jika sidebar dipakai ulang
-  const path = window.location.pathname || '/';
-  const map = {'/':'dashboard','/triggers':'monitoring','/services':'services','/inventory':'inventory','/logs':'logs','/reports':'reports','/fiber':'fiber','/mikrotik':'mikrotik'};
-  let key = map[path] || 'dashboard';
-  const params = new URLSearchParams(window.location.search || '');
-  const sev = (params.get('severity') || '').toLowerCase();
-  if(path === '/triggers' && (sev.includes('disaster') || sev.includes('high'))) key = 'alerts';
-  document.querySelectorAll('[data-nav]').forEach(el=>{
-    el.classList.toggle('active', el.getAttribute('data-nav') === key);
-  });
-}
-function updateSummary(total, up, down, avgUptime, pending){
-  const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v;};
-  set('sumTotal', total);
-  set('sumUp', up);
-  set('sumDown', down);
-  set('sumUptime', avgUptime != null ? avgUptime+'%' : '—');
-  const downEl = document.getElementById('sumDown');
-  if(downEl && pending != null && pending > 0) downEl.title = `${pending} pending (belum ada data ping)`;
-  else if(downEl) downEl.removeAttribute('title');
-  const downCard = downEl ? downEl.closest('.sum-card') : null;
-  if(downCard){downCard.classList.toggle('alert',down>0);downCard.classList.toggle('calm',!(down>0));}
-  const lanHint = document.getElementById('lanHint');
-  if(lanHint){
-    const known = (up||0) + (down||0) + (pending||0);
-    lanHint.style.display = (total>0 && (up||0)===0 && known>=total) ? 'block' : 'none';
-  }
-}
-
-function renderStatus(pData, aData){
-  const grid = document.getElementById('statusGrid');
-  const sidebar = document.getElementById('sidebarHosts');
-
-  const allHosts = hosts && hosts.length ? hosts : Object.keys(pData || {});
-  const total = allHosts.length;
-  let upCount = 0;
-  let downCount = 0;
-  let pendingCount = 0;
-
-  if (!pData || Object.keys(pData).length === 0) {
-    // Tetap tampilkan semua host sebagai PENDING agar tidak dikira DOWN
-    if(total > 0){
-      pData = {};
-      allHosts.forEach(h=>{ pData[h] = []; });
-    } else {
-      grid.innerHTML = '<p style="color:var(--t3);font-family:var(--mono);font-size:.72rem">$ no hosts configured. add hosts via host manager.</p>';
-      sidebar.innerHTML = '';
-      updateSummary(total, 0, 0, null, 0);
-      return;
-    }
-  }
-
-  grid.innerHTML='';
-  sidebar.innerHTML='';
-
-  // Group by category
-  const groups = {};
-
-  // Pastikan semua host terdaftar tampil, walau belum ada data ping (PENDING)
-  const hostSet = new Set([...Object.keys(pData || {}), ...allHosts]);
-  // First, extract all hosts to groups
-  hostSet.forEach(host => {
-    const latArr = (pData && pData[host]) || [];
-    const hasData = latArr.length > 0;
-    const lat = hasData ? latArr[latArr.length - 1] : null;
-    const isPending = !hasData || lat === null;
-    const up = !isPending && lat !== -1;
-    if (up) upCount++;
-    else if (isPending) pendingCount++;
-    else downCount++;
-    const agent = aData && aData[host];
-    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
-
-    // Find category from window.categoryMap if available, else fallback; normalisasi string kosong
-    let category = window.categoryMap && window.categoryMap[host] ? window.categoryMap[host] : 'Uncategorized';
-    category = String(category || '').trim() || 'Uncategorized';
-
-    if (!groups[category]) groups[category] = [];
-    groups[category].push({ host, lat, up, pending: isPending, agent, displayName, category });
-  });
-
-  updateSummary(total, upCount, downCount, null, pendingCount);
-
-  // Render by category
-  let cardIndex = 0;
-
-  // Render sidebar categories
-  Object.keys(groups).sort().forEach(cat => {
-    const sbCat = document.createElement('div');
-    sbCat.style.cssText = 'font-family:var(--mono);font-size:.6rem;color:var(--t3);margin:10px 0 4px 16px;text-transform:uppercase;letter-spacing:1px';
-    sbCat.textContent = cat;
-    sbCat.dataset.catHeader = '1';
-    sidebar.appendChild(sbCat);
-
-    groups[cat].forEach(item => {
-      const sbEl = document.createElement('div');
-      sbEl.className = 'sb-item';
-      sbEl.style.cursor = 'pointer';
-      sbEl.setAttribute('role', 'link');
-      sbEl.setAttribute('tabindex', '0');
-      sbEl.dataset.search = (item.displayName + ' ' + item.host + ' ' + item.category).toLowerCase();
-      const dot = document.createElement('div');
-      dot.className = 'sb-dot ' + (item.pending ? 'pending' : (item.up ? 'up' : 'down'));
-      const label = document.createElement('span');
-      label.textContent = item.displayName;
-      label.title = item.pending ? `${item.host} (pending — belum ada data)` : item.host;
-      sbEl.title = item.pending ? `${item.host} (pending)` : item.host;
-      sbEl.appendChild(dot);
-      sbEl.appendChild(label);
-      const goHost = () => { window.location.href = '/host/' + encodeURIComponent(item.host); };
-      sbEl.addEventListener('click', goHost);
-      sbEl.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); goHost(); } });
-      sidebar.appendChild(sbEl);
-    });
-  });
-
-  // Render main grid categories
-  Object.keys(groups).sort().forEach(cat => {
-    const groupEl = document.createElement('div');
-    groupEl.className = 'cat-group';
-
-    if (cat !== 'Uncategorized' || Object.keys(groups).length > 1) {
-      const hdr = document.createElement('div');
-      hdr.className = 'cat-header';
-      const _gd = groups[cat].filter(i=>!i.pending && !i.up).length;
-      hdr.innerHTML = `${esc(cat)}<span class="cat-count">${groups[cat].length} hosts${_gd?` · <b>${_gd} down</b>`:''}</span>`;
-      groupEl.appendChild(hdr);
-    }
-
-    const catGrid = document.createElement('div');
-    catGrid.className = 'cat-grid';
-
-    groups[cat].forEach(item => {
-      const card = document.createElement('div');
-      const stateCls = item.pending ? 'pending' : (item.up ? 'up' : 'down');
-      card.className = `sc ${stateCls}`;
-      card.style.animationDelay = `${(cardIndex++) * .04}s`;
-      card.dataset.search = (item.displayName + ' ' + item.host + ' ' + item.category).toLowerCase();
-      const isMaint = !!(window.maintMap && window.maintMap[item.host]);
-      const pillTxt = item.pending ? 'PENDING' : (item.up ? (isMaint ? 'UP·MAINT' : 'UP') : (isMaint ? 'MAINT' : 'DOWN'));
-
-      const cpu = item.agent ? esc(item.agent.cpu) : null;
-
-      const _mc=v=>{v=parseFloat(v);return v>=90?'var(--down)':v>=70?'var(--warn)':'var(--accent2)';};
-      const _mrow=(k,v)=>{const n=parseFloat(v)||0;return `<div class="mrow"><span class="mk">${k}</span><div class="mbar"><div style="width:${Math.min(100,n)}%;background:${_mc(n)}"></div></div><span class="mv">${esc(v)}%</span></div>`;};
-      const metricsHtml = item.agent ? `
-        <div class="sc-metrics">
-          ${_mrow('cpu',item.agent.cpu)}
-          ${_mrow('ram',item.agent.ram)}
-          ${_mrow('disk',item.agent.disk)}
-          <div class="sc-bw">
-            <span class="in">↓ ${esc(item.agent.net_in||0)} Mbps</span>
-            <span class="out">↑ ${esc(item.agent.net_out||0)} Mbps</span>
-          </div>
-        </div>` : '';
-
-      // Show IP under name only when alias exists
-      const hasAlias = item.displayName !== item.host;
-      const ipSubHtml = hasAlias
-        ? `<div class="sc-ip-sub" style="font-family:var(--mono);font-size:.58rem;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.host)}</div>`
-        : '';
-
-      const latHtml = item.pending ? '<span style="font-size:1.2rem">WAIT</span>' : (item.up ? `${Number(item.lat).toFixed(1)}<span class="sc-unit">ms</span>` : '<span style="font-size:1.2rem">RTO</span>');
-
-      card.innerHTML = `
-        <div class="sc-glow"></div>
-        <div class="sc-header">
-          <div style="flex:1;min-width:0">
-            <div class="sc-host" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(item.host)}">${esc(item.displayName)}</div>
-            ${ipSubHtml}
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px">
-            <button class="sc-edit-btn" data-host="${esc(item.host)}" title="Edit nama / kategori">
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 2l3 3L5 14H2v-3L11 2z"/></svg>
-              edit
-            </button>
-            <div class="sc-pill"${(!item.pending && !item.up && isMaint) ? ' style="background:rgba(255,170,0,0.12);color:var(--warn);border:1px solid rgba(255,170,0,0.35)"' : ''}>${pillTxt}</div>
-          </div>
-        </div>
-        <div class="sc-value">${latHtml}</div>
-        <div class="sc-sub">${item.pending?'waiting_first_ping':(item.up?(isMaint?'in_maintenance — alarm disuppress':'response_time.latest'):(isMaint?'in_maintenance — alarm disuppress':'request_timed_out'))}</div>
-        ${metricsHtml}
-        <div class="sc-link">click to view details →</div>`;
-
-      card.style.cursor = 'pointer';
-      card.addEventListener('click', () => { window.location.href = '/host/' + encodeURIComponent(item.host); });
-      const editBtn = card.querySelector('.sc-edit-btn');
-      if (editBtn) {
-        editBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          const h = editBtn.getAttribute('data-host');
-          openRenameModal(h, (window.aliasMap && window.aliasMap[h]) || h, (window.categoryMap && window.categoryMap[h]) || 'Uncategorized');
-        });
-      }
-      catGrid.appendChild(card);
-    });
-
-    groupEl.appendChild(catGrid);
-    grid.appendChild(groupEl);
-  });
-
-  buildExportMenu();
-  filterHosts();
-}
-
-function renderStats(stats){
-  const grid=document.getElementById('statsGrid');
-  grid.innerHTML='';
-  const entries = Object.entries(stats || {});
-  if (!entries.length) return;
-  let sumPct = 0;
-  let counted = 0;
-  entries.forEach(([host,s],i)=>{
-    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
-    const pct=s.uptime_pct;
-    const isPending = pct === null || pct === undefined;
-    if(!isPending){ sumPct += Number(pct) || 0; counted++; }
-    const color=isPending ? '#6a8aaa' : (pct>=99?'#00ff88':pct>=95?'#ffaa00':'#ff4444');
-    const card=document.createElement('div');
-    card.className='stat-card';
-    card.dataset.search=(displayName+' '+host).toLowerCase();
-    if(isPending) card.title = 'Belum ada data 24h — menunggu ping pertama';
-    const hostHtml =
-      `<div class="stat-host"><span class="sdot" style="background:${color};box-shadow:0 0 6px ${color}"></span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(displayName)}${displayName !== host ? ` <span style="color:var(--t3);font-weight:400">· ${esc(host)}</span>` : ''}</span></div>`;
-    const pctHtml = isPending ? '—' : `${esc(pct)}%`;
-    const barW = isPending ? 0 : Number(pct);
-    const _v=(v,u)=>(v===null||v===undefined)?'—':esc(v)+u;
-    card.innerHTML=`
-      ${hostHtml}
-      <div class="stat-uptime" style="color:${color}">${pctHtml}</div>
-      <div class="upbar"><div class="upbar-fill" style="width:${barW}%;background:${color}"></div></div>
-      <div class="stat-row">
-        <span>avg <b>${_v(s.avg_ms,'ms')}</b></span>
-        <span>min <b>${_v(s.min_ms,'ms')}</b></span>
-        <span>max <b>${_v(s.max_ms,'ms')}</b></span>
-        <span>loss <b>${_v(s.avg_loss,'%')}</b></span>
-      </div>`;
-    grid.appendChild(card);
-  });
-  const avg = counted ? (sumPct / counted).toFixed(1) : null;
-  const el = document.getElementById('sumUptime');
-  if (el) el.textContent = avg !== null ? avg + '%' : '—';
-}
-
-function renderChart(labels, datasets, metric='latency'){
-  const ctx=document.getElementById('latencyChart').getContext('2d');
-  const cfg = METRIC_CONFIG[metric] || METRIC_CONFIG.latency;
-  const unit = cfg.unit;
-  const isBandwidth = metric === 'bandwidth';
-
-  const cds=Object.entries(datasets).map(([host,vals],i)=>{
-    const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
-    const c = cfg.color || PALETTE[i%PALETTE.length];
-    return{label:displayName,data:vals.map(v=>v===-1?null:v),borderColor:c,
-      backgroundColor:c+'14',borderWidth:2,tension:0.4,fill:!isBandwidth,
-      pointBackgroundColor:c,pointBorderColor:'#080c14',pointBorderWidth:2,
-      pointRadius:2.5,pointHoverRadius:5,spanGaps:true};
-  });
-
-  if(isBandwidth && window._bwOutData){
-    Object.entries(window._bwOutData.datasets).forEach(([host,vals],i)=>{
-      const displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
-      const c='#00a2ff';
-      cds.push({label:displayName+' ↑',data:vals,borderColor:c,backgroundColor:c+'14',
-        borderWidth:1.5,tension:0.4,fill:false,pointRadius:2,pointHoverRadius:4,
-        borderDash:[5,3],spanGaps:true});
-    });
-  }
-
-  const fmtLabels=labels.map(l=>l.split(' ')[1]||l);
-  const tooltipLabel = c=>{
-    const v=c.parsed.y;
-    if(v===null) return `  ${c.dataset.label}: —`;
-    return `  ${c.dataset.label}: ${v.toFixed(2)} ${unit}`;
-  };
-  const yTicksCb = v => v+' '+unit;
-
-  const chartOpts = {
-    responsive:true,maintainAspectRatio:false,
-    interaction:{mode:'index',intersect:false},
-    plugins:{
-      legend:{position:'top',align:'end',labels:{
-        color:'rgba(106,138,170,0.8)',font:{family:'JetBrains Mono',size:10},
-        boxWidth:10,boxHeight:10,borderRadius:2,padding:14,
-        usePointStyle:true,pointStyle:'circle'}},
-      tooltip:{
-        backgroundColor:'rgba(12,18,32,0.97)',
-        borderColor:'rgba(0,162,255,0.25)',borderWidth:1,
-        titleColor:'#e0f0ff',bodyColor:'rgba(106,138,170,0.9)',padding:12,
-        titleFont:{family:'JetBrains Mono',size:11},
-        bodyFont:{family:'JetBrains Mono',size:10},
-        callbacks:{label:tooltipLabel}}
-    },
-    scales:{
-      x:{grid:{color:'rgba(255,255,255,0.03)'},border:{display:false},
-        ticks:{color:'#2a4060',font:{family:'JetBrains Mono',size:9},maxRotation:0,maxTicksLimit:10}},
-      y:{grid:{color:'rgba(255,255,255,0.04)'},border:{display:false},
-        ticks:{color:'#2a4060',font:{family:'JetBrains Mono',size:9},callback:yTicksCb}}
-    }
-  };
-
-  if(!myChart){
-    myChart=new Chart(ctx,{type:'line',data:{labels:fmtLabels,datasets:cds},options:chartOpts});
-  } else {
-    myChart.data.labels=fmtLabels;
-    myChart.data.datasets=cds;
-    myChart.options.scales.y.ticks.callback=yTicksCb;
-    myChart.options.plugins.tooltip.callbacks.label=tooltipLabel;
-    myChart.update('active');
-  }
-}
-
-function renderEvents(events){
-  const body=document.getElementById('eventsBody');
-  const evCount=document.getElementById('evCount');
-  if(evCount)evCount.textContent=events.length?`${events.length} rows`:'';
-  if(!events.length){
-    body.innerHTML='<p class="no-events">$ tail -f events.log<br><span style="color:#00ff88">✓ no down events recorded</span></p>';
-    return;
-  }
-  let html='<table class="events-table"><thead><tr><th>host</th><th>started_at</th><th>resolved_at</th><th>duration</th><th>status</th><th>cmd</th></tr></thead><tbody>';
-  events.forEach(e=>{
-    const displayName = window.aliasMap && window.aliasMap[e.host] ? window.aliasMap[e.host] : e.host;
-    const hostCell = displayName !== e.host ? `${esc(displayName)} <span style="color:var(--t3)">· ${esc(e.host)}</span>` : esc(e.host);
-    html+=`<tr${e.status==='ongoing'?' class="ev-ongoing"':''}>
-      <td>${hostCell}</td>
-      <td>${esc(e.started_at)}</td>
-      <td>${esc(e.resolved_at)||'—'}</td>
-      <td>${esc(e.duration)||'—'}</td>
-      <td><span class="tag ${esc(e.status)}">${e.status==='resolved'?'resolved':'ongoing'}</span></td>
-      <td><button class="del-btn" data-event-id="${Number(e.id)}" title="Hapus event"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M5.5 4V2.5h5V4M4 4l.7 10h6.6L12 4"/></svg></button></td>
-    </tr>`;
-  });
-  html+='</tbody></table>';
-  body.innerHTML=html;
-  body.querySelectorAll('.del-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=> deleteEvent(btn.getAttribute('data-event-id')));
-  });
-}
-
-async function deleteEvent(id){
-  if(!confirm('rm event?')) return;
-  try{
-    const res=await fetch(`/api/events/${id}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
-    if(res.ok) refresh();
-  }catch(e){console.error(e);alert('Gagal menghapus event');}
-}
-
-async function clearAllEvents(){
-  if(!confirm('rm -rf events.log?')) return;
-  try{
-    const res=await fetch('/api/events/clear',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
-    if(res.ok) refresh();
-  }catch(e){console.error(e);alert('Gagal membersihkan event');}
-}
-
-function buildExportMenu(){
-  const menu=document.getElementById('exportMenu');
-  if(!menu) return;
-  if(!hosts.length){
-    menu.innerHTML=`<div style="padding:9px 14px;color:var(--t3);font-family:var(--mono);font-size:.68rem">no hosts</div>`;
-    return;
-  }
-  menu.innerHTML='';
-  hosts.forEach(h=>{
-    const b=document.createElement('button');
-    b.className='export-item';
-    b.textContent=`${h} (24h)`;
-    b.addEventListener('click', ()=> doExport(h, 24));
-    menu.appendChild(b);
-  });
-  const all=document.createElement('button');
-  all.className='export-item';
-  all.textContent='all hosts (7d)';
-  all.addEventListener('click', ()=> doExport('all', 168));
-  menu.appendChild(all);
-}
-function doExport(host,hours){
-  if(host==='all'){hosts.forEach(h=>window.open(`/api/export?host=${encodeURIComponent(h)}&hours=${encodeURIComponent(hours)}`))}
-  else window.open(`/api/export?host=${encodeURIComponent(host)}&hours=${encodeURIComponent(hours)}`);
-}
-
-function setMetric(btn,metric){
-  document.querySelectorAll('#metricBtns .range-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  currentMetric=metric;
-  const cfg=METRIC_CONFIG[metric];
-  if(cfg){
-    document.getElementById('chartTitle').textContent=cfg.title;
-    document.getElementById('chartSub').textContent=cfg.sub;
-  }
-  fetchChart();
-}
-
-function setRange(btn,range){
-  document.querySelectorAll('#rangeBtns .range-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  currentRange=range;
-  fetchChart();
-}
-
-let notifEnabled=false;
-try{ notifEnabled = localStorage.getItem('nms_notif')==='1'; }catch(_){ notifEnabled=false; }
-// Host yang sudah dinotif DOWN (dedup: 1 notif sampai pulih, anti-spam tiap 30s)
-const notifiedDown = new Set();
-function toggleNotif(){
-  if(!('Notification' in window)){alert('Browser tidak mendukung notifikasi.');return}
-  if(Notification.permission==='granted'){notifEnabled=!notifEnabled;updateNotifBtn()}
-  else Notification.requestPermission().then(p=>{if(p==='granted'){notifEnabled=true;updateNotifBtn()}else{notifEnabled=false;updateNotifBtn();}});
-}
-function updateNotifBtn(){
-  const btn=document.getElementById('notifBtn');
-  if(!btn) return;
-  btn.classList.toggle('active-notif',notifEnabled);
-  btn.setAttribute('aria-pressed', notifEnabled ? 'true' : 'false');
-  btn.title = notifEnabled ? 'Notifikasi browser AKTIF (klik untuk matikan)' : 'Notifikasi browser MATI (klik untuk aktifkan)';
-  try{
-    if(notifEnabled) localStorage.setItem('nms_notif','1');
-    else localStorage.removeItem('nms_notif');
-  }catch(_){}
-}
-function pushNotifOnce(host,title,body){
-  if(!notifEnabled||Notification.permission!=='granted') return;
-  if(notifiedDown.has(host)) return; // sudah dinotif, tunggu pulih dulu
-  notifiedDown.add(host);
-  try{
-    new Notification(title,{body,icon:NOTIF_ICON});
-  }catch(_){}
-}
-function pushNotif(title,body){
-  if(notifEnabled&&Notification.permission==='granted')
-    new Notification(title,{body,icon:NOTIF_ICON});
-}
-
-async function fetchChart(){
-  try{
-    const cfg=METRIC_CONFIG[currentMetric];
-    document.getElementById('chartSub').textContent=`${cfg.sub} [${currentRange}h]`;
-    if(currentMetric==='latency'){
-      const r=await fetch(`/api/history?hours=${currentRange}`);
-      if(!r.ok) throw new Error();
-      const d=await r.json();
-      if(d.datasets&&Object.keys(d.datasets).length) renderChart(d.labels,d.datasets,'latency');
-    } else if(currentMetric==='bandwidth'){
-      const [inRes,outRes]=await Promise.all([
-        fetch(`/api/agent/history?metric=net_in&hours=${currentRange}`),
-        fetch(`/api/agent/history?metric=net_out&hours=${currentRange}`)
-      ]);
-      const dIn=await inRes.json();
-      const dOut=await outRes.json();
-      window._bwOutData=dOut;
-      if(dIn.datasets&&Object.keys(dIn.datasets).length) renderChart(dIn.labels,dIn.datasets,'bandwidth');
-    } else {
-      const r=await fetch(`/api/agent/history?metric=${currentMetric}&hours=${currentRange}`);
-      if(!r.ok) throw new Error();
-      const d=await r.json();
-      if(d.datasets&&Object.keys(d.datasets).length) renderChart(d.labels,d.datasets,currentMetric);
-    }
-  }catch(e){console.error(e)}
-}
-
-async function loadAiops(hosts){
-  const body=document.getElementById('aiopsBody');
-  if(!body) return;
-  const results=[];
-  await Promise.all((hosts||[]).map(async h=>{
-    try{
-      const r=await fetch(`/api/host/${encodeURIComponent(h.ip)}/anomalies?hours=24&metric=latency`);
-      if(!r.ok) return;
-      const d=await r.json();
-      (d.anomalies||[]).slice(-3).forEach(a=>results.push({host:h.alias||h.ip,a}));
-    }catch(e){}
-  }));
-  results.sort((x,y)=>(y.a.score||0)-(x.a.score||0));
-  if(!results.length){body.innerHTML='<p class="no-events">$ anomaly scan → tidak ada anomali dalam 24 jam terakhir</p>';return;}
-  body.innerHTML=results.slice(0,8).map(x=>`<p class="no-events" style="color:var(--warn)">[${x.a.severity}] ${x.host} · ${x.a.timestamp||'—'} · nilai ${Number(x.a.value).toFixed(2)} · baseline ${Number(x.a.baseline).toFixed(2)} · skor ${Number(x.a.score).toFixed(2)}</p>`).join('');
-}
-
-function connectTelemetryStream(){
-  if(!window.EventSource) return;
-  const stream=new EventSource('/api/telemetry/stream');
-  stream.addEventListener('telemetry', event=>{
-    try{
-      const items=JSON.parse(event.data)||[];
-      const live=document.querySelector('.live-pill');
-      if(live) live.title=`telemetry stream: ${items.length} host`;
-    }catch(_){ }
-  });
-  stream.onerror=()=>{ stream.close(); setTimeout(connectTelemetryStream, 15000); };
-}
-
-async function refresh(){
-  try{
-    const [mRes,sRes,eRes,aRes,hRes,maintRes,fRes,mtRes]=await Promise.all([
-      fetch(`/api/history?hours=1`),fetch('/api/stats'),
-      fetch('/api/events'),fetch('/api/agent/metrics'),fetch('/api/hosts'),
-      fetch('/api/maintenance?active=1').catch(()=>null),
-      fetch('/api/fiber').catch(()=>null),
-      fetch('/api/mikrotik').catch(()=>null)
-    ]);
-    // 401 ditangani wrapper global (redirect /login); jangan tampilkan banner untuk itu
-    if([mRes,sRes,eRes,aRes,hRes].some(r=>r.status===401)) return;
-    if(!mRes.ok||!sRes.ok||!hRes.ok) throw new Error(`HTTP ${mRes.status}/${sRes.status}/${hRes.status}`);
-    const [mData,sData,eData,aData,hData]=await Promise.all([
-      mRes.json(),sRes.json(),
-      eRes.ok ? eRes.json() : [],
-      aRes.ok ? aRes.json() : {},
-      hRes.json()
-    ]);
-
-    window.aliasMap = {};
-    window.categoryMap = {};
-    window.maintMap = {};
-    try{
-      if(maintRes && maintRes.ok){
-        const mList = await maintRes.json();
-        (mList || []).forEach(r => { if(r && r.host) window.maintMap[r.host] = r; });
-      }
-    }catch(_){}
-    hosts = [];
-    if(hData && hData.forEach){
-      hData.forEach(h => {
-        const cat = String(h.category || '').trim() || 'Uncategorized';
-        window.aliasMap[h.ip] = (h.alias || '').trim() || h.ip;
-        window.categoryMap[h.ip] = cat;
-        hosts.push(h.ip);
-      });
-    }
-
-    hideErr();
-    setLiveState(true);
-    // Selalu render status agar host PENDING tetap tampil walau belum ada ping_logs
-    renderStatus((mData && mData.datasets) || {}, aData || {});
-    // Jangan timpa chart user: fetch sesuai metric/range yang dipilih
-    fetchChart();
-    // Notif DOWN 1x per host sampai pulih (dedup anti-spam); reset saat UP.
-    // Host maintenance disuppress agar tidak spam saat maintenance terjadwal.
-    Object.entries(sData || {}).forEach(([host,s])=>{
-      if(window.maintMap && window.maintMap[host]){ notifiedDown.delete(host); return; }
-      if(s && s.is_down && !s.is_pending) pushNotifOnce(host,'⚠️ Host DOWN',`${host} tidak dapat dijangkau`);
-      else notifiedDown.delete(host);
-    });
-
-    renderStats(sData || {});
-    renderEvents(Array.isArray(eData) ? eData : []);
-    loadAiops(hData || []);
-    try{
-      if(fRes && fRes.ok){
-        const fData=await fRes.json();
-        const n=(Array.isArray(fData)?fData:[]).filter(o=>o && o.severity).length;
-        const fEl=document.getElementById('sumFiber');
-        if(fEl){fEl.textContent=n;fEl.style.color=n>0?'var(--down)':'var(--up)';const _fc=document.getElementById('fiberCard');if(_fc){_fc.classList.toggle('alert',n>0);_fc.classList.toggle('calm',n===0);}}
-      }
-      if(mtRes && mtRes.ok){
-        const mtData=await mtRes.json();
-        const n=(Array.isArray(mtData)?mtData:[]).filter(o=>o && o.severity).length;
-        const mEl=document.getElementById('sumMt');
-        if(mEl){mEl.textContent=n;mEl.style.color=n>0?'var(--down)':'var(--up)';const _mc=document.getElementById('mtCard');if(_mc){_mc.classList.toggle('alert',n>0);_mc.classList.toggle('calm',n===0);}}
-      }
-    }catch(_){}
-    document.getElementById('last-updated').textContent=
-      new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  }catch(err){
-    console.error(err);
-    showErr('connection_refused: '+err.message);
-    setLiveState(false);
-  }
-}
-function setLiveState(on){
-  const pill = document.querySelector('.live-pill');
-  if(!pill) return;
-  const dot = pill.querySelector('.live-dot');
-  const label = pill.childNodes[pill.childNodes.length-1];
-  if(on){
-    pill.classList.remove('off');
-    pill.title = 'Terhubung — auto-refresh 30s';
-    if(dot) dot.style.background = '';
-    if(label && label.nodeType === 3) label.textContent = 'LIVE';
-  } else {
-    pill.classList.add('off');
-    pill.title = 'Terputus — cek koneksi ke server';
-    if(dot) dot.style.background = 'var(--down)';
-    if(label && label.nodeType === 3) label.textContent = 'OFFLINE';
-  }
-}
-
-// Rename / Alias
-let _renameTargetIp = '';
-function openRenameModal(ip, currentAlias, currentCategory){
-  _renameTargetIp = ip;
-  document.getElementById('renameIpDisplay').textContent = ip;
-  
-  const inpAlias = document.getElementById('renameInput');
-  inpAlias.value = (currentAlias === ip) ? '' : currentAlias;
-  inpAlias.placeholder = ip;
-  
-  const inpCat = document.getElementById('renameCategoryInput');
-  inpCat.value = (currentCategory === 'Uncategorized') ? '' : currentCategory;
-  
-  document.getElementById('renameModal').classList.add('open');
-  setTimeout(() => inpAlias.focus(), 80);
-}
-function closeRenameModal(){
-  document.getElementById('renameModal').classList.remove('open');
-  _renameTargetIp = '';
-}
-async function saveAlias(){
-  const alias = document.getElementById('renameInput').value.trim();
-  let category = document.getElementById('renameCategoryInput').value.trim();
-  if (!category) category = 'Uncategorized';
-  
-  if(!_renameTargetIp) return;
-  try{
-    const res = await fetch(`/api/hosts/${encodeURIComponent(_renameTargetIp)}/alias`,{
-      method:'PATCH',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({alias, category})
-    });
-    if(res.ok){
-      closeRenameModal();
-      await loadHosts(); // update memory maps
-      await refresh(); // re-render
-    } else {
-      alert('Gagal menyimpan perubahan');
-    }
-  } catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); }
-}
-async function clearAlias(){
-  document.getElementById('renameInput').value = '';
-  document.getElementById('renameCategoryInput').value = 'Uncategorized';
-  await saveAlias();
-}
-
-// Search / Filter Hosts — cari by alias, IP, kategori, dan stats
-function filterHosts(){
-  const input = document.getElementById('hostSearch');
-  const query = (input ? input.value : '').toLowerCase().trim();
-
-  // Filter Cards
-  const cards = document.querySelectorAll('.sc');
-  cards.forEach(card => {
-    const text = (card.dataset.search || card.textContent.toLowerCase());
-    card.style.display = !query || text.includes(query) ? '' : 'none';
-  });
-  // Sembunyikan group header yang semua card-nya hidden
-  document.querySelectorAll('.cat-group').forEach(g=>{
-    const visible = [...g.querySelectorAll('.sc')].some(c=>c.style.display !== 'none');
-    g.style.display = visible ? '' : 'none';
-  });
-
-  // Filter Stats
-  document.querySelectorAll('.stat-card').forEach(card=>{
-    const text = (card.dataset.search || card.textContent.toLowerCase());
-    card.style.display = !query || text.includes(query) ? '' : 'none';
-  });
-
-  // Filter Sidebar (skip header kategori)
-  const sbItems = document.querySelectorAll('#sidebarHosts .sb-item');
-  sbItems.forEach(item => {
-    const text = (item.dataset && item.dataset.search) ? item.dataset.search : item.textContent.toLowerCase();
-    item.style.display = !query || text.includes(query) ? 'flex' : 'none';
-  });
-  // Sembunyikan header kategori jika tidak ada child visible
-  const sidebar = document.getElementById('sidebarHosts');
-  if (sidebar) {
-    let hasVisible = false;
-    [...sidebar.children].forEach(child=>{
-      if (child.dataset && child.dataset.catHeader) {
-        // header: tampilkan hanya jika ada item visible setelahnya sampai header berikut
-        child.style.display = 'none';
-      }
-    });
-    let currentHeader = null;
-    let headerHasVisible = false;
-    const children = [...sidebar.children];
-    children.forEach(child=>{
-      if (child.dataset && child.dataset.catHeader) {
-        if (currentHeader && headerHasVisible) currentHeader.style.display = '';
-        currentHeader = child;
-        headerHasVisible = false;
-      } else if (child.style.display !== 'none') {
-        headerHasVisible = true;
-        hasVisible = true;
-      }
-    });
-    if (currentHeader && headerHasVisible) currentHeader.style.display = '';
-  }
-}
-
-// Enter key shortcut on rename input + global shortcuts + active nav
-document.addEventListener('DOMContentLoaded', () => {
-  setActiveNav();
-  updateNotifBtn(); // sinkronkan status notif tersimpan (localStorage)
-  const rInput = document.getElementById('renameInput');
-  if(rInput) rInput.addEventListener('keydown', e => {
-    if(e.key === 'Enter') saveAlias();
-    if(e.key === 'Escape') closeRenameModal();
-  });
-  const rModal = document.getElementById('renameModal');
-  if(rModal) rModal.addEventListener('click', e => {
-    if(e.target === rModal) closeRenameModal();
-  });
-  // Global shortcuts: "/" fokus search, "r" refresh, "Escape" tutup modal/sidebar
-  document.addEventListener('keydown', e => {
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    if(e.key === '/' && !typing){
-      e.preventDefault();
-      const s = document.getElementById('hostSearch');
-      if(s) s.focus();
-    } else if((e.key === 'r' || e.key === 'R') && !typing){
-      refresh();
-    } else if(e.key === 'Escape'){
-      closeHostModal(); closeSettingsModal(); closeRenameModal();
-      const sb = document.getElementById('sidebar');
-      if(sb) sb.classList.remove('open');
-    }
-  });
-});
-
-// Host Management
-async function openHostModal(){document.getElementById('hostModal').classList.add('open');const f=document.getElementById('hostFilter');if(f)f.value='';await loadHosts()}
-function closeHostModal(){document.getElementById('hostModal').classList.remove('open')}
-function filterHostList(){
-  const q=(document.getElementById('hostFilter').value||'').toLowerCase();
-  document.querySelectorAll('#hostList .host-item').forEach(el=>{
-    el.style.display=el.textContent.toLowerCase().includes(q)?'':'none';
-  });
-}
-(function(){const lst=document.getElementById('hostList');if(!lst)return;const cnt=document.getElementById('hostCount');const upd=()=>{if(!cnt)return;const n=lst.querySelectorAll('.host-item').length;cnt.textContent=n+' host';};new MutationObserver(upd).observe(lst,{childList:true});upd();})();
-async function loadHosts(){
-  try{
-    const res=await fetch('/api/hosts');
-    if(res.ok){
-      const data = await res.json();
-      const lst = document.getElementById('hostList');
-      lst.innerHTML='';
-      window.aliasMap = {};
-      window.categoryMap = {};
-      hosts = [];
-      data.forEach(h => {
-        window.aliasMap[h.ip] = (h.alias || '').trim() || h.ip;
-        window.categoryMap[h.ip] = String(h.category || '').trim() || 'Uncategorized';
-        hosts.push(h.ip);
-
-        const div = document.createElement('div');
-        div.className = 'host-item';
-        const cat = String(h.category || '').trim() || 'Uncategorized';
-        const alias = (h.alias || '').trim();
-        const catKey = cat.toLowerCase();
-        const avColors = {network:'linear-gradient(135deg,#00a2ff,#0066cc)',hp:'linear-gradient(135deg,#c084fc,#7c3aed)',laptop:'linear-gradient(135deg,#ffaa00,#cc6600)'};
-        const av = document.createElement('div');
-        av.className = 'hi-avatar';
-        av.style.background = avColors[catKey] || 'linear-gradient(135deg,#00ff88,#00a2ff)';
-        av.textContent = (alias || h.ip).charAt(0).toUpperCase();
-        av.title = cat;
-        const info = document.createElement('div');
-        info.className = 'hi-info';
-        const title = document.createElement('div');
-        title.className = 'hi-title';
-        title.appendChild(document.createTextNode(h.ip));
-        if (alias) {
-          const aliasSpan = document.createElement('span');
-          aliasSpan.className = 'hi-alias';
-          aliasSpan.textContent = alias;
-          title.appendChild(aliasSpan);
-        }
-        const badges = document.createElement('div');
-        badges.className = 'hi-badges';
-        const catB = document.createElement('span');
-        catB.className = 'hi-badge ' + (catKey === 'network' ? 'cat-network' : catKey === 'hp' ? 'cat-hp' : catKey === 'laptop' ? 'cat-laptop' : '');
-        catB.textContent = cat;
-        badges.appendChild(catB);
-        const profB = document.createElement('span');
-        profB.className = 'hi-badge';
-        profB.title = 'Profil SNMP';
-        profB.textContent = h.snmp_profile || 'auto';
-        badges.appendChild(profB);
-        const ifB = document.createElement('span');
-        ifB.className = 'hi-badge';
-        ifB.title = 'SNMP Interface Index';
-        ifB.textContent = 'if:' + (h.if_index || 1);
-        badges.appendChild(ifB);
-        const snmpVal = h.snmp_community || '';
-        const snmpB = document.createElement('span');
-        snmpB.className = 'hi-badge ' + (snmpVal ? 'snmp-on' : 'snmp-off');
-        const dot = document.createElement('span');
-        dot.className = 'hi-dot';
-        snmpB.appendChild(dot);
-        const snmpMask = document.createElement('span');
-        snmpMask.textContent = snmpVal ? '••••' : 'no snmp';
-        snmpMask.title = snmpVal ? 'Klik ikon mata untuk intip community' : 'Tidak ada community';
-        snmpB.appendChild(snmpMask);
-        if(snmpVal){
-          const peek = document.createElement('button');
-          peek.type = 'button';
-          peek.className = 'hi-peek';
-          peek.innerHTML = ICON_EYE;
-          peek.title = 'Intip community (klik lagi untuk sembunyikan)';
-          peek.setAttribute('aria-label', 'Tampilkan community SNMP');
-          peek.addEventListener('click', (ev)=>{
-            ev.stopPropagation();
-            const shown = snmpMask.textContent !== '••••';
-            snmpMask.textContent = shown ? '••••' : snmpVal;
-            peek.innerHTML = shown ? ICON_EYE : ICON_EYE_OFF;
-          });
-          snmpB.appendChild(peek);
-        }
-        badges.appendChild(snmpB);
-        if(h.backup_enable){
-          const bk = document.createElement('span');
-          bk.className = 'hi-badge ' + (h.backup_ok ? 'bk-ok' : 'bk-fail');
-          bk.title = 'Backup konfigurasi otomatis (02:00)' + (h.backup_last ? ' — ' + h.backup_last : '');
-          bk.textContent = h.backup_ok ? '✓ backup' : '✕ backup gagal';
-          badges.appendChild(bk);
-        }
-        info.appendChild(title);
-        info.appendChild(badges);
-        const acts = document.createElement('div');
-        acts.className = 'hi-actions';
-        const editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'hi-edit';
-        editBtn.title = 'Ubah alias & kategori';
-        editBtn.setAttribute('aria-label', 'Ubah ' + h.ip);
-        editBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13l-2.6.6L3 11z"/></svg>EDIT';
-        editBtn.addEventListener('click', ()=> openRenameModal(h.ip, alias || h.ip, cat));
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'hi-del';
-        delBtn.title = 'Hapus host';
-        delBtn.setAttribute('data-host', h.ip);
-        delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h12M6.5 4V2.5h3V4M4 4l.7 10h6.6L12 4"/></svg>DEL';
-        delBtn.addEventListener('click', ()=> delHost(h.ip));
-        acts.appendChild(editBtn);
-        acts.appendChild(delBtn);
-        div.appendChild(av);
-        div.appendChild(info);
-        div.appendChild(acts);
-        lst.appendChild(div);
-      });
-      buildExportMenu();
-    }
-  }catch(e){console.error(e)}
-}
-async function addHost(event){
-  if(event) event.preventDefault();
-  const ip = document.getElementById('newHostIp').value.trim();
-  const alias = document.getElementById('newHostAlias').value.trim();
-  const categoryRaw = document.getElementById('newHostCategory').value.trim();
-  const category = categoryRaw || 'Uncategorized';
-  const snmp = document.getElementById('newHostSnmp').value.trim();
-  let idx = parseInt(document.getElementById('newHostIfIndex').value, 10);
-  if(!Number.isFinite(idx) || idx < 1) idx = 1;
-  const profile = document.getElementById('newHostProfile').value;
-  const sshUser = document.getElementById('newHostSshUser').value.trim();
-  const sshPass = document.getElementById('newHostSshPass').value;
-  let sshPort = parseInt(document.getElementById('newHostSshPort').value, 10);
-  if(!Number.isFinite(sshPort) || sshPort < 1 || sshPort > 65535) sshPort = 22;
-  const backupEn = document.getElementById('newHostBackup').checked ? 1 : 0;
-  if(backupEn && (!sshUser || !sshPass)){ alert('Error: backup aktif butuh ssh user + pass'); return; }
-  const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
-  const oids={};
-  for(const [id,key] of [['newHostCpuOid','cpu_oid'],['newHostMemOid','mem_oid'],['newHostStoOid','storage_oid'],['newHostTempOid','temp_oid']]){
-    const v=document.getElementById(id).value.trim();
-    if(v){
-      if(!oidRe.test(v)||v.length>128){ alert(`Error: ${key} bukan OID valid`); return; }
-      oids[key]=v;
-    }
-  }
-  if(!ip) return;
-  // Validasi IP/hostname sederhana agar tidak tersimpan data sampah
-  const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
-  const hostname = /^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$/;
-  if(ipv4.test(ip)){
-    const octets = ip.split('.').map(Number);
-    if(octets.some(o=>o>255)){ alert('Error: Format IP tidak valid'); return; }
-  } else if(!hostname.test(ip)){
-    alert('Error: IP/hostname tidak valid'); return;
-  }
-  let res;
-  try{
-    res = await fetch('/api/hosts', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip, alias, category, snmp_community:snmp, if_index:idx, snmp_profile:profile, ...oids, ssh_user:sshUser, ssh_pass:sshPass||undefined, ssh_port:sshPort, backup_enable:backupEn})
-    });
-  }catch(e){ console.error(e); alert('Terjadi kesalahan jaringan.'); return; }
-  if(res.ok){
-    document.getElementById('newHostIp').value='';
-    document.getElementById('newHostAlias').value='';
-    document.getElementById('newHostCategory').value='';
-    document.getElementById('newHostSnmp').value='';
-    document.getElementById('newHostIfIndex').value='1';
-    document.getElementById('newHostProfile').value='auto';
-    document.getElementById('newHostSshUser').value='';
-    document.getElementById('newHostSshPass').value='';
-    document.getElementById('newHostSshPort').value='22';
-    document.getElementById('newHostBackup').checked=false;
-    ['newHostCpuOid','newHostMemOid','newHostStoOid','newHostTempOid'].forEach(id=>document.getElementById(id).value='');
-    await loadHosts();
-    await refresh();
-  } else {
-    let msg = 'Gagal menambah host';
-    try{ const err = await res.json(); msg = 'Error: ' + (err.error || msg); }catch(_){}
-    alert(msg);
-  }
-}
-async function delHost(ip){
-  if(!confirm(`rm host ${ip}?`)) return;
-  try{
-    const res=await fetch(`/api/hosts/${encodeURIComponent(ip)}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
-    if(res.ok){await loadHosts();refresh()}else alert('Gagal hapus host.');
-  }catch(e){console.error(e);alert('Terjadi kesalahan jaringan.');}
-}
-
-// Settings
-async function openSettingsModal(){
-  document.getElementById('settingsModal').classList.add('open');
-  try{
-    const res=await fetch('/api/settings');const data=await res.json();
-    document.getElementById('cpuThreshold').value=data.cpu_threshold;
-    document.getElementById('ramThreshold').value=data.ram_threshold;
-    document.getElementById('diskThreshold').value=data.disk_threshold||90.0;
-    document.getElementById('fiberOverload').value=data.fiber_rx_overload??-8;
-    document.getElementById('fiberTarget').value=data.fiber_rx_target??-18;
-    document.getElementById('fiberWarn').value=data.fiber_rx_warn??-25;
-    document.getElementById('fiberCrit').value=data.fiber_rx_crit??-27;
-    document.getElementById('fiberTxMin').value=data.fiber_tx_min??0;
-    document.getElementById('fiberTxMax').value=data.fiber_tx_max??5;
-    document.getElementById('fiberDegDb').value=data.fiber_degrade_db??3;
-    document.getElementById('fiberDegDays').value=data.fiber_degrade_days??7;
-    document.getElementById('fiberStaleMin').value=data.fiber_stale_min??60;
-    document.getElementById('fiberFlapFlips').value=data.fiber_flap_flips??4;
-    document.getElementById('fiberFlapHours').value=data.fiber_flap_hours??24;
-    document.getElementById('fiberParentMin').value=data.fiber_parent_min??5;
-    document.getElementById('tempWarn').value=data.temp_threshold??60;
-    document.getElementById('tempCrit').value=data.temp_crit??75;
-    document.getElementById('mtCpuOid').value=data.mt_cpu_oid||'';
-    document.getElementById('mtMemOid').value=data.mt_mem_oid||'';
-    document.getElementById('mtStoOid').value=data.mt_storage_oid||'';
-    document.getElementById('mtTempOid').value=data.mt_temp_oid||'';
-    document.getElementById('mtTempDiv').value=data.mt_temp_div??10;
-    document.getElementById('mtStaleMin').value=data.mt_stale_min??15;
-    document.getElementById('mtBackupKeep').value=data.mt_backup_keep??10;
-  }catch(e){console.error(e)}
-}
-function closeSettingsModal(){document.getElementById('settingsModal').classList.remove('open')}
-async function saveSettings(e){
-  e.preventDefault();
-  const cpu=parseFloat(document.getElementById('cpuThreshold').value);
-  const ram=parseFloat(document.getElementById('ramThreshold').value);
-  const disk=parseFloat(document.getElementById('diskThreshold').value);
-  for(const [label,v] of [['CPU',cpu],['RAM',ram],['Disk',disk]]){
-    if(!Number.isFinite(v) || v < 1 || v > 100){ alert(`Error: threshold ${label} harus angka 1-100`); return; }
-  }
-  const fOver=parseFloat(document.getElementById('fiberOverload').value);
-  const fTgt=parseFloat(document.getElementById('fiberTarget').value);
-  const fWarn=parseFloat(document.getElementById('fiberWarn').value);
-  const fCrit=parseFloat(document.getElementById('fiberCrit').value);
-  const fTxMin=parseFloat(document.getElementById('fiberTxMin').value);
-  const fTxMax=parseFloat(document.getElementById('fiberTxMax').value);
-  for(const [label,v] of [['fiber overload',fOver],['fiber target',fTgt],['fiber warn',fWarn],['fiber crit',fCrit]]){
-    if(!Number.isFinite(v) || v < -40 || v > 10){ alert(`Error: ${label} harus angka -40..10 dBm`); return; }
-  }
-  if(!(fCrit < fWarn && fWarn <= fOver)){ alert('Error: harus crit < warn <= overload (mis. -27 < -25 <= -8)'); return; }
-  if(!Number.isFinite(fTxMin) || !Number.isFinite(fTxMax) || fTxMin > fTxMax){ alert('Error: fiber tx_min harus <= tx_max'); return; }
-  const fDegDb=parseFloat(document.getElementById('fiberDegDb').value);
-  const fDegDays=parseInt(document.getElementById('fiberDegDays').value);
-  const fStaleMin=parseInt(document.getElementById('fiberStaleMin').value);
-  const fFlapFlips=parseInt(document.getElementById('fiberFlapFlips').value);
-  const fFlapHours=parseInt(document.getElementById('fiberFlapHours').value);
-  if(!Number.isFinite(fDegDb) || fDegDb < 0.5 || fDegDb > 10){ alert('Error: degradasi dB harus 0.5-10'); return; }
-  if(!Number.isInteger(fDegDays) || fDegDays < 1 || fDegDays > 30){ alert('Error: degradasi hari harus 1-30'); return; }
-  if(!Number.isInteger(fStaleMin) || fStaleMin < 10 || fStaleMin > 10080){ alert('Error: stale menit harus 10-10080'); return; }
-  if(!Number.isInteger(fFlapFlips) || fFlapFlips < 2 || fFlapFlips > 20){ alert('Error: flap flip harus 2-20'); return; }
-  if(!Number.isInteger(fFlapHours) || fFlapHours < 1 || fFlapHours > 72){ alert('Error: flap jam harus 1-72'); return; }
-  const fParentMin=parseInt(document.getElementById('fiberParentMin').value);
-  if(!Number.isInteger(fParentMin) || fParentMin < 2 || fParentMin > 50){ alert('Error: induk massal harus 2-50 ONT'); return; }
-  const tW=parseFloat(document.getElementById('tempWarn').value);
-  const tC=parseFloat(document.getElementById('tempCrit').value);
-  const tDiv=parseFloat(document.getElementById('mtTempDiv').value);
-  if(!Number.isFinite(tW) || tW < 0 || tW > 150 || !Number.isFinite(tC) || tC < 0 || tC > 150){ alert('Error: suhu warning/critical harus 0-150 °C'); return; }
-  if(!(tW < tC)){ alert('Error: suhu warning harus < critical'); return; }
-  if(!Number.isFinite(tDiv) || tDiv < 1 || tDiv > 1000){ alert('Error: pembagi suhu harus 1-1000'); return; }
-  const mtStale=parseInt(document.getElementById('mtStaleMin').value);
-  if(!Number.isInteger(mtStale) || mtStale < 3 || mtStale > 1440){ alert('Error: mt stale harus 3-1440 menit'); return; }
-  const mtKeep=parseInt(document.getElementById('mtBackupKeep').value);
-  if(!Number.isInteger(mtKeep) || mtKeep < 3 || mtKeep > 50){ alert('Error: backup versi harus 3-50'); return; }
-  const oidRe=/^\.?([0-9]+\.)+[0-9]+$/;
-  const mtOids={};
-  for(const [id,key] of [['mtCpuOid','mt_cpu_oid'],['mtMemOid','mt_mem_oid'],['mtStoOid','mt_storage_oid'],['mtTempOid','mt_temp_oid']]){
-    const v=document.getElementById(id).value.trim();
-    if(v){
-      if(!oidRe.test(v)||v.length>128){ alert(`Error: ${key} bukan OID valid`); return; }
-      mtOids[key]=v;
-    }
-  }
-  try{
-    const res=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cpu_threshold:cpu,ram_threshold:ram,disk_threshold:disk,fiber_rx_overload:fOver,fiber_rx_target:fTgt,fiber_rx_warn:fWarn,fiber_rx_crit:fCrit,fiber_tx_min:fTxMin,fiber_tx_max:fTxMax,fiber_degrade_db:fDegDb,fiber_degrade_days:fDegDays,fiber_stale_min:fStaleMin,fiber_flap_flips:fFlapFlips,fiber_flap_hours:fFlapHours,fiber_parent_min:fParentMin,temp_threshold:tW,temp_crit:tC,mt_temp_div:tDiv,mt_stale_min:mtStale,mt_backup_keep:mtKeep,...mtOids})});
-    if(!res.ok){
-      let m='Gagal menyimpan pengaturan';
-      try{ const j=await res.json(); m='Error: '+(j.error||m); }catch(_){}
-      alert(m); return;
-    }
-    closeSettingsModal();
-  }catch(e){console.error(e);alert('Terjadi kesalahan jaringan.');}
-}
-
-// Close modals on backdrop click
-document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click',e=>{if(e.target===o) o.classList.remove('open')});
-});
-
-refresh();
-connectTelemetryStream();
-setInterval(refresh,30000);
-</script>
-<script>
-// Upgrade: redirect otomatis ke /login jika sesi habis (API 401)
-(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
-</script>
 </body>
 </html>

@@ -1,190 +1,434 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MikroTik Health — NMS KOPEGTEL</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('nms_theme');
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#080c14;--surface:#0c1220;--card:rgba(12,18,32,.8);--border:rgba(0,255,136,.1);--border2:rgba(255,255,255,.06);--accent:#00a2ff;--accent2:#00ff88;--t1:#e0f0ff;--t2:#6a8aaa;--t3:#2a4060;--mono:'JetBrains Mono',monospace;--danger:#ff4444;--success:#00ff88;--warn:#ffaa00}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh}
-.topbar{position:sticky;top:0;z-index:100;height:52px;background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;padding:0 24px}
-.tb-brand{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:.72rem}
-.tb-logo{width:26px;height:26px;background:linear-gradient(135deg,#00a2ff,#00ff88);border-radius:5px;display:flex;align-items:center;justify-content:center}
-.tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
-.tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
-.tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
-.tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
-.tb-sep{color:var(--t3);font-size:.62rem}
-.back-btn{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);border:1px solid var(--border2);color:var(--t2);padding:6px 14px;border-radius:6px;font-family:var(--mono);font-size:.65rem;text-decoration:none;transition:.15s}
-.back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
-.back-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);color:var(--t2);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:.65rem;text-decoration:none}
-.back-btn:hover{color:var(--t1)}
-.wrap{padding:20px 24px 48px;max-width:1400px;margin:0 auto}
-.sec-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin-bottom:12px}
-.sec-label::before{content:'//';color:var(--accent2)}
-.info{background:rgba(0,162,255,.06);border:1px solid rgba(0,162,255,.2);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:.68rem;color:var(--t2);margin-bottom:16px;line-height:1.7}
+:root{--mono:'JetBrains Mono',ui-monospace,monospace;--font-sans:'Inter',-apple-system,'Segoe UI',sans-serif;--t1:var(--text);--t2:var(--text-2);--t3:var(--text-3);--card:var(--surface);--card2:var(--surface-2);--border2:var(--border-strong);--success:var(--ok-text);--danger:var(--down-text);--primary:var(--accent-btn);--r-card:16px;--r-input:11px;--s-3:12px;--s-4:16px;--s-5:24px;--focus-ring:0 0 0 3px var(--accent-soft);--shadow-card:var(--shadow-sm);--shadow-raised:var(--shadow)}
+.wrap{padding:0;max-width:none;margin:0}
+
+/* Komponen halaman memakai token dan pola yang sama dengan Services/Fiber. */
+.info{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:16px 18px;color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:var(--s-4);box-shadow:var(--shadow-card)}
+.filter-bar{display:flex;align-items:center;gap:10px;row-gap:12px;flex-wrap:wrap;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:18px}
+.filter-group,.range-seg{display:flex;gap:2px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:3px}
+.filter-btn,.range-btn{background:none;border:0;color:var(--t2);font-family:var(--font-sans);font-size:13px;font-weight:600;padding:9px 14px;border-radius:9px;cursor:pointer;transition:.15s;min-height:40px;white-space:nowrap}
+.filter-btn:hover,.range-btn:hover{color:var(--t1)}
+.filter-btn.active,.range-btn.active{background:var(--surface-3);color:var(--accent);box-shadow:var(--shadow-sm)}
+.filter-search{height:44px;background:var(--surface);border:1px solid var(--border);color:var(--t1);padding:0 14px;border-radius:12px;font-family:var(--font-sans);font-size:13.5px;min-width:190px;flex:1;outline:none;transition:.15s}
+.filter-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.log-card,.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--shadow-card)}
+.chart-card{margin-top:16px;padding:22px 24px}
+.chart-hd{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.chart-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.chart-sub{font-size:12.5px;color:var(--t2);margin-top:3px}
+.chart-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chart-ctl select{height:44px;min-width:130px;max-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--t1);padding:0 36px 0 13px;font:inherit;font-size:13px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--t2);font-size:11.5px;font-weight:600;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap;position:sticky;top:0;z-index:1}
+td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--t2);vertical-align:middle}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:hover td{background:var(--surface-2)}
+.empty-panel{text-align:center;padding:42px 20px;border:1px dashed var(--border-strong);border-radius:var(--r-card);background:var(--surface-2);margin:14px}
+.empty-t{font-size:15px;font-weight:700;color:var(--t1);margin-bottom:5px}
+.empty-d{font-size:12.5px;color:var(--t2);margin:0 auto 14px;line-height:1.7;max-width:440px}
+.tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.tag.normal{background:var(--ok-soft);color:var(--ok-text)}
+.tag.warning{background:var(--warn-soft);color:var(--warn-text)}
+.tag.critical{background:var(--down-soft);color:var(--down-text)}
+.tag.stale{background:var(--accent-soft);color:var(--accent-text)}
+.tag.unknown{background:var(--surface-2);color:var(--t3)}
+.advice{font-size:11.5px;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
+.btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:#fff}
+.btn.primary:hover{background:var(--accent-btn-hover);border-color:var(--accent-btn-hover)}
+.chart-wrap{position:relative;height:300px}
+
+/* ══ Adopsi shell ala Services/Fiber ══ */
+.skip-link{position:fixed;top:-60px;left:16px;z-index:2000;background:var(--surface);color:var(--t1);border:1px solid var(--border2);border-radius:10px;padding:10px 16px;text-decoration:none;transition:top .2s}
+.skip-link:focus{top:12px}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.main-col{min-width:0;display:flex;flex-direction:column}
+.sidebar{position:sticky;top:0;height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px;z-index:60}
+.brand{display:flex;align-items:center;gap:11px;padding:4px 10px 18px}
+.brand-mark{width:36px;height:36px;border-radius:11px;flex-shrink:0;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center}
+.brand-name{font-weight:800;font-size:15px;letter-spacing:-.01em;line-height:1.2}
+.brand-sub{font-size:11.5px;color:var(--t2)}
+.nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.nav-group{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);padding:14px 12px 6px}
+.nav-link{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:var(--t2);text-decoration:none;font-weight:500;font-size:13.5px;transition:background .15s,color .15s;min-height:44px;font-family:var(--font-sans)}
+.nav-link svg{width:18px;height:18px;flex-shrink:0}
+.nav-link:hover{background:var(--card2);color:var(--t1)}
+.nav-link.active{background:rgba(45,212,191,.12);color:var(--t1);font-weight:600}
+.nav-link.active::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:99px;background:var(--accent)}
+.sidebar-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}
+.collapse-btn{width:100%;display:flex;align-items:center;gap:12px;background:none;border:none;cursor:pointer;color:var(--t2);padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:500;min-height:44px;font-family:var(--font-sans)}
+.collapse-btn:hover{background:var(--card2);color:var(--t1)}
+.collapse-btn svg{width:18px;height:18px;flex-shrink:0}
+body.nav-collapsed .app{grid-template-columns:76px minmax(0,1fr)}
+body.nav-collapsed .sidebar{padding:18px 10px}
+body.nav-collapsed .brand-name,body.nav-collapsed .brand-sub,body.nav-collapsed .nav-group,body.nav-collapsed .nav-link span,body.nav-collapsed .collapse-btn span{display:none}
+body.nav-collapsed .nav-link,body.nav-collapsed .collapse-btn{justify-content:center}
+body.nav-collapsed .nav-link.active::before{left:-10px}
+.scrim{display:none}
+.hamburger-wrap{display:none}
+@media(max-width:1100px){
+.app{grid-template-columns:1fr}
+.sidebar{position:fixed;top:0;bottom:0;width:264px;transition:left .25s ease;box-shadow:var(--shadow-pop);height:100dvh;left:0;margin-left:-277px}
+body.nav-open .sidebar{margin-left:0}
+.scrim{display:block;position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .25s}
+body.nav-open .scrim{opacity:1;pointer-events:auto}
+.hamburger-wrap{display:block}
+}
+@media(pointer:coarse){.nav-link{min-height:44px}}
+
+/* Header halaman ala Services/Fiber */
+.hd{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;margin-bottom:var(--s-5)}
+.hd-t{min-width:0}
+.hd-t h1{font-size:var(--fs-h1,28px);font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.hd-t p{font-size:13px;color:var(--t2);margin-top:4px}
+.hd-a{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.upd{font-size:11.5px;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:10px 16px;min-height:44px;font-family:var(--font-sans);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--t1);text-decoration:none;transition:.15s;white-space:nowrap}
+.btn:hover{border-color:var(--t3);background:var(--bg)}
+.btn.ghost{background:transparent;border-color:var(--border2);color:var(--t2)}
+.btn.ghost:hover{background:var(--card2);color:var(--t1)}
+.btn.sm{padding:8px 14px;min-height:40px;font-size:12.5px}
+.icon-btn{width:44px !important;height:44px !important;padding:0 !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;background:var(--surface) !important;border:1px solid var(--border) !important;border-radius:12px !important;color:var(--t2) !important;cursor:pointer;font-size:17px !important;transition:.15s}
+.icon-btn:hover{color:var(--t1);border-color:var(--border2)}
+.icon-btn svg{width:18px;height:18px}
 .info b{color:var(--t1)}
 .th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
-.th-tile{background:rgba(0,0,0,.25);border:1px solid var(--border2);border-radius:8px;padding:8px 12px}
-.th-tile .k{display:block;font-family:var(--mono);font-size:.56rem;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:2px}
-.th-tile .v{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums}
-.th-note{font-family:var(--mono);font-size:.62rem;color:var(--t3);line-height:1.7}
+.th-tile{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
+.th-tile .k{display:block;font-size:11px;font-weight:600;letter-spacing:.3px;color:var(--t2);margin-bottom:2px}
+.th-tile .v{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums}
+.th-note{font-size:12.5px;color:var(--t3);line-height:1.7}
 .th-note b{color:var(--t2)}
-.filter-bar{display:flex;align-items:center;gap:8px;row-gap:12px;flex-wrap:wrap;padding:14px 16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;margin-bottom:20px}
-.filter-group{display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-.filter-group .filter-btn{border-color:transparent;border-radius:4px}
-.filter-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;padding:4px 10px;border-radius:4px;cursor:pointer;transition:.15s}
-.filter-btn.active,.filter-btn:hover{background:rgba(0,255,136,.12);border-color:rgba(0,255,136,.45);color:var(--success)}
-.filter-search{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:6px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;min-width:160px;flex:1;outline:none;transition:.2s}
-.filter-search:focus{border-color:rgba(0,162,255,.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-.log-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
-table{width:100%;border-collapse:collapse}
-th{text-align:left;color:var(--t3);font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;padding:10px 14px;border-bottom:1px solid var(--border2);background:#0d1424;white-space:nowrap;position:sticky;top:0;z-index:1}
-td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:middle;font-variant-numeric:tabular-nums}
-tr:hover td{background:rgba(0,162,255,.05)}
-#rows tr td:first-child{box-shadow:inset 2px 0 0 transparent}
-#rows tr.m-crit td{background:rgba(255,68,68,.04)}
-#rows tr.m-crit td:first-child{box-shadow:inset 2px 0 0 var(--danger)}
-#rows tr.m-crit:hover td{background:rgba(255,68,68,.08)}
-.tbl-scroll{overflow:auto;max-height:430px}
-.empty-panel{text-align:center;padding:28px 20px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.015);margin:14px}
-.empty-ic{color:var(--t3);margin-bottom:10px;display:flex;justify-content:center}
-.empty-t{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--t1);margin-bottom:5px}
-.empty-d{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin:0 auto 14px;line-height:1.7;max-width:440px}
-.add-btn{background:rgba(0,162,255,.1);border:1px solid rgba(0,162,255,.3);color:var(--accent);padding:8px 16px;border-radius:5px;font-family:var(--mono);font-size:.7rem;cursor:pointer;transition:.15s}
-.add-btn:hover{background:rgba(0,162,255,.2);color:#fff}
-.range-seg{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-.range-seg .range-btn{border-color:transparent;border-radius:4px}
-.tag{font-family:var(--mono);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:3px;padding:3px 8px;white-space:nowrap;display:inline-block}
-.tag.normal{background:rgba(0,255,136,.1);color:var(--success);border:1px solid rgba(0,255,136,.25)}
-.tag.warning{background:rgba(255,170,0,.1);color:var(--warn);border:1px solid rgba(255,170,0,.3)}
-.tag.critical{background:rgba(255,68,68,.12);color:var(--danger);border:1px solid rgba(255,68,68,.35)}
-.tag.stale{background:rgba(183,156,255,.1);color:#b79cff;border:1px dashed rgba(183,156,255,.45)}
-.tag.unknown{background:transparent;color:var(--t3);border:1px solid var(--border2)}
-.advice{font-size:.62rem;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
-.bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin-top:4px;min-width:70px}
-.bar>div{height:100%}
-.chart-card{margin-top:16px;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:18px 20px}
-.chart-hd{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
-.chart-title{font-family:var(--mono);font-size:.8rem;font-weight:600}
-.chart-sub{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
-.chart-ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.chart-ctl select{background:rgba(0,0,0,.3);border:1px solid var(--border2);color:var(--t1);padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:.65rem;max-width:240px}
-.range-btn{background:transparent;border:1px solid var(--border2);color:var(--t3);font-family:var(--mono);font-size:.62rem;padding:4px 9px;border-radius:4px;cursor:pointer}
-.range-btn.active{color:var(--accent);border-color:rgba(0,162,255,.4)}
-.chart-wrap{position:relative;height:240px}
+
+/* Accordion panduan */
+.acc-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:var(--s-4);overflow:hidden;box-shadow:var(--shadow-card)}
+.acc-panel>summary{cursor:pointer;list-style:none;padding:13px 18px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px}
+.acc-panel>summary::-webkit-details-marker{display:none}
+.acc-panel>summary::before{content:'';width:8px;height:8px;border-right:2px solid var(--t3);border-bottom:2px solid var(--t3);transform:rotate(-45deg);transition:transform .2s}
+.acc-panel[open]>summary::before{transform:rotate(45deg)}
+.acc-body{padding:0 18px 16px}
+.acc-steps{margin:0 0 12px 18px;display:grid;gap:8px;font-size:13px;color:var(--t2)}
+.acc-steps b{color:var(--t1)}
+.acc-note{font-size:12.5px;color:var(--t3);line-height:1.7}
+.acc-note a{color:var(--accent)}
+.code-block{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-input);padding:10px 14px;margin-top:8px}
+.code-block code{font-family:var(--mono);font-size:12.5px;color:var(--t1)}
+.btn-copy{background:var(--surface);border:1px solid var(--border2);color:var(--t2);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
+.btn-copy:hover{color:var(--t1);border-color:var(--t3)}
+
+/* KPI strip ala Services */
+.sum-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media(max-width:860px){.sum-tiles{grid-template-columns:repeat(2,1fr)}}
+.kpi-tile{display:flex;flex-direction:column;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:14px 16px;cursor:pointer;transition:.15s}
+.kpi-tile:hover{transform:translateY(-2px);border-color:var(--border2)}
+.kpi-tile .k{font-size:12.5px;font-weight:600;color:var(--t2);display:flex;align-items:center;gap:8px}
+.kpi-tile .k i{width:8px;height:8px;border-radius:50%;background:var(--t3);flex-shrink:0}
+.kpi-tile .v{font-size:32px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--t1)}
+.kpi-tile.k-ok .k i{background:var(--success)}.kpi-tile.k-ok .v{color:var(--success)}
+.kpi-tile.k-warn .k i{background:var(--warn)}.kpi-tile.k-warn .v{color:var(--warn)}
+.kpi-tile.k-crit .k i{background:var(--danger)}.kpi-tile.k-crit .v{color:var(--danger)}
+.kpi-tile.k-stale .k i{background:var(--violet,#b79cff)}.kpi-tile.k-stale .v{color:var(--violet,#b79cff)}
+
+/* Progress mini warna ambang */
+.bar{height:6px;background:rgba(148,163,184,.15);border-radius:99px;overflow:hidden;margin-top:5px;min-width:70px}
+.bar>div{height:100%;border-radius:99px}
+.cell-sub{font-size:11.5px;color:var(--t3);margin-top:2px}
+.log-card{border-radius:var(--r-card);box-shadow:var(--shadow-card)}
+.tbl-scroll{overflow:auto;max-height:430px;min-height:180px}
+.active-chips{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fchip2{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:99px;padding:6px 13px;font-size:12px;font-weight:600;color:var(--t2);transition:.15s;white-space:nowrap;cursor:pointer;font-family:var(--font-sans)}
+.fchip2:hover{border-color:var(--t3);color:var(--t1)}
+select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238593a6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px !important;cursor:pointer;outline:none}
+select:focus{border-color:var(--accent);box-shadow:var(--focus-ring)}
+@media(max-width:640px){
+  .tbl-scroll{max-height:none}
+  .log-card table{min-width:0}
+  .log-card table,.log-card tbody,.log-card tr,.log-card td{display:block;width:100%}
+  .log-card thead{display:none}
+  .log-card tbody tr{border-bottom:1px solid var(--border);padding:var(--s-3) 0}
+  .log-card tbody tr:nth-child(even) td{background:none}
+  .log-card td{border-bottom:none;padding:6px 16px}
+  .log-card td[data-label]::before{content:attr(data-label);display:block;font-size:11.5px;font-weight:600;color:var(--t2);margin-bottom:2px}
+  .log-card td.num{text-align:left}
+  .pg-info{width:100%;text-align:right}
+}
+
+/* ══ Tahap 3: tab detail, empty chart, threshold lines ══ */
+.tabs-bar{display:flex;gap:4px;flex-wrap:wrap;margin-top:var(--s-4);margin-bottom:var(--s-4)}
+.tab{background:transparent;border:1px solid var(--border);color:var(--t2);border-radius:9px;padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font-sans);min-height:40px;transition:.15s}
+.tab:hover{color:var(--t1)}
+.tab.active{background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.chart-card[data-tab]{display:none}
+.chart-card[data-tab].active{display:block}
+
+/* Toggle switch untuk Monitor */
+.sw{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:99px;background:rgba(148,163,184,.25);position:relative;cursor:pointer;transition:.2s;border:none;vertical-align:middle}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+.sw:checked{background:var(--primary)}
+.sw:checked::after{left:18px}
+.sw:focus-visible{box-shadow:var(--focus-ring)}
+
+/* Toast & sentuhan akhir */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:10px;max-width:min(360px,calc(100vw - 40px))}
+.toast{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-card);box-shadow:var(--shadow-raised);padding:12px 16px;font-size:13.5px;font-weight:500;animation:tin .22s ease}
+.toast.error{border-color:var(--danger)}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+[data-theme="light"] #bkPre{background:#f6f8fc;border-color:var(--border)}
+[data-theme="light"] .toast{background:#fff}
+@media(max-width:640px){
+  .hd{flex-direction:column;align-items:flex-start}
+  .hd-a{margin-left:0;width:100%;justify-content:flex-start}
+  .sum-tiles{grid-template-columns:repeat(2,1fr)}
+  .chart-ctl{justify-content:flex-start}
+}
+.chart-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--t2);font-size:13px;line-height:1.6;padding:20px;pointer-events:none}
+.chart-empty b{color:var(--t1);font-size:14px}
 </style>
 </head>
 <body>
-<div class="topbar">
-  <div class="tb-brand"><div class="tb-logo">◈</div>
-    <div class="tb-path"><a class="crumb" href="/" title="Dashboard utama">~/noc</a><span class="tb-sep">›</span><a class="crumb" href="/" title="Dashboard utama">dashboard</a><span class="tb-sep">›</span><span class="crumb active">mikrotik</span></div>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+<div class="app">
+<aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></span>
+    <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
   </div>
-  <a href="/" class="back-btn">← cd ..</a>
-</div>
+  <nav class="nav" aria-label="Menu">
+    <div class="nav-group">Menu</div>
+    <a href="/" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+    <a href="/triggers" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+    <a href="/services" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+    <a href="/inventory" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+    <a href="/fiber" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+    <a href="/mikrotik" class="nav-link active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    <a href="/reports" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+    <a href="/power-analytics" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+    <a href="/logs" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+    <a href="/triggers?severity=disaster,high" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
+    <div class="nav-group">Kelola</div>
+    <a href="/discovery" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+  </nav>
+  <div class="sidebar-foot">
+    <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+  </div>
+</aside>
+<div class="main-col">
+<main class="page" id="konten">
 <div class="wrap">
-  <div class="sec-label">mikrotik_health — CPU / RAM / storage / suhu via SNMP</div>
-  <div class="info" id="thInfo">memuat threshold...</div>
+  <div class="hd">
+    <span class="hamburger-wrap"><button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></span>
+    <div class="hd-t"><h1>Kesehatan MikroTik</h1><p>Pantau CPU, memori, storage, suhu, interface, dan backup perangkat MikroTik via SNMP.</p></div>
+    <div class="hd-a">
+      <span class="upd" id="updNote"></span>
+      <a class="btn ghost sm" href="/">Kelola host</a>
+      <button class="icon-btn" id="reloadBtn" aria-label="Muat ulang"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
+      <button class="icon-btn" id="themeBtn" aria-label="Ganti tema">◐</button>
+    </div>
+  </div>
+  <div id="kpiStrip" class="sum-tiles" style="display:none;margin-bottom:var(--s-4)"></div>
+  <details class="acc-panel" id="snmpAcc"><summary>Panduan koneksi SNMP</summary><div class="acc-body">
+    <ol class="acc-steps">
+      <li><b>Aktifkan SNMP di MikroTik</b>
+        <div class="code-block"><code>/snmp set enabled=yes</code><button type="button" class="btn-copy" onclick="copySnippet(this)">Salin</button></div>
+      </li>
+      <li><b>Samakan community</b> antara MikroTik dan NMS (default <code>public</code>).</li>
+      <li><b>Buka firewall UDP 161</b> dari server NMS agar polling SNMP bisa masuk.</li>
+    </ol>
+    <p class="acc-note">Unit lama yang OID-nya berbeda dapat di-override per host di menu <b>Kelola host</b>. Ambang dikustom lewat <a href="/">Pengaturan</a>.</p>
+  </div></details>
+  <div class="info" id="thInfo">Memuat ambang pemantauan…</div>
   <div class="filter-bar">
     <div class="filter-group" role="group" aria-label="Filter status">
-      <button class="filter-btn active" data-f="all">all</button>
-      <button class="filter-btn" data-f="normal">normal</button>
-      <button class="filter-btn" data-f="warning">warning</button>
-      <button class="filter-btn" data-f="critical">critical</button>
-      <button class="filter-btn" data-f="stale">stale</button>
+      <button class="filter-btn active" data-f="all">Semua</button>
+      <button class="filter-btn" data-f="normal">Normal</button>
+      <button class="filter-btn" data-f="warning">Warning</button>
+      <button class="filter-btn" data-f="critical">Critical</button>
+      <button class="filter-btn" data-f="stale">Stale</button>
     </div>
-    <input class="filter-search" id="q" placeholder="grep host / alias..." oninput="render()">
+    <input class="filter-search" id="q" placeholder="Cari host atau alias…" oninput="render()" aria-label="Cari host">
+    <button class="btn ghost sm" id="resetFilter2" onclick="resetFilters()" style="display:none">Reset filter</button>
+    <span class="active-chips" id="activeChips"></span>
   </div>
   <div class="log-card"><div class="tbl-scroll"><table>
-    <thead><tr><th>Host</th><th>CPU</th><th>Memory</th><th>Storage</th><th>Suhu</th><th>Uptime</th><th>Status</th><th>Last poll</th></tr></thead>
-    <tbody id="rows"><tr><td colspan="8" style="text-align:center;color:var(--t3)">loading...</td></tr></tbody>
+    <thead><tr><th scope="col" style="width:22%">Host</th><th scope="col" class="num" style="width:12%">CPU</th><th scope="col" class="num" style="width:12%">Memori</th><th scope="col" class="num" style="width:12%">Storage</th><th scope="col" class="num" style="width:10%">Suhu</th><th scope="col" style="width:13%">Uptime</th><th scope="col" style="width:12%">Status</th><th scope="col" style="width:12%">Poll terakhir</th></tr></thead>
+     <tbody id="rows"><tr><td colspan="8" style="text-align:center;color:var(--t3)">Memuat data perangkat…</td></tr></tbody>
   </table></div></div>
-  <div class="chart-card">
+  <div class="tabs-bar" role="tablist" aria-label="Panel detail perangkat">
+    <button class="tab active" data-t="riwayat" role="tab" aria-selected="true">Riwayat</button>
+    <button class="tab" data-t="interface" role="tab" aria-selected="false">Interface</button>
+    <button class="tab" data-t="backup" role="tab" aria-selected="false">Backup</button>
+  </div>
+  <div id="detailPanels">
+  <div class="chart-card" data-tab="interface">
     <div class="chart-hd">
-      <div><div class="chart-title">interfaces</div><div class="chart-sub">// discovery via SNMP walk ifDescr · toggle monitor per port</div></div>
-      <div class="chart-ctl"><button class="range-btn" onclick="discover()">⟳ discover</button></div>
+      <div><div class="chart-title">Interface</div><div class="chart-sub">Temukan interface via SNMP walk ifDescr · pantau per port</div></div>
+      <div class="chart-ctl"><button class="btn ghost sm" onclick="discover()">Temukan interface</button></div>
     </div>
     <div class="tbl-scroll"><table>
       <thead><tr><th>Port</th><th>ifIndex</th><th>Oper</th><th>↓ Mbps</th><th>↑ Mbps</th><th>Monitor</th><th></th></tr></thead>
       <tbody id="ifaceRows"><tr><td colspan="7" style="text-align:center;color:var(--t3)">pilih host di grafik / tunggu data...</td></tr></tbody>
     </table></div>
   </div>
-  <div class="chart-card">
+  <div class="chart-card" data-tab="backup">
     <div class="chart-hd">
-      <div><div class="chart-title">backup_konfig</div><div class="chart-sub" id="bkSub">// backup otomatis 02:00 bila diaktifkan + SSH terisi</div></div>
-      <div class="chart-ctl"><button class="range-btn" onclick="backupNow()">⇪ backup now</button></div>
+      <div><div class="chart-title">Backup konfigurasi</div><div class="chart-sub" id="bkSub">Backup otomatis pukul 02:00 bila diaktifkan dan SSH terisi</div></div>
+      <div class="chart-ctl"><button class="btn primary sm" onclick="backupNow()">Backup sekarang</button></div>
     </div>
     <div class="tbl-scroll"><table>
-      <thead><tr><th>Waktu</th><th>Size</th><th>SHA</th><th>Status</th><th></th></tr></thead>
-      <tbody id="bkRows"><tr><td colspan="5" style="text-align:center;color:var(--t3)">pilih host...</td></tr></tbody>
+      <thead><tr><th>Waktu</th><th>Ukuran</th><th>SHA</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+      <tbody id="bkRows"><tr><td colspan="5" style="text-align:center;color:var(--t3)">Pilih perangkat untuk melihat backup.</td></tr></tbody>
     </table></div>
     <div id="bkDetail" style="display:none;margin-top:12px">
       <div class="chart-sub" id="bkDetailTitle" style="margin-bottom:8px"></div>
-      <pre id="bkPre" style="max-height:320px;overflow:auto;background:rgba(0,0,0,.35);border:1px solid var(--border2);border-radius:6px;padding:12px 14px;font-family:var(--mono);font-size:.65rem;line-height:1.6;color:var(--t2);white-space:pre-wrap;word-break:break-all"></pre>
+      <pre id="bkPre" style="max-height:320px;overflow:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-input);padding:14px 16px;font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--t2);white-space:pre-wrap;word-break:break-all"></pre>
     </div>
   </div>
-  <div class="chart-card">
+  <div class="chart-card active" data-tab="riwayat">
     <div class="chart-hd">
-      <div><div class="chart-title" id="ctitle">device_history.ts</div><div class="chart-sub">// poll tiap 60 detik via SNMP</div></div>
+      <div><div class="chart-title" id="ctitle">Riwayat perangkat</div><div class="chart-sub">Pilih perangkat untuk melihat metrik · poll tiap 60 detik via SNMP</div></div>
       <div class="chart-ctl">
-        <select id="hostSel" onchange="onHostChange()" title="Pilih host"></select>
-        <select id="metricSel" onchange="loadHist()" title="Pilih metrik">
-          <option value="cpu">cpu %</option><option value="mem">memory %</option>
-          <option value="storage">storage %</option><option value="temp">suhu °C</option>
-          <option value="traffic">trafik/port</option>
+        <select id="hostSel" onchange="onHostChange()" title="Pilih perangkat" aria-label="Pilih perangkat"></select>
+        <select id="metricSel" onchange="loadHist()" title="Pilih metrik" aria-label="Pilih metrik">
+          <option value="cpu">CPU %</option><option value="mem">Memori %</option>
+          <option value="storage">Storage %</option><option value="temp">Suhu °C</option>
+          <option value="traffic">Trafik/port</option>
         </select>
-        <select id="ifaceSel" onchange="loadHist()" style="display:none" title="Pilih interface"></select>
+        <select id="ifaceSel" onchange="loadHist()" style="display:none" title="Pilih interface" aria-label="Pilih interface"></select>
         <div class="range-seg" role="group" aria-label="Rentang">
-          <button class="range-btn active" data-h="6" onclick="setH(this,6)">6H</button>
-          <button class="range-btn" data-h="24" onclick="setH(this,24)">24H</button>
-          <button class="range-btn" data-h="168" onclick="setH(this,168)">7D</button>
+          <button class="range-btn active" data-h="6" onclick="setH(this,6)">6 jam</button>
+          <button class="range-btn" data-h="24" onclick="setH(this,24)">24 jam</button>
+          <button class="range-btn" data-h="168" onclick="setH(this,168)">7 hari</button>
         </div>
       </div>
     </div>
-    <div class="chart-wrap"><canvas id="ch"></canvas></div>
+    <div class="chart-wrap"><canvas id="ch"></canvas><div class="chart-empty" id="chartEmpty" style="display:none"><b>Belum ada riwayat</b><span>Pilih perangkat untuk melihat riwayat. Data diambil tiap 60 detik via SNMP.</span></div></div>
   </div>
+  </div>
+</div>
+</main>
+</div>
 </div>
 <script>
 let DATA=[], curF='all', chart=null, histH=6;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+window.toast=function(msg,type){
+  let w=document.getElementById('toasts');
+  if(!w){w=document.createElement('div');w.id='toasts';w.className='toast-wrap';document.body.appendChild(w);}
+  const el=document.createElement('div');
+  el.className='toast '+(type==='error'?'error':'success');
+  el.setAttribute('role','status');
+  el.innerHTML='<span>'+esc(msg)+'</span>';
+  w.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .25s';setTimeout(()=>el.remove(),250);},3000);
+};
 document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('active'));b.classList.add('active');curF=b.dataset.f;render();});
 function setH(el,h){histH=h;document.querySelectorAll('[data-h]').forEach(x=>x.classList.remove('active'));el.classList.add('active');loadHist();}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-selected',x===b?'true':'false');});document.querySelectorAll('#detailPanels .chart-card').forEach(c=>c.classList.toggle('active',c.dataset.tab===b.dataset.t));});
 function bar(v,warn,crit){if(v==null)return '—';const c=v>=crit?'var(--danger)':(v>=warn?'var(--warn)':'var(--success)');return `${esc(v)}<div class="bar"><div style="width:${Math.min(100,v)}%;background:${c}"></div></div>`;}
 async function load(){
   try{
     const r=await fetch('/api/settings',{headers:{'X-Requested-With':'XMLHttpRequest'}});
     if(r.ok){const s=await r.json();
       document.getElementById('thInfo').innerHTML=
-      `<div class="th-grid"><div class="th-tile"><span class="k">cpu alarm &gt;</span><span class="v">${esc(s.cpu_threshold)}%</span></div><div class="th-tile"><span class="k">memory alarm &gt;</span><span class="v">${esc(s.ram_threshold)}%</span></div><div class="th-tile"><span class="k">storage alarm &gt;</span><span class="v">${esc(s.disk_threshold)}%</span></div><div class="th-tile"><span class="k">suhu</span><span class="v">≥${esc(s.temp_threshold)}° warn · ≥${esc(s.temp_crit)}° kritis</span></div></div>`+
-      `<div class="th-note">Stale: tanpa data SNMP baru ≥ <b>${esc(s.mt_stale_min)} mnt</b> → status <b>stale</b> (host / community / UDP 161 bermasalah).</div>`+
-      `<div class="th-note">Syarat MikroTik: <b>/snmp set enabled=yes</b> + community sama + firewall buka UDP 161 dari server NMS. Unit lama yang OID-nya beda → override per host di menu hosts. Ambang ubah via menu settings.</div>`;
+      `<div class="th-grid">`+
+       `<div class="th-tile"><span class="k">Ambang CPU</span><span class="v">&gt; ${esc(s.cpu_threshold)}%</span></div>`+
+       `<div class="th-tile"><span class="k">Ambang memori</span><span class="v">&gt; ${esc(s.ram_threshold)}%</span></div>`+
+       `<div class="th-tile"><span class="k">Ambang storage</span><span class="v">&gt; ${esc(s.disk_threshold)}%</span></div>`+
+      `<div class="th-tile"><span class="k">Suhu</span><span class="v">≥ ${esc(s.temp_threshold)}° warn · ≥ ${esc(s.temp_crit)}° kritis</span></div>`+
+      `</div>`+
+      `<div class="th-note">Stale: tanpa data SNMP ≥ <b>${esc(s.mt_stale_min)} menit</b>. <a href="/" style="color:var(--accent)">Ubah di Pengaturan</a></div>`;
       window._th=s;}
   }catch(e){}
   const r=await fetch('/api/mikrotik',{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(r.status===401){location.href='/login';return;}
   DATA=await r.json();
-  document.getElementById('hostSel').innerHTML=DATA.map(o=>`<option value="${esc(o.host)}">${esc(o.alias||o.host)}</option>`).join('')||'<option value="">(kosong)</option>';
+   document.getElementById('hostSel').innerHTML=DATA.map(o=>`<option value="${esc(o.host)}">${esc(o.alias||o.host)}</option>`).join('')||'<option value="">Pilih perangkat</option>';
+  renderKpi();
   render(); loadIfaces(); loadHist(); loadBackups();
+  const acc=document.getElementById('snmpAcc');
+  if(acc&&DATA.length===0)acc.setAttribute('open','');
+}
+function renderKpi(){
+  const strip=document.getElementById('kpiStrip');if(!strip)return;
+  const c={total:DATA.length,normal:0,warning:0,critical:0,stale:0};
+  DATA.forEach(o=>{if(o.status in c)c[o.status]++;});
+  const tile=(k,label,cls,dot)=>`<button class="kpi-tile ${cls}" data-kpi="${k}"><div class="k"><i style="background:${dot}"></i>${label}</div><div class="v">${c[k]}</div></button>`;
+  strip.style.display='';
+  strip.innerHTML=tile('total','Total perangkat','','var(--t2)')+tile('normal','Normal','k-ok','var(--success)')+tile('warning','Warning','k-warn','var(--warn)')+tile('critical','Critical','k-crit','var(--danger)')+tile('stale','Stale','k-stale','var(--violet,#b79cff)');
+  strip.querySelectorAll('[data-kpi]').forEach(b=>b.onclick=()=>{
+    const f=b.dataset.kpi; curF=(f==='total')?'all':f;
+    document.querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('active',x.dataset.f===(curF==='all'?'all':curF)));
+    render();
+  });
 }
 function render(){
   const q=(document.getElementById('q').value||'').toLowerCase();
   const th=window._th||{cpu_threshold:85,ram_threshold:90,disk_threshold:90,temp_threshold:60,temp_crit:75};
   const tb=document.getElementById('rows');
   const rows=DATA.filter(o=>(curF==='all'||o.status===curF)&&(!q||(o.host+' '+(o.alias||'')).toLowerCase().includes(q)));
-  if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="border-bottom:none"><div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 13v1.5M11 13v1.5M8 9v5.5M4 5.5h8"/></svg></div><div class="empty-t">belum ada data MikroTik</div><div class="empty-d">Tambah host dengan SNMP community di kelola hosts, lalu data CPU / RAM / suhu mengalir otomatis.</div><a class="add-btn" style="display:inline-flex;margin:0;text-decoration:none" href="/">kelola hosts →</a></div></td></tr>';return;}
-  tb.innerHTML=rows.map(o=>`<tr${o.status==='critical'?' class="m-crit"':''}>
-    <td style="color:var(--t1)">${esc(o.alias||o.host)}${o.alias&&o.alias!==o.host?`<div style="font-size:.62rem;color:var(--t3)">${esc(o.host)}</div>`:''}${o.is_mikrotik?'':'<div style="font-size:.6rem;color:var(--t3)">belum terdeteksi mikrotik</div>'}</td>
-    <td>${bar(o.cpu,th.cpu_threshold,th.cpu_threshold+10)}%</td>
-    <td>${bar(o.mem,th.ram_threshold,th.ram_threshold+5)}%</td>
-    <td>${bar(o.storage,th.disk_threshold,100)}%</td>
-    <td style="color:var(--t1);font-weight:700">${o.temp_c==null?'—':esc(o.temp_c)+'°C'}</td>
-    <td>${esc(o.uptime||'—')}</td>
-    <td><span class="tag ${esc(o.status)}">${esc(o.status)}</span><div class="advice">${esc(o.advice||'')}</div></td>
-    <td style="font-size:.62rem">${esc(o.last_seen||'—')}</td>
-  </tr>`).join('');
+  if(!rows.length){
+    const filtering=curF!=='all'||(document.getElementById('q').value||'').trim();
+    tb.innerHTML='<tr><td colspan="8" style="border-bottom:none"><div class="empty-panel">'
+      +(filtering
+        ?'<div class="empty-t">Tidak ada perangkat yang cocok</div><div class="empty-d">Coba ubah filter atau klik Reset filter.</div><button class="btn ghost sm" onclick="resetFilters()">Reset filter</button>'
+        :'<div class="empty-ic"><svg width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="2" y="2" width="12" height="7" rx="1"/><path d="M5 13v1.5M11 13v1.5M8 9v5.5M4 5.5h8"/></svg></div><div class="empty-t">Belum ada data MikroTik</div><div class="empty-d">Tambah host dengan SNMP community di Kelola host, lalu data CPU / memori / suhu mengalir otomatis.</div><a class="btn primary sm" style="display:inline-flex;margin:0;text-decoration:none" href="/">Kelola host</a>')
+      +'</div></td></tr>';return;
+  }
+  tb.innerHTML=rows.map(o=>{
+    const upStr=o.uptime_s==null?'—':fmtUptime(o.uptime_s);
+    const tempPill=o.temp_c==null?'<span class="tag unknown">—</span>':`<span class="tag ${o.temp_c>=th.temp_crit?'critical':(o.temp_c>=th.temp_threshold?'warning':'normal')}">${esc(o.temp_c)}°C</span>`;
+    const stLab={normal:'Normal',warning:'Warning',critical:'Critical',stale:'Stale'}[o.status]||o.status;
+    const cpuCell=kpiBar(o.cpu,th.cpu_threshold,th.cpu_threshold+10);
+    const memCell=kpiBar(o.mem,th.ram_threshold,th.ram_threshold+5);
+    const stgCell=kpiBar(o.storage,th.disk_threshold,100);
+    return `<tr data-host="${esc(o.host)}" style="cursor:pointer">`+
+      `<td data-label="Host" style="color:var(--t1)"><b>${esc(o.alias||o.host)}</b><div class="cell-sub"><span class="mono" style="font-size:11.5px">${esc(o.host)}</span></div>${o.is_mikrotik?'':'<div class="cell-sub">belum terdeteksi mikrotik</div>'}</td>`+
+      `<td data-label="CPU" class="num">${cpuCell}</td>`+
+      `<td data-label="Memori" class="num">${memCell}</td>`+
+      `<td data-label="Storage" class="num">${stgCell}</td>`+
+      `<td data-label="Suhu" class="num">${tempPill}</td>`+
+      `<td data-label="Uptime">${upStr}</td>`+
+      `<td data-label="Status"><span class="tag ${esc(o.status)}">${stLab}</span><div class="advice">${esc(o.advice||'')}</div></td>`+
+      `<td data-label="Poll terakhir" title="${esc(o.last_seen||'belum pernah')}" style="font-size:12px">${relT(o.last_seen)}</td>`+
+    `</tr>`;}).join('');
+  tb.querySelectorAll('tr[data-host]').forEach(tr=>{
+    tr.addEventListener('click',()=>{const sel=document.getElementById('hostSel');if(sel){sel.value=tr.getAttribute('data-host');onHostChange();}} );
+  });
+  renderActiveChips();
+}
+function fmtUptime(s){if(s==null)return '—';const d=Math.floor(s/86400);const h=Math.floor((s%86400)/3600);if(d>0)return d+' hari '+h+' jam';const m=Math.floor((s%3600)/60);if(h>0)return h+' jam '+m+' mnt';return m+' mnt';}
+function relT(s){if(!s)return '—';const d=new Date(String(s).replace(' ','T'));if(isNaN(d.getTime()))return s;let ms=Date.now()-d.getTime();if(ms<0)ms=0;const sec=Math.floor(ms/1000);if(sec<10)return 'baru saja';if(sec<60)return sec+' dtk lalu';const m=Math.floor(sec/60);if(m<60)return m+' mnt lalu';const h=Math.floor(m/60);if(h<24)return h+' jam lalu';return Math.floor(h/24)+' hari lalu';}
+function kpiBar(v,warn,crit){if(v==null)return '—';const c=v>=crit?'var(--danger)':(v>=warn?'var(--warn)':'var(--success)');return `<span class="mono" style="font-variant-numeric:tabular-nums">${esc(v)}%</span><div class="bar"><div style="width:${Math.min(100,v)}%;background:${c}"></div></div>`;}
+function resetFilters(){curF='all';document.querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('active',x.dataset.f==='all'));document.getElementById('q').value='';render();}
+function renderActiveChips(){
+  const box=document.getElementById('activeChips');if(!box)return;
+  const chips=[];
+  if(curF!=='all')chips.push({t:curF,c:()=>{curF='all';document.querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('active',x.dataset.f==='all'));render();}});
+  const q=(document.getElementById('q').value||'').trim();
+  if(q)chips.push({t:'Cari: '+q,c:()=>{document.getElementById('q').value='';render();}});
+  box.innerHTML=chips.map((c,i)=>`<button type="button" class="fchip2" data-chip="${i}">${esc(c.t)} ×</button>`).join('');
+  box.querySelectorAll('[data-chip]').forEach(b=>b.onclick=()=>chips[Number(b.dataset.chip)].c());
+  const rf=document.getElementById('resetFilter2');if(rf)rf.style.display=chips.length?'':'none';
 }
 let IFACES=[];
 async function curHost(){return document.getElementById('hostSel').value;}
@@ -192,31 +436,34 @@ async function loadIfaces(){
   const host=await curHost();
   const tb=document.getElementById('ifaceRows');
   const isel=document.getElementById('ifaceSel');
-  if(!host){tb.innerHTML='<tr><td colspan="7" style="text-align:center">—</td></tr>';isel.style.display='none';return;}
+  if(!host){tb.innerHTML='<tr><td colspan="7" style="border-bottom:none"><div class="empty-panel"><div class="empty-t">Pilih perangkat</div><div class="empty-d">Klik baris host di atas untuk melihat interface.</div></div></td></tr>';isel.style.display='none';return;}
   const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
-  if(!r.ok){tb.innerHTML='<tr><td colspan="7" style="text-align:center">gagal memuat</td></tr>';return;}
+  if(!r.ok){tb.innerHTML='<tr><td colspan="7" style="border-bottom:none"><div class="empty-panel"><div class="empty-t">Gagal memuat interface</div></div></td></tr>';return;}
   IFACES=await r.json();
   const mon=IFACES.filter(i=>i.monitor);
   isel.style.display=(document.getElementById('metricSel').value==='traffic'&&mon.length)?'':'none';
   const prevI=isel.value;
   isel.innerHTML=mon.map(i=>`<option value="${i.if_index}">${esc(i.name)} (if${i.if_index})</option>`).join('');
   if([...isel.options].some(o=>o.value===prevI))isel.value=prevI;
-  if(!IFACES.length){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--t3)">$ no interfaces — klik discover.</td></tr>';return;}
-  const operTxt=o=>o===1?'<span class="tag normal">up</span>':(o===2?'<span class="tag critical">down</span>':'<span class="tag unknown">?</span>');
+  if(!IFACES.length){tb.innerHTML='<tr><td colspan="7" style="border-bottom:none"><div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 5h12M2 11h8M6 8h4"/></svg></div><div class="empty-t">Belum ada interface</div><div class="empty-d">Klik Temukan interface untuk memindai perangkat via SNMP walk.</div></div></td></tr>';return;}
+  const operTxt=o=>o===1?'<span class="tag normal">Hidup</span>':(o===2?'<span class="tag critical">Mati</span>':'<span class="tag unknown">?</span>');
   tb.innerHTML=IFACES.map(i=>`<tr>
-    <td style="color:var(--t1)">${esc(i.name)}</td><td>if${i.if_index}</td><td>${operTxt(i.oper)}</td>
-    <td>${i.last_in==null?'—':esc(i.last_in)}</td><td>${i.last_out==null?'—':esc(i.last_out)}</td>
-    <td><input type="checkbox" ${i.monitor?'checked':''} onchange="toggleMon(${i.if_index},this.checked)" title="monitor trafik port ini"></td>
-    <td><button class="range-btn" onclick="delIface(${i.if_index})">del</button></td>
+    <td data-label="Port" style="color:var(--t1)"><b>${esc(i.name)}</b></td>
+    <td data-label="ifIndex" class="num">if${i.if_index}</td>
+    <td data-label="Oper">${operTxt(i.oper)}</td>
+    <td data-label="↓ Mbps" class="num">${i.last_in==null?'—':esc(i.last_in)}</td>
+    <td data-label="↑ Mbps" class="num">${i.last_out==null?'—':esc(i.last_out)}</td>
+    <td data-label="Monitor"><input type="checkbox" class="sw" ${i.monitor?'checked':''} onchange="toggleMon(${i.if_index},this.checked)" aria-label="Monitor ${esc(i.name)}"></td>
+    <td data-label="Aksi"><button class="btn ghost sm" onclick="delIface(${i.if_index})">Hapus</button></td>
   </tr>`).join('');
 }
 async function discover(){
   const host=await curHost();if(!host)return;
-  if(!confirm(`discover interfaces ${host} via SNMP walk?`))return;
+  if(!confirm(`Pindai interface ${host} via SNMP walk?`))return;
   const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces/discover`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){alert(j.error||'discover gagal');return;}
-  alert(`ditemukan ${j.count} interface`);loadIfaces();
+  if(!r.ok){toast(j.error||'Pindai gagal','error');return;}
+  toast(`Ditemukan ${j.count} interface`,'success');loadIfaces();
 }
 async function toggleMon(idx,on){
   const host=await curHost();
@@ -225,7 +472,7 @@ async function toggleMon(idx,on){
 }
 async function delIface(idx){
   const host=await curHost();
-  if(!confirm(`hapus if${idx} dari monitoring?`))return;
+  if(!confirm(`Hapus if${idx} dari monitoring?`))return;
   await fetch(`/api/mikrotik/${encodeURIComponent(host)}/interfaces/${idx}`,{method:'DELETE',headers:{'X-Requested-With':'XMLHttpRequest'}});
   loadIfaces();
 }
@@ -234,19 +481,22 @@ async function loadBackups(){
   const host=document.getElementById('hostSel').value;
   const tb=document.getElementById('bkRows');
   document.getElementById('bkDetail').style.display='none';
-  if(!host){tb.innerHTML='<tr><td colspan="5" style="text-align:center">—</td></tr>';return;}
+  if(!host){tb.innerHTML='<tr><td colspan="5" style="border-bottom:none"><div class="empty-panel"><div class="empty-t">Pilih perangkat</div><div class="empty-d">Klik baris host di atas untuk melihat backup.</div></div></td></tr>';return;}
   const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/backups`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
-  if(!r.ok){tb.innerHTML='<tr><td colspan="5" style="text-align:center">gagal memuat</td></tr>';return;}
+  if(!r.ok){tb.innerHTML='<tr><td colspan="5" style="border-bottom:none"><div class="empty-panel"><div class="empty-t">Gagal memuat backup</div></div></td></tr>';return;}
   const rows=await r.json();
-  document.getElementById('bkSub').textContent=`// ${rows.length} versi tersimpan · backup otomatis 02:00 bila diaktifkan + SSH terisi`;
-  if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--t3)">$ belum ada backup — aktifkan di kelola host + klik backup now.</td></tr>';return;}
+  document.getElementById('bkSub').textContent=`${rows.length} versi tersimpan · Backup otomatis pukul 02:00 jika diaktifkan dan SSH terisi`;
+  if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="border-bottom:none"><div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4 2h8v12H4zM6 6h4M6 9h4"/></svg></div><div class="empty-t">Belum ada backup</div><div class="empty-d">Aktifkan backup di Kelola host, lalu klik Backup sekarang.</div></div></td></tr>';return;}
   tb.innerHTML=rows.map(b=>`<tr>
-    <td>${esc(b.taken_at)}</td><td>${(b.size/1024).toFixed(1)} KB</td>
-    <td style="font-size:.6rem">${esc((b.sha256||'').slice(0,12))}</td>
-    <td>${b.changed?'<span class="tag warning">changed</span>':'<span class="tag normal">baseline/ok</span>'}</td>
-    <td style="white-space:nowrap"><button class="range-btn" onclick="viewBackup(${b.id})">view</button> <button class="range-btn" onclick="diffBackup(${b.id})">diff</button> <button class="range-btn" onclick="dlBackup(${b.id})">⇩</button></td>
+    <td data-label="Waktu" title="${esc(b.taken_at)}">${relT(b.taken_at)}</td>
+    <td data-label="Ukuran" class="num">${fmtSize(b.size)}</td>
+    <td data-label="SHA"><span class="mono" style="font-size:11.5px">${esc((b.sha256||'').slice(0,8))}</span> <button class="btn-copy" style="padding:4px 10px" onclick="copyText('${esc(b.sha256||'')}')">Salin</button> <span class="cell-sub" title="${esc(b.sha256||'')}">…</span></td>
+    <td data-label="Status">${b.changed?'<span class="tag warning">Berubah</span>':'<span class="tag normal">Berhasil</span>'}</td>
+    <td data-label="Aksi" style="white-space:nowrap"><button class="btn ghost sm" onclick="viewBackup(${b.id})">Lihat</button> <button class="btn ghost sm" onclick="diffBackup(${b.id})">Bandingkan</button> <button class="btn ghost sm" onclick="dlBackup(${b.id})">Unduh</button></td>
   </tr>`).join('');
 }
+function copyText(t){const d=()=>alert('SHA disalin');if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(d).catch(d);else prompt('Salin SHA:',t);}
+function fmtSize(b){if(b==null)return '—';const kb=b/1024;if(kb<1024)return kb.toFixed(1)+' KB';return (kb/1024).toFixed(2)+' MB';}
 async function _bkJson(url){
   const host=document.getElementById('hostSel').value;if(!host)return null;
   const r=await fetch(url.replace('{h}',encodeURIComponent(host)),{headers:{'X-Requested-With':'XMLHttpRequest'}});
@@ -256,13 +506,13 @@ async function _bkJson(url){
 async function viewBackup(id){
   const j=await _bkJson(`/api/mikrotik/{h}/backups/${id}`);if(!j)return;
   document.getElementById('bkDetail').style.display='block';
-  document.getElementById('bkDetailTitle').textContent=`// backup #${j.id} ${j.taken_at} (${(j.size/1024).toFixed(1)} KB)`;
+  document.getElementById('bkDetailTitle').textContent=`Backup #${j.id} · ${j.taken_at} (${(j.size/1024).toFixed(1)} KB)`;
   document.getElementById('bkPre').textContent=j.content||'(kosong)';
 }
 async function diffBackup(id){
   const j=await _bkJson(`/api/mikrotik/{h}/backups/${id}/diff`);if(!j)return;
   document.getElementById('bkDetail').style.display='block';
-  document.getElementById('bkDetailTitle').textContent=j.vs?`// diff #${j.vs} → #${j.id}`:`// #${j.id}: ${j.note||''}`;
+  document.getElementById('bkDetailTitle').textContent=j.vs?`Perbedaan #${j.vs} → #${j.id}`:`#${j.id}: ${j.note||'—'}`;
   document.getElementById('bkPre').textContent=(j.diff||[]).join('\n')||'(tidak ada perbedaan)';
 }
 function dlBackup(id){
@@ -271,41 +521,77 @@ function dlBackup(id){
 }
 async function backupNow(){
   const host=document.getElementById('hostSel').value;if(!host)return;
-  if(!confirm(`tarik backup konfigurasi ${host} sekarang?`))return;
+  if(!confirm(`Tarik backup konfigurasi ${host} sekarang?`))return;
   const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/backup`,{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});
   const j=await r.json().catch(()=>({}));
-  if(!r.ok){alert(j.error||'backup gagal');return;}
-  alert(j.notified?'backup tersimpan + berubah (Telegram terkirim).':'backup tersimpan.');
+  if(!r.ok){toast(j.error||'Backup gagal','error');return;}
+  toast(j.notified?'Backup tersimpan dan berubah (Telegram terkirim).':'Backup tersimpan.','success');
   loadBackups();
 }
 async function loadHist(){
-  const host=document.getElementById('hostSel').value;if(!host)return;
+  const empty=document.getElementById('chartEmpty');
+  const showEmpty=s=>{if(empty)empty.style.display=s?'flex':'none';};
+  const host=document.getElementById('hostSel').value;
+  if(!host){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
+  showEmpty(false);
   const metric=document.getElementById('metricSel').value;
   const isel=document.getElementById('ifaceSel');
   isel.style.display=(metric==='traffic')?'':'none';
   const ctx=document.getElementById('ch').getContext('2d');
   if(chart)chart.destroy();
-  const baseOpts={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#2a4060',maxTicksLimit:10},grid:{color:'rgba(255,255,255,.03)'}},y:{ticks:{color:'#6a8aaa'},grid:{color:'rgba(255,255,255,.04)'}}},plugins:{legend:{labels:{color:'#6a8aaa',boxWidth:12,font:{size:10}}}}};
+  const baseOpts={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#6f7c8e',maxTicksLimit:10},grid:{color:'transparent'}},y:{ticks:{color:'#9AA6B5'},grid:{color:'rgba(148,163,184,.12)'}}},plugins:{legend:{labels:{color:'#9AA6B5',boxWidth:12,font:{size:10}}}}};
   if(metric==='traffic'){
     if(!IFACES.length)await loadIfaces();
     const idx=isel.value||((IFACES.find(i=>i.monitor)||{}).if_index);
-    if(!idx){return;}
+    if(!idx){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
     isel.value=idx;
     const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/iface/${idx}/history?hours=${histH}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
     if(!r.ok)return;const j=await r.json();
-    document.getElementById('ctitle').textContent=`${host} ${j.name||('if'+idx)} — traffic.ts (Mbps)`;
+    if(!(j.rx||[]).some(v=>v!=null)){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
+    document.getElementById('ctitle').textContent=`${host} ${j.name||('if'+idx)} — Trafik (Mbps)`;
     chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[
-      {label:'↓ in',data:j.rx,borderColor:'#00a2ff',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5},
-      {label:'↑ out',data:j.tx,borderColor:'#00ff88',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
+      {label:'Masuk',data:j.rx,borderColor:'#22d3ee',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5,fill:true,backgroundColor:'rgba(34,211,238,.06)'},
+      {label:'Keluar',data:j.tx,borderColor:'#4ade80',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
     return;
   }
   const r=await fetch(`/api/mikrotik/${encodeURIComponent(host)}/history?hours=${histH}&metric=${metric}`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
   if(!r.ok)return;const j=await r.json();
-  document.getElementById('ctitle').textContent=`${host} — ${metric}_history.ts`;
-  const colors={cpu:'#00a2ff',mem:'#ffaa00',storage:'#a855f7',temp:'#ff4444'};
-  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[{label:metric,data:j.values,borderColor:colors[metric]||'#00a2ff',backgroundColor:'rgba(0,162,255,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
+  if(!(j.values||[]).some(v=>v!=null)){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
+  document.getElementById('ctitle').textContent=`${host} — ${metric}`;
+  const colors={cpu:'#22d3ee',mem:'#fbbf24',storage:'#a855f7',temp:'#f87171'};
+  const th=window._th||{};
+  const thMap={cpu:th.cpu_threshold,mem:th.ram_threshold,storage:th.disk_threshold,temp:th.temp_threshold};
+  const thVal=thMap[metric];
+  const thLine=(metric in thMap&&thVal!=null)?{label:'Ambang',data:j.labels.map(()=>Number(thVal)),borderColor:'rgba(251,191,36,.6)',borderDash:[6,4],pointRadius:0,borderWidth:1,fill:false}:null;
+  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[{label:metric,data:j.values,borderColor:colors[metric]||'#22d3ee',backgroundColor:'rgba(34,211,238,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}].concat(thLine?[thLine]:[])},options:baseOpts});
 }
 load();setInterval(load,60000);
+window.copySnippet=function(btn){
+  const code=btn.parentElement&&btn.parentElement.querySelector('code');
+  if(!code)return;
+  const t=code.textContent.trim();
+  const done=()=>{btn.textContent='Tersalin';setTimeout(()=>btn.textContent='Salin',1600);};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done).catch(done);else done();
+};
+(function(){
+  const $=id=>document.getElementById(id);
+  const REDUCED=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(REDUCED)document.body.classList.add('reduced-motion');
+  const ICON_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  const ICON_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';
+  function setTheme(t){document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem('nms_theme',t);}catch(e){}const b=$('themeBtn');if(b){b.innerHTML=t==='dark'?ICON_SUN:ICON_MOON;b.title=t==='dark'?'Ganti ke mode terang':'Ganti ke mode gelap';}}
+  try{const t=localStorage.getItem('nms_theme');setTheme(t==='light'?'light':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));}catch(e){setTheme('dark');}
+  const tb=$('themeBtn');if(tb)tb.addEventListener('click',function(){setTheme(document.documentElement.getAttribute('data-theme')==='light'?'dark':'light');});
+  const rb=$('reloadBtn');if(rb)rb.addEventListener('click',function(){load();});
+  const st=$('sidebarToggle');if(st)st.addEventListener('click',function(){document.body.classList.toggle('nav-open');});
+  const sc=$('scrim');if(sc)sc.addEventListener('click',function(){document.body.classList.remove('nav-open');});
+  try{if(localStorage.getItem('nms_nav')==='collapsed'&&window.innerWidth>1100)document.body.classList.add('nav-collapsed');}catch(e){}
+  const cb=$('collapseBtn');if(cb)cb.addEventListener('click',function(){document.body.classList.toggle('nav-collapsed');try{localStorage.setItem('nms_nav',document.body.classList.contains('nav-collapsed')?'collapsed':'open');}catch(e){}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')document.body.classList.remove('nav-open');});
+  let lastLoad=Date.now();
+  function upd(){const el=$('updNote');if(!el)return;const s=Math.max(0,Math.round((Date.now()-lastLoad)/1000));el.textContent=s<5?'Diperbarui baru saja':s<60?'Diperbarui '+s+' detik lalu':'Diperbarui '+Math.floor(s/60)+' menit lalu';}
+  setInterval(upd,10000);upd();
+})();
 </script>
 </body>
 </html>

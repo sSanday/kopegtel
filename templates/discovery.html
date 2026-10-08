@@ -1,1 +1,201 @@
-<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SNMP Discovery</title><style>body{font-family:Arial;background:#08101c;color:#e6f1ff;margin:0}.wrap{max-width:1100px;margin:auto;padding:24px}.card{background:#101c2d;border:1px solid #263b55;border-radius:8px;padding:16px;margin-bottom:14px}input,button{background:#0a1422;color:#e6f1ff;border:1px solid #38516d;border-radius:5px;padding:9px}button{cursor:pointer;color:#65d9ff}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #263b55}.muted{color:#8ca4bd}</style></head><body><main class="wrap"><p><a href="/">← Dashboard</a></p><h1>SNMP Auto-Discovery</h1><div class="card"><form id="form"><input id="network" placeholder="192.168.1.0/24" required><input id="community" placeholder="SNMP community" required maxlength="128"><button>Scan</button><button type="button" onclick="bulk()">Import terpilih</button></form><p class="muted">Maksimum 256 alamat. Community tidak disimpan.</p><button type="button" onclick="saveSchedule()">Simpan jadwal 6 jam</button><button type="button" onclick="runSchedule()">Jalankan scheduled scan</button></div><div class="card"><div id="status" class="muted">Belum ada scan.</div><table><thead><tr><th><input type="checkbox" onchange="toggleAll(this.checked)"></th><th>IP</th><th>Vendor</th><th>System name</th><th>Description</th></tr></thead><tbody id="rows"></tbody></table></div></main><script>const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));document.getElementById('form').onsubmit=async e=>{e.preventDefault();const status=document.getElementById('status');status.textContent='Scanning...';const r=await fetch('/api/discovery/snmp',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({network:network.value,community:community.value})});const d=await r.json();if(!r.ok){status.textContent=d.error||'Discovery gagal';return}status.textContent=`${d.count} perangkat ditemukan`;rows.innerHTML=(d.devices||[]).map(x=>`<tr><td><input class="pick" type="checkbox" data-ip="${esc(x.ip)}" data-name="${esc(x.sys_name)}" data-vendor="${esc(x.vendor)}"></td><td>${esc(x.ip)}</td><td>${esc(x.vendor)}</td><td>${esc(x.sys_name)}</td><td>${esc(x.sys_descr)}</td></tr>`).join('')||'<tr><td colspan="5">Tidak ada perangkat.</td></tr>'};function toggleAll(v){document.querySelectorAll('.pick').forEach(x=>x.checked=v)}async function bulk(){const devices=[...document.querySelectorAll('.pick:checked')].map(x=>({ip:x.dataset.ip,sys_name:x.dataset.name,vendor:x.dataset.vendor}));if(!devices.length){alert('Pilih perangkat terlebih dahulu');return}const r=await fetch('/api/discovery/import',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({devices,community:community.value})});const d=await r.json();alert(r.ok?`${d.count} host ditambahkan`:(d.error||'Import gagal'))}async function saveSchedule(){const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:JSON.stringify({discovery_network:network.value,discovery_community:community.value})});const d=await r.json();alert(r.ok?'Jadwal disimpan':'Gagal: '+(d.error||''))}async function runSchedule(){const r=await fetch('/api/discovery/scheduled/run',{method:'POST',headers:{'X-Requested-With':'XMLHttpRequest'}});const d=await r.json();alert(`Status: ${d.status}; baru ${d.added?.length||0}; hilang ${d.removed?.length||0}`)}</script></body></html>
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="SNMP Auto-Discovery — temukan perangkat jaringan dan impor ke monitoring">
+<title>SNMP Auto-Discovery · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/discovery.js') }}" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <a href="/triggers" class="nav-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+      <a href="/services" class="nav-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+      <a href="/inventory" class="nav-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+      <a href="/reports" class="nav-link" data-nav="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+      <a href="/power-analytics" class="nav-link" data-nav="power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+      <a href="/logs" class="nav-link" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+      <a href="/triggers?severity=disaster,high" class="nav-link" data-nav="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
+      <div class="nav-group">Kelola</div>
+      <a href="/discovery" class="nav-link active" data-nav="discovery" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title">SNMP Auto-Discovery</h1>
+        <p class="page-sub">Temukan perangkat di jaringan Anda dan impor ke monitoring</p>
+      </div>
+      <div class="header-actions" style="margin-left:auto">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"></button>
+      </div>
+    </header>
+
+    <main class="page" id="konten">
+      <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a><span class="sep">/</span><span class="cur">Discovery</span></nav>
+
+      <!-- Pindai jaringan -->
+      <section class="card" aria-label="Pindai jaringan" style="margin-top:14px">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Pindai Jaringan</h2>
+            <p class="card-desc">Masukkan rentang CIDR dan community SNMP perangkat</p>
+          </div>
+        </div>
+
+        <form id="scanForm">
+          <div class="maint-form" style="border-bottom:none;padding-bottom:14px">
+            <div class="field mf-4">
+              <label for="cidrInput">Rentang jaringan (CIDR)</label>
+              <input id="cidrInput" class="mono" type="text" placeholder="192.168.1.0/24" required autocomplete="off">
+              <div class="field-hint" id="cidrHint" aria-live="polite"></div>
+            </div>
+            <div class="field mf-3">
+              <label for="communityInput">SNMP community</label>
+              <div class="pw-field">
+                <input id="communityInput" type="password" placeholder="misal: public" required maxlength="128" autocomplete="off">
+                <button type="button" class="pw-toggle" id="communityToggle" aria-label="Tampilkan community" aria-pressed="false"></button>
+              </div>
+            </div>
+            <div class="field mf-2" style="align-self:end;justify-self:start">
+              <button type="submit" class="btn btn-primary" id="btnScan">Mulai Scan</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="info-box" style="margin:0 22px 18px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
+          <span>Maksimum <b>256 alamat</b> per pemindaian. Community <b>tidak disimpan di server</b> — hanya dipakai untuk request ini.</span>
+        </div>
+
+        <div class="sched-line">
+          <span>Scan terjadwal:</span>
+          <button class="btn" id="btnSaveSched" type="button">Simpan jadwal 6 jam</button>
+          <button class="btn" id="btnRunSched" type="button">Jalankan sekarang</button>
+          <span id="schedStatus" style="margin-left:auto"></span>
+        </div>
+        <div class="sched-line" style="border-top:none;padding-top:0" id="lastScanLine" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--text-3);flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span id="lastScanText"></span>
+        </div>
+      </section>
+
+      <!-- Hasil -->
+      <section class="section" aria-label="Hasil pemindaian">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">Hasil Pemindaian <span class="count-badge" id="resultCount"></span></h2>
+              <p class="card-desc" id="scanState" aria-live="polite">Belum ada hasil pemindaian.</p>
+            </div>
+          </div>
+          <div class="results-toolbar">
+            <label class="search" style="margin-left:0;flex:1;min-width:200px;max-width:340px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+              <input type="search" id="resultSearch" placeholder="Filter hasil…" aria-label="Filter hasil pemindaian" autocomplete="off">
+            </label>
+            <span class="updated-note" id="selCount"></span>
+            <span class="toolbar-spacer"></span>
+            <button class="btn btn-primary" id="btnImport" type="button" disabled>Import terpilih</button>
+          </div>
+          <div class="alarm-wrap">
+            <table class="alarm-table">
+              <caption class="sr-only">Perangkat hasil pemindaian SNMP</caption>
+              <thead>
+                <tr>
+                  <th scope="col" style="width:56px"><input type="checkbox" class="xcheck" id="selectAll" aria-label="Pilih semua perangkat"></th>
+                  <th scope="col" style="width:190px">IP</th>
+                  <th scope="col" style="width:170px">Vendor</th>
+                  <th scope="col" style="width:190px">System name</th>
+                  <th scope="col">Description</th>
+                </tr>
+              </thead>
+              <tbody id="resultBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ============ MODAL KONFIRMASI IMPORT ============ -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="importTitle">Import perangkat</div><div class="modal-sub">Perangkat terpilih akan ditambahkan ke monitoring</div></div>
+      <button class="modal-close" id="btnImportClose" aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px;line-height:1.7;margin-bottom:16px"><b><span id="importCount">0</span> perangkat</b> akan diimpor ke daftar host dan langsung dipantau. Lanjutkan?</p>
+      <div class="field">
+        <label for="importCategory">Kategori perangkat</label>
+        <div class="select-wrap" style="width:100%">
+          <select id="importCategory" style="width:100%">
+            <option value="auto">Otomatis (ikut vendor)</option>
+            <option value="network">Network</option>
+            <option value="uncategorized">Tanpa kategori</option>
+          </select>
+        </div>
+      </div>
+      <label class="check-line">
+        <input type="checkbox" id="importSaveCommunity" class="xcheck" checked>
+        <span>Simpan SNMP community ke host (dipakai untuk polling lanjutan)</span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnImportCancel" type="button">Batal</button>
+      <button class="btn btn-primary" id="btnImportConfirm" type="button">Import</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+<script>
+// Redirect otomatis ke /login jika sesi habis (API 401)
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

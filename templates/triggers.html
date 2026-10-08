@@ -1,722 +1,286 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Active Triggers — NMS KOPEGTEL</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#080c14;
-      --surface:#0c1220;
-      --card:rgba(12,18,32,0.8);
-      --border:rgba(0,255,136,0.1);
-      --border2:rgba(255,255,255,0.06);
-      --accent:#00a2ff;
-      --accent2:#00ff88;
-      --t1:#e0f0ff;
-      --t2:#6a8aaa;
-      --t3:#2a4060;
-      --mono:'JetBrains Mono',monospace;
-      --danger:#ff4444;
-      --success:#00ff88;
-      --warn:#ffaa00;
-      --info:#00a2ff;
-      --disaster:#ff0055;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="Alarm aktif dan jadwal maintenance — NMS Kopegtel">
+<title>Alarm Aktif · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
     }
-    ::-webkit-scrollbar{width:4px}
-    ::-webkit-scrollbar-track{background:var(--bg)}
-    ::-webkit-scrollbar-thumb{background:rgba(0,255,136,0.2);border-radius:2px}
-
-    body{
-      font-family:'Inter',sans-serif;
-      background:var(--bg);color:var(--t1);
-      min-height:100vh;overflow-x:hidden;
-    }
-
-    /* Scan lines */
-    body::before{
-      content:'';position:fixed;inset:0;
-      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
-      pointer-events:none;z-index:9999;
-    }
-    /* Ambient bg */
-    body::after{
-      content:'';position:fixed;inset:0;
-      background:radial-gradient(ellipse 70% 50% at 50% 0%,rgba(0,162,255,0.04) 0%,transparent 60%);
-      pointer-events:none;z-index:0;
-    }
-
-    /* Topbar */
-    .topbar{
-      position:sticky;top:0;z-index:100;
-      height:52px;background:rgba(8,12,20,0.97);
-      border-bottom:1px solid var(--border2);
-      backdrop-filter:blur(12px);
-      display:flex;align-items:center;justify-content:space-between;
-      padding:0 24px;
-    }
-    .tb-brand{
-      display:flex;align-items:center;gap:12px;
-      font-family:var(--mono);font-size:.72rem;
-    }
-    .tb-logo{
-      width:26px;height:26px;
-      background:linear-gradient(135deg,#00a2ff,#00ff88);
-      border-radius:5px;display:flex;align-items:center;justify-content:center;
-      font-size:12px;box-shadow:0 0 12px rgba(0,162,255,0.4);
-    }
-    .tb-path{display:flex;align-items:center;gap:8px;color:var(--t2)}
-    .tb-path a.crumb{color:var(--t2);text-decoration:none;transition:.15s;border-radius:4px;padding:2px 4px;margin:-2px -4px}
-    .tb-path a.crumb:hover{color:var(--t1);background:rgba(255,255,255,.05)}
-    .tb-path .crumb.active{color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);border-radius:99px;padding:2px 10px}
-    .tb-sep{color:var(--t3);font-size:.62rem}
-    .back-btn{
-      display:flex;align-items:center;gap:6px;
-      background:rgba(0,0,0,.2);border:1px solid var(--border2);
-      color:var(--t2);padding:6px 14px;border-radius:6px;
-      font-family:var(--mono);font-size:.65rem;
-      text-decoration:none;transition:.15s;
-    }
-    .back-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,.04)}
-
-    /* Main layout */
-    .wrap{position:relative;z-index:1;padding:20px 24px 48px;max-width:1400px;margin:0 auto}
-
-    /* Section label */
-    .sec-label{
-      font-family:var(--mono);font-size:.62rem;font-weight:600;
-      text-transform:uppercase;letter-spacing:2px;
-      color:var(--t3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-      margin-bottom:12px;
-    }
-    .sec-label::before{content:'//';color:var(--accent2)}
-
-    /* Filter bar */
-    .filter-bar{
-      display:flex;flex-direction:column;gap:10px;
-      padding:14px 16px;
-      background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;margin-bottom:20px;
-      backdrop-filter:blur(8px);
-    }
-    .t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .filter-label{
-      font-family:var(--mono);font-size:.6rem;color:var(--t3);
-      text-transform:uppercase;letter-spacing:1.5px;flex-shrink:0;
-    }
-    .filter-btns{display:flex;gap:4px;flex-wrap:wrap;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-    .filter-btn{
-      background:transparent;border:1px solid transparent;
-      color:var(--t3);font-family:var(--mono);font-size:.62rem;font-weight:600;
-      padding:4px 10px;border-radius:4px;cursor:pointer;transition:.15s;
-    }
-    .filter-btn:hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
-    .filter-btn.active{background:rgba(0,162,255,0.12);border-color:rgba(0,162,255,0.45);color:var(--info)}
-    .filter-btn[data-sev="disaster"].active{background:rgba(255,0,85,0.12);border-color:rgba(255,0,85,0.45);color:var(--disaster)}
-    .filter-btn[data-sev="high"].active{background:rgba(255,68,68,0.12);border-color:rgba(255,68,68,0.45);color:var(--danger)}
-    .filter-btn[data-sev="warning"].active{background:rgba(255,170,0,0.12);border-color:rgba(255,170,0,0.45);color:var(--warn)}
-    .filter-search{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:6px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;
-      min-width:160px;flex:1;outline:none;transition:.2s;
-    }
-    .filter-search:focus{border-color:rgba(0,162,255,0.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-    .filter-search::placeholder{color:var(--t3)}
-    .filter-select{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:6px 8px;border-radius:6px;font-family:var(--mono);font-size:.62rem;outline:none;transition:.2s;
-    }
-    .filter-select:focus{border-color:rgba(0,162,255,0.45)}
-    .filter-stats{
-      margin-left:auto;font-family:var(--mono);font-size:.62rem;color:var(--t3);
-      display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;
-    }
-    .filter-stats span{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:99px;padding:3px 11px;font-variant-numeric:tabular-nums}
-    .filter-stats span::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
-    .filter-stats b{color:var(--t1)}
-    .active-filter-note{
-      font-family:var(--mono);font-size:.6rem;color:var(--info);
-      background:rgba(0,162,255,0.08);border:1px solid rgba(0,162,255,0.25);
-      border-radius:3px;padding:2px 8px;display:none;
-    }
-    .active-filter-note.on{display:inline-block}
-    .table-scroll{overflow-x:auto}
-    .table-scroll table{min-width:720px}
-    .host-link{color:inherit;text-decoration:none;cursor:pointer}
-    .host-link:hover{color:var(--accent2);text-decoration:underline}
-    .last-updated{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-left:8px}
-    .pagination{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border2);font-family:var(--mono);font-size:.62rem;color:var(--t3);background:rgba(0,0,0,.15);font-variant-numeric:tabular-nums}
-    .pg-group{display:flex;gap:4px;background:rgba(0,0,0,.2);border:1px solid var(--border2);border-radius:6px;padding:3px}
-    .pagination button{background:transparent;border:1px solid transparent;color:var(--t2);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:.62rem}
-    .pagination button:disabled{opacity:.35;cursor:not-allowed}
-    .pagination button:not(:disabled):hover{color:var(--t1);border-color:rgba(255,255,255,0.15)}
-    .pagination .last-updated{margin-left:auto}
-
-    /* Log table card */
-    .log-card{
-      background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
-    }
-
-    /* Terminal top bar */
-    .term-topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:10px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--border2);
-    }
-    .term-dots{display:flex;gap:5px}
-    .term-dot{width:10px;height:10px;border-radius:50%}
-    .term-dot.r{background:#ff5f57}.term-dot.y{background:#febc2e}.term-dot.g{background:#28c840}
-    .term-title{font-family:var(--mono);font-size:.62rem;color:var(--t3)}
-    
-    .refresh-btn {
-      background:transparent;border:1px solid rgba(0,162,255,0.3);
-      color:var(--accent);padding:4px 10px;border-radius:4px;
-      font-family:var(--mono);font-size:.6rem;cursor:pointer;
-      transition:.2s;display:flex;align-items:center;gap:4px;
-    }
-    .refresh-btn:hover {background:rgba(0,162,255,0.1);color:#fff}
-    .refresh-btn.spin svg {animation:spin 1s linear infinite}
-    @keyframes spin {100%{transform:rotate(360deg)}}
-
-    table{width:100%;border-collapse:collapse}
-    th{
-      text-align:left;color:var(--t3);font-weight:600;
-      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
-      padding:10px 14px;border-bottom:1px solid var(--border2);
-      background:#0d1424;white-space:nowrap;
-      position:sticky;top:0;z-index:1;
-    }
-    td{
-      padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.025);
-      font-family:var(--mono);font-size:.7rem;color:var(--t2);
-      transition:.12s;vertical-align:middle;
-    }
-    tr:last-child td{border-bottom:none}
-    tr:hover td{background:rgba(0,162,255,0.05);color:var(--t1)}
-    #triggersBody tr td:first-child{box-shadow:inset 2px 0 0 transparent}
-    #triggersBody tr.sev-disaster td:first-child{box-shadow:inset 2px 0 0 var(--disaster)}
-    #triggersBody tr.sev-high td:first-child{box-shadow:inset 2px 0 0 var(--danger)}
-    #triggersBody tr.sev-warning td:first-child{box-shadow:inset 2px 0 0 var(--warn)}
-    #triggersBody tr.sev-disaster{background:rgba(255,0,85,.03)}
-    .table-scroll{overflow:auto;max-height:430px}
-    
-    .col-host{color:var(--t1)!important;white-space:nowrap;font-weight:500;}
-    .col-msg{color:var(--t2);line-height:1.4}
-    
-    .host-alias {
-      font-size:.6rem;
-      color:var(--t3);
-      display:block;
-      margin-top:2px;
-    }
-
-    /* Event type tags */
-    .tag{
-      font-family:var(--mono);font-size:.58rem;font-weight:700;
-      text-transform:uppercase;letter-spacing:.8px;
-      border-radius:3px;padding:3px 8px;white-space:nowrap;
-      display:inline-block;
-    }
-    .tag.disaster{background:rgba(255,0,85,0.1);color:var(--disaster);border:1px solid rgba(255,0,85,0.3);box-shadow:0 0 10px rgba(255,0,85,0.2)}
-    .tag.high{background:rgba(255,68,68,0.1);color:var(--danger);border:1px solid rgba(255,68,68,0.3)}
-    .tag.warning{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
-    .tag.info{background:rgba(0,162,255,0.1);color:var(--info);border:1px solid rgba(0,162,255,0.25)}
-
-    .empty-state{
-      text-align:center;padding:60px 20px;
-      font-family:var(--mono);font-size:.72rem;color:var(--success);
-      line-height:2;
-    }
-    .empty-state svg{
-      width:48px;height:48px;margin-bottom:16px;opacity:0.8;
-      stroke:var(--success);
-    }
-    .empty-state .cmd{color:var(--accent2);display:block;font-size:1.2rem;margin-bottom:8px}
-
-    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-    tbody tr{animation:fadeIn .25s ease both}
-
-    /* Maintenance manager */
-    .maint-card{
-      margin-top:16px;
-      background:var(--card);border:1px solid var(--border2);
-      border-radius:8px;overflow:hidden;backdrop-filter:blur(8px);
-    }
-    .maint-form{
-      display:flex;gap:8px;flex-wrap:wrap;align-items:center;
-      padding:14px 16px;border-bottom:1px solid var(--border2);
-      background:rgba(0,0,0,.12);
-    }
-    .maint-form input{
-      background:rgba(0,0,0,0.3);border:1px solid var(--border2);color:var(--t1);
-      padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:.65rem;
-      outline:none;min-width:140px;transition:.2s;color-scheme:dark;
-    }
-    .maint-form input:focus{border-color:rgba(0,162,255,0.45);box-shadow:0 0 0 3px rgba(0,162,255,.08)}
-    .maint-form input::placeholder{color:var(--t3)}
-    .maint-form button{
-      display:inline-flex;align-items:center;gap:6px;
-      background:rgba(0,162,255,0.1);border:1px solid rgba(0,162,255,0.4);
-      color:var(--info);padding:8px 16px;border-radius:6px;cursor:pointer;
-      font-family:var(--mono);font-size:.65rem;font-weight:700;transition:.15s;
-    }
-    .maint-form button:hover{background:rgba(0,162,255,0.2);color:#fff}
-    .maint-del{
-      display:inline-flex;align-items:center;justify-content:center;
-      background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.25);
-      color:var(--danger);padding:4px;border-radius:4px;cursor:pointer;
-      font-family:var(--mono);font-size:.6rem;transition:.15s;
-    }
-    .maint-del:hover{background:rgba(255,68,68,0.18)}
-    #maintBody tr.mnt-active td{background:rgba(255,170,0,.04)}
-    #maintBody tr.mnt-active td:first-child{box-shadow:inset 2px 0 0 var(--warn)}
-    .empty-panel{text-align:center;padding:28px 20px;border:1px dashed rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.015);margin:14px}
-    .empty-ic{color:var(--t3);margin-bottom:10px;display:flex;justify-content:center}
-    .empty-t{font-family:var(--mono);font-size:.72rem;font-weight:600;color:var(--t1);margin-bottom:5px}
-    .empty-d{font-family:var(--mono);font-size:.62rem;color:var(--t3);margin:0 auto;line-height:1.7;max-width:440px}
-    .tag.maintenance{background:rgba(255,170,0,0.1);color:var(--warn);border:1px solid rgba(255,170,0,0.3)}
-  </style>
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/triggers.js') }}" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
 
-  <div class="topbar">
-    <div class="tb-brand">
-      <div class="tb-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="tb-path">
-        <a class="crumb" href="/" title="Dashboard utama">~/noc</a>
-        <span class="tb-sep">›</span>
-        <a class="crumb" href="/" title="Dashboard utama">dashboard</a>
-        <span class="tb-sep">›</span>
-        <span class="crumb active">active-triggers</span>
-      </div>
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
     </div>
-    <a href="/" class="back-btn">
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4L6 8l4 4"/></svg>
-      cd ..
-    </a>
-  </div>
-
-  <div class="wrap">
-
-    <div class="sec-label" id="secLabel">active_alarms.list</div>
-    <div class="filter-bar">
-      <div class="t-row">
-        <span class="filter-label">Severity</span>
-        <div class="filter-btns" id="sevBtns">
-          <button class="filter-btn active" data-sev="all">all</button>
-          <button class="filter-btn" data-sev="disaster">disaster</button>
-          <button class="filter-btn" data-sev="high">high</button>
-          <button class="filter-btn" data-sev="warning">warning</button>
-        </div>
-        <div class="filter-stats">
-          <span style="color:var(--disaster)">Disaster: <b id="cnt-disaster">0</b></span>
-          <span style="color:var(--danger)">High: <b id="cnt-high">0</b></span>
-          <span style="color:var(--warn)">Warning: <b id="cnt-warn">0</b></span>
-        </div>
-      </div>
-      <div class="t-row">
-        <select class="filter-select" id="catSelect" title="Filter kategori">
-          <option value="all">cat: all</option>
-          <option value="availability">availability</option>
-          <option value="agent">agent</option>
-          <option value="resource">resource</option>
-          <option value="service">service</option>
-          <option value="maintenance">maintenance</option>
-        </select>
-        <input class="filter-search" id="hostSearch" type="text" placeholder="grep host..." autocomplete="off">
-        <span class="active-filter-note" id="filterNote"></span>
-      </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <a href="/triggers" class="nav-link active" data-nav="monitoring" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+      <a href="/services" class="nav-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+      <a href="/inventory" class="nav-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+      <a href="/reports" class="nav-link" data-nav="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+      <a href="/power-analytics" class="nav-link" data-nav="power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+      <a href="/logs" class="nav-link" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+      <a href="/triggers?severity=disaster,high" class="nav-link" data-nav="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
+      <div class="nav-group">Kelola</div>
+      <a href="/discovery" class="nav-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
     </div>
+  </aside>
 
-    <div class="log-card">
-      <div class="term-topbar">
-        <div class="term-dots">
-          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
-        </div>
-        <div class="term-title">triggers_active.sh</div>
-        <button class="refresh-btn" onclick="fetchTriggers()" id="refBtn">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
-          refresh
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title">Alarm Aktif</h1>
+        <p class="page-sub">Konsol insiden dan jadwal peredam alarm</p>
+      </div>
+      <div class="header-actions" style="margin-left:auto">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"></button>
+      </div>
+    </header>
+
+    <main class="page" id="konten">
+      <div class="err-banner" id="errBanner" role="alert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+        <span id="errMsg">Gagal mengambil data dari server.</span>
+      </div>
+
+      <!-- Strip ringkasan severity -->
+      <section class="sev-strip" aria-label="Ringkasan severity">
+        <button class="sev-chip dis" id="chip-disaster" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-disaster">0</span><br><span class="t">Disaster</span></span>
         </button>
-      </div>
-      
-      <div class="table-scroll">
-      <table id="triggersTable">
-        <thead>
-          <tr>
-            <th style="width:140px">Severity</th>
-            <th style="width:250px">Host</th>
-            <th style="width:150px">Category</th>
-             <th>Problem Description</th>
-             <th style="width:260px">Workflow</th>
-
-          </tr>
-        </thead>
-        <tbody id="triggersBody">
-        </tbody>
-      </table>
-      </div>
-      <div class="pagination">
-        <div class="pg-group"><button id="prevBtn">← prev</button><button id="nextBtn">next →</button></div>
-        <span id="pageInfo">page 1/1 · 0 rows</span>
-        <span class="last-updated">updated: <span id="lastUpdated">—</span></span>
-      </div>
-    </div>
-
-    <div class="sec-label" style="margin-top:20px">maintenance_windows.config</div>
-    <div class="maint-card">
-      <div class="term-topbar">
-        <div class="term-dots">
-          <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
-        </div>
-        <div class="term-title">maintenance_schedule.sh — DOWN & telegram disuppress saat window aktif · fiber massal via ODP:&lt;nama&gt;/OLT:&lt;nama&gt;</div>
-        <button class="refresh-btn" onclick="fetchMaintenance()" id="maintRefBtn">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M15 12V6H9M4.2 13.8a7 7 0 1 0 0-11.6L1 4M11.8 2.2a7 7 0 1 1 0 11.6L15 12"/></svg>
-          refresh
+        <button class="sev-chip high" id="chip-high" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-high">0</span><br><span class="t">High</span></span>
         </button>
+        <button class="sev-chip warn" id="chip-warning" aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
+          <span><span class="n" id="cnt-warn">0</span><br><span class="t">Warning</span></span>
+        </button>
+      </section>
+
+      <!-- Toolbar filter -->
+      <div class="toolbar-card" role="search">
+        <div class="seg" id="sevSeg" role="group" aria-label="Filter severity">
+          <button class="seg-btn active" data-sev="all">Semua</button>
+          <button class="seg-btn" data-sev="disaster">Disaster</button>
+          <button class="seg-btn" data-sev="high">High</button>
+          <button class="seg-btn" data-sev="warning">Warning</button>
+        </div>
+        <div class="select-wrap">
+          <select id="catSelect" aria-label="Filter kategori">
+            <option value="all">Semua kategori</option>
+            <option value="availability">Ketersediaan</option>
+            <option value="agent">Agent</option>
+            <option value="resource">Resource</option>
+            <option value="service">Layanan</option>
+            <option value="fiber">Fiber</option>
+            <option value="mikrotik">MikroTik</option>
+            <option value="maintenance">Maintenance</option>
+          </select>
+        </div>
+        <label class="search" style="margin-left:0;flex:1;min-width:200px;max-width:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+          <input type="search" id="hostSearch" placeholder="Cari host atau IP…" aria-label="Cari host" autocomplete="off">
+        </label>
+        <button class="reset-btn" id="resetFilter">Reset filter</button>
+        <span class="toolbar-spacer"></span>
+        <span class="updated-note" id="updatedNote">—</span>
+        <button class="btn" id="btnRefresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>Refresh</button>
       </div>
-      <form class="maint-form" onsubmit="createMaintenance(event)">
-        <input id="maintHost" list="maintHostList" placeholder="host / IP / ONT SN / ODP:nama / OLT:nama" required title="IP terdaftar, ONT SN fiber, atau ODP:<nama>/OLT:<nama> untuk maintenance massal fiber" style="flex:2;min-width:200px" autocomplete="off">
-        <datalist id="maintHostList"></datalist>
-        <input id="maintStart" type="datetime-local" required title="Mulai">
-        <input id="maintEnd" type="datetime-local" required title="Selesai">
-        <input id="maintReason" type="text" placeholder="alasan (misal: upgrade firmware)" maxlength="200" style="flex:2;min-width:180px" autocomplete="off">
-        <button type="submit"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>schedule</button>
-      </form>
-      <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Host</th>
-            <th>Mulai</th>
-            <th>Selesai</th>
-            <th>Status</th>
-            <th>Alasan</th>
-            <th style="width:80px">Aksi</th>
-          </tr>
-        </thead>
-        <tbody id="maintBody">
-          <tr><td colspan="6" style="text-align:center;padding:20px">loading...</td></tr>
-        </tbody>
-      </table>
-      </div>
-    </div>
 
-  </div>
-
-  <script>
-    let aliasMap = {};
-    let allAlarms = [];
-    let sevSet = new Set();
-    let catFilter = 'all';
-    let searchQuery = '';
-    let curPage = 1;
-    const PAGE_SIZE = 50;
-    function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-
-    function initFilterFromURL(){
-      try{
-        const p = new URLSearchParams(window.location.search || '');
-        const raw = (p.get('severity') || '').toLowerCase();
-        sevSet = new Set(raw.split(',').map(s=>s.trim()).filter(s=>['disaster','high','warning'].includes(s)));
-        const cat = (p.get('cat') || p.get('category') || 'all').toLowerCase();
-        catFilter = ['all','availability','agent','resource','service','maintenance'].includes(cat) ? cat : 'all';
-        searchQuery = (p.get('q') || '').toLowerCase().trim();
-      }catch(_){ sevSet = new Set(); catFilter = 'all'; searchQuery = ''; }
-      syncFilterUI();
-    }
-    function syncFilterUI(){
-      document.querySelectorAll('#sevBtns .filter-btn').forEach(b=>{
-        const sev = b.getAttribute('data-sev');
-        const active = sev === 'all' ? sevSet.size === 0 : sevSet.has(sev);
-        b.classList.toggle('active', active);
-      });
-      const catSel = document.getElementById('catSelect');
-      if(catSel) catSel.value = catFilter;
-      const si = document.getElementById('hostSearch');
-      if(si && document.activeElement !== si) si.value = searchQuery;
-      const note = document.getElementById('filterNote');
-      const parts = [];
-      if(sevSet.size) parts.push('sev:' + [...sevSet].join(','));
-      if(catFilter !== 'all') parts.push('cat:' + catFilter);
-      if(searchQuery) parts.push('q:' + searchQuery);
-      if(note){
-        if(parts.length){ note.textContent = 'filter [' + parts.join(' ') + ']'; note.classList.add('on'); }
-        else { note.textContent = ''; note.classList.remove('on'); }
-      }
-      try{
-        const crumbs = document.querySelectorAll('.tb-path .crumb.active');
-        const sec = document.getElementById('secLabel');
-        const isAlerts = sevSet.size > 0 && ![...sevSet].includes('warning');
-        if(crumbs.length) crumbs[crumbs.length-1].textContent = isAlerts ? 'alerts-critical' : 'active-triggers';
-        if(sec) sec.textContent = isAlerts ? 'alerts_critical.list' : 'active_alarms.list';
-      }catch(_){}
-      try{
-        const p = new URLSearchParams();
-        if(sevSet.size) p.set('severity', [...sevSet].sort().join(','));
-        if(catFilter !== 'all') p.set('cat', catFilter);
-        if(searchQuery) p.set('q', searchQuery);
-        const qs = p.toString();
-        history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
-      }catch(_){}
-    }
-
-    async function loadHosts() {
-      try {
-        const res = await fetch('/api/hosts');
-        if(!res.ok) return;
-        const data = await res.json();
-        data.forEach(h => { aliasMap[h.ip] = (h.alias || '').trim() || h.ip; });
-        const dl = document.getElementById('maintHostList');
-        let opts = data.map(h => `<option value="${esc(h.ip)}">${esc(aliasMap[h.ip])}</option>`).join('');
-        try {
-          const rf = await fetch('/api/fiber');
-          if(rf.ok){
-            const onts = await rf.json();
-            opts += (Array.isArray(onts)?onts:[]).map(o=>`<option value="${esc(o.ont_sn)}">ONT ${esc(o.customer||'')}</option>`).join('');
-          }
-        } catch(_){}
-        try {
-          const ro = await fetch('/api/odps');
-          if(ro.ok){
-            const odps = await ro.json();
-            opts += (Array.isArray(odps)?odps:[]).filter(o=>o.id).map(o=>`<option value="ODP:${esc(o.name)}">ODP ${esc(o.total||0)} ONT</option>`).join('');
-          }
-        } catch(_){}
-        try {
-          const rl = await fetch('/api/olts');
-          if(rl.ok){
-            const olts = await rl.json();
-            opts += (Array.isArray(olts)?olts:[]).map(o=>`<option value="OLT:${esc(o.name)}">OLT ${esc(o.ip||'')}</option>`).join('');
-          }
-        } catch(_){}
-        if(dl) dl.innerHTML = opts;
-      } catch(e) {}
-    }
-
-    function getFiltered(){
-      const q = (searchQuery || '').toLowerCase().trim();
-      return (allAlarms || []).filter(a=>{
-        const sev = String(a.severity || '').toLowerCase();
-        if(sevSet.size && !sevSet.has(sev)) return false;
-        if(catFilter !== 'all' && String(a.category || '').toLowerCase() !== catFilter) return false;
-        if(q){
-          const hn = String(aliasMap[a.host] || a.host || '').toLowerCase();
-          const hay = (a.host + ' ' + hn + ' ' + (a.message || '') + ' ' + (a.category || '')).toLowerCase();
-          if(!hay.includes(q)) return false;
-        }
-        return true;
-      });
-    }
-
-    function renderTable(){
-      const tbody = document.getElementById('triggersBody');
-      const cDis = document.getElementById('cnt-disaster');
-      const cHi = document.getElementById('cnt-high');
-      const cWarn = document.getElementById('cnt-warn');
-      let dis=0, hi=0, warn=0;
-      (allAlarms || []).forEach(a=>{
-        const s = String(a.severity || '').toLowerCase();
-        if(s === 'disaster') dis++;
-        else if(s === 'high') hi++;
-        else if(s === 'warning') warn++;
-      });
-      if(cDis) cDis.textContent = dis;
-      if(cHi) cHi.textContent = hi;
-      if(cWarn) cWarn.textContent = warn;
-
-      const filtered = getFiltered();
-      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-      if(curPage > totalPages) curPage = totalPages;
-      if(curPage < 1) curPage = 1;
-      const start = (curPage - 1) * PAGE_SIZE;
-      const rows = filtered.slice(start, start + PAGE_SIZE);
-
-      let html = '';
-      if(!filtered.length){
-        const isFiltering = sevSet.size > 0 || catFilter !== 'all' || searchQuery;
-        html = `<tr><td colspan="5">
-          <div class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
-            <span class="cmd">${isFiltering ? '$ filter = NO_MATCH' : '$ status = ALL_CLEAR'}</span>
-            ${isFiltering ? 'Tidak ada alarm yang cocok dengan filter. Ubah filter atau klik all.' : 'Tidak ada alarm aktif saat ini. Jaringan berjalan normal.'}
+      <!-- Tabel alarm -->
+      <section class="card" aria-label="Daftar alarm aktif">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">Daftar Alarm</h2>
+            <p class="card-desc">Diperbarui otomatis tiap 10 detik</p>
           </div>
-        </td></tr>`;
-      } else {
-        rows.forEach(a => {
-          const hostName = esc(aliasMap[a.host] || a.host);
-          const rawHost = esc(a.host);
-          const subName = (hostName !== a.host) ? `<span class="host-alias">${rawHost}</span>` : '';
-          const hostCell = `<a class="host-link" href="/host/${encodeURIComponent(a.host)}" title="Detail ${rawHost}">${hostName}${subName}</a>`;
-           const ack = Boolean(a.acknowledged_at);
-           html += `<tr class="sev-${esc(a.severity)}">
-             <td><span class="tag ${esc(a.severity)}">${esc(a.severity)}</span></td>
-             <td class="col-host">${hostCell}</td>
-             <td><span style="color:var(--t2);font-family:var(--mono);font-size:0.65rem">${esc((a.category||'').toUpperCase())}</span></td>
-             <td class="col-msg">${esc(a.message)}</td>
-             <td>
-               <button class="refresh-btn" onclick="toggleAck(${Number(a.id)}, ${!ack})">${ack ? 'unack' : 'ack'}</button>
-               <button class="refresh-btn" onclick="editWorkflow(${Number(a.id)}, '${esc(a.assigned_to || '')}', '${esc(a.note || '')}')">assign/note</button>
-               ${a.assigned_to ? `<span class="host-alias">PIC: ${esc(a.assigned_to)}</span>` : ''}
-             </td>
-           </tr>`;
-        });
-      }
-      tbody.innerHTML = html;
-      const pageInfo = document.getElementById('pageInfo');
-      if(pageInfo) pageInfo.textContent = `page ${curPage}/${totalPages} · ${filtered.length} rows`;
-      const prevBtn = document.getElementById('prevBtn');
-      const nextBtn = document.getElementById('nextBtn');
-      if(prevBtn) prevBtn.disabled = curPage <= 1;
-      if(nextBtn) nextBtn.disabled = curPage >= totalPages;
-    }
+        </div>
+        <div class="alarm-wrap">
+          <table class="alarm-table">
+            <caption class="sr-only">Daftar alarm aktif beserta workflow-nya</caption>
+            <thead>
+              <tr>
+                <th scope="col" style="width:130px">Severity</th>
+                <th scope="col" style="width:220px">Host</th>
+                <th scope="col" style="width:130px">Kategori</th>
+                <th scope="col">Masalah</th>
+                <th scope="col" style="width:280px">Workflow</th>
+              </tr>
+            </thead>
+            <tbody id="triggersBody">
+              <tr><td colspan="5"><div class="skeleton" style="height:120px"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <span class="table-info" id="pageInfo">—</span>
+          <span class="pager-right">
+            <span class="select-wrap">
+              <select id="pgSize" class="pg-size" aria-label="Baris per halaman">
+                <option value="25">25 / halaman</option>
+                <option value="50">50 / halaman</option>
+                <option value="100">100 / halaman</option>
+              </select>
+            </span>
+            <button class="act-btn" id="prevBtn">← Sebelumnya</button>
+            <button class="act-btn" id="nextBtn">Berikutnya →</button>
+          </span>
+        </div>
+      </section>
 
-    async function fetchTriggers(){
-      const btn = document.getElementById('refBtn');
-      if(btn) btn.classList.add('spin');
-      try{
-        const res = await fetch('/api/triggers');
-        if(res.status === 401) return;
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        allAlarms = await res.json() || [];
-        renderTable();
-        const lu = document.getElementById('lastUpdated');
-        if(lu) lu.textContent = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-      } catch(e){
-        console.error(e);
-        document.getElementById('triggersBody').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--danger)">Gagal memuat data alarm: ${esc(e.message)}</td></tr>`;
-      } finally {
-        if(btn) setTimeout(() => btn.classList.remove('spin'), 400);
-      }
-    }
+      <!-- Maintenance -->
+      <section class="section" aria-label="Jadwal maintenance">
+        <div class="section-head">
+          <div><h2 class="section-title">Jadwal Maintenance</h2><p class="section-hint">Redam alarm saat perbaikan terjadwal</p></div>
+        </div>
 
-     async function updateWorkflow(id, payload){
-       const res = await fetch(`/api/alerts/${id}/workflow`, {method:'PATCH', headers:apiHeaders(), body:JSON.stringify(payload)});
-       const data = await res.json().catch(()=>({}));
-       if(!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-       await fetchTriggers();
-     }
-     async function toggleAck(id, acknowledged){
-       try { await updateWorkflow(id, {acknowledged}); } catch(e) { alert(e.message); }
-     }
-     async function editWorkflow(id, assigned, note){
-       const nextAssigned = prompt('Assign ke user:', assigned || '');
-       if(nextAssigned === null) return;
-       const nextNote = prompt('Catatan alert:', note || '');
-       if(nextNote === null) return;
-       try { await updateWorkflow(id, {assigned_to:nextAssigned, note:nextNote}); } catch(e) { alert(e.message); }
-     }
+        <div class="info-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
+          <span>Saat jendela maintenance aktif, <b>alarm DOWN dan notifikasi Telegram akan diredam</b>. Untuk maintenance fiber massal, gunakan target <span class="mono">ODP:&lt;nama&gt;</span> atau <span class="mono">OLT:&lt;nama&gt;</span>.</span>
+        </div>
 
-     function apiHeaders(extra){
-       return Object.assign({"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, extra || {});
-     }
+        <div class="card" style="padding:0">
+          <form class="maint-form" id="maintForm">
+            <div class="field mf-4">
+              <label for="maintHost">Target</label>
+              <input id="maintHost" list="maintHostList" placeholder="IP / ONT SN / ODP:nama / OLT:nama" required autocomplete="off">
+              <datalist id="maintHostList"></datalist>
+            </div>
+            <div class="field mf-3">
+              <label for="maintStart">Mulai</label>
+              <input id="maintStart" type="datetime-local" required>
+            </div>
+            <div class="field mf-3">
+              <label for="maintEnd">Selesai</label>
+              <input id="maintEnd" type="datetime-local" required>
+            </div>
+            <div class="field mf-4">
+              <label for="maintReason">Alasan</label>
+              <input id="maintReason" type="text" placeholder="misal: upgrade firmware" maxlength="200" autocomplete="off">
+            </div>
+            <div class="field mf-4" style="grid-column:1/-1">
+              <label>Durasi cepat</label>
+              <div class="preset-row" id="presetRow">
+                <button type="button" class="preset-btn" data-min="30">30 menit</button>
+                <button type="button" class="preset-btn" data-min="60">1 jam</button>
+                <button type="button" class="preset-btn" data-min="120">2 jam</button>
+                <button type="button" class="preset-btn" data-min="1440">1 hari</button>
+                <span class="preset-hint" id="presetHint"></span>
+              </div>
+            </div>
+            <div class="field mf-2" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <button type="submit" class="btn btn-primary" id="btnSched">Jadwalkan</button>
+              <div class="form-error" id="maintError" role="alert" style="display:none;margin:0"></div>
+            </div>
+          </form>
+          <div class="alarm-wrap" style="padding:0 22px 10px">
+            <table class="alarm-table">
+              <caption class="sr-only">Daftar jadwal maintenance</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Target</th>
+                  <th scope="col">Mulai</th>
+                  <th scope="col">Selesai</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Alasan</th>
+                  <th scope="col" style="width:80px">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="maintBody">
+                <tr><td colspan="6"><div class="skeleton" style="height:90px"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <details class="maint-history" id="maintHistory" style="display:none">
+            <summary id="maintHistorySummary">Riwayat selesai</summary>
+            <div class="alarm-wrap" style="padding-bottom:10px">
+              <table class="alarm-table">
+                <caption class="sr-only">Riwayat jadwal maintenance yang sudah selesai</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Target</th>
+                    <th scope="col">Mulai</th>
+                    <th scope="col">Selesai</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Alasan</th>
+                    <th scope="col" style="width:80px">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="maintHistoryBody"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
 
+<!-- ============ MODAL TUGASKAN / CATATAN ============ -->
+<div class="modal-overlay" id="assignModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assignTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="assignTitle">Tugaskan / Catatan</div><div class="modal-sub">Alarm: <span id="assignHost">—</span></div></div>
+      <button class="modal-close" id="btnAssignClose" aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="assignForm">
+        <div class="field">
+          <label for="assignAssignee">Ditugaskan ke</label>
+          <input type="text" id="assignAssignee" placeholder="misal: Sandy" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="assignNote">Catatan</label>
+          <input type="text" id="assignNote" placeholder="misal: menunggu teknisi lapangan" autocomplete="off">
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnAssignCancel" type="button">Batal</button>
+      <button class="btn btn-primary" id="btnAssignSave" type="submit" form="assignForm">Simpan</button>
+    </div>
+  </div>
+</div>
 
-    async function fetchMaintenance(){
-      const tb = document.getElementById('maintBody');
-      try{
-        const res = await fetch('/api/maintenance');
-        if(res.status === 401) return;
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = await res.json() || [];
-        if(!rows.length){
-          tb.innerHTML = `<tr><td colspan="6" style="border-bottom:none"><div class="empty-panel"><div class="empty-ic"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 2"/></svg></div><div class="empty-t">tidak ada jadwal maintenance</div><div class="empty-d">Semua alarm aktif normal. Isi form di atas untuk meredam alarm saat perbaikan terjadwal.</div></div></td></tr>`;
-          return;
-        }
-        tb.innerHTML = rows.map(r => {
-          const st = r.is_active
-            ? `<span class="tag warning">ACTIVE</span>`
-            : (String(r.start_at) > new Date().toISOString().slice(0,19).replace('T',' ')
-                ? `<span class="tag info">SCHEDULED</span>`
-                : `<span class="tag" style="color:var(--t3);border:1px solid var(--border2)">EXPIRED</span>`);
-          return `<tr${r.is_active?' class="mnt-active"':''}>
-            <td class="col-host">${esc(r.host)}</td>
-            <td>${esc(r.start_at)}</td>
-            <td>${esc(r.end_at)}</td>
-            <td>${st}</td>
-            <td class="col-msg">${esc(r.reason || '—')}</td>
-            <td><button class="maint-del" onclick="deleteMaintenance(${r.id})" title="Hapus jadwal"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 4h12M5.5 4V2.5h5V4M4 4l.7 10h6.6L12 4"/></svg></button></td>
-          </tr>`;
-        }).join('');
-      } catch(e){
-        tb.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--danger)">Gagal memuat maintenance: ${esc(e.message)}</td></tr>`;
-      }
-    }
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
 
-    async function createMaintenance(ev){
-      ev.preventDefault();
-      const host = document.getElementById('maintHost').value.trim();
-      const start = document.getElementById('maintStart').value;
-      const end = document.getElementById('maintEnd').value;
-      const reason = document.getElementById('maintReason').value.trim();
-      if(!host || !start || !end){ alert('Host, mulai, dan selesai wajib diisi'); return; }
-      try{
-        const res = await fetch('/api/maintenance', {
-          method: 'POST',
-          headers: apiHeaders(),
-          body: JSON.stringify({host, start_at: start.replace('T',' ') + ':00', end_at: end.replace('T',' ') + ':00', reason})
-        });
-        const body = await res.json().catch(()=>({}));
-        if(!res.ok){ alert(body.error || ('Gagal (' + res.status + ')')); return; }
-        document.getElementById('maintReason').value = '';
-        fetchMaintenance();
-        fetchTriggers();
-      } catch(e){ alert('Gagal: ' + e.message); }
-    }
-
-    async function deleteMaintenance(id){
-      if(!confirm('Hapus jadwal maintenance #' + id + '? Alarm akan aktif normal kembali.')) return;
-      try{
-        const res = await fetch('/api/maintenance/' + id, {method: 'DELETE', headers: apiHeaders()});
-        if(!res.ok){ const b = await res.json().catch(()=>({})); alert(b.error || ('Gagal (' + res.status + ')')); return; }
-        fetchMaintenance();
-        fetchTriggers();
-      } catch(e){ alert('Gagal: ' + e.message); }
-    }
-
-    window.addEventListener('DOMContentLoaded', async () => {
-      initFilterFromURL();
-      document.querySelectorAll('#sevBtns .filter-btn').forEach(b=>{
-        b.addEventListener('click', ()=>{
-          const sev = b.getAttribute('data-sev');
-          if(sev === 'all'){ sevSet.clear(); }
-          else {
-            if(sevSet.has(sev)) sevSet.delete(sev);
-            else sevSet.add(sev);
-          }
-          curPage = 1;
-          syncFilterUI(); renderTable();
-        });
-      });
-      const catSel = document.getElementById('catSelect');
-      if(catSel) catSel.addEventListener('change', ()=>{ catFilter = catSel.value; curPage = 1; syncFilterUI(); renderTable(); });
-      const si = document.getElementById('hostSearch');
-      let deb = null;
-      if(si) si.addEventListener('input', ()=>{
-        clearTimeout(deb);
-        deb = setTimeout(()=>{ searchQuery = si.value.toLowerCase().trim(); curPage = 1; syncFilterUI(); renderTable(); }, 180);
-      });
-      const prevBtn = document.getElementById('prevBtn');
-      const nextBtn = document.getElementById('nextBtn');
-      if(prevBtn) prevBtn.addEventListener('click', ()=>{ if(curPage>1){curPage--; renderTable();} });
-      if(nextBtn) nextBtn.addEventListener('click', ()=>{ curPage++; renderTable(); });
-      document.addEventListener('keydown', (e)=>{
-        const tag = (document.activeElement && document.activeElement.tagName) || '';
-        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-        if(e.key === '/' && !typing){ e.preventDefault(); const s=document.getElementById('hostSearch'); if(s) s.focus(); }
-      });
-      await loadHosts();
-      fetchTriggers();
-      fetchMaintenance();
-      setInterval(fetchTriggers, 10000);
-      setInterval(fetchMaintenance, 30000);
-    });
-  </script>
 <script>
+// Redirect otomatis ke /login jika sesi habis (API 401)
 (function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
 </script>
 </body>

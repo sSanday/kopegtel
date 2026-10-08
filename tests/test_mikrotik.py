@@ -649,6 +649,14 @@ class MikrotikStaleWrapTest(unittest.TestCase):
     def tearDownClass(cls):
         _cleanup_st()
 
+    def setUp(self):
+        # Refresh the test session before every test so tests remain isolated
+        # from idle-session expiry and execution order.
+        r = self.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
+        self.assertEqual(r.status_code, 302, f"login gagal, status={r.status_code}")
+
     def _add(self, ip):
         r = self.client.post(
             "/api/hosts",

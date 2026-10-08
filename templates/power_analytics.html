@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0f14">
+  <meta name="description" content="Pantau konsumsi daya, energi, dan estimasi biaya perangkat dari SNMP maupun input manual — NMS Kopegtel">
+  <title>Analitik Daya — NMS Kopegtel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <script>
+  (function(){try{var t=localStorage.getItem('nms_theme');if(t!=='light'&&t!=='dark')t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==='light'?'#eef1f6':'#0b0f14';}catch(_){}})();
+  </script>
+  <script src="{{ url_for('static', filename='js/chart.umd.min.js') }}" defer></script>
+  <style>
+    :root{--mono:'JetBrains Mono',ui-monospace,monospace;--font-sans:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;--t1:var(--text);--t2:var(--text-2);--t3:var(--text-3);--card:var(--surface);--card2:var(--surface-2);--border2:var(--border-strong);--success:var(--ok-text);--danger:var(--down-text);--warn:var(--warn-text);--info:var(--accent);--accent2:var(--ok-text);--shadow:var(--shadow-lg);--r-card:16px;--r-input:11px;--s-3:12px;--s-4:16px;--s-5:24px;--focus-ring:0 0 0 3px var(--accent-soft)}
+    .wrap{padding:0;max-width:none;margin:0}
+    .hero h1{font-size:28px;font-weight:800;letter-spacing:-.02em;color:var(--text)}
+    .hero p{font-size:13px;color:var(--text-2);margin-top:4px}
+    .sec-label{display:flex;align-items:center;gap:10px;font-family:var(--font-sans);font-size:16px;font-weight:700;letter-spacing:-.01em;color:var(--text);margin:24px 0 12px}
+    .sec-label .count{margin-left:auto;font-weight:500;font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:4px 12px;color:var(--text-2)}
+    .toolbar{display:flex;flex-direction:column;gap:12px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:18px;box-shadow:var(--shadow-sm)}
+    .t-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .seg{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:3px}
+    .seg button{border:0;background:none;color:var(--text-2);font-family:var(--font-sans);font-size:13px;font-weight:600;padding:9px 14px;border-radius:9px;cursor:pointer;min-height:40px;transition:.15s;white-space:nowrap}
+    .seg button.active{background:var(--surface-3);color:var(--accent);box-shadow:var(--shadow-sm)}
+    .seg button:hover{color:var(--text)}
+    .chip{font-size:12px;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:6px 12px}
+    .chip b{color:var(--text);font-weight:600}
+    .btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--text);font-family:var(--font-sans);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:.15s;white-space:nowrap}
+    .btn:hover{background:var(--surface-2);border-color:var(--text-3)}
+    .btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:#fff}
+    .btn.primary:hover{background:var(--accent-btn-hover);border-color:var(--accent-btn-hover)}
+    .btn.ghost{background:transparent;border-color:var(--border-strong);color:var(--text-2)}
+    .btn.ghost:hover{color:var(--text);background:var(--surface-2)}
+    .btn:disabled{opacity:.5;cursor:wait}
+    select,input{background:var(--surface-2);border:1px solid var(--border-strong);color:var(--text);border-radius:11px;padding:0 13px;height:44px;font-family:var(--font-sans);font-size:13px;outline:none;transition:.15s}
+    select:focus,input:focus{border-color:var(--accent);box-shadow:var(--focus-ring)}
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:6px}
+    @media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:560px){.kpis{grid-template-columns:1fr}}
+    .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:18px 20px;box-shadow:var(--shadow-sm);transition:.15s}
+    .kpi:hover{transform:translateY(-2px);border-color:var(--border-strong)}
+    .kpi .top{display:flex;align-items:center;justify-content:space-between}
+    .kpi .k{font-family:var(--font-sans);font-size:12.5px;color:var(--text-2);font-weight:600}
+    .kpi .ic{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent-text)}
+    .kpi .v{font-family:var(--mono);font-size:32px;font-weight:600;color:var(--text);margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1}
+    .kpi .s{font-size:12px;color:var(--text-2);margin-top:8px}
+    .kpi .bar{height:4px;border-radius:99px;background:var(--surface-3);margin-top:10px;overflow:hidden}
+    .kpi .bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+    .kpi.alert{border-color:var(--down-text)}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;margin-bottom:16px;box-shadow:var(--shadow-sm)}
+    .term{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .dots{display:none}
+    .term-t{font-size:15px;font-weight:700;color:var(--text)}
+    .term-m{font-size:12px;color:var(--text-2)}
+    .body{padding:18px 20px}
+    .charts{display:grid;grid-template-columns:2fr 1fr;gap:18px}
+    @media(max-width:1000px){.charts{grid-template-columns:1fr}}
+    canvas{max-height:320px}
+    .table-scroll{overflow:auto;max-height:440px}
+    table{width:100%;border-collapse:collapse;min-width:780px}
+    th{text-align:left;color:var(--text-2);font-family:var(--font-sans);font-size:12px;font-weight:600;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap;position:sticky;top:0;z-index:1}
+    td{padding:14px 16px;border-bottom:1px solid var(--border);font-family:var(--font-sans);font-size:13.5px;color:var(--text-2);font-variant-numeric:tabular-nums}
+    tr:last-child td{border-bottom:none}
+    tbody tr:hover td{background:var(--surface-2)}
+    tbody tr.bad td{background:transparent}
+    .host{color:var(--text);font-weight:700}
+    .sub2{color:var(--text-3);font-size:12px;font-family:var(--mono)}
+    .technical{font-family:var(--mono);font-variant-numeric:tabular-nums}
+    .wbar{height:6px;border-radius:99px;background:var(--surface-3);margin-top:6px;overflow:hidden;min-width:90px}
+    .wbar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+    .tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
+    .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+    .tag.ok{background:var(--ok-soft);color:var(--ok-text)}
+    .tag.high{background:var(--down-soft);color:var(--down-text)}
+    .tag.snmp{background:var(--accent-soft);color:var(--accent-text)}
+    .tag.manual{background:var(--surface-3);color:var(--text-2)}
+    .empty{text-align:center;padding:48px 20px;color:var(--text-2);font-family:var(--font-sans);font-size:13.5px;line-height:1.7}
+    .empty b{color:var(--text)}
+    .forms{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    @media(max-width:1100px){.forms{grid-template-columns:1fr}}
+    .frow{display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap}
+    .frow input,.frow select{flex:1;min-width:140px}
+    label{font-family:var(--font-sans);font-size:12.5px;color:var(--text-2);font-weight:600;display:block;margin:10px 0 5px}
+    label:first-child{margin-top:0}
+    .collapse-btn svg{width:18px;height:18px;flex:0 0 18px}
+    .err{font-size:12px;color:var(--down-text);min-height:1.1em;margin-top:6px}
+    .note{font-size:12.5px;color:var(--text-2);margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;line-height:1.7}
+    .info-box{display:flex;align-items:flex-start;gap:10px;margin-bottom:22px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;font-size:12.5px;color:var(--text-2);line-height:1.7}
+    .acc-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:18px;overflow:hidden;box-shadow:var(--shadow-sm)}
+    .acc-panel>summary{cursor:pointer;list-style:none;padding:16px 20px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;color:var(--text)}
+    .acc-panel>summary::-webkit-details-marker{display:none}
+    .acc-panel>summary::before{content:'';width:8px;height:8px;border-right:2px solid var(--text-3);border-bottom:2px solid var(--text-3);transform:rotate(-45deg);transition:transform .2s}
+    .acc-panel[open]>summary::before{transform:rotate(45deg)}
+    .acc-panel:not([open]) .acc-body{display:none}
+    .acc-body{padding:0 20px 18px}
+    .info-icon{width:20px;height:20px;flex:0 0 20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent-text);font-weight:800;font-size:12px}
+    .menu-wrap{position:relative}
+    .export-chevron{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:0 0 14px;margin-left:1px;color:currentColor}
+    .export-chevron svg{display:block;width:12px;height:12px}
+    .menu-pop{display:none;position:absolute;top:calc(100% + 8px);right:0;z-index:120;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);padding:6px}
+    .menu-pop.open{display:block;animation:fade-up .18s ease}
+    .menu-pop a{display:flex;align-items:center;min-height:44px;padding:11px 12px;border-radius:9px;color:var(--text);text-decoration:none;font-size:13.5px;font-weight:500}
+    .menu-pop a:hover{background:var(--surface-2)}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+    @media(max-width:640px){
+      .table-scroll table{min-width:0}
+      .table-scroll table,.table-scroll tbody,.table-scroll tr,.table-scroll td{display:block;width:100%}
+      .table-scroll thead{display:none}
+      .table-scroll tbody tr{display:block;border:1px solid var(--border);border-radius:14px;margin:10px 12px;background:var(--surface);padding:4px 0}
+      .table-scroll tbody td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:11px 13px;border-bottom:1px solid var(--border)}
+      .table-scroll tbody td:last-child{border-bottom:none}
+      .table-scroll tbody td::before{content:attr(data-label);font-size:11.5px;font-weight:600;color:var(--text-2);flex-shrink:0}
+      .table-scroll tbody td>*:last-child{text-align:right}
+      .table-scroll tbody td.num{text-align:right}
+    }
+    @page{size:A4 portrait;margin:12mm 12mm 15mm}
+    .print-footer{display:none}
+    @media print{html,body{background:#fff!important;color:#111!important;font-size:12px!important}body{--bg:#fff;--surface:#fff;--surface-2:#f7f8fa;--surface-3:#eef1f4;--border:#cbd5e1;--border-strong:#94a3b8;--text:#111827;--text-2:#334155;--text-3:#64748b;--accent:#0f766e;--accent-text:#0f766e;--ok-text:#166534;--down-text:#b91c1c;--warn-text:#92400e}.sidebar,.header,.crumbs,.toolbar,.forms,.skip-link,.scrim{display:none!important}.app{display:block!important}.main-col{display:block!important}.page{max-width:none!important;padding:0!important}.wrap{padding:0!important}.card,.kpi,.info-box,.note{background:#fff!important;border-color:#b8c0ca!important;box-shadow:none!important}.kpi .v,.kpi .k,.kpi .s,.term-t,.term-m,th,td{color:#111!important}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.wbar i,.tag,.consumer-bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-head{display:flex!important;flex-direction:column;gap:2px;border-bottom:2px solid #0f766e;padding-bottom:10px;margin-bottom:14px;color:#111}.print-head strong{font-size:18px}.print-head span{font-size:16px;font-weight:700}.print-head small{font-size:11px;color:#334155}.print-footer{display:block;position:fixed;bottom:-7mm;left:0;right:0;font-size:9px;color:#475569;border-top:1px solid #cbd5e1;padding-top:3px}.page-number{float:right}.page-number::after{content:"Halaman " counter(page)}}
+    .print-head{display:none}
+    .chart-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--text-2);font-size:13px;line-height:1.6;padding:20px;pointer-events:none}
+    .chart-empty b{color:var(--text);font-size:14px}
+    .consumer-row{display:flex;flex-direction:column;gap:4px}
+    .consumer-row .cr-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .consumer-row .cr-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+    .consumer-row .cr-watts{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+    .consumer-row .cr-pct{font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums}
+    .consumer-bar{height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden}
+    .consumer-bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></span><span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span></div>
+      <nav class="nav" aria-label="Menu">
+        <div class="nav-group">Menu</div>
+        <a href="/" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+        <a href="/triggers" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Monitoring</span></a>
+        <a href="/services" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
+        <a href="/inventory" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
+        <a href="/fiber" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+        <a href="/mikrotik" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+        <a href="/reports" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
+        <a href="/power-analytics" class="nav-link active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
+        <a href="/logs" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
+        <a href="/triggers?severity=disaster,high" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 0 0-6-6z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg><span>Peringatan</span></a>
+        <div class="nav-group">Kelola</div>
+        <a href="/discovery" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4.5 4.5"/></svg><span>Discovery</span></a>
+      </nav>
+      <div class="sidebar-foot"><button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button></div>
+    </aside>
+    <div class="main-col">
+      <header class="header">
+        <span class="hamburger-wrap"><button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></span>
+        <div><h1 class="page-title">Analitik Daya</h1><p class="page-sub">Pantau konsumsi daya, energi, dan estimasi biaya perangkat dari SNMP maupun input manual.</p></div>
+        <div class="header-actions" style="margin-left:auto"><span class="live-badge" id="liveBadge"><span class="dot" aria-hidden="true"></span> Live</span><span class="updated-note" id="genAt">—</span><button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"></button></div>
+      </header>
+      <main class="page" id="konten">
+        <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a><span class="sep">/</span><span class="cur">Analitik Daya</span></nav>
+        <div class="wrap">
+    <div class="print-head" id="printHead"><strong>NMS Kopegtel</strong><span>Laporan Analitik Daya</span><small id="printPeriod">Periode 24 jam</small><small>Dibuat pada <span id="printGenerated">—</span></small></div>
+    <div class="info-box"><span class="info-icon" aria-hidden="true">i</span><span>Energi dihitung dengan integrasi trapezoid antar sampel (jeda maksimum 6 jam). Contoh: 120 W × 24 jam = 2,88 kWh. Data disimpan 90 hari; data SNMP dan manual masuk ke histori yang sama.</span></div>
+    <div class="toolbar">
+      <div class="t-row">
+        <div class="seg" id="hoursBtns" role="group" aria-label="Periode">
+          <button data-hours="6">6 jam</button>
+          <button data-hours="24" class="active">24 jam</button>
+          <button data-hours="168">7 hari</button>
+          <button data-hours="720">30 hari</button>
+        </div>
+        <select id="selHost" title="Filter perangkat" aria-label="Filter perangkat" style="min-width:200px"><option value="">Semua perangkat</option></select>
+        <span class="chip" id="statChip">—</span>
+        <span class="chip">Ambang <b id="chipThr">—</b> · Tarif <b id="chipTariff">—</b></span>
+      </div>
+      <div class="t-row">
+        <div class="menu-wrap"><button class="btn ghost" id="exportBtn" aria-haspopup="menu" aria-expanded="false">Ekspor <span class="export-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span></button><div class="menu-pop" id="exportMenu" role="menu"><a href="#" id="expCsv" role="menuitem">Unduh CSV</a><a href="#" id="printReport" role="menuitem">Cetak / PDF</a></div></div>
+        <button class="btn ghost" id="btnPoll">Poll SNMP</button>
+        <button class="btn ghost" id="btnRefresh" style="margin-left:auto">Muat ulang</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi" id="kpiW"><div class="top"><span class="k">Total daya</span><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></span></div><div class="v" id="vWatts">—</div><div class="s" id="hWatts">—</div><div class="bar"><i id="bWatts" style="width:0%"></i></div></div>
+      <div class="kpi"><div class="top"><span class="k">Energi periode</span><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></span></div><div class="v" id="vEnergy">—</div><div class="s" id="hEnergy">—</div><div class="bar"><i id="bEnergy" style="width:0%"></i></div></div>
+      <div class="kpi"><div class="top"><span class="k">Estimasi biaya</span><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></span></div><div class="v" id="vCost">—</div><div class="s" id="hTariff">—</div><div class="bar"><i id="bCost" style="width:0%;background:var(--accent)"></i></div></div>
+      <div class="kpi"><div class="top"><span class="k">Puncak periode</span><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/></svg></span></div><div class="v" id="vPeak">—</div><div class="s" id="hPeak">—</div><div class="bar"><i id="bPeak" style="width:0%;background:var(--accent)"></i></div></div>
+    </div>
+
+    <div class="sec-label">Tren daya <span class="count" id="trendMeta">—</span></div>
+    <div class="charts">
+      <div class="card" style="display:flex;flex-direction:column">
+        <div class="term"><span class="term-t">Tren daya</span><span class="term-m" id="trendHint">—</span></div>
+        <div class="body" style="flex:1;position:relative">
+          <canvas id="chTrend"></canvas>
+          <div class="chart-empty" id="trendEmpty" style="display:none"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px;display:block;color:var(--text-3)"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg><b>Belum ada data daya pada periode ini</b><span>Catat pengukuran manual atau jalankan poll SNMP untuk memulai.</span></div>
+        </div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column">
+        <div class="term"><span class="term-t">Konsumen terbesar</span><span class="term-m">5 teratas · watt terakhir</span></div>
+        <div class="body" id="topConsumers" style="flex:1;display:flex;flex-direction:column;gap:10px;min-height:200px">
+          <div class="empty" style="padding:32px 8px"><b>Belum ada data</b><br>Perangkat akan muncul di sini saat ada pengukuran.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-label">Perangkat <span class="count" id="devCount">—</span></div>
+    <div class="card">
+      <div class="term"><span class="term-t">Perangkat</span><span class="term-m" id="devMeta">—</span></div>
+      <div class="table-scroll"><table>
+        <caption class="sr-only">Daftar perangkat yang dipantau</caption>
+        <thead><tr><th scope="col" data-label="Perangkat">Perangkat</th><th scope="col" data-label="Sumber">Sumber</th><th scope="col" data-label="Daya (W)" class="num">Daya (W)</th><th scope="col" data-label="Beban">Beban</th><th scope="col" data-label="V / A">V / A</th><th scope="col" data-label="Status">Status</th><th scope="col" data-label="Terakhir terlihat">Terakhir terlihat</th></tr></thead>
+        <tbody id="devBody"></tbody>
+      </table></div>
+    </div>
+
+    <details class="acc-panel" id="settingsAcc"><summary>Pengaturan daya</summary><div class="acc-body">
+    <div class="forms">
+      <div class="card"><div class="term"><span class="term-t">Input manual</span></div><div class="body">
+        <form id="fManual">
+          <label for="mHost">Perangkat</label><div class="frow"><input id="mHost" placeholder="mis. router-lt2 atau 192.168.1.1" required></div>
+          <label for="mW">Daya (W)</label><div class="frow"><input id="mW" type="number" step="0.01" min="0" max="1000000" placeholder="Watt *" required><input id="mV" type="number" step="0.01" placeholder="Volt"><input id="mA" type="number" step="0.01" placeholder="Ampere"></div>
+          <div class="frow"><label for="mSrc" style="margin:0 8px 0 0;min-width:60px">Sumber</label><select id="mSrc"><option>manual</option><option>smart-meter</option><option>snmp</option></select><button class="btn primary" type="submit" style="flex:1">Simpan pengukuran</button></div>
+        </form><div class="err" id="eManual"></div>
+      </div></div>
+      <div class="card"><div class="term"><span class="term-t">Konfigurasi SNMP</span></div><div class="body">
+        <form id="fSnmp">
+          <label for="sIp">Host inventory</label><div class="frow"><select id="sIp" aria-label="Pilih host inventory"><option value="">Pilih host…</option></select></div>
+          <label for="sOid">OID daya → watt</label><div class="frow"><input id="sOid" placeholder="1.3.6.1.4.1…"><input id="sScale" type="number" step="any" value="1" title="Faktor skala"></div>
+          <label for="sRated">Rated watt (W)</label><div class="frow"><input id="sRated" type="number" step="0.01" placeholder="Rated watt"></div>
+          <div class="frow"><button class="btn primary" type="submit" style="flex:1">Simpan</button><button class="btn ghost" type="button" id="btnPollOne">Poll sekarang</button></div>
+        </form><div class="err" id="eSnmp"></div>
+        <div class="term-m">Auto-poll tiap 5 menit melalui scheduler.</div>
+      </div></div>
+      <div class="card"><div class="term"><span class="term-t">Perangkat & tarif</span></div><div class="body">
+        <form id="fDev">
+          <label for="dName">Nama perangkat</label><div class="frow"><input id="dName" placeholder="Nama perangkat *" required><input id="dRated" type="number" step="0.01" placeholder="Rated W"></div>
+          <label for="dThr">Ambang (W)</label><div class="frow"><input id="dThr" type="number" step="0.01" placeholder="Threshold W"><input id="dNotes" placeholder="Catatan"></div>
+          <div class="frow"><button class="btn primary" type="submit" style="flex:1">Simpan perangkat</button></div>
+        </form><div class="err" id="eDev"></div>
+        <form id="fSet" style="margin-top:6px">
+          <label for="setTariff">Tarif &amp; ambang global</label><div class="frow"><input id="setTariff" type="number" step="0.01" min="0" placeholder="Rp / kWh"><input id="setThr" type="number" step="0.01" min="0" placeholder="Threshold W"></div>
+          <div class="frow"><button class="btn primary" type="submit" style="flex:1">Simpan pengaturan</button></div>
+        </form><div class="err" id="eSet"></div>
+        <div class="term-m" id="devList" style="margin-top:8px;line-height:2"></div>
+      </div></div>
+    </div>
+    </div></details>
+
+    <div class="note">Data ping disimpan maksimal 90 hari. Energi dihitung dengan integrasi trapezoid antar sampel (jeda maksimum 6 jam).</div>
+        </div>
+      </main>
+    </div>
+  </div>
+<div class="print-footer" aria-hidden="true">Dibuat oleh NMS Kopegtel <span class="page-number"></span></div>
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+<script>
+let curHours=24, curHost='', chTrend=null;
+const $=id=>document.getElementById(id);
+const num=(v,d=0)=>{const n=Number(v);return Number.isFinite(n)?n:d;};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtW=n=>num(n).toFixed(1)+' W';
+const fmtKwh=n=>num(n).toFixed(3)+' kWh';
+const fmtRp=n=>'Rp'+Math.round(num(n)).toLocaleString('id-ID');
+function toast(m,ok=true){const w=$('toasts');if(!w)return;const e=document.createElement('div');e.className='toast '+(ok?'success':'error');e.setAttribute('role','status');e.textContent=m;w.appendChild(e);setTimeout(()=>e.remove(),3500);}
+function initShell(){const $=id=>document.getElementById(id);const sun='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';const moon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';function theme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('nms_theme',t);}catch(e){}const b=$('themeBtn');if(b){b.innerHTML=t==='dark'?sun:moon;b.title=t==='dark'?'Ganti ke mode terang':'Ganti ke mode gelap';}}theme(document.documentElement.dataset.theme||'dark');$('themeBtn').onclick=()=>theme(document.documentElement.dataset.theme==='dark'?'light':'dark');$('sidebarToggle').onclick=()=>document.body.classList.toggle('nav-open');$('scrim').onclick=()=>document.body.classList.remove('nav-open');$('collapseBtn').onclick=()=>document.body.classList.toggle('nav-collapsed');const menu=$('exportMenu');$('exportBtn').onclick=e=>{e.stopPropagation();menu.classList.toggle('open');$('exportBtn').setAttribute('aria-expanded',menu.classList.contains('open'));};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))menu.classList.remove('open');});$('expCsv').onclick=e=>{e.preventDefault();window.location=`/api/power/export?hours=${curHours}${curHost?'&host='+encodeURIComponent(curHost):''}`;toast('CSV diunduh.');};$('printReport').onclick=e=>{e.preventDefault();window.print();};}
+async function api(u,o){const r=await fetch(u,{headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/json'},...o});const t=await r.json().catch(()=>({}));if(!r.ok)throw new Error(t.error||('HTTP '+r.status));return t;}
+
+async function fetchPower(){
+  $('statChip').textContent='memuat…';
+  try{
+    const s=await api(`/api/power/summary?hours=${curHours}`);
+    const total=num(s.total_watts), energy=num(s.period_energy_kwh ?? s.total_energy_kwh), cost=num(s.period_cost),
+          peak=num(s.peak_watts), count=num(s.device_count ?? (s.devices||[]).length),
+          bucket=s.bucket||'hour', hours=num(s.hours||curHours,curHours),
+          tariff=num(s.tariff_per_kwh,1500), thr=num(s.threshold_watts,1000),
+          devs=s.devices||[], hist=s.history||[], trend=s.trend||[];
+    const over=!!s.over_threshold || total>thr;
+    $('genAt').textContent='Dibuat '+new Date().toLocaleString('id-ID');$('printGenerated').textContent=new Date().toLocaleString('id-ID');$('printPeriod').textContent='Periode '+(curHours>=720?'30 hari':curHours>=168?'7 hari':curHours>=24?'24 jam':'6 jam');
+    $('chipThr').textContent=Math.round(thr)+' W';
+    $('chipTariff').textContent='Rp'+Math.round(tariff).toLocaleString('id-ID');
+    $('vWatts').textContent=total.toFixed(1)+' W';
+    $('hWatts').textContent=`${count} perangkat · ${hours}H · ${over?'melewati ambang':'normal'}`;
+    $('bWatts').style.width=Math.min(100,thr?total/thr*100:0)+'%';
+    $('kpiW').classList.toggle('alert',over);
+    $('vEnergy').textContent=fmtKwh(energy);
+    $('hEnergy').textContent=`periode ${hours} jam · ${hist.length} sampel`;
+    $('bEnergy').style.width=Math.min(100,energy/(Math.max(peak,1)*hours/1000||1)*100||0)+'%';
+    $('vCost').textContent=fmtRp(cost);
+    $('hTariff').textContent=`Rp${Math.round(tariff).toLocaleString('id-ID')}/kWh`;
+    $('bCost').style.width=Math.min(100,cost/50000*100)+'%';
+    $('vPeak').textContent=fmtW(peak);
+    $('hPeak').textContent='puncak '+bucket+' · '+(bucket==='day'?'agregasi harian':'agregasi per jam');
+    $('bPeak').style.width=Math.min(100,thr?peak/thr*100:0)+'%';
+    $('trendMeta').textContent=`${hist.length} sampel · ${bucket}`;
+    $('statChip').textContent=`${over?'Melewati ambang':'Normal'} · ${new Date().toLocaleTimeString('id-ID')}`;
+    const lb=$('liveBadge');if(lb){lb.classList.toggle('off',over);lb.innerHTML='<span class="dot" aria-hidden="true"></span> '+(over?'Melewati ambang':'Live');}
+    renderTrend(trend,bucket);
+    renderTop(devs,thr);
+    renderTable(devs,thr);
+    syncHosts(devs);
+    
+  }catch(e){$('statChip').textContent='gagal: '+e.message;}
+  try{
+    const d=await api('/api/power/devices');
+    const sel=$('sIp'), cur=sel.value;
+    sel.innerHTML='<option value="">Pilih host…</option>'+(d.snmp_hosts||[]).map(h=>`<option value="${esc(h.ip)}">${esc(h.ip)}${h.alias?' ('+esc(h.alias)+')':''}${h.power_oid?' · OID✓':''}</option>`).join('');
+    if(cur)sel.value=cur;
+    $('devList').innerHTML=(d.manual_devices||[]).map(x=>`${esc(x.name)} · ${x.rated_watts??'—'}W <a href="#" data-del="${esc(x.name)}" style="color:#ff7b7b">[hapus]</a>`).join('<br>')||'Belum ada perangkat manual';
+    $('devList').querySelectorAll('[data-del]').forEach(a=>a.onclick=async ev=>{ev.preventDefault();if(!confirm('Hapus '+a.dataset.del+'?'))return;await api('/api/power/devices/'+encodeURIComponent(a.dataset.del),{method:'DELETE'});toast('Perangkat dihapus');fetchPower();});
+    const st=await api('/api/power/settings');$('setTariff').value=num(st.tariff_per_kwh,1500);$('setThr').value=num(st.threshold_watts,1000);
+  }catch(e){}
+}
+function renderTrend(trend,bucket){
+  if(chTrend)chTrend.destroy();
+  const empty=$('trendEmpty');
+  if(!trend.length){if(empty)empty.style.display='flex';const cv=$('chTrend');if(cv)cv.style.display='none';return;}
+  if(empty)empty.style.display='none';const cv=$('chTrend');if(cv)cv.style.display='';
+  const grid='rgba(148,163,184,.12)';
+  chTrend=new Chart($('chTrend'),{data:{labels:trend.map(t=>t.label),datasets:[
+    {type:'line',label:'avg watt',data:trend.map(t=>num(t.avg_watts)),borderColor:'#2dd4bf',backgroundColor:'rgba(45,212,191,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0,yAxisID:'y'},
+    {type:'bar',label:'kWh',data:trend.map(t=>num(t.energy_kwh)),backgroundColor:'rgba(45,212,191,.5)',borderRadius:3,yAxisID:'y1'}]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{color:'#8593a6',boxWidth:12,font:{size:10}}},tooltip:{backgroundColor:'#121821',borderColor:'rgba(255,255,255,.1)',borderWidth:1,titleFont:{size:11},callbacks:{label:c=>` ${c.dataset.label}: ${c.dataset.label==='kWh'?num(c.raw).toFixed(4)+' kWh':num(c.raw).toFixed(1)+' W'}`}}},
+    scales:{y:{beginAtZero:true,grid:{color:grid},ticks:{color:'#8593a6',font:{size:10}}},y1:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},ticks:{color:'#2dd4bf',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#8593a6',maxTicksLimit:10,font:{size:10}}}}}});
+  document.getElementById('chTrend').style.height='300px';
+  $('trendHint').textContent=trend.length?`${trend.length} titik · per-${bucket==='day'?'hari':'jam'}`:'Belum ada sampel — tambah pengukuran atau tunggu polling SNMP';
+}
+function renderTop(devs,thr){
+  const top=[...devs].sort((a,b)=>num(b.watts)-num(a.watts)).slice(0,5);
+  const total=top.reduce((s,d)=>s+num(d.watts),0)||1;
+  const box=$('topConsumers');
+  if(!top.length||top.every(d=>!num(d.watts))){box.innerHTML='<div class="empty" style="padding:32px 8px"><b>Belum ada data</b><br>Perangkat akan muncul di sini saat ada pengukuran.</div>';return;}
+  box.innerHTML=top.map((d,i)=>{const w=num(d.watts),pct=(w/total*100).toFixed(0),over=w>thr;
+    return `<div class="consumer-row"><div class="cr-top"><span class="cr-name">${esc(d.host||d.alias||'—')}</span><span class="cr-watts" style="color:${over?'var(--down-text)':'var(--text)'}">${w.toFixed(1)} W</span></div><div class="consumer-bar"><i style="width:${pct}%;background:${over?'var(--down-text)':'var(--accent)'}"></i></div><div class="cr-pct">${pct}% dari total</div></div>`;
+  }).join('');
+}
+function relT(s){if(!s)return '—';const d=new Date(String(s).replace(' ','T'));if(isNaN(d.getTime()))return s;let ms=Date.now()-d.getTime();if(ms<0)ms=0;const sec=Math.floor(ms/1000);if(sec<10)return 'baru saja';if(sec<60)return sec+' dtk lalu';const m=Math.floor(sec/60);if(m<60)return m+' mnt lalu';const h=Math.floor(m/60);if(h<24)return h+' jam lalu';return Math.floor(h/24)+' hari lalu';}
+function renderTable(devs,thr){
+  const tb=$('devBody');
+  $('devCount').textContent=`${devs.length} perangkat · ${curHours} jam`;
+  const snmp=devs.filter(d=>d.source==='snmp').length;
+  $('devMeta').textContent=devs.length?`${snmp} SNMP · ${devs.length-snmp} manual/meter`:'—';
+  tb.innerHTML=devs.length?devs.map(d=>{const w=num(d.watts),bad=!!d.over_threshold,rated=num(d.rated_watts||0);
+    const loadPct=rated>0?Math.min(100,w/rated*100):0;
+    const loadColor=bad?'var(--down-text)':loadPct>=100?'var(--warn-text)':'var(--accent)';
+    return `<tr><td data-label="Perangkat"><span class="host">${esc(d.host)}</span>${d.alias?`<br><span class="sub2">${esc(d.alias)}</span>`:''}<div class="wbar"><i style="width:${loadPct.toFixed(1)}%;background:${loadColor}"></i></div></td><td data-label="Sumber"><span class="tag ${d.source==='snmp'?'snmp':'manual'}">${esc(d.source||'—')}</span></td><td data-label="Daya (W)" class="num" style="font-weight:700;color:${bad?'var(--down-text)':'var(--text)'}">${d.watts==null?'—':w.toFixed(1)+' W'}</td><td data-label="Beban" class="technical num">${rated>0?loadPct.toFixed(0)+'% dari '+rated+' W':'—'}</td><td data-label="V / A" class="technical">${d.voltage!=null?d.voltage:'—'} / ${d.current!=null?d.current:'—'}</td><td data-label="Status"><span class="tag ${bad?'high':'ok'}">${bad?'Melewati ambang':'Normal'}</span></td><td data-label="Terakhir terlihat" title="${esc(d.timestamp||'')}">${relT(d.timestamp)}</td></tr>`;}).join('')
+    :`<tr><td colspan="7"><div class="empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 10px;display:block;color:var(--text-3)"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><b>Belum ada perangkat</b><br>Tambah perangkat manual atau konfigurasi SNMP untuk memulai pemantauan.</div></td></tr>`;
+}
+function syncHosts(devs){const sel=$('selHost');sel.innerHTML='<option value="">Semua perangkat</option>'+devs.map(d=>`<option value="${esc(d.host)}">${esc(d.host)} · ${num(d.watts).toFixed(0)}W</option>`).join('');sel.value=curHost;}
+async function fetchHost(){
+  if(!curHost)return;
+  try{const h=await api(`/api/power/history?host=${encodeURIComponent(curHost)}&hours=${curHours}&bucket=raw`);
+    const rows=h.data||[];
+    if(chTrend)chTrend.destroy();
+    chTrend=new Chart($('chTrend'),{type:'line',data:{labels:rows.map(r=>r.timestamp),datasets:[{label:curHost+' watt',data:rows.map(r=>num(r.watts)),borderColor:'#2dd4bf',backgroundColor:'rgba(45,212,191,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true},x:{ticks:{maxTicksLimit:8}}}}});
+    $('trendHint').textContent=`${rows.length} sampel · ${curHost}`;
+    const empty=$('trendEmpty');
+    if(!rows.length){if(empty)empty.style.display='flex';}else if(empty)empty.style.display='none';
+  }catch(e){$('trendHint').textContent='gagal: '+e.message;}
+}
+document.querySelectorAll('#hoursBtns button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#hoursBtns button').forEach(x=>x.classList.remove('active'));b.classList.add('active');curHours=+b.dataset.hours;curHost='';$('selHost').value='';fetchPower();});
+$('selHost').onchange=e=>{curHost=e.target.value;if(curHost)fetchHost();else fetchPower();};
+$('btnRefresh').onclick=()=>curHost?fetchHost():fetchPower();
+$('btnPoll').onclick=async()=>{try{const r=await api('/api/power/poll-snmp',{method:'POST'});toast(`Polling ${r.ok}/${r.polled} perangkat berhasil`);fetchPower();}catch(e){toast(e.message,false);}};
+$('btnPollOne').onclick=async()=>{const ip=$('sIp').value;if(!ip)return toast('pilih host dulu',false);try{const r=await api('/api/power/snmp/'+encodeURIComponent(ip),{method:'POST'});toast(`Polling berhasil: ${num(r.watts).toFixed(1)} W`);fetchPower();}catch(e){$('eSnmp').textContent=e.message;}};
+$('fManual').onsubmit=async e=>{e.preventDefault();$('eManual').textContent='';try{await api('/api/power/metrics',{method:'POST',body:JSON.stringify({host:$('mHost').value,watts:+$('mW').value,voltage:$('mV').value||null,current:$('mA').value||null,source:$('mSrc').value})});e.target.reset();toast('Pengukuran tersimpan');fetchPower();}catch(err){$('eManual').textContent=err.message;}};
+$('fDev').onsubmit=async e=>{e.preventDefault();try{await api('/api/power/devices',{method:'POST',body:JSON.stringify({name:$('dName').value,rated_watts:$('dRated').value||null,threshold_watts:$('dThr').value||null,notes:$('dNotes').value})});e.target.reset();toast('Perangkat tersimpan');fetchPower();}catch(err){$('eDev').textContent=err.message;}};
+$('fSnmp').onsubmit=async e=>{e.preventDefault();$('eSnmp').textContent='';try{await api('/api/power/host-config',{method:'POST',body:JSON.stringify({ip:$('sIp').value,power_oid:$('sOid').value,power_scale:+$('sScale').value||1,power_rated_watts:$('sRated').value||null})});toast('Konfigurasi tersimpan');fetchPower();}catch(err){$('eSnmp').textContent=err.message;}};
+$('fSet').onsubmit=async e=>{e.preventDefault();try{await api('/api/power/settings',{method:'POST',body:JSON.stringify({tariff_per_kwh:+$('setTariff').value,threshold_watts:+$('setThr').value})});toast('Pengaturan tersimpan');fetchPower();}catch(err){$('eSet').textContent=err.message;}};
+window.addEventListener('DOMContentLoaded',()=>{initShell();fetchPower();});
+setInterval(()=>{if(!curHost)fetchPower();},30000);
+</script>
+<script>
+(function(){const _f=window.fetch;window.fetch=function(){return _f.apply(this,arguments).then(r=>{if(r.status===401&&!location.pathname.startsWith('/login')){location.href='/login?next='+encodeURIComponent(location.pathname);}return r;});};})();
+</script>
+</body>
+</html>

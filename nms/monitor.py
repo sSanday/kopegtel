@@ -1,10 +1,12 @@
 """nms.monitor — ping host, heartbeat agent, dan korelasi induk fiber."""
 
+import os
 import re
 import sqlite3
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from urllib.parse import quote, urlparse
 
 from nms.config import DOWN_COOLDOWN_S
 from nms.db import (
@@ -25,9 +27,31 @@ agent_offline_memory = ThreadSafeDict()
 
 
 _PING_TARGET_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$")
+
+
+def _host_detail_link(host):
+    """Tautan Markdown ke halaman detail host, atau string kosong.
+
+    Aktif hanya bila pengaturan `public_url` diisi URL http(s) yang valid,
+    mis. http://192.168.1.5:5000 (diatur lewat Pengaturan Sistem).
+    """
+    try:
+        base = str(get_setting("public_url", "", type_cast=str) or "").strip()
+        base = base.rstrip("/")
+        if not base:
+            return ""
+        parsed = urlparse(base)
+        if (parsed.scheme or "").lower() not in ("http", "https"):
+            return ""
+        if not (parsed.hostname or ""):
+            return ""
+        return f"\nDetail : [Buka halaman host]({base}/host/{quote(str(host), safe='')})"
+    except Exception:
+        return ""
 _PING_RTT_RES = (
     re.compile(r"rtt min/avg/max/mdev = [\d.]+/([\d.]+)/"),
     re.compile(r"round-trip min/avg/max(?:/stddev)? = [\d.]+/([\d.]+)/"),
+    re.compile(r"Average = ([\d.]+)ms", re.IGNORECASE),
 )
 
 
@@ -37,8 +61,14 @@ def ping_host(host):
     if not host or host.startswith("-") or not _PING_TARGET_RE.match(host):
         return -1, 100.0
     try:
+        # Use the native command syntax on Windows and iputils syntax on Linux.
+        # The project runs on both the local development machine and Docker.
+        if os.name == "nt":
+            command = ["ping", "-n", "3", "-w", "2000", host]
+        else:
+            command = ["ping", "-c", "3", "-W", "2", "-i", "0.5", host]
         result = subprocess.run(
-            ["ping", "-c", "3", "-W", "2", "-i", "0.5", host],
+            command,
             capture_output=True,
             text=True,
             timeout=12,
@@ -202,7 +232,7 @@ def check_network():
                                     else ""
                                 )
                                 telegram_queue.append(
-                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}"
+                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}{_host_detail_link(host)}"
                                 )
                             else:
                                 print(
@@ -264,7 +294,7 @@ def check_network():
                                 timestamp,
                             )
                             telegram_queue.append(
-                                f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}"
+                                f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}{_host_detail_link(host)}"
                             )
                             try:
                                 for _k in [

@@ -911,7 +911,7 @@ class SchedulerRefTest(unittest.TestCase):
     def test_semua_job_scheduler_terdefinisi(self):
         import re
 
-        src = open(m.__file__).read()
+        src = open(m.__file__, encoding="utf-8").read()
         names = re.findall(r"scheduler\.add_job\(\s*func=([A-Za-z_][A-Za-z0-9_]*)", src)
         self.assertTrue(names)
         sched_pos = src.index("SCHEDULER_ENABLED = ")
