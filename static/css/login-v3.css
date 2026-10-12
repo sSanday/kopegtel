@@ -218,9 +218,15 @@ h1 {
 }
 .topo-figcaption {
   margin: 0 0 14px;
+  font-family: var(--mono);
   font-size: var(--fs-mono);
   color: var(--text-3);
   letter-spacing: 0.02em;
+}
+.topo-lab {
+  font-family: var(--mono);
+  font-size: var(--fs-mono);
+  fill: var(--text-2);
 }
 
 /* ── Footer selebar halaman ──────────────────────────────────────── */

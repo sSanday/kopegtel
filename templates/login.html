@@ -110,27 +110,45 @@
     <!-- Elemen khas: garis topologi statis. Tanpa angka, status, atau animasi. -->
     <figure class="topo">
       <figcaption class="topo-figcaption">Jalur pemantauan</figcaption>
-      <svg viewBox="0 0 520 150" role="img"
-           aria-label="Diagram alur: server NMS mengambil pengukuran, lalu meneruskannya melalui router dan switch ke beberapa host."
-           fill="none" stroke="currentColor" stroke-width="1">
-        <!-- garis utama -->
-        <path d="M46 75 H474" stroke-opacity="0.3"></path>
-        <!-- cabang ke host -->
-        <path d="M330 75 V122 H474" stroke-opacity="0.3"></path>
-        <!-- node server -->
-        <rect x="24" y="63" width="44" height="24" stroke-opacity="0.45"></rect>
-        <path d="M32 71h12M32 79h12" stroke-opacity="0.45" stroke-linecap="round"></path>
-        <!-- node router -->
-        <rect x="166" y="61" width="28" height="28" stroke-opacity="0.45"></rect>
-        <path d="M180 71l-8 4 8 4" stroke-opacity="0.45" stroke-linecap="round" stroke-linejoin="round"></path>
-        <!-- node switch -->
-        <rect x="294" y="61" width="28" height="28" stroke-opacity="0.45"></rect>
-        <path d="M302 75h12M308 69v12" stroke-opacity="0.45" stroke-linecap="round"></path>
-        <!-- node host -->
-        <rect x="474" y="63" width="26" height="24" stroke-opacity="0.45"></rect>
-        <path d="M480 75h14" stroke-opacity="0.45" stroke-linecap="round"></path>
-        <rect x="446" y="110" width="26" height="24" stroke-opacity="0.45"></rect>
-        <path d="M452 122h14" stroke-opacity="0.45" stroke-linecap="round"></path>
+      <svg viewBox="0 0 470 176" role="img"
+           aria-label="Diagram alur: server NMS mengambil pengukuran, lalu meneruskannya
+                       melalui router dan switch ke beberapa host yang dipantau.">
+        <!-- Koneksi. Setiap ruas diukur dari tepi simpul ke tepi simpul
+             berikutnya, jadi tidak ada celah di sambungannya. -->
+        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.3">
+          <path d="M96 64 H170"></path>                       <!-- server -> router -->
+          <path d="M200 64 H290"></path>                      <!-- router -> switch -->
+          <path d="M320 64 H425"></path>                      <!-- switch -> host utama -->
+          <path d="M305 79 V126 H425"></path>                 <!-- cabang -> host kedua -->
+        </g>
+
+        <!-- Simpul: kotak tajam tanpa radius. -->
+        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.32">
+          <rect x="40" y="49" width="56" height="30"></rect>      <!-- server -->
+          <rect x="170" y="49" width="30" height="30"></rect>     <!-- router -->
+          <rect x="290" y="49" width="30" height="30"></rect>     <!-- switch -->
+          <rect x="425" y="49" width="30" height="30"></rect>     <!-- host utama -->
+          <rect x="425" y="111" width="30" height="30"></rect>    <!-- host kedua -->
+        </g>
+
+        <!-- Tanda internal: satu per jenis simpul, 1px, tanpa warna tambahan. -->
+        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.32"
+           stroke-linecap="round" stroke-linejoin="round">
+          <path d="M52 60h32M52 68h32"></path>                 <!-- server: dua baris rak -->
+          <path d="M190 58l-8 6 8 6"></path>                   <!-- router: arah aliran data -->
+          <path d="M305 58v12M298 64h14"></path>               <!-- switch: silang port -->
+          <rect x="435" y="59" width="10" height="10"></rect>  <!-- host: kotak di dalam kotak -->
+          <rect x="435" y="121" width="10" height="10"></rect>
+        </g>
+
+        <!-- Label: mono 12px, gaya di CSS, bukan atribut inline. -->
+        <g class="topo-lab">
+          <text x="68"  y="97"  text-anchor="middle">SERVER</text>
+          <text x="185" y="97"  text-anchor="middle">ROUTER</text>
+          <text x="305" y="97"  text-anchor="middle">SWITCH</text>
+          <text x="440" y="97"  text-anchor="middle">HOST</text>
+          <text x="440" y="159" text-anchor="middle">HOST</text>
+        </g>
       </svg>
       <p class="topo-cap">Server NMS mengambil pengukuran, lalu meneruskannya ke router dan
         switch untuk menjangkau tiap host yang dipantau.</p>
