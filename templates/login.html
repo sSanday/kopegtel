@@ -1,18 +1,16 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#F6F4EE">
-<meta name="description" content="Masuk ke NMS Kopegtel — sistem monitoring jaringan internal">
 <title>Masuk · NMS Kopegtel</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens-v2.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/login-v3.css') }}">
 <script>
-// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
-// Pola ini sama dengan template dasbor: kunci "nms_theme", atribut
-// data-theme pada <html>, cadangan prefers-color-scheme, dan update
-// meta theme-color. Pilihan tema di halaman ini ikut terbaca dasbor.
+// Pradesain tema agar tidak berkedip. Kunci dan pola ini sama dengan
+// template dasbor: "nms_theme", data-theme pada <html>, cadangan
+// prefers-color-scheme, dan meta theme-color.
 (function () {
   try {
     var t = localStorage.getItem("nms_theme");
@@ -27,144 +25,126 @@
 </script>
 </head>
 <body>
-<a class="skip-link" href="#formMasuk">Lompat ke formulir masuk</a>
+<a class="skip-link" href="#loginForm">Lompat ke formulir masuk</a>
 
-<div class="shell">
+<svg width="0" height="0" class="simbol" aria-hidden="true" focusable="false">
+  <symbol id="simbol-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4" width="19" height="13" rx="1.5"></rect>
+    <path d="M9 21h6M12 17v4"></path>
+  </symbol>
+</svg>
 
-  <!-- ═══ Kolom kiri: formulir ═══ -->
-  <div class="col-form">
-    <div class="form-inner">
+<div class="login">
+  <div class="login-form">
+    <div class="login-form-dalam">
+      <p class="merek merek--mobile">
+        <svg width="26" height="26" aria-hidden="true"><use href="#simbol-monitor"></use></svg>
+        <b>NMS Kopegtel</b>
+      </p>
 
-      <div class="mark-mobile">
-        <span class="brandline" style="margin:0 0 32px">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2.5" y="3.5" width="19" height="7" rx="1.5"></rect>
-            <path d="M6.5 15v3M17.5 15v3M12 10.5v7.5"></path>
-          </svg>
-          <b>NMS Kopegtel</b>
-        </span>
-      </div>
-
-      <h1>Masuk ke NMS Kopegtel</h1>
+      <h1>Masuk</h1>
       <p class="sub">Gunakan akun yang diberikan administrator.</p>
 
-      <div class="msg" id="loginError" role="alert" aria-live="assertive"
-           {% if not error %}hidden{% endif %}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.4"></circle><path d="M8 4.8v3.6M8 11.1v.2"></path>
-        </svg>
-        <span>{{ error if error else "Nama pengguna atau kata sandi salah." }}</span>
+      <div class="pesan-error" id="pesanError" role="alert" {% if not error %}hidden{% endif %}>
+        {{ error }}
       </div>
 
-      <!-- Tanpa action: ?next= ikut ter-POST ke URL dokumen ini. -->
       <form id="loginForm" method="POST" novalidate>
-        <div class="field">
+        <div class="baris">
           <label for="username">Nama pengguna</label>
-          <div class="control">
-            <input type="text" id="username" name="username"
-                   autocomplete="username" autocapitalize="none" autocorrect="off"
-                   spellcheck="false" required autofocus
+          <div class="isi">
+            <input type="text" id="username" name="username" autocomplete="username"
+                   autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus
                    value="{{ request.form.get('username', '') }}">
           </div>
         </div>
 
-        <div class="field">
+        <div class="baris">
           <label for="password">Kata sandi</label>
-          <div class="control has-toggle">
-            <input type="password" id="password" name="password"
-                   autocomplete="current-password" required>
-            <button type="button" class="reveal" id="revealBtn"
+          <div class="isi isi--sandi">
+            <input type="password" id="password" name="password" autocomplete="current-password" required>
+            <button type="button" class="lihat-sandi" id="lihatSandi"
                     aria-label="Tampilkan kata sandi" aria-pressed="false"></button>
           </div>
           <p class="caps" id="capsNote">Caps Lock aktif.</p>
         </div>
 
-        <div class="remember">
+        <div class="ingat">
           <input type="checkbox" id="remember" name="remember" value="1" checked>
           <label for="remember">Tetap masuk selama 7 hari</label>
         </div>
 
-        <button type="submit" class="submit" id="submitBtn">
-          <span id="submitLabel">Masuk</span>
+        <button type="submit" class="tombol-masuk" id="tombolMasuk">
+          <span id="tombolLabel">Masuk</span>
         </button>
 
-        <p class="help">Lupa kata sandi? Hubungi administrator.</p>
+        <p class="bantuan">Lupa kata sandi? Hubungi administrator.</p>
       </form>
-
     </div>
   </div>
 
-  <!-- ═══ Kolom kanan: bidang netral ═══ -->
-  <div class="col-side">
-    <div class="side-mark">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="2.5" y="3.5" width="19" height="7" rx="1.5"></rect>
-        <path d="M6.5 15v3M17.5 15v3M12 10.5v7.5"></path>
-      </svg>
+  <div class="login-sisi">
+    <p class="merek">
+      <svg width="28" height="28" aria-hidden="true"><use href="#simbol-monitor"></use></svg>
       <b>NMS Kopegtel</b>
-    </div>
+    </p>
 
-    <!-- Elemen khas: garis topologi statis. Tanpa angka, status, atau animasi. -->
     <figure class="topo">
-      <figcaption class="topo-figcaption">Jalur pemantauan</figcaption>
-      <svg viewBox="0 0 470 176" role="img"
-           aria-label="Diagram alur: server NMS mengambil pengukuran, lalu meneruskannya
-                       melalui router dan switch ke beberapa host yang dipantau.">
-        <!-- Koneksi. Setiap ruas diukur dari tepi simpul ke tepi simpul
-             berikutnya, jadi tidak ada celah di sambungannya. -->
-        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.3">
-          <path d="M96 64 H170"></path>                       <!-- server -> router -->
-          <path d="M200 64 H290"></path>                      <!-- router -> switch -->
-          <path d="M320 64 H425"></path>                      <!-- switch -> host utama -->
-          <path d="M305 79 V126 H425"></path>                 <!-- cabang -> host kedua -->
+      <svg viewBox="0 0 520 230" role="img"
+           aria-label="Diagram: Server NMS memeriksa host lewat router dan switch.">
+        <g class="topo-jalur">
+          <path d="M392 98V172H442"></path>
+        </g>
+        <g class="topo-jalur topo-jalur--aksen">
+          <path d="M136 72H188"></path>
+          <path d="M264 72H316"></path>
+          <path d="M392 72H442"></path>
         </g>
 
-        <!-- Simpul: kotak tajam tanpa radius. -->
-        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.32">
-          <rect x="40" y="49" width="56" height="30"></rect>      <!-- server -->
-          <rect x="170" y="49" width="30" height="30"></rect>     <!-- router -->
-          <rect x="290" y="49" width="30" height="30"></rect>     <!-- switch -->
-          <rect x="425" y="49" width="30" height="30"></rect>     <!-- host utama -->
-          <rect x="425" y="111" width="30" height="30"></rect>    <!-- host kedua -->
+        <g class="topo-simbol">
+          <rect x="40" y="38" width="96" height="68"></rect>
+          <rect x="56" y="50" width="64" height="15"></rect>
+          <rect x="56" y="69" width="64" height="15"></rect>
+          <rect x="56" y="88" width="36" height="8"></rect>
+
+          <rect x="188" y="46" width="76" height="52"></rect>
+          <path d="M226 54V90M202 72H250"></path>
+          <path d="M222 61l4-6 4 6M222 83l4 6 4-6M217 68l-6 4 6 4M235 68l6 4-6 4"></path>
+
+          <rect x="316" y="46" width="76" height="52"></rect>
+          <path d="M328 64H378M372 58l6 6-6 6"></path>
+          <path d="M378 80H328M334 74l-6 6 6 6"></path>
+
+          <rect x="442" y="50" width="64" height="44"></rect>
+          <rect x="450" y="56" width="48" height="27"></rect>
+          <path d="M474 83v9M462 92h24"></path>
+
+          <rect x="442" y="150" width="64" height="44"></rect>
+          <rect x="450" y="156" width="48" height="27"></rect>
+          <path d="M474 183v9M462 192h24"></path>
         </g>
 
-        <!-- Tanda internal: satu per jenis simpul, 1px, tanpa warna tambahan. -->
-        <g fill="none" stroke="currentColor" stroke-width="1" stroke-opacity="0.32"
-           stroke-linecap="round" stroke-linejoin="round">
-          <path d="M52 60h32M52 68h32"></path>                 <!-- server: dua baris rak -->
-          <path d="M190 58l-8 6 8 6"></path>                   <!-- router: arah aliran data -->
-          <path d="M305 58v12M298 64h14"></path>               <!-- switch: silang port -->
-          <rect x="435" y="59" width="10" height="10"></rect>  <!-- host: kotak di dalam kotak -->
-          <rect x="435" y="121" width="10" height="10"></rect>
-        </g>
-
-        <!-- Label: mono 12px, gaya di CSS, bukan atribut inline. -->
-        <g class="topo-lab">
-          <text x="68"  y="97"  text-anchor="middle">SERVER</text>
-          <text x="185" y="97"  text-anchor="middle">ROUTER</text>
-          <text x="305" y="97"  text-anchor="middle">SWITCH</text>
-          <text x="440" y="97"  text-anchor="middle">HOST</text>
-          <text x="440" y="159" text-anchor="middle">HOST</text>
+        <g class="topo-label">
+          <text x="88" y="124" text-anchor="middle">Server NMS</text>
+          <text x="226" y="124" text-anchor="middle">Router</text>
+          <text x="354" y="124" text-anchor="middle">Switch</text>
+          <text x="474" y="124" text-anchor="middle">Host</text>
+          <text x="474" y="216" text-anchor="middle">Host</text>
         </g>
       </svg>
-      <p class="topo-cap">Server NMS mengambil pengukuran, lalu meneruskannya ke router dan
-        switch untuk menjangkau tiap host yang dipantau.</p>
+      <figcaption>Server NMS memeriksa host lewat ping ICMP dan SNMP.</figcaption>
     </figure>
 
-    <footer class="foot">
-      <p>NMS Kopegtel · Akses hanya untuk pengguna yang berwenang.</p>
-      <div class="theme" role="group" aria-label="Pilihan tema">
-        <span class="theme-label">Tema:</span>
-        <button type="button" class="theme-opt" data-theme="auto" aria-pressed="true">Otomatis</button>
-        <button type="button" class="theme-opt" data-theme="light" aria-pressed="false">Terang</button>
-        <button type="button" class="theme-opt" data-theme="dark" aria-pressed="false">Gelap</button>
+    <footer class="login-kaki">
+      <p>Akses hanya untuk pengguna yang berwenang.</p>
+      <div class="tema" role="group" aria-label="Pilihan tema">
+        <span class="tema-label">Tema:</span>
+        <button type="button" class="tema-pilih" data-mode="auto" aria-pressed="true">Otomatis</button>
+        <button type="button" class="tema-pilih" data-mode="light" aria-pressed="false">Terang</button>
+        <button type="button" class="tema-pilih" data-mode="dark" aria-pressed="false">Gelap</button>
       </div>
     </footer>
   </div>
-
 </div>
 
 <script src="{{ url_for('static', filename='js/login.js') }}" defer></script>

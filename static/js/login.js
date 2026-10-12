@@ -1,183 +1,133 @@
-/* ══════════════════════════════════════════════════════════════════
-   login.js — NMS Kopegtel, halaman Login v3.
+/* Halaman Login NMS Kopegtel.
+   Form tetap POST ke URL dokumen supaya ?next= ikut terbawa;
+   karena itu <form> sengaja tanpa atribut action. */
 
-   Seluruh perilaku ditulis ulang dari inventaris logika v1. Tidak ada
-   dependensi, tidak ada fetch, tidak ada endpoint. Form tetap POST ke
-   URL dokumen supaya parameter ?next= ikut terbawa.
-
-   Perilaku yang dipertahankan dari v1:
-     - tampilkan/sembunyikan kata sandi (ikon + aria-label)
-     - validasi sebelum submit, cegah submit kalau ada isian kosong
-     - fokus otomatis ke kolom kata sandi bila halaman menampilkan error
-   Perilaku yang ditambahkan / diperbaiki:
-     - keadaan loading menampilkan TEKS "Memproses…", tanpa spinner
-     - tombol otomatis normal kembali: saat submit gagal, saat tombol
-       Back / bcacheRestore (pageshow), dan pengaman waktu 15 detik
-     - peringatan Caps Lock inline
-     - pilihan tema: Otomatis / Terang / Gelap pada kunci nms_theme
-   ══════════════════════════════════════════════════════════════════ */
 (function () {
-  "use strict";
+  var KUNCI_TEMA = "nms_theme";
+  var SELAMAT_MS = 15000;
 
-  var STORAGE_KEY = "nms_theme";
-  var RESET_MS = 15000;
+  var form = document.getElementById("loginForm");
+  var sandi = document.getElementById("password");
+  var tombol = document.getElementById("tombolMasuk");
+  var label = document.getElementById("tombolLabel");
+  var lihat = document.getElementById("lihatSandi");
+  var catatanCaps = document.getElementById("capsNote");
+  var pengaman = null;
 
-  var ICON_EYE =
-    '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
-    'stroke-width="1.5" aria-hidden="true"><path d="M1.6 10S4.3 5 10 5s8.4 5 8.4 5-2.7 5-8.4 5S1.6 10 1.6 10Z"/>' +
-    '<circle cx="10" cy="10" r="2.1"/></svg>';
-  var ICON_EYE_OFF =
-    '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" ' +
-    'stroke-width="1.5" aria-hidden="true"><path d="M1.6 10S4.3 5 10 5c1.4 0 2.6.4 3.6.9M18.4 10s-2.7 5-8.4 5c-1.2 0-2.2-.3-3.2-.7"/>' +
-    '<path d="M2.8 2.8l14.4 14.4"/></svg>';
+  var IKON_MATA =
+    '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"' +
+    ' stroke-width="1.5" aria-hidden="true"><path d="M1.6 10S4.3 5 10 5s8.4 5 8.4 5-2.7 5-8.4 5S1.6 10 1.6 10Z"/>' +
+    '<circle cx="10" cy="10" r="2.1"></circle></svg>';
+  var IKON_MATA_TERTUTUP =
+    '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor"' +
+    ' stroke-width="1.5" aria-hidden="true"><path d="M1.6 10S4.3 5 10 5c1.4 0 2.6.4 3.6.9"/>' +
+    '<path d="M18.4 10s-2.7 5-8.4 5c-1.2 0-2.2-.3-3.2-.7"/><path d="M2.8 2.8l14.4 14.4"/></svg>';
 
-  var $ = function (id) { return document.getElementById(id); };
-
-  var form, user, pass, submitBtn, submitLabel, revealBtn, capsNote;
-
-  /* ── Keadaan loading ─────────────────────────────────────────────
-     Satu sumber kebenaran. Semua jalan keluar memanggil endLoading(),
-     sehingga tombol tidak pernah tertinggal nonaktif tanpa teks. */
-  var resetTimer = null;
-
-  function startLoading() {
-    if (resetTimer) { clearTimeout(resetTimer); resetTimer = null; }
-    submitBtn.disabled = true;
-    submitLabel.textContent = "Memproses…";
-    submitBtn.setAttribute("aria-busy", "true");
-    // Pengaman: kalau navigasi dibatalkan atau macet, tombol pulih sendiri.
-    resetTimer = setTimeout(endLoading, RESET_MS);
+  function simpanPengaman() {
+    if (pengaman) clearTimeout(pengaman);
+    pengaman = setTimeout(siapkanTombol, SELAMAT_MS);
   }
 
-  function endLoading() {
-    if (resetTimer) { clearTimeout(resetTimer); resetTimer = null; }
-    submitBtn.disabled = false;
-    submitLabel.textContent = "Masuk";
-    submitBtn.removeAttribute("aria-busy");
+  function siapkanTombol() {
+    if (pengaman) { clearTimeout(pengaman); pengaman = null; }
+    tombol.disabled = false;
+    label.textContent = "Masuk";
+    tombol.removeAttribute("aria-busy");
   }
 
-  /* ── Tampilkan / sembunyikan kata sandi ─────────────────────────── */
-  function togglePassword() {
-    var showing = pass.type === "text";
-    pass.type = showing ? "password" : "text";
-    revealBtn.innerHTML = showing ? ICON_EYE : ICON_EYE_OFF;
-    revealBtn.setAttribute("aria-label", showing ? "Tampilkan kata sandi" : "Sembunyikan kata sandi");
-    revealBtn.setAttribute("aria-pressed", showing ? "false" : "true");
+  function kirimForm() {
+    var nama = document.getElementById("username");
+    if (!nama.value.trim() || !sandi.value.trim()) {
+      (nama.value.trim() ? sandi : nama).focus();
+      return;
+    }
+    tombol.disabled = true;
+    label.textContent = "Memproses…";
+    tombol.setAttribute("aria-busy", "true");
+    simpanPengaman();
   }
 
-  /* ── Peringatan Caps Lock ──────────────────────────────────────── */
-  function updateCaps(on) {
-    capsNote.classList.toggle("on", !!on);
+  function tampilkanSandi() {
+    var tampil = sandi.type === "text";
+    sandi.type = tampil ? "password" : "text";
+    lihat.innerHTML = tampil ? IKON_MATA : IKON_MATA_TERTUTUP;
+    lihat.setAttribute("aria-label", tampil ? "Tampilkan kata sandi" : "Sembunyikan kata sandi");
+    lihat.setAttribute("aria-pressed", tampil ? "false" : "true");
   }
 
-  /* ── Tema ──────────────────────────────────────────────────────── */
-  function readStored() {
-    try {
-      var t = localStorage.getItem(STORAGE_KEY);
-      return (t === "light" || t === "dark") ? t : "auto";
-    } catch (_) { return "auto"; }
+  function capsLock(aktif) {
+    catatanCaps.classList.toggle("on", !!aktif);
   }
 
-  function effectiveTheme(pref) {
-    if (pref === "light" || pref === "dark") return pref;
-    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)
-      ? "light" : "dark";
-  }
-
-  function applyTheme(pref) {
-    var eff = effectiveTheme(pref);
-    document.documentElement.setAttribute("data-theme", eff);
+  function terapkanTema(mode) {
+    var efektif = mode;
+    if (mode !== "light" && mode !== "dark") {
+      efektif = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)
+        ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", efektif);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", eff === "dark" ? "#1B1A18" : "#F6F4EE");
-    var opts = document.querySelectorAll(".theme-opt");
-    for (var i = 0; i < opts.length; i++) {
-      opts[i].setAttribute("aria-pressed",
-        opts[i].getAttribute("data-theme") === pref ? "true" : "false");
-    }
+    if (meta) meta.setAttribute("content", efektif === "dark" ? "#1B1A18" : "#F6F4EE");
+    Array.prototype.forEach.call(document.querySelectorAll(".tema-pilih"), function (tombolTema) {
+      tombolTema.setAttribute("aria-pressed",
+        tombolTema.getAttribute("data-mode") === mode ? "true" : "false");
+    });
   }
 
-  function setTheme(pref) {
+  function pilihTema(mode) {
     try {
-      if (pref === "auto") localStorage.removeItem(STORAGE_KEY);
-      else localStorage.setItem(STORAGE_KEY, pref);
-    } catch (_) { /* mode privat: tema tetap berlaku di halaman ini */ }
-    applyTheme(pref);
+      if (mode === "auto") localStorage.removeItem(KUNCI_TEMA);
+      else localStorage.setItem(KUNCI_TEMA, mode);
+    } catch (_) {}
+    terapkanTema(mode);
   }
 
-  /* ── Init ──────────────────────────────────────────────────────── */
-  function init() {
-    form = $("loginForm");
-    user = $("username");
-    pass = $("password");
-    submitBtn = $("submitBtn");
-    submitLabel = $("submitLabel");
-    revealBtn = $("revealBtn");
-    capsNote = $("capsNote");
+  function mulai() {
+    var tersimpan = "auto";
+    try {
+      var nilai = localStorage.getItem(KUNCI_TEMA);
+      if (nilai === "light" || nilai === "dark") tersimpan = nilai;
+    } catch (_) {}
+    terapkanTema(tersimpan);
 
-    if (!(form && user && pass && submitBtn && submitLabel)) return;
+    lihat.innerHTML = IKON_MATA;
+    lihat.addEventListener("click", tampilkanSandi);
+    form.addEventListener("submit", kirimForm);
+    form.addEventListener("invalid", siapkanTombol, true);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) siapkanTombol(); });
+    window.addEventListener("pagehide", siapkanTombol);
 
-    applyTheme(readStored());
-
-    revealBtn.addEventListener("click", togglePassword);
-
-    /* Submit: validasi dulu, baru keadaan loading. */
-    form.addEventListener("submit", function (e) {
-      if (!user.value.trim() || !pass.value.trim()) {
-        e.preventDefault();
-        (user.value.trim() ? pass : user).focus();
-        return;
-      }
-      startLoading();
-    });
-
-    /* Jaring pengaman: validate dipanggil browser, submit dipanggil
-       kode. Bila halaman dimuat dari cache Back, tombol ikut dipulihkan. */
-    window.addEventListener("pageshow", function (e) {
-      if (e.persisted) endLoading();
-    });
-    window.addEventListener("pagehide", endLoading);
-
-    /* Galat validasi bawaan (required) = submit dibatalkan, tombol
-       harus kembali bisa diklik. */
-    form.addEventListener("invalid", endLoading, true);
-
-    /* Caps Lock */
-    pass.addEventListener("keyup", function (e) {
-      if (typeof e.getModifierState === "function") updateCaps(e.getModifierState("CapsLock"));
-    });
-    pass.addEventListener("blur", function () { updateCaps(false); });
-    pass.addEventListener("focus", function (e) {
-      if (typeof e.getModifierState === "function") updateCaps(e.getModifierState("CapsLock"));
-    });
-
-    /* Pilihan tema */
-    var opts = document.querySelectorAll(".theme-opt");
-    for (var i = 0; i < opts.length; i++) {
-      opts[i].addEventListener("click", function (e) {
-        setTheme(e.currentTarget.getAttribute("data-theme"));
+    ["keyup", "focus", "blur"].forEach(function (jenis) {
+      sandi.addEventListener(jenis, function (e) {
+        capsLock(jenis !== "blur" && typeof e.getModifierState === "function"
+          && e.getModifierState("CapsLock"));
       });
-    }
+    });
 
-    /* Mode "Otomatis" ikut berubah bila preferensi sistem berubah. */
+    Array.prototype.forEach.call(document.querySelectorAll(".tema-pilih"), function (tombolTema) {
+      tombolTema.addEventListener("click", function () {
+        pilihTema(tombolTema.getAttribute("data-mode"));
+      });
+    });
+
     var mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)");
     if (mq && mq.addEventListener) {
       mq.addEventListener("change", function () {
-        if (readStored() === "auto") applyTheme("auto");
+        var mode = "auto";
+        try { mode = localStorage.getItem(KUNCI_TEMA) || "auto"; } catch (_) {}
+        if (mode === "auto") terapkanTema("auto");
       });
     }
 
-    /* Bila halaman menampilkan pesan error, fokus ke kata sandi. */
-    if ($("loginError") && !$("loginError").hidden) {
-      pass.focus();
-      if (pass.select) pass.select();
+    var pesan = document.getElementById("pesanError");
+    if (pesan && !pesan.hidden) {
+      sandi.focus();
+      sandi.select();
     }
 
-    endLoading();
+    siapkanTombol();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mulai);
+  else mulai();
 })();

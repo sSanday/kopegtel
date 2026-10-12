@@ -1,301 +1,246 @@
-/* ══════════════════════════════════════════════════════════════════
-   login-v3.css — komponen halaman Login NMS Kopegtel.
-
-   Memakai token dari tokens-v2.css (dimuat sebelum file ini).
-   Aturan: permukaan datar, tanpa bayangan, tanpa gradient, tanpa
-   animasi, tanpa titik status dekoratif, teks >= 14px.
-   ══════════════════════════════════════════════════════════════════ */
-
 *, *::before, *::after { box-sizing: border-box; }
-
-html, body { height: 100%; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
+  font-size: var(--fs-teks);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  caret-color: var(--accent);
+  accent-color: var(--accent);
 }
 
+::selection { background: var(--accent-soft); color: var(--text); }
+
+.simbol { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Disembunyikan dengan clip, bukan digeser jauh ke luar layar, supaya
+   tetap bisa dipastikan muncul saat menerima fokus. */
 .skip-link {
-  position: absolute; left: -9999px; top: 0;
-  background: var(--surface); color: var(--text);
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  padding: 10px 14px; z-index: 10; font-size: var(--fs-label); text-decoration: none;
+  position: absolute; top: 0; left: 12px; z-index: 2;
+  padding: 10px 14px; font-size: var(--fs-label);
+  color: var(--text); background: var(--sisi);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-kecil);
+  text-decoration: none;
+  clip-path: inset(50%);
 }
-.skip-link:focus { left: 12px; top: 12px; }
+.skip-link:focus { clip-path: none; }
 
-/* ── Kerangka: 5fr / 7fr ─────────────────────────────────────────── */
-.shell {
+.login {
   display: grid;
   grid-template-columns: 5fr 7fr;
+  --baris-atas: clamp(56px, 20vh, 190px);
   min-height: 100vh;
   min-height: 100dvh;
 }
 
-/* Kolom kiri: panel form. Rata kiri, lebar maksimal 400px,
-   duduk ±38% dari atas — bukan pas tengah. */
-.col-form {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+.login-form {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 48px 56px;
+  padding: var(--baris-atas) 56px 48px;
+  background: var(--kartu-form);
+  border-right: 1px solid var(--border);
 }
-.form-inner { width: 100%; max-width: 400px; margin-top: -6vh; }
+.login-form-dalam { width: 100%; max-width: 400px; }
 
-.mark-mobile { display: none; }
-
-.brandline {
-  display: flex; align-items: center; gap: 10px;
-  margin: 0 0 40px;
-}
-.brandline svg { display: block; flex: none; }
-.brandline b {
-  font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
-}
-
-/* ── Judul ───────────────────────────────────────────────────────── */
 h1 {
-  margin: 0 0 6px;
-  font-size: 25px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25;
-  color: var(--text);
+  margin: 0 0 8px;
+  font-family: var(--font-serif);
+  font-size: var(--fs-judul);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 .sub {
-  margin: 0 0 28px;
-  font-size: var(--fs-text); color: var(--text-2);
+  margin: 0 0 30px;
+  font-size: var(--fs-sub);
+  color: var(--text-2);
 }
 
-/* ── Pesan error: bar kiri 2px merah, tanpa shake ────────────────── */
-.msg {
-  display: flex; gap: 10px; align-items: flex-start;
-  margin: 0 0 22px; padding: 12px 14px;
+.pesan-error {
+  margin: 0 0 22px;
+  padding: 12px 14px;
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  color: var(--down);
   background: var(--down-soft);
-  border-left: 2px solid var(--down-text);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-label); line-height: 1.5; color: var(--down-text);
+  border-left: 2px solid var(--down);
+  border-radius: var(--radius-kecil);
 }
-.msg[hidden] { display: none; }
-.msg svg { flex: none; margin-top: 2px; }
+.pesan-error[hidden] { display: none; }
 
-/* ── Field ───────────────────────────────────────────────────────── */
-.field { margin: 0 0 18px; }
-.field > label {
+.baris { margin: 0 0 20px; }
+.baris > label {
   display: block; margin: 0 0 6px;
   font-size: var(--fs-label); font-weight: 500; color: var(--text);
 }
-.control { position: relative; display: flex; }
-.control input {
-  width: 100%;
-  min-height: var(--tap);
-  padding: 0 12px;
-  font: inherit;
-  font-size: var(--fs-text);
-  color: var(--text);
-  background: var(--bg);
+.isi { position: relative; display: flex; }
+.isi input {
+  width: 100%; min-height: var(--tap);
+  padding: 0 14px;
+  font: inherit; font-size: var(--fs-teks); color: var(--text);
+  background: var(--isian);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   transition: border-color 120ms ease;
 }
-.control.has-toggle input { padding-right: 104px; }
-.control input::placeholder { color: var(--text-3); }
-.control input:hover { border-color: var(--text-3); }
-.control input:focus {
+.isi--sandi input { padding-right: 104px; }
+.isi input::placeholder { color: var(--text-3); }
+.isi input:hover { border-color: var(--text-3); }
+.isi input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-color: var(--accent);
 }
 
-/* Autofill Chrome memunculkan blok biru muda. Ditutup tanpa box-shadow
-   inset berwarna: latar diklip ke teks lalu ditembus, warna teks dipaksa,
-   dan transisi background-color dijauhkan. */
-.control input:-webkit-autofill,
-.control input:-webkit-autofill:hover,
-.control input:-webkit-autofill:focus,
-.control input:-webkit-autofill:active {
-  -webkit-background-clip: text;
-  background-color: transparent;
+/* Chrome menimpa latar isian saat autofill. Transisi yang sangat panjang
+   menahan cat itu, dan -webkit-text-fill-color menahan warnanya. */
+.isi input:-webkit-autofill,
+.isi input:-webkit-autofill:hover,
+.isi input:-webkit-autofill:focus {
   -webkit-text-fill-color: var(--text);
-  caret-color: var(--text);
   transition: background-color 600000s 0s, color 600000s 0s;
 }
 
-/* ── Tombol tampilkan/sembunyikan kata sandi ─────────────────────── */
-.reveal {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+.lihat-sandi {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
   min-height: var(--tap); min-width: 44px; padding: 0 10px;
-  font: inherit; font-size: var(--fs-label);
-  color: var(--text-2);
-  background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+  font: inherit; font-size: var(--fs-label); color: var(--text-2);
+  background: none; border: 1px solid transparent; border-radius: var(--radius-kecil);
   cursor: pointer;
   transition: color 120ms ease, border-color 120ms ease;
 }
-.reveal:hover { color: var(--text); border-color: var(--border); }
-.reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lihat-sandi:hover { color: var(--text); border-color: var(--border); }
+.lihat-sandi:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lihat-sandi svg { display: block; margin: 0 auto; }
 
-/* Peringatan Caps Lock — inline, muncul hanya saat Caps aktif. */
 .caps {
-  display: none;
-  margin: 6px 0 0;
-  font-size: var(--fs-label); color: var(--warn-text);
+  margin: 6px 0 0; font-size: var(--fs-label); color: var(--warn);
 }
-.caps.on { display: block; }
+.caps:not(.on) { display: none; }
 
-/* ── Baris ingat saya ────────────────────────────────────────────── */
-.remember {
+.ingat {
   display: flex; align-items: center; gap: 10px;
-  margin: 0 0 26px; min-height: var(--tap);
+  min-height: var(--tap); margin: 0 0 26px;
 }
-.remember input[type="checkbox"] {
+.ingat input[type="checkbox"] {
   appearance: none; -webkit-appearance: none;
   flex: none; width: 17px; height: 17px; margin: 0;
-  border: 1px solid var(--border-strong); border-radius: 3px;
-  background: var(--bg); cursor: pointer;
+  background: var(--isian);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-kecil);
+  cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
-.remember input[type="checkbox"]:checked {
-  background: var(--accent-btn);
-  border-color: var(--accent-btn);
+.ingat input[type="checkbox"]:checked {
+  background: var(--accent-btn); border-color: var(--accent-btn);
 }
-.remember input[type="checkbox"]:checked::after {
-  content: ""; display: block; width: 4px; height: 9px;
-  margin: 2px 0 0 5px;
+.ingat input[type="checkbox"]:checked::after {
+  content: ""; display: block; width: 4px; height: 9px; margin: 2px 0 0 5px;
   border: solid var(--on-primary); border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-.remember input[type="checkbox"]:focus-visible {
+.ingat input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.remember label { font-size: var(--fs-label); color: var(--text); cursor: pointer; }
+.ingat label { font-size: var(--fs-label); color: var(--text); cursor: pointer; }
 
-/* ── Tombol Masuk ────────────────────────────────────────────────── */
-.submit {
+.tombol-masuk {
   width: 100%; min-height: var(--tap);
   font: inherit; font-size: var(--fs-label); font-weight: 600;
   color: var(--on-primary);
   background: var(--accent-btn);
-  border: 1px solid var(--accent-btn);
-  border-radius: var(--radius);
+  border: 1px solid var(--accent-btn); border-radius: var(--radius);
   cursor: pointer;
   transition: background-color 120ms ease;
 }
-.submit:hover:not(:disabled) { background: var(--accent-btn-hover); border-color: var(--accent-btn-hover); }
-.submit:active:not(:disabled) { transform: translateY(1px); }
-.submit:disabled { opacity: 0.62; cursor: not-allowed; }
-.submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tombol-masuk:hover:not(:disabled) {
+  background: var(--accent-btn-hover); border-color: var(--accent-btn-hover);
+}
+.tombol-masuk:active:not(:disabled) { transform: translateY(1px); }
+.tombol-masuk:disabled { opacity: 0.62; cursor: not-allowed; }
+.tombol-masuk:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.help {
-  margin: 18px 0 0;
-  font-size: var(--fs-text); color: var(--text-2);
+.bantuan {
+  margin: 18px 0 0; font-size: var(--fs-teks); color: var(--text-2);
 }
 
-/* ── Kolom kanan: bidang netral ──────────────────────────────────── */
-.col-side {
-  background: var(--surface-2);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 48px 56px;
+.login-sisi {
+  display: flex; flex-direction: column;
+  padding: var(--baris-atas) 56px 48px;
+  background: var(--sisi);
 }
-.side-mark {
-  display: flex; align-items: center; gap: 11px;
-}
-.side-mark b {
+.merek { display: flex; align-items: center; gap: 11px; margin: 0; }
+.merek b {
   font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
 }
+.merek--mobile { display: none; }
+.merek--mobile b { font-size: 15px; }
 
-/* ── Elemen khas: topologi statis ───────────────────────────────── */
-.topo { margin: auto 0; padding: 0; }
+.topo { margin: auto 0; padding: 0; max-width: 520px; }
 .topo svg { display: block; width: 100%; height: auto; }
-.topo-cap {
-  margin: 14px 0 0;
-  font-size: var(--fs-text); color: var(--text-2);
-  max-width: 46ch;
+.topo figcaption {
+  margin: 18px 0 0; font-size: var(--fs-teks); color: var(--text-2);
 }
-.topo-figcaption {
-  margin: 0 0 14px;
-  font-family: var(--mono);
-  font-size: var(--fs-mono);
-  color: var(--text-3);
-  letter-spacing: 0.02em;
+.topo-jalur {
+  fill: none; stroke: var(--garis-topo); stroke-width: 1.25;
 }
-.topo-lab {
-  font-family: var(--mono);
-  font-size: var(--fs-mono);
+.topo-jalur--aksen { stroke: var(--accent); }
+.topo-simbol {
+  fill: none; stroke: var(--garis-topo); stroke-width: 1.25;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.topo-label {
+  font-family: var(--font-sans);
+  font-size: var(--fs-label-svg);
   fill: var(--text-2);
+  stroke: none;
 }
 
-/* ── Footer selebar halaman ──────────────────────────────────────── */
-.foot {
+.login-kaki {
   display: flex; align-items: center; justify-content: space-between;
   gap: 20px; flex-wrap: wrap;
-  font-size: var(--fs-text); color: var(--text-2);
+  font-size: var(--fs-teks); color: var(--text-2);
 }
-.foot p { margin: 0; }
+.login-kaki p { margin: 0; }
 
-/* ── Pilihan tema (teks, bukan ikon melayang) ───────────────────── */
-.theme { display: flex; align-items: center; gap: 2px; }
-.theme-label { margin-right: 8px; color: var(--text-3); }
-.theme-opt {
+.tema { display: flex; align-items: center; gap: 4px; }
+.tema-label { margin-right: 6px; color: var(--text-3); }
+.tema-pilih {
   appearance: none;
-  min-height: var(--tap); padding: 0 12px;
-  font: inherit; font-size: var(--fs-text);
-  color: var(--text-2);
-  background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+  min-height: var(--tap); padding: 0 4px;
+  font: inherit; font-size: var(--fs-teks); color: var(--text-2);
+  background: none; border: none;
+  border-bottom: 2px solid transparent;
   cursor: pointer;
-  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+  transition: color 120ms ease, border-color 120ms ease;
 }
-.theme-opt:hover { color: var(--text); border-color: var(--border); }
-.theme-opt[aria-pressed="true"] {
-  color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent);
-  font-weight: 500;
+.tema-pilih:hover { color: var(--text); }
+.tema-pilih[aria-pressed="true"] {
+  color: var(--text); border-bottom-color: var(--accent); font-weight: 500;
 }
-.theme-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tema-pilih:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ── Utilitas ────────────────────────────────────────────────────── */
-.sr-only {
-  position: absolute; width: 1px; height: 1px;
-  padding: 0; margin: -1px; overflow: hidden;
-  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-}
-
-/* ── Gerak: hanya transisi 120ms, hormati prefers-reduced-motion ── */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    transition-duration: 1ms !important;
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-  }
-  .control input:-webkit-autofill { transition: none; }
+  * { transition-duration: 1ms; }
+  .isi input:-webkit-autofill { transition: none; }
 }
 
-/* ══ Responsif ════════════════════════════════════════════════════ */
-
-/* Tablet & bawah: kolom kanan disembunyikan, wordmark pindah ke atas form. */
 @media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
-  .col-form {
-    border-right: none;
-    padding: 40px 32px;
-    justify-content: flex-start;
-  }
-  .form-inner { max-width: 440px; margin: 0 auto; }
-  .col-side { display: none; }
-  .mark-mobile { display: flex; }
-  .brandline { display: none; }
+  .login { grid-template-columns: 1fr; --baris-atas: 40px; }
+  .login-form { border-right: none; padding: 40px 32px; }
+  .login-form-dalam { max-width: 440px; }
+  .login-sisi { display: none; }
+  .merek--mobile { display: flex; margin: 0 0 40px; }
 }
 
-/* Ponsel */
 @media (max-width: 560px) {
-  .col-form { padding: 24px; }
-  .form-inner { margin: auto 0; }
-  h1 { font-size: 22px; }
-  .foot { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .theme { width: 100%; }
-  .theme-opt { flex: 1; }
-  .theme-label { width: 100%; margin: 0 0 2px; }
+  .login-form { padding: 24px; }
+  h1 { font-size: 34px; }
+  .login-kaki { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .tema { width: 100%; }
+  .tema-pilih { flex: 1; }
+  .tema-label { width: 100%; margin: 0; }
 }
