@@ -1,0 +1,102 @@
+/* ══════════════════════════════════════════════════════════════════
+   tokens-v2.css — set token TERPISAH untuk halaman Login v3.
+
+   DIMUAT HANYA oleh templates/login.html. Tidak memuat app.css dan
+   tidak menimpa halaman lain.
+
+   Nama variabel SAMA dengan app.css (--bg, --surface, --text-2,
+   --accent-btn, …) supaya migrasi global nanti cukup mengganti nilai
+   di sini, bukan menulis ulang selector.
+
+   Semua warna ditulis sebagai fallback hex; komentar OKLCH hanya
+   catatan. Semua rasio kontras diukur (lihat laporan Tahap 0).
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Permukaan: kertas hangat ── */
+  --bg:            #F6F4EE;   /* oklch(96.5% 0.008 85)  kertas   */
+  --surface:       #FBFAF6;   /* oklch(98.4% 0.005 85)  kartu    */
+  --surface-2:     #ECE8DF;   /* oklch(92.2% 0.012 85)  panel    */
+  --surface-3:     #E3DED2;   /* oklch(89.0% 0.015 85)  isian    */
+  --border:        #D8D3C8;
+  --border-strong: #BFB9AA;
+
+  /* ── Teks (semua >= 4.5:1 terhadap latar masing-masing) ── */
+  --text:          #16181D;   /* 16.15 di kertas · 14.52 di panel */
+  --text-2:        #5A606B;   /*  5.75 di kertas ·  5.17 di panel */
+  --text-3:        #626673;   /*  5.21 di kertas ·  4.68 di panel */
+
+  /* ── Aksen tunggal: kobalt. Hanya tombol, fokus, tautan ── */
+  --accent:          #2B3FD0;  /* 7.01 di kertas · 6.30 di panel */
+  --accent-text:     #2B3FD0;
+  --accent-soft:     rgba(43, 63, 208, 0.08);
+  --accent-btn:      #2B3FD0;  /* teks putih di atasnya: 7.71 */
+  --accent-btn-hover:#232FCC;  /* teks putih di atasnya: 8.94 */
+  --on-primary:      #FFFFFF;
+
+  /* ── Status. Merah HANYA untuk pesan error ── */
+  --ok:       #15803D;
+  --ok-text:  #15803D;
+  --warn:     #B45309;
+  --warn-text:#B45309;
+  --down:     #C02626;
+  --down-text:#C02626;        /* 5.38 di kertas · 6.29 di kartu */
+  --down-soft:rgba(192, 38, 38, 0.08);
+
+  /* ── Bayangan: tidak ada. Permukaan datar. ── */
+  --shadow-sm: none;
+  --shadow:    none;
+  --shadow-lg: none;
+
+  /* ── Tipografi ──
+     IBM Plex Sans/Mono BELUM ada di static/fonts (yang ada Inter dan
+     JetBrains Mono, meski fonts.css melabelinya "IBM Plex"). Jadi
+     stack memakai system-ui — bukan CDN, bukan font terlarang.
+     Setelah IBMPlexSans-var-latin.woff2 & IBMPlexMono-var-latin.woff2
+     diunduh ke static/fonts, cukup ganti dua baris di bawah. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono:      ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --fs-body:  15px;
+  --fs-label: 14px;   /* label, tombol, pesan error — minimum */
+  --fs-text:  14px;   /* teks isi & footer — minimum */
+  --fs-mono:  12px;   /* hanya label topologi */
+
+  --radius:    6px;
+  --radius-sm: 4px;
+  --tap:       44px;  /* target sentuh minimum */
+}
+
+/* ── Gelap: arang hangat, bukan biru-hitam ── */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:            #1B1A18;
+  --surface:       #232220;
+  --surface-2:     #2A2926;
+  --surface-3:     #33312D;
+  --border:        #3A3835;
+  --border-strong: #4C4943;
+
+  --text:          #EDEAE3;   /* 14.47 di arang · 12.11 di panel */
+  --text-2:        #B3AEA5;   /*  7.88 di arang ·  6.59 di panel */
+  --text-3:        #948F86;   /*  5.41 di arang */
+
+  /* Kobalt dinaikkan agar tetap >= AA di atas arang. */
+  --accent:          #93A0F3;   /* 7.09 di arang · 5.93 di panel */
+  --accent-text:     #93A0F3;
+  --accent-soft:     rgba(147, 160, 243, 0.12);
+  --accent-btn:      #2B3FD0;   /* teks putih: 7.71 */
+  --accent-btn-hover:#3D4CD8;   /* teks putih: 6.51 */
+  --on-primary:      #FFFFFF;
+
+  --ok:       #4ADE80;
+  --ok-text:  #4ADE80;
+  --warn:     #FBBF24;
+  --warn-text:#FBBF24;
+  --down:     #F87171;         /* 6.29 di arang · 5.75 di kartu */
+  --down-text:#F87171;
+  --down-soft:rgba(248, 113, 113, 0.10);
+}
