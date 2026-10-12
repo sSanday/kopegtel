@@ -26,9 +26,8 @@
     .term-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--border)}
     .term-dots,.term-title{display:none}
     .term-badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ok-text);background:var(--ok-soft);border:1px solid transparent;border-radius:99px;padding:6px 13px;white-space:nowrap;cursor:pointer;user-select:none}
-    .term-badge .dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:soft-pulse 2.2s ease-in-out infinite}
+    .term-badge .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
     .term-badge.paused{color:var(--text-3);background:var(--surface-2)}
-    .term-badge.paused .dot{animation:none}
     th{text-align:left;color:var(--text-2);font-family:var(--font-sans);font-size:12px;font-weight:600;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap;position:sticky;top:0;z-index:1}
     td{padding:13px 16px;border-bottom:1px solid var(--border);font-family:var(--font-sans);font-size:13.5px;color:var(--text-2);transition:.12s;vertical-align:middle;font-variant-numeric:tabular-nums}
     tr:last-child td{border-bottom:none}
@@ -367,7 +366,7 @@
     const t=fmtTime(log.timestamp);
     const rawMsg=String(log.message??'');
     const c=cls?' '+cls:'',a=attrs?' '+attrs:'';
-    return `<tr class="log-row${c}"${a} tabindex="0" data-expanded="false" style="animation-delay:${(i%20)*.02}s">`
+    return `<tr class="log-row${c}"${a} tabindex="0" data-expanded="false">`
       +`<td data-label="Waktu" class="col-time" title="${esc(log.timestamp)}"><span class="time-main">${t.main}</span><br><span class="time-rel">${esc(t.rel)}</span></td>`
       +`<td data-label="Perangkat" class="col-host"><span class="host-name">${hl(esc(displayName),q)}</span>${hasAlias?`<br><span class="host-ip">${esc(rawHost)}</span>`:''}</td>`
       +`<td data-label="Kejadian"><span class="tag ${_tc}" title="${esc(log.event_type)}">${esc(eventLabel(log.event_type))}</span></td>`

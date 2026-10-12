@@ -1,0 +1,385 @@
+/* ═════════════════════════════════════════════════════════════
+   tokens-v2.css — Design token khusus halaman Login NMS Kopegtel.
+   Hanya untuk halaman login; tidak menimpa tokens.css yang dipakai halaman lain.
+   Dark = default, Light via [data-theme="light"].
+   ═══════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme="dark"] {
+  /* ── Warna dasar — arang hangat, bukan biru-hitam ── */
+  --bg:        #1B1A18;
+  --surface:   #1F1E1C;
+  --surface-2: #252422;
+  --surface-3: #2D2B29;
+  --border:    #3A3836;
+  --border-strong: #4A4844;
+
+  /* ── Teks ── */
+  --t1: #EDEAE3;   /* utama */
+  --t2: #A8A5A0;   /* sekunder */
+  --t3: #7D7A74;   /* tersier */
+
+  /* ── Aksen tunggal: Biru kobalt ── */
+  --accent:       #2B3FD0;
+  --accent-text:  #FFFFFF;
+  --accent-soft:  rgba(43, 63, 208, 0.12);
+  --accent-hover: #1E2EC4;
+  --accent-active: #1A28A8;
+
+  /* ── Status (hanya untuk makna, bukan dekorasi) ── */
+  --down:  #DC2626;
+  --down-soft: rgba(220, 38, 38, 0.12);
+  --ok:    #16A34A;
+  --ok-soft: rgba(22, 163, 72, 0.12);
+  --warn:  #B45309;
+  --warn-soft: rgba(180, 83, 9, 0.12);
+
+  /* ── Elevasi ── */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
+  --shadow-raised: 0 12px 32px rgba(0,0,0,.45);
+  --shadow-pop: 0 24px 64px rgba(0,0,0,.55);
+
+  /* ── Radius ── */
+  --r-card: 8px;
+  --r-input: 6px;
+  --r-btn: 6px;
+  --r-pill: 999px;
+
+  /* ── Spacing (4/8/12/16/24/32/48) ── */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;
+  --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+
+  /* ── Tipografi ── */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --fs-h1: 32px;
+  --fs-h2: 16px;
+  --fs-body: 15px;
+  --fs-label: 13px;
+  --fs-mono: 12px;
+  --fs-meta: 11px;
+
+  --focus-ring: 0 0 0 2px var(--accent);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── Warna dasar — kertas hangat ── */
+  --bg:        #F6F4EE;
+  --surface:   #FFFFFF;
+  --surface-2: #F8F7F4;
+  --surface-3: #F0EEE8;
+  --border:    #E4E2DC;
+  --border-strong: #D8D4CC;
+
+  --t1: #16181D;
+  --t2: #5A606B;
+  --t3: #7D7A74;
+
+  --accent:       #2B3FD0;
+  --accent-hover: #1E2EC4;
+  --accent-active:#1A28A8;
+  --accent-soft:  rgba(43, 63, 208, 0.1);
+
+  --down:  #DC2626;   --down-soft:  rgba(220,38,38,0.12);
+  --ok:    #16A34A;   --ok-soft:    rgba(22,163,72,0.12);
+  --warn:  #B45309;   --warn-soft:  rgba(180,83,9,0.12);
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,.06), inset 0 1px 0 rgba(255,255,255,.7);
+  --shadow-raised: 0 12px 32px rgba(0,0,0,.1);
+  --shadow-pop: 0 24px 64px rgba(0,0,0,.15);
+
+  --focus-ring: 0 0 0 2px var(--accent);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* ============================================================
+   Layout & Komponen Login (khusus halaman login)
+   ============================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--t1);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* Skip link untuk aksesibilitas */
+.skip-link {
+  position: absolute; top: -100%; left: 16px; z-index: 1000;
+  background: var(--surface); color: var(--t1);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 16px; text-decoration: none; transition: top .12s;
+}
+.skip-link:focus { top: 12px; }
+
+/* ============================================================
+   Layout Split Asimetris: 5fr (kanan ilustrasi) / 7fr (kiri form)
+   ============================================================ */
+.login-shell {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  min-height: 100vh;
+}
+
+/* ----- Kolom Kanan: Identitas + ilustrasi topologi ----- */
+.login-identity {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: var(--s-7) var(--s-6);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* Wordmark + logo */
+.identity-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-bottom: var(--s-6);
+}
+
+.identity-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.identity-mark {
+  width: 40px; height: 40px; border-radius: 8px; flex-shrink: 0;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.identity-name {
+  font-weight: 700; font-size: 18px; letter-spacing: -0.01em; line-height: 1.2; color: var(--t1);
+}
+.identity-name small { display: block; font-size: 12px; font-weight: 500; color: var(--t2); font-weight: 400; }
+
+.identity-tagline {
+  font-size: 13px; color: var(--t2); max-width: 380px; line-height: 1.6;
+}
+
+/* Ilustrasi topologi statis */
+.topology {
+  margin-top: auto; /* dorong ke bawah */
+  width: 100%; max-width: 420px;
+}
+
+.topo-title {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: 12px; font-weight: 600; color: var(--t3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: var(--s-4);
+}
+
+.topo-svg {
+  width: 100%; height: auto; max-width: 420px;
+  display: block;
+}
+
+/* ----- Kolom Kiri: Form login ----- */
+.login-form-area {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--s-7) var(--s-5);
+  background: var(--bg);
+  position: relative;
+}
+
+/* Theme toggle di pojok kanan atas */
+body {
+  display: flex;
+  flex-direction: column;
+}
+.login-shell { flex: 1; }
+
+/* Footer selebar halaman */
+.login-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-5);
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--t2);
+}
+.login-page-footer p { margin: 0; }
+.footer-theme { display: flex; align-items: center; gap: 4px; }
+.footer-theme-label { margin-right: 4px; }
+.footer-theme button {
+  background: none;
+  border: none;
+  padding: 10px 8px;
+  min-height: 44px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--t2);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.footer-theme button:hover { color: var(--t1); }
+.footer-theme button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.footer-theme button[aria-pressed="true"] { color: var(--t1); font-weight: 600; }
+
+/* Form wrapper */
+.login-form-wrapper {
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding-top: var(--s-6); /* sedikit di atas tengah */
+}
+
+/* Wordmark kecil di atas form */
+.form-wordmark {
+  display: flex; align-items: center; gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.form-wordmark .brand-mark {
+  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.form-wordmark .brand-name {
+  font-weight: 700; font-size: 17px; letter-spacing: -0.01em; line-height: 1.2; color: var(--t1);
+}
+
+h1.login-title {
+  font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; color: var(--t1);
+  margin-bottom: var(--s-1);
+}
+
+p.login-subtitle {
+  font-size: 15px; color: var(--t2); line-height: 1.6;
+  margin-bottom: var(--s-5);
+}
+
+/* Error alert */
+.login-error {
+  display: flex; align-items: flex-start; gap: var(--s-2);
+  background: var(--down-soft); border: 1px solid var(--down);
+  color: var(--t1); border-radius: 8px; padding: var(--s-3) var(--s-4);
+  font-size: 14px; font-weight: 500; margin-bottom: var(--s-4);
+}
+.login-error svg { width: 18px; height: 18px; color: var(--down); flex-shrink: 0; margin-top: 1px; }
+.login-error .err-cta { margin-top: var(--s-2); font-size: 12.5px; font-weight: 600; color: var(--down); }
+
+/* Form */
+.login-form { margin-top: var(--s-3); }
+.form-group { margin-bottom: var(--s-3); }
+
+label.form-label {
+  display: block; font-size: 13px; font-weight: 600; color: var(--t1); margin-bottom: 6px;
+}
+
+.input-wrap { position: relative; }
+.input-wrap input {
+  width: 100%; height: 44px;
+  padding: 0 44px 0 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--t1); font: inherit; font-size: 15px; outline: none; transition: border-color .12s, box-shadow .12s;
+}
+.input-wrap input:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.input-wrap input::placeholder { color: var(--t3); }
+.input-wrap input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Show/hide password button */
+.pw-toggle {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 6px; cursor: pointer; color: var(--t3);
+  transition: color .12s, background .12s;
+}
+.pw-toggle:hover { color: var(--t1); background: var(--surface-2); }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pw-toggle svg { width: 18px; height: 18px; }
+
+/* CapsLock hint */
+.caps-hint {
+  display: none; align-items: center; gap: 6px;
+  margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--t2);
+}
+.caps-hint.visible { display: flex; }
+.caps-hint svg { width: 13px; height: 13px; color: var(--t3); }
+
+/* Checkbox kustom */
+.check-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 22px; }
+.check-row input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 20px; height: 20px; flex-shrink: 0;
+  border: 1.5px solid var(--border); border-radius: 4px;
+  background: var(--surface); cursor: pointer; position: relative;
+  transition: background .12s, border-color .12s;
+}
+.check-row input[type="checkbox"]:checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.check-row input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 6px; top: 2px;
+  width: 5px; height: 10px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(42deg);
+}
+.check-row label { font-size: 13.5px; font-weight: 500; color: var(--t1); cursor: pointer; }
+
+/* Submit button */
+.btn-submit {
+  width: 100%; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--accent); border: none; border-radius: 6px;
+  color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+  transition: background .12s, transform .12s, opacity .12s;
+}
+.btn-submit:hover { background: var(--accent-hover); }
+.btn-submit:active { transform: translateY(1px); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+.login-footer {
+  margin-top: var(--s-5); text-align: center;
+  font-size: 12.5px; color: var(--t2); line-height: 1.7;
+}
+.login-help {
+  margin-top: var(--s-3); text-align: center;
+  font-size: 12.5px; color: var(--t2); line-height: 1.7;
+}
+.login-footer a { color: var(--accent); text-decoration: none; }
+.login-footer a:hover { text-decoration: underline; }
+
+/* Loading state tombol (teks diganti via JS, tanpa spinner) */
+.btn-submit.loading { cursor: wait; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* Mobile / Tablet: < 900px */
+@media (max-width: 900px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-identity { display: none; }
+  .login-form-area { align-items: flex-start; min-height: 100vh; padding: var(--s-5) var(--s-4); }
+  .login-form-wrapper { max-width: 100%; }
+}

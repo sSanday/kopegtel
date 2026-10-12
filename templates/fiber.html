@@ -31,8 +31,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--t1);min-heigh
 .src-chip{font-family:var(--mono);font-size:.6rem;color:var(--t2);background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:99px;padding:4px 12px}
 .src-chip b{color:var(--t1)}
 .live-badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-sans);font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--accent2);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.25);border-radius:99px;padding:4px 11px;line-height:1;white-space:nowrap}
-.live-badge i{width:7px;height:7px;border-radius:50%;background:var(--accent2);flex-shrink:0;animation:livepulse 2s ease-in-out infinite}
-@keyframes livepulse{0%,100%{opacity:1}50%{opacity:.35}}
+.live-badge i{width:7px;height:7px;border-radius:50%;background:var(--accent2);flex-shrink:0}
 .scale-wrap{margin:6px 0 12px}
 .scale-bar{position:relative;height:14px;border-radius:99px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);overflow:hidden}
 .zone{position:absolute;top:0;bottom:0}
@@ -558,8 +557,7 @@ select:focus-visible{outline:none;border-color:var(--accent);box-shadow:var(--fo
 .filter-select:focus{border-color:var(--accent);box-shadow:var(--focus-ring);outline:none}
 .chart-ctl select{border-color:var(--input-bd)}
 .chart-ctl select:focus{border-color:var(--accent);box-shadow:var(--focus-ring);outline:none}
-.skel{display:inline-block;border-radius:6px;background:linear-gradient(90deg,rgba(148,163,184,.12),rgba(148,163,184,.22),rgba(148,163,184,.12));background-size:200% 100%;animation:sksh 1.2s infinite;min-height:14px}
-@keyframes sksh{to{background-position:-200% 0}}
+.skel{display:inline-block;border-radius:6px;background:rgba(148,163,184,.16);min-height:14px}
 @media(max-width:640px){
   .filter-bar .fb-row:last-child .filter-search{flex:1 1 100%;min-width:0}
   .filter-bar .fb-row:last-child .filter-select{flex:1 1 calc(50% - 4px);min-width:0;max-width:none}

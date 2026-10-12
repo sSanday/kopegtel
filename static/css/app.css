@@ -210,10 +210,8 @@ body.nav-collapsed .nav-link.active::before { left: -10px; }
   border: 1px solid transparent; border-radius: 99px; padding: 7px 13px;
   white-space: nowrap;
 }
-.live-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: soft-pulse 2.2s ease-in-out infinite; }
+.live-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .live-badge.off { color: var(--down-text); background: var(--down-soft); }
-.live-badge.off .dot { animation: none; }
-@keyframes soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 .icon-btn {
   position: relative;
@@ -469,7 +467,6 @@ a.host-card.is-alert .host-lat { color: var(--down-text); }
 }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .card-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px; }
-.card-title .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-text); animation: soft-pulse 2.2s ease-in-out infinite; }
 .card-desc { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
 .card-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .chart-wrap { position: relative; height: 280px; }
@@ -533,7 +530,7 @@ a.host-card.is-alert .host-lat { color: var(--down-text); }
   color: var(--down-text); background: var(--down-soft);
   border-radius: 99px; padding: 5px 12px; white-space: nowrap;
 }
-.badge-ongoing::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: soft-pulse 1.8s ease-in-out infinite; }
+.badge-ongoing::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .badge-done {
   display: inline-block; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--text-2); background: var(--surface-3);
@@ -662,11 +659,9 @@ a.host-card.is-alert .host-lat { color: var(--down-text); }
 .toast.error { border-color: var(--down-text); }
 
 /* ---------- Skeleton ---------- */
-@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
 .skeleton {
   border-radius: 16px; min-height: 120px;
-  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-3) 50%, var(--surface) 75%);
-  background-size: 800px 100%; animation: shimmer 1.6s infinite;
+  background: var(--surface-3);
   border: 1px solid var(--border);
 }
 
@@ -881,7 +876,7 @@ tr.mnt-live td { background: var(--warn-soft); }
 /* Badge status maintenance */
 .st-badge { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 700; border-radius: 99px; padding: 4px 12px; white-space: nowrap; }
 .st-badge.live { color: var(--warn-text); background: var(--warn-soft); }
-.st-badge.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: soft-pulse 1.8s ease-in-out infinite; }
+.st-badge.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .st-badge.sched { color: var(--accent-text); background: var(--accent-soft); }
 .st-badge.done { color: var(--text-2); background: var(--surface-3); }
 

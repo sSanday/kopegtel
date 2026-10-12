@@ -4,35 +4,41 @@
 (function () {
   "use strict";
 
-  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (REDUCED) document.body.classList.add("reduced-motion");
-
   var ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>';
   var ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5c2 0 3.7.7 5.1 1.6M21.5 12S18 18.5 12 18.5c-2 0-3.7-.7-5.1-1.6"/><path d="M4 4l16 16"/></svg>';
-  var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';
-  var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 
   function $(id) { return document.getElementById(id); }
 
-  /* ---------- Tema ---------- */
-  function applyTheme(theme) {
-    document.documentElement.setAttribute("data-theme", theme);
-    try { localStorage.setItem("nms_theme", theme); } catch (_) {}
-    var btn = $("themeBtn");
-    if (btn) {
-      btn.innerHTML = theme === "dark" ? ICON_SUN : ICON_MOON;
-      btn.title = theme === "dark" ? "Ganti ke mode terang" : "Ganti ke mode gelap";
-      btn.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
-    }
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#0b0f14" : "#eef1f6");
+  function prefersLight() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
   }
-  function toggleTheme() {
-    var cur = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
-    applyTheme(cur === "dark" ? "light" : "dark");
+  function storedTheme() {
+    try {
+      var t = localStorage.getItem("nms_theme");
+      if (t === "light" || t === "dark" || t === "auto") return t;
+    } catch (_) {}
+    return "auto";
+  }
+  function effectiveTheme(choice) {
+    if (choice === "light") return "light";
+    if (choice === "dark") return "dark";
+    return prefersLight() ? "light" : "dark";
+  }
+  function paintTheme(choice) {
+    var eff = effectiveTheme(choice);
+    document.documentElement.setAttribute("data-theme", eff);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = eff === "light" ? "#F6F4EE" : "#1B1A18";
+    var btns = document.querySelectorAll("[data-theme-choice]");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].setAttribute("aria-pressed", btns[i].getAttribute("data-theme-choice") === choice ? "true" : "false");
+    }
+  }
+  function applyTheme(choice) {
+    try { localStorage.setItem("nms_theme", choice); } catch (_) {}
+    paintTheme(choice);
   }
 
-  /* ---------- Tampil/sembunyikan password ---------- */
   function togglePassword() {
     var pw = $("password");
     var btn = $("toggleBtn");
@@ -40,34 +46,30 @@
     if (pw.type === "password") {
       pw.type = "text";
       btn.innerHTML = ICON_EYE_OFF;
-      btn.setAttribute("aria-label", "Sembunyikan password");
+      btn.setAttribute("aria-label", "Sembunyikan kata sandi");
       btn.setAttribute("aria-pressed", "true");
     } else {
       pw.type = "password";
       btn.innerHTML = ICON_EYE;
-      btn.setAttribute("aria-label", "Tampilkan password");
+      btn.setAttribute("aria-label", "Tampilkan kata sandi");
       btn.setAttribute("aria-pressed", "false");
     }
   }
 
-  /* ---------- Caps Lock ---------- */
   function bindCapsHint() {
     var pw = $("password");
     var hint = $("capsHint");
     if (!pw || !hint) return;
     var update = function (e) {
       var on = false;
-      try {
-        if (e.getModifierState) on = e.getModifierState("CapsLock");
-      } catch (_) { on = false; }
-      hint.classList.toggle("on", !!on);
+      try { if (e.getModifierState) on = e.getModifierState("CapsLock"); } catch (_) { on = false; }
+      hint.classList.toggle("visible", !!on);
     };
     pw.addEventListener("keydown", update);
     pw.addEventListener("keyup", update);
-    pw.addEventListener("blur", function () { hint.classList.remove("on"); });
+    pw.addEventListener("blur", function () { hint.classList.remove("visible"); });
   }
 
-  /* ---------- Loading state saat submit ---------- */
   function bindSubmit() {
     var form = $("loginForm");
     if (!form) return;
@@ -81,15 +83,14 @@
         return;
       }
       var btn = $("submitBtn");
-      var text = $("btnText");
+      var text = form.querySelector(".btn-submit .btn-text");
       btn.disabled = true;
       btn.classList.add("loading");
       btn.setAttribute("aria-busy", "true");
-      text.textContent = "Memproses…";
+      if (text) text.textContent = "Memproses…";
     });
   }
 
-  /* ---------- Hitung mundur blokir (rate limit) ---------- */
   function initCountdown() {
     var box = $("errorBox");
     if (!box) return;
@@ -118,43 +119,26 @@
     tick();
   }
 
-  /* ---------- Status sistem asli ---------- */
-  function checkHealth() {
-    var el = $("sysStatus");
-    if (!el) return;
-    fetch("/health", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-      .then(function (r) {
-        if (r.ok) el.classList.add("on");
-      })
-      .catch(function () {});
-  }
-
   document.addEventListener("DOMContentLoaded", function () {
-    var btn = $("themeBtn");
-    if (btn) {
-      applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
-      btn.addEventListener("click", toggleTheme);
+    paintTheme(storedTheme());
+
+    var themeBtns = document.querySelectorAll("[data-theme-choice]");
+    for (var i = 0; i < themeBtns.length; i++) {
+      themeBtns[i].addEventListener("click", function () {
+        applyTheme(this.getAttribute("data-theme-choice"));
+      });
     }
+
     var toggle = $("toggleBtn");
-    if (toggle) {
-      toggle.innerHTML = ICON_EYE;
-      toggle.addEventListener("click", togglePassword);
-    }
+    if (toggle) toggle.addEventListener("click", togglePassword);
+
     bindCapsHint();
     bindSubmit();
     initCountdown();
-    checkHealth();
 
-    // Fokus ke password bila ada pesan error (percobaan sebelumnya gagal),
-    // selain itu autofokus tetap di username.
     if ($("errorBox")) {
       var pw = $("password");
       if (pw) pw.focus();
-      var box = document.querySelector(".form-box");
-      if (box && !REDUCED) {
-        box.classList.add("shake");
-        box.addEventListener("animationend", function () { box.classList.remove("shake"); }, { once: true });
-      }
     }
   });
 })();
