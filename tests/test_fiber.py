@@ -368,7 +368,7 @@ class FiberLinkBudgetTest(unittest.TestCase):
     def test_api_validasi(self):
         r = self.client.post(
             "/api/fiber/link-budget",
-            json={"tx_dbm": 3.0, "splitters": ["1:64"], "fiber_km": 2.0},
+            json={"tx_dbm": 3.0, "splitters": ["1:128"], "fiber_km": 2.0},
             headers=JSON_HDR,
         )
         self.assertEqual(r.status_code, 400)

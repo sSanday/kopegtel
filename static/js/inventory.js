@@ -140,7 +140,7 @@
     if (!DATA.length) {
       tb.innerHTML = '<tr><td colspan="7"><div class="empty-box" role="status">' + ICON_SERVER +
         '<b>Belum ada perangkat di inventaris</b>Catat perangkat jaringan beserta lokasi dan penanggung jawabnya.<br>' +
-        '<button type="button" class="btn btn-primary" id="btnEmptyAdd" style="margin-top:14px">+ Tambah perangkat pertama</button></div></td></tr>';
+        '<button type="button" class="btn btn-primary" id="btnEmptyAdd" style="margin-top:14px">Tambah perangkat pertama</button></div></td></tr>';
       var ea = $("btnEmptyAdd");
       if (ea) ea.addEventListener("click", function () { openModal(); });
       return;

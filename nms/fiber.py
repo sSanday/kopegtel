@@ -6,6 +6,8 @@ FIBER_RX_OVERLOAD = -8.0
 FIBER_RX_WARN = -25.0
 FIBER_RX_CRIT = -27.0
 FIBER_RX_TARGET = -18.0
+FIBER_RX_SCALE_MIN = -35.0
+FIBER_RX_SCALE_MAX = 0.0
 FIBER_TX_MIN = 0.0
 FIBER_TX_MAX = 5.0
 FIBER_DEGRADE_DB = 3.0
@@ -23,6 +25,8 @@ def _fiber_thresholds():
         "warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
         "crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
         "target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
+        "scale_min": get_setting("fiber_rx_scale_min", FIBER_RX_SCALE_MIN),
+        "scale_max": get_setting("fiber_rx_scale_max", FIBER_RX_SCALE_MAX),
         "tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
         "tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
     }
@@ -151,11 +155,11 @@ def fiber_eval(rx, tx=None, th=None):
     return r_status, r_sev, advice, need
 
 
-FIBER_SPLITTER_LOSS = {"1:2": 3.5, "1:4": 7.2, "1:8": 10.5, "1:16": 13.8, "1:32": 17.1}
+FIBER_SPLITTER_LOSS = {"1:2": 3.6, "1:4": 7.2, "1:8": 10.5, "1:16": 13.8, "1:32": 17.1, "1:64": 20.4}
 FIBER_PER_KM_DB = 0.35
 FIBER_CONNECTOR_DB = 0.5
 FIBER_SPLICE_DB = 0.1
-FIBER_BUDGET_TOLERANCE_DB = 3.0
+FIBER_BUDGET_TOLERANCE_DB = 2.0
 
 
 def fiber_link_budget(tx_dbm, splitters, fiber_km, connectors, splices, margin_db=0.0):

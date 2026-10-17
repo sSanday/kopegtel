@@ -21,8 +21,8 @@
     .filter-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
     .filter-stats{margin-left:auto;font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:6px 13px;font-variant-numeric:tabular-nums;white-space:nowrap}
     .filter-stats b{color:var(--text);font-weight:600}
-    .table-scroll{overflow:auto;max-height:560px}
-    .log-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card,16px);overflow:hidden;box-shadow:var(--shadow-sm)}
+    .table-scroll{overflow:auto;max-height:560px;border-radius:8px}
+    .log-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card,16px);overflow:hidden;box-shadow:var(--shadow-sm);padding:10px 12px 12px}
     .term-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border-bottom:1px solid var(--border)}
     .term-dots,.term-title{display:none}
     .term-badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ok-text);background:var(--ok-soft);border:1px solid transparent;border-radius:99px;padding:6px 13px;white-space:nowrap;cursor:pointer;user-select:none}
@@ -34,7 +34,7 @@
     tbody tr:hover td{background:var(--surface-2)}
     .col-time{color:var(--text-3)!important;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
     .time-main{font-family:var(--mono);font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
-    .time-rel{font-size:11.5px;color:var(--text-3)}
+    .time-rel{font-size:12px;color:var(--text-3)}
     .host-name{font-weight:700;color:var(--text)}
     .host-ip{color:var(--text-3);font-size:12px;font-family:var(--mono)}
     .msg-wrap{display:flex;align-items:flex-start;gap:8px}
@@ -47,12 +47,12 @@
     tr.day-sep td{background:var(--surface-2);font-size:12px;font-weight:600;color:var(--text-2);padding:8px 16px}
     tr.detail-row td{background:var(--surface-2);padding:12px 16px}
     .detail-box{display:grid;gap:8px;font-size:12.5px;color:var(--text-2)}
-    .detail-box .dk{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
+    .detail-box .dk{font-size:12px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em}
     .detail-box .dv{color:var(--text);word-break:break-word}
     .detail-box .dv.mono{font-family:var(--mono);font-size:12.5px}
     .col-host{color:var(--text)!important;white-space:nowrap}
     .col-msg{color:var(--text-2);line-height:1.5}
-    .tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
+    .tag{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
     .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
     .tag.down{background:var(--down-soft);color:var(--down-text)}
     .tag.up{background:var(--ok-soft);color:var(--ok-text)}
@@ -73,7 +73,7 @@
     .page-btn:disabled{opacity:.35;cursor:not-allowed}
     .btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--text);font-family:var(--font-sans);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:.15s;white-space:nowrap}
     .btn:hover{background:var(--surface-2);border-color:var(--text-3)}
-    .btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:#fff}
+    .btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:var(--on-primary,#0b0f14)}
     .btn.primary:hover{background:var(--accent-btn-hover);border-color:var(--accent-btn-hover)}
     .btn.ghost{background:transparent;border-color:var(--border-strong);color:var(--text-2)}
     .btn.ghost:hover{color:var(--text);background:var(--surface-2)}
@@ -89,14 +89,14 @@
     .sum-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 16px;box-shadow:var(--shadow-sm)}
     .sum-card .k{font-size:12px;font-weight:600;color:var(--text-2)}
     .sum-card .v{font-family:var(--mono);font-size:24px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px}
-    .sum-card .s{font-size:11.5px;color:var(--text-3);margin-top:2px}
+    .sum-card .s{font-size:12px;color:var(--text-3);margin-top:2px}
     mark{background:var(--accent-soft);color:inherit;border-radius:3px;padding:0 1px}
     tr.group-row{cursor:pointer}
     tr.group-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     tr.group-row td{background:var(--surface)}
     tr.group-row:hover td{background:var(--surface-2)}
     .group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .group-badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--accent-text);background:var(--accent-soft);border-radius:99px;padding:3px 10px;white-space:nowrap}
+    .group-badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent-text);background:var(--accent-soft);border-radius:99px;padding:3px 10px;white-space:nowrap}
     .group-range{font-family:var(--mono);font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
     .group-chev{margin-left:auto;color:var(--text-3);transition:transform .2s;flex-shrink:0}
     tr.group-row[data-expanded="true"] .group-chev{transform:rotate(90deg)}
@@ -112,7 +112,7 @@
       .table-scroll tbody tr{display:block;border:1px solid var(--border);border-radius:14px;margin:10px 12px;background:var(--surface);padding:4px 0}
       .table-scroll tbody td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:11px 13px;border-bottom:1px solid var(--border)}
       .table-scroll tbody td:last-child{border-bottom:none}
-      .table-scroll tbody td::before{content:attr(data-label);font-size:11.5px;font-weight:600;color:var(--text-2);flex-shrink:0}
+      .table-scroll tbody td::before{content:attr(data-label);font-size:12px;font-weight:600;color:var(--text-2);flex-shrink:0}
       .table-scroll tbody td>*:last-child{text-align:right}
       .table-scroll tbody tr.day-sep,.table-scroll tbody tr.detail-row{padding:0}
       .table-scroll tbody tr.day-sep td,.table-scroll tbody tr.detail-row td{display:block}

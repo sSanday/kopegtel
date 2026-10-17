@@ -10,7 +10,7 @@
   if (REDUCED) document.body.classList.add("reduced-motion");
 
   var METRIC_CONFIG = {
-    latency: { label: "Latensi (Ping)", unit: "ms",   color: "#0ea5e9", metricKey: "latency" },
+    latency: { label: "Latensi (Ping)", unit: "ms",   color: "#94a3b8", metricKey: "latency" },
     cpu:     { label: "CPU",            unit: "%",    color: "#f43f5e", metricKey: "cpu" },
     ram:     { label: "RAM",            unit: "%",    color: "#f59e0b", metricKey: "ram" },
     disk:    { label: "Disk",           unit: "%",    color: "#a78bfa", metricKey: "disk" },
@@ -26,6 +26,15 @@
 
   var charts = {};
   var currentMetric = "latency";
+  var hostStatsPromise = null;
+  function getHostStats() {
+    if (!hostStatsPromise) {
+      hostStatsPromise = fetch("/api/host/" + encodeURIComponent(HOST_IP) + "/stats", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    }
+    return hostStatsPromise;
+  }
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -130,7 +139,23 @@
         var labels = data.labels || [];
         var hasData = values.some(function (v) { return v !== null && v !== undefined; });
         if (!labels.length || !hasData) {
-          if (loadEl) { loadEl.textContent = "Belum ada data pada rentang ini."; loadEl.style.display = "flex"; }
+          var isResource = (cfg.metricKey === "cpu" || cfg.metricKey === "ram" || cfg.metricKey === "disk");
+          if (loadEl) { loadEl.style.display = "flex"; }
+          if (isResource) {
+            getHostStats().then(function (d) {
+              if (!loadEl) return;
+              var hasAgent = !!(d && d.agent);
+              var isSnmpOnly = !!(d && d.agent && d.agent.snmp_only);
+              loadEl.textContent = hasAgent
+                ? (isSnmpOnly
+                    ? "Belum ada sampel SNMP pada rentang ini. Grafik terisi saat polling SNMP perangkat berhasil."
+                    : "Data baru mulai dikumpulkan; grafik akan muncul setelah beberapa siklus (30 dtk+).")
+                : "Perangkat ini tidak menyediakan metrik CPU/RAM/Disk (SNMP/agennya tidak aktif). Aktifkan SNMP atau jalankan agent host.";
+              loadEl.style.display = "flex";
+            });
+          } else {
+            if (loadEl) loadEl.textContent = "Belum ada data pada rentang ini.";
+          }
           updatePanelStats(period.id, [], cfg.unit);
           return;
         }

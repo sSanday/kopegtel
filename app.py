@@ -69,6 +69,7 @@ from nms.db import (
     generate_daily_report,
     get_active_alerts,
     get_alert_history,
+    get_or_create_alert,
     get_active_maintenance_map,
     get_db,
     get_host_threshold,
@@ -115,6 +116,8 @@ from nms.fiber import (
     FIBER_RX_CRIT,
     FIBER_RX_OVERLOAD,
     FIBER_RX_TARGET,
+    FIBER_RX_SCALE_MAX,
+    FIBER_RX_SCALE_MIN,
     FIBER_RX_WARN,
     FIBER_STALE_MIN,
     FIBER_TX_MAX,
@@ -270,6 +273,19 @@ def log_response(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
+
+
+@app.route("/favicon.ico", methods=["GET"])
+def favicon():
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="7" fill="#0b0f14"/>'
+        '<circle cx="16" cy="16" r="6.5" fill="none" stroke="#4ea3ff" stroke-width="3"/>'
+        "</svg>"
+    )
+    resp = Response(svg, mimetype="image/svg+xml")
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 @app.route("/health", methods=["GET"])
@@ -442,6 +458,7 @@ class AdminUser(UserMixin):
     def __init__(self, username=None):
         self.id = "admin"
         self.username = username or DASHBOARD_USERNAME
+        self.role = "admin"
 
 
 def _get_session_version():
@@ -1603,6 +1620,23 @@ def api_host_history(ip):
             (ip,),
         )
         rows = c.fetchall()
+
+        # Fallback perangkat SNMP (mis. MikroTik): cpu/ram/disk tersimpan di
+        # device_health (poll_mikrotik_health); agent_metrics hanya net_in/net_out.
+        if not rows and col in ("cpu_percent", "ram_percent", "disk_percent"):
+            dh_col = {
+                "cpu_percent": "cpu",
+                "ram_percent": "mem_used",
+                "disk_percent": "storage_used",
+            }[col]
+            c.execute(
+                f"SELECT timestamp, {dh_col} as val FROM device_health "
+                f"WHERE host=? AND {dh_col} IS NOT NULL "
+                f"AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+                (ip, f"-{hours} hours"),
+            )
+            rows = c.fetchall()
+
         labels = [r["timestamp"] for r in rows]
         values = [round(r["val"] or 0, 2) for r in rows]
 
@@ -1694,6 +1728,17 @@ def api_host_stats(ip):
         )
         net_row = c.fetchone()
 
+    mt_row = None
+    try:
+        c.execute(
+            "SELECT cpu, mem_used, storage_used, temp_c, timestamp "
+            "FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
+            (ip,),
+        )
+        mt_row = c.fetchone()
+    except Exception:
+        mt_row = None
+
     conn.close()
     total = pr["total"] or 0
     up_count = pr["up_count"] or 0
@@ -1729,16 +1774,34 @@ def api_host_stats(ip):
                 if ag
                 else (
                     {
-                        "cpu": 0,
-                        "ram": 0,
-                        "disk": 0,
+                        "cpu": (
+                            round((mt_row["cpu"] or 0), 1) if mt_row else 0
+                        ),
+                        "ram": (
+                            round((mt_row["mem_used"] or 0), 1) if mt_row else 0
+                        ),
+                        "disk": (
+                            round((mt_row["storage_used"] or 0), 1) if mt_row else 0
+                        ),
                         "net_in": round(net_row["net_in"] or 0, 2),
                         "net_out": round(net_row["net_out"] or 0, 2),
                         "last_seen": net_row["timestamp"],
                         "snmp_only": True,
                     }
                     if net_row
-                    else None
+                    else (
+                        {
+                            "cpu": round((mt_row["cpu"] or 0), 1) if mt_row else 0,
+                            "ram": round((mt_row["mem_used"] or 0), 1) if mt_row else 0,
+                            "disk": round((mt_row["storage_used"] or 0), 1) if mt_row else 0,
+                            "net_in": 0.0,
+                            "net_out": 0.0,
+                            "last_seen": (mt_row["timestamp"] if mt_row else None),
+                            "snmp_only": True,
+                        }
+                        if mt_row
+                        else None
+                    )
                 )
             ),
         }
@@ -1852,8 +1915,12 @@ def api_snmp_discovery():
     network = str(data.get("network") or "").strip()
     community = str(data.get("community") or "").strip()
     try:
-        results = discover_subnet(
-            network, community, timeout=data.get("timeout", 0.8), max_hosts=256
+        results, diagnostics = discover_subnet(
+            network,
+            community,
+            timeout=data.get("timeout", 0.8),
+            max_hosts=256,
+            return_diagnostics=True,
         )
     except (ValueError, TypeError) as exc:
         return jsonify({"error": str(exc)}), 400
@@ -1881,7 +1948,33 @@ def api_snmp_discovery():
             conn.close()
     except Exception as exc:
         logger.warning(f"Simpan riwayat discovery gagal: {exc}")
-    return jsonify({"network": network, "count": len(results), "devices": results})
+    message = f"Pemindaian selesai - {len(results)} perangkat ditemukan."
+    if not results:
+        if diagnostics.get("timeout", 0) == diagnostics.get("hosts", 0) and diagnostics.get("hosts", 0) > 0:
+            message = "Pemindaian selesai - semua host timeout atau tidak ada balasan."
+        elif diagnostics.get("community_or_error", 0) > 0:
+            message = (
+                "Pemindaian selesai - tidak ada perangkat valid yang merespons. "
+                "Community mungkin salah/ditolak, port 161 tertutup, firewall, host tidak aktif, atau host tidak mendukung SNMPv2c."
+            )
+        elif diagnostics.get("no_response", 0) > 0:
+            message = (
+                "Pemindaian selesai - tidak ada balasan SNMP. "
+                "Periksa community, port 161, firewall, dan ketersediaan SNMP pada perangkat."
+            )
+        elif diagnostics.get("partial", 0) > 0:
+            message = "Pemindaian selesai - balasan SNMP tidak lengkap."
+        else:
+            message = "Pemindaian selesai - tidak ada perangkat SNMP yang merespons."
+    return jsonify(
+        {
+            "network": network,
+            "count": len(results),
+            "devices": results,
+            "diagnostics": diagnostics,
+            "message": message,
+        }
+    )
 
 
 @app.route("/api/discovery/import", methods=["POST"])
@@ -2258,6 +2351,8 @@ def api_get_settings():
             "fiber_rx_warn": get_setting("fiber_rx_warn", FIBER_RX_WARN),
             "fiber_rx_crit": get_setting("fiber_rx_crit", FIBER_RX_CRIT),
             "fiber_rx_target": get_setting("fiber_rx_target", FIBER_RX_TARGET),
+            "fiber_rx_scale_min": get_setting("fiber_rx_scale_min", FIBER_RX_SCALE_MIN),
+            "fiber_rx_scale_max": get_setting("fiber_rx_scale_max", FIBER_RX_SCALE_MAX),
             "fiber_tx_min": get_setting("fiber_tx_min", FIBER_TX_MIN),
             "fiber_tx_max": get_setting("fiber_tx_max", FIBER_TX_MAX),
             "fiber_degrade_db": get_setting("fiber_degrade_db", FIBER_DEGRADE_DB),
@@ -2300,6 +2395,8 @@ FIBER_SETTING_RANGES = {
     "fiber_rx_warn": (-40.0, 10.0),
     "fiber_rx_crit": (-40.0, 10.0),
     "fiber_rx_target": (-40.0, 10.0),
+    "fiber_rx_scale_min": (-80.0, 20.0),
+    "fiber_rx_scale_max": (-80.0, 20.0),
     "fiber_tx_min": (-10.0, 10.0),
     "fiber_tx_max": (-10.0, 10.0),
 }
@@ -2462,6 +2559,8 @@ def api_save_settings():
             ("fiber_rx_warn", FIBER_RX_WARN),
             ("fiber_rx_crit", FIBER_RX_CRIT),
             ("fiber_rx_target", FIBER_RX_TARGET),
+            ("fiber_rx_scale_min", FIBER_RX_SCALE_MIN),
+            ("fiber_rx_scale_max", FIBER_RX_SCALE_MAX),
             ("fiber_tx_min", FIBER_TX_MIN),
             ("fiber_tx_max", FIBER_TX_MAX),
             ("temp_threshold", 60.0),
@@ -2489,6 +2588,16 @@ def api_save_settings():
             ),
             400,
         )
+    if not (merged["fiber_rx_scale_min"] < merged["fiber_rx_scale_max"]):
+        return jsonify({"error": "Skala Rx harus min < max (mis. -35 s/d 0 dBm)."}), 400
+    if not (
+        merged["fiber_rx_scale_min"]
+        <= merged["fiber_rx_crit"]
+        < merged["fiber_rx_warn"]
+        <= merged["fiber_rx_overload"]
+        <= merged["fiber_rx_scale_max"]
+    ):
+        return jsonify({"error": "Ambang Rx harus berada di dalam rentang skala."}), 400
     if not (merged["fiber_tx_min"] <= merged["fiber_tx_max"]):
         return jsonify({"error": "fiber_tx_min harus <= fiber_tx_max"}), 400
     if not (merged["temp_threshold"] < merged["temp_crit"]):
@@ -4957,6 +5066,19 @@ def get_triggers():
                         "note": workflow.get("note"),
                     }
                 )
+            else:
+                alert_id = get_or_create_alert(
+                    alarm.get("host") or "-",
+                    str(alarm.get("category") or "alarm"),
+                    str(alarm.get("severity") or "warning"),
+                    str(alarm.get("message") or ""),
+                )
+                if alert_id is not None:
+                    alarm["id"] = alert_id
+                    alarm["acknowledged_at"] = None
+                    alarm["acknowledged_by"] = None
+                    alarm["assigned_to"] = None
+                    alarm["note"] = None
     except Exception as e:
         logger.warning(f"Alert workflow enrichment gagal: {e}")
     return jsonify(alarms)

@@ -257,14 +257,24 @@ class SnmpDiscoveryTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
         original = m.discover_subnet
-        m.discover_subnet = lambda *args, **kwargs: [
+        m.discover_subnet = lambda *args, **kwargs: (
+            [
+                {
+                    "ip": "10.99.99.20",
+                    "sys_name": "router",
+                    "sys_descr": "test",
+                    "reachable": True,
+                }
+            ],
             {
-                "ip": "10.99.99.20",
-                "sys_name": "router",
-                "sys_descr": "test",
-                "reachable": True,
-            }
-        ]
+                "hosts": 1,
+                "responded": 1,
+                "timeout": 0,
+                "no_response": 0,
+                "partial": 0,
+                "community_or_error": 0,
+            },
+        )
         try:
             r = self.client.post(
                 "/api/discovery/snmp",

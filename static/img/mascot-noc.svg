@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Maskot kucing NOC dengan headphone cyan">
+  <title>Maskot kucing NOC NMS Kopegtel</title>
+  <g id="network-nodes" fill="none" stroke="#a7cedb" stroke-width="2" opacity="0.58">
+    <path d="M88 104 L184 122 M304 142 L392 112 M126 340 L224 300 M304 334 L396 306"/>
+    <circle cx="72" cy="100" r="6" fill="#0891b2" stroke="none"/>
+    <circle cx="184" cy="122" r="5" fill="#06b6d4" stroke="none"/>
+    <circle cx="304" cy="142" r="5" fill="#0891b2" stroke="none"/>
+    <circle cx="392" cy="112" r="6" fill="#06b6d4" stroke="none"/>
+    <circle cx="126" cy="340" r="5" fill="#0891b2" stroke="none"/>
+    <circle cx="224" cy="300" r="6" fill="#06b6d4" stroke="none"/>
+    <circle cx="304" cy="334" r="5" fill="#0891b2" stroke="none"/>
+    <circle cx="396" cy="306" r="6" fill="#06b6d4" stroke="none"/>
+  </g>
+  <g id="cat-body" fill="#151920">
+    <ellipse cx="240" cy="288" rx="124" ry="116"/>
+    <ellipse cx="240" cy="354" rx="76" ry="58" fill="#202631"/>
+  </g>
+  <g id="cat-head" fill="#151920">
+    <path d="M138 202 L116 86 L194 150 Z"/>
+    <path d="M342 202 L364 86 L286 150 Z"/>
+    <ellipse cx="240" cy="204" rx="132" ry="122"/>
+    <ellipse cx="240" cy="228" rx="88" ry="76" fill="#202631"/>
+  </g>
+  <g id="headphones" fill="none" stroke="#06b6d4" stroke-width="6" stroke-linecap="round">
+    <path d="M116 204 C116 136 170 108 240 108 C310 108 364 136 364 204"/>
+  </g>
+  <rect x="96" y="188" width="38" height="64" rx="18" fill="#06b6d4"/>
+  <rect x="346" y="188" width="38" height="64" rx="18" fill="#06b6d4"/>
+  <rect x="106" y="210" width="18" height="20" rx="8" fill="#e0f7fd"/>
+  <rect x="356" y="210" width="18" height="20" rx="8" fill="#e0f7fd"/>
+  <g id="eyes" fill="#f2f5f7">
+    <ellipse cx="194" cy="206" rx="22" ry="26"/>
+    <ellipse cx="286" cy="206" rx="22" ry="26"/>
+    <ellipse cx="194" cy="210" rx="11" ry="15" fill="#151920"/>
+    <ellipse cx="286" cy="210" rx="11" ry="15" fill="#151920"/>
+    <circle cx="189" cy="194" r="5" fill="#ffffff"/>
+    <circle cx="281" cy="194" r="5" fill="#ffffff"/>
+  </g>
+  <g id="face-marks" fill="#f2f5f7">
+    <ellipse cx="240" cy="246" rx="11" ry="8"/>
+    <path d="M216 253 Q240 272 264 253" fill="none" stroke="#f2f5f7" stroke-width="4" stroke-linecap="round"/>
+    <path d="M166 246 L204 252 M166 262 L205 258 M314 246 L276 252 M314 262 L275 258" stroke="#f2f5f7" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g id="paws" fill="#202631">
+    <circle cx="196" cy="364" r="30"/>
+    <circle cx="284" cy="364" r="30"/>
+  </g>
+  <g id="network-dot-bottom-right" fill="none" stroke="#06b6d4" stroke-width="2">
+    <circle cx="382" cy="322" r="14" opacity="0.6"/>
+    <circle cx="402" cy="348" r="11" opacity="0.8"/>
+    <circle cx="376" cy="354" r="8" fill="#06b6d4" opacity="0.95" stroke="none"/>
+  </g>
+</svg>

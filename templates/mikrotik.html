@@ -32,6 +32,8 @@
 .filter-search{height:44px;background:var(--surface);border:1px solid var(--border);color:var(--t1);padding:0 14px;border-radius:12px;font-family:var(--font-sans);font-size:13.5px;min-width:190px;flex:1;outline:none;transition:.15s}
 .filter-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .log-card,.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--shadow-card)}
+.log-card{padding:10px 12px 12px}
+.tbl-scroll{border-radius:8px}
 .chart-card{margin-top:16px;padding:22px 24px}
 .chart-hd{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}
 .chart-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
@@ -39,22 +41,22 @@
 .chart-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .chart-ctl select{height:44px;min-width:130px;max-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:12px;color:var(--t1);padding:0 36px 0 13px;font:inherit;font-size:13px}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;color:var(--t2);font-size:11.5px;font-weight:600;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap;position:sticky;top:0;z-index:1}
+th{text-align:left;color:var(--t2);font-size:12px;font-weight:600;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap;position:sticky;top:0;z-index:1}
 td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--t2);vertical-align:middle}
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr:hover td{background:var(--surface-2)}
 .empty-panel{text-align:center;padding:42px 20px;border:1px dashed var(--border-strong);border-radius:var(--r-card);background:var(--surface-2);margin:14px}
 .empty-t{font-size:15px;font-weight:700;color:var(--t1);margin-bottom:5px}
 .empty-d{font-size:12.5px;color:var(--t2);margin:0 auto 14px;line-height:1.7;max-width:440px}
-.tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
 .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .tag.normal{background:var(--ok-soft);color:var(--ok-text)}
 .tag.warning{background:var(--warn-soft);color:var(--warn-text)}
 .tag.critical{background:var(--down-soft);color:var(--down-text)}
 .tag.stale{background:var(--accent-soft);color:var(--accent-text)}
 .tag.unknown{background:var(--surface-2);color:var(--t3)}
-.advice{font-size:11.5px;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
-.btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:#fff}
+.advice{font-size:12px;color:var(--t3);margin-top:4px;max-width:360px;line-height:1.5}
+.btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:var(--on-primary,#0b0f14)}
 .btn.primary:hover{background:var(--accent-btn-hover);border-color:var(--accent-btn-hover)}
 .chart-wrap{position:relative;height:300px}
 
@@ -65,15 +67,15 @@ tr:hover td{background:var(--surface-2)}
 .main-col{min-width:0;display:flex;flex-direction:column}
 .sidebar{position:sticky;top:0;height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 12px;z-index:60}
 .brand{display:flex;align-items:center;gap:11px;padding:4px 10px 18px}
-.brand-mark{width:36px;height:36px;border-radius:11px;flex-shrink:0;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center}
+.brand-mark{width:36px;height:36px;border-radius:11px;flex-shrink:0;background:var(--primary);color:var(--on-primary);display:flex;align-items:center;justify-content:center}
 .brand-name{font-weight:800;font-size:15px;letter-spacing:-.01em;line-height:1.2}
-.brand-sub{font-size:11.5px;color:var(--t2)}
+.brand-sub{font-size:12px;color:var(--t2)}
 .nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto}
-.nav-group{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);padding:14px 12px 6px}
+.nav-group{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--t3);padding:14px 12px 6px}
 .nav-link{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:var(--t2);text-decoration:none;font-weight:500;font-size:13.5px;transition:background .15s,color .15s;min-height:44px;font-family:var(--font-sans)}
 .nav-link svg{width:18px;height:18px;flex-shrink:0}
 .nav-link:hover{background:var(--card2);color:var(--t1)}
-.nav-link.active{background:rgba(45,212,191,.12);color:var(--t1);font-weight:600}
+.nav-link.active{background:rgba(148,163,184,.12);color:var(--t1);font-weight:600}
 .nav-link.active::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:99px;background:var(--accent)}
 .sidebar-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}
 .collapse-btn{width:100%;display:flex;align-items:center;gap:12px;background:none;border:none;cursor:pointer;color:var(--t2);padding:10px 12px;border-radius:10px;font-size:13.5px;font-weight:500;min-height:44px;font-family:var(--font-sans)}
@@ -100,9 +102,9 @@ body.nav-open .scrim{opacity:1;pointer-events:auto}
 .hd{display:flex;align-items:center;gap:var(--s-4);flex-wrap:wrap;margin-bottom:var(--s-5)}
 .hd-t{min-width:0}
 .hd-t h1{font-size:var(--fs-h1,28px);font-weight:600;letter-spacing:-.02em;line-height:1.2}
-.hd-t p{font-size:13px;color:var(--t2);margin-top:4px}
+.hd-t p{font-size:13px;color:var(--t2);margin-top:4px;max-width:62ch}
 .hd-a{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.upd{font-size:11.5px;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.upd{font-size:12px;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .btn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:10px 16px;min-height:44px;font-family:var(--font-sans);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--t1);text-decoration:none;transition:.15s;white-space:nowrap}
 .btn:hover{border-color:var(--t3);background:var(--bg)}
 .btn.ghost{background:transparent;border-color:var(--border2);color:var(--t2)}
@@ -114,7 +116,7 @@ body.nav-open .scrim{opacity:1;pointer-events:auto}
 .info b{color:var(--t1)}
 .th-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
 .th-tile{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
-.th-tile .k{display:block;font-size:11px;font-weight:600;letter-spacing:.3px;color:var(--t2);margin-bottom:2px}
+.th-tile .k{display:block;font-size:12px;font-weight:600;letter-spacing:.3px;color:var(--t2);margin-bottom:2px}
 .th-tile .v{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums}
 .th-note{font-size:12.5px;color:var(--t3);line-height:1.7}
 .th-note b{color:var(--t2)}
@@ -146,12 +148,12 @@ body.nav-open .scrim{opacity:1;pointer-events:auto}
 .kpi-tile.k-ok .k i{background:var(--success)}.kpi-tile.k-ok .v{color:var(--success)}
 .kpi-tile.k-warn .k i{background:var(--warn)}.kpi-tile.k-warn .v{color:var(--warn)}
 .kpi-tile.k-crit .k i{background:var(--danger)}.kpi-tile.k-crit .v{color:var(--danger)}
-.kpi-tile.k-stale .k i{background:var(--violet,#b79cff)}.kpi-tile.k-stale .v{color:var(--violet,#b79cff)}
+.kpi-tile.k-stale .k i{background:var(--violet,#94a3b8)}.kpi-tile.k-stale .v{color:var(--violet,#94a3b8)}
 
 /* Progress mini warna ambang */
 .bar{height:6px;background:rgba(148,163,184,.15);border-radius:99px;overflow:hidden;margin-top:5px;min-width:70px}
 .bar>div{height:100%;border-radius:99px}
-.cell-sub{font-size:11.5px;color:var(--t3);margin-top:2px}
+.cell-sub{font-size:12px;color:var(--t3);margin-top:2px}
 .log-card{border-radius:var(--r-card);box-shadow:var(--shadow-card)}
 .tbl-scroll{overflow:auto;max-height:430px;min-height:180px}
 .active-chips{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -167,7 +169,7 @@ select:focus{border-color:var(--accent);box-shadow:var(--focus-ring)}
   .log-card tbody tr{border-bottom:1px solid var(--border);padding:var(--s-3) 0}
   .log-card tbody tr:nth-child(even) td{background:none}
   .log-card td{border-bottom:none;padding:6px 16px}
-  .log-card td[data-label]::before{content:attr(data-label);display:block;font-size:11.5px;font-weight:600;color:var(--t2);margin-bottom:2px}
+  .log-card td[data-label]::before{content:attr(data-label);display:block;font-size:12px;font-weight:600;color:var(--t2);margin-bottom:2px}
   .log-card td.num{text-align:left}
   .pg-info{width:100%;text-align:right}
 }
@@ -374,7 +376,7 @@ function renderKpi(){
   DATA.forEach(o=>{if(o.status in c)c[o.status]++;});
   const tile=(k,label,cls,dot)=>`<button class="kpi-tile ${cls}" data-kpi="${k}"><div class="k"><i style="background:${dot}"></i>${label}</div><div class="v">${c[k]}</div></button>`;
   strip.style.display='';
-  strip.innerHTML=tile('total','Total perangkat','','var(--t2)')+tile('normal','Normal','k-ok','var(--success)')+tile('warning','Warning','k-warn','var(--warn)')+tile('critical','Critical','k-crit','var(--danger)')+tile('stale','Stale','k-stale','var(--violet,#b79cff)');
+  strip.innerHTML=tile('total','Total perangkat','','var(--t2)')+tile('normal','Normal','k-ok','var(--success)')+tile('warning','Warning','k-warn','var(--warn)')+tile('critical','Critical','k-crit','var(--danger)')+tile('stale','Stale','k-stale','var(--violet,#94a3b8)');
   strip.querySelectorAll('[data-kpi]').forEach(b=>b.onclick=()=>{
     const f=b.dataset.kpi; curF=(f==='total')?'all':f;
     document.querySelectorAll('[data-f]').forEach(x=>x.classList.toggle('active',x.dataset.f===(curF==='all'?'all':curF)));
@@ -402,7 +404,7 @@ function render(){
     const memCell=kpiBar(o.mem,th.ram_threshold,th.ram_threshold+5);
     const stgCell=kpiBar(o.storage,th.disk_threshold,100);
     return `<tr data-host="${esc(o.host)}" style="cursor:pointer">`+
-      `<td data-label="Host" style="color:var(--t1)"><b>${esc(o.alias||o.host)}</b><div class="cell-sub"><span class="mono" style="font-size:11.5px">${esc(o.host)}</span></div>${o.is_mikrotik?'':'<div class="cell-sub">belum terdeteksi mikrotik</div>'}</td>`+
+      `<td data-label="Host" style="color:var(--t1)"><b>${esc(o.alias||o.host)}</b><div class="cell-sub"><span class="mono" style="font-size:12px">${esc(o.host)}</span></div>${o.is_mikrotik?'':'<div class="cell-sub">belum terdeteksi mikrotik</div>'}</td>`+
       `<td data-label="CPU" class="num">${cpuCell}</td>`+
       `<td data-label="Memori" class="num">${memCell}</td>`+
       `<td data-label="Storage" class="num">${stgCell}</td>`+
@@ -490,7 +492,7 @@ async function loadBackups(){
   tb.innerHTML=rows.map(b=>`<tr>
     <td data-label="Waktu" title="${esc(b.taken_at)}">${relT(b.taken_at)}</td>
     <td data-label="Ukuran" class="num">${fmtSize(b.size)}</td>
-    <td data-label="SHA"><span class="mono" style="font-size:11.5px">${esc((b.sha256||'').slice(0,8))}</span> <button class="btn-copy" style="padding:4px 10px" onclick="copyText('${esc(b.sha256||'')}')">Salin</button> <span class="cell-sub" title="${esc(b.sha256||'')}">…</span></td>
+    <td data-label="SHA"><span class="mono" style="font-size:12px">${esc((b.sha256||'').slice(0,8))}</span> <button class="btn-copy" style="padding:4px 10px" onclick="copyText('${esc(b.sha256||'')}')">Salin</button> <span class="cell-sub" title="${esc(b.sha256||'')}">…</span></td>
     <td data-label="Status">${b.changed?'<span class="tag warning">Berubah</span>':'<span class="tag normal">Berhasil</span>'}</td>
     <td data-label="Aksi" style="white-space:nowrap"><button class="btn ghost sm" onclick="viewBackup(${b.id})">Lihat</button> <button class="btn ghost sm" onclick="diffBackup(${b.id})">Bandingkan</button> <button class="btn ghost sm" onclick="dlBackup(${b.id})">Unduh</button></td>
   </tr>`).join('');
@@ -550,7 +552,7 @@ async function loadHist(){
     if(!(j.rx||[]).some(v=>v!=null)){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
     document.getElementById('ctitle').textContent=`${host} ${j.name||('if'+idx)} — Trafik (Mbps)`;
     chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[
-      {label:'Masuk',data:j.rx,borderColor:'#22d3ee',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5,fill:true,backgroundColor:'rgba(34,211,238,.06)'},
+      {label:'Masuk',data:j.rx,borderColor:'#94a3b8',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5,fill:true,backgroundColor:'rgba(148,163,184,.06)'},
       {label:'Keluar',data:j.tx,borderColor:'#4ade80',tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}]},options:baseOpts});
     return;
   }
@@ -558,12 +560,12 @@ async function loadHist(){
   if(!r.ok)return;const j=await r.json();
   if(!(j.values||[]).some(v=>v!=null)){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
   document.getElementById('ctitle').textContent=`${host} — ${metric}`;
-  const colors={cpu:'#22d3ee',mem:'#fbbf24',storage:'#a855f7',temp:'#f87171'};
+  const colors={cpu:'#94a3b8',mem:'#fbbf24',storage:'#4ade80',temp:'#f87171'};
   const th=window._th||{};
   const thMap={cpu:th.cpu_threshold,mem:th.ram_threshold,storage:th.disk_threshold,temp:th.temp_threshold};
   const thVal=thMap[metric];
   const thLine=(metric in thMap&&thVal!=null)?{label:'Ambang',data:j.labels.map(()=>Number(thVal)),borderColor:'rgba(251,191,36,.6)',borderDash:[6,4],pointRadius:0,borderWidth:1,fill:false}:null;
-  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[{label:metric,data:j.values,borderColor:colors[metric]||'#22d3ee',backgroundColor:'rgba(34,211,238,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}].concat(thLine?[thLine]:[])},options:baseOpts});
+  chart=new Chart(ctx,{type:'line',data:{labels:j.labels,datasets:[{label:metric,data:j.values,borderColor:colors[metric]||'#94a3b8',backgroundColor:'rgba(148,163,184,.08)',fill:true,tension:.25,spanGaps:true,pointRadius:0,borderWidth:1.5}].concat(thLine?[thLine]:[])},options:baseOpts});
 }
 load();setInterval(load,60000);
 window.copySnippet=function(btn){

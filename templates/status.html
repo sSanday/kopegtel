@@ -1,183 +1,940 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Status Layanan — NMS KOPEGTEL</title>
-  <meta name="description" content="Status layanan jaringan publik - uptime dan ketersediaan">
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Status Layanan — NMS Kopegtel</title>
+  <meta name="description" content="Status layanan jaringan publik: uptime dan ketersediaan">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#0B0F14;
-      --surface:#121821;
-      --card:rgba(12,18,32,0.8);
-      --border2:rgba(255,255,255,0.06);
-      --accent:#22d3ee;
-      --accent2:#4ade80;
-      --t1:#E6EAF0;
-      --t2:#9AA6B5;
-      --t3:#6f7c8e;
-      --mono:'JetBrains Mono',monospace;
-      --danger:#f87171;
-      --success:#4ade80;
-      --warn:#fbbf24;
-      --info:#22d3ee;
+
+    :root,
+    [data-theme="dark"] {
+      --status-ok: #4ade80;
+      --status-warn: #fbbf24;
+      --status-danger: #f87171;
+      --status-ok-soft: rgba(74, 222, 128, 0.1);
+      --status-warn-soft: rgba(251, 191, 36, 0.12);
+      --status-danger-soft: rgba(248, 113, 113, 0.12);
+      --status-ok-border: rgba(74, 222, 128, 0.24);
+      --status-warn-border: rgba(251, 191, 36, 0.28);
+      --status-danger-border: rgba(248, 113, 113, 0.28);
     }
-    body{
-      font-family:'Inter',sans-serif;
-      background:var(--bg);color:var(--t1);
-      min-height:100vh;
+
+    [data-theme="light"] {
+      --status-ok: #33a54a;
+      --status-warn: #b45309;
+      --status-danger: #dc2626;
+      --status-ok-soft: rgba(51, 165, 74, 0.08);
+      --status-warn-soft: rgba(180, 83, 9, 0.1);
+      --status-danger-soft: rgba(220, 38, 38, 0.1);
+      --status-ok-border: rgba(51, 165, 74, 0.2);
+      --status-warn-border: rgba(180, 83, 9, 0.2);
+      --status-danger-border: rgba(220, 38, 38, 0.2);
     }
-    body::before{
-      content:'';position:fixed;inset:0;
-      background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.025) 2px,rgba(0,0,0,0.025) 4px);
-      pointer-events:none;z-index:9999;
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
     }
-    .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:32px 24px 64px}
-    .hero{text-align:center;margin-bottom:28px}
-    .hero-logo{
-      width:44px;height:44px;margin:0 auto 12px;
-      background:linear-gradient(135deg,#22d3ee,#4ade80);
-      border-radius:10px;display:flex;align-items:center;justify-content:center;
-      font-size:20px;box-shadow:0 0 24px rgba(34,211,238,0.4);
+
+    .mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-variant-numeric: tabular-nums;
     }
-    .hero h1{font-family:var(--mono);font-size:1.1rem;font-weight:700;letter-spacing:1px}
-    .hero h1 span{color:var(--accent2)}
-    .hero p{font-family:var(--mono);font-size:.68rem;color:var(--t3);margin-top:6px}
-    .overall{
-      display:flex;align-items:center;justify-content:center;gap:10px;
-      text-align:center;padding:18px;border-radius:10px;margin-bottom:20px;
-      font-family:var(--mono);font-size:.85rem;font-weight:700;letter-spacing:1px;
-      border:1px solid var(--border2);background:var(--card);
+
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: auto;
     }
-    .overall::before{
-      content:'';width:9px;height:9px;border-radius:50%;flex-shrink:0;
-      background:currentColor;box-shadow:0 0 12px currentColor;
+
+    .skip-link:focus {
+      left: 18px;
+      top: 18px;
+      z-index: 10;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
     }
-    .overall.ok{color:var(--success);border-color:rgba(74,222,128,0.3)}
-    .overall.degraded{color:var(--warn);border-color:rgba(251,191,36,0.35)}
-    .overall.outage{color:var(--danger);border-color:rgba(248,113,113,0.35)}
-    .summary-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
-    .sum-card{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:12px 14px}
-    .sum-card .sk{font-family:var(--mono);font-size:.58rem;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
-    .sum-card .sv{font-family:var(--mono);font-size:1.4rem;font-weight:700}
-    .sec-label{
-      font-family:var(--mono);font-size:.62rem;font-weight:600;
-      text-transform:uppercase;letter-spacing:2px;color:var(--t3);margin:22px 0 12px;
+
+    .status-shell {
+      width: min(100%, 960px);
+      margin: 0 auto;
+      padding: 24px 20px 40px;
+      opacity: 0;
+      transform: translateY(10px);
+      animation: status-in 0.2s ease both;
     }
-    .sec-label::before{content:'//';color:var(--accent2);margin-right:6px}
-    .node-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
-    .node{background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:14px 16px}
-    .node.up{border-color:rgba(74,222,128,0.2)}
-    .node.down{border-color:rgba(248,113,113,0.25)}
-    .node.pending,.node.maintenance{border-color:rgba(251,191,36,0.25)}
-    .node-name{font-family:var(--mono);font-size:.78rem;font-weight:600;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .pill{
-      font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:1.5px;
-      border-radius:3px;padding:2px 8px;display:inline-block;margin-bottom:8px;
+
+    .is-updating {
+      opacity: 0.76;
+      transition: opacity 0.18s ease;
     }
-    .pill.up{background:rgba(74,222,128,0.12);color:var(--success);border:1px solid rgba(74,222,128,0.3)}
-    .pill.down{background:rgba(248,113,113,0.12);color:var(--danger);border:1px solid rgba(248,113,113,0.3)}
-    .pill.pending,.pill.maintenance{background:rgba(251,191,36,0.12);color:var(--warn);border:1px solid rgba(251,191,36,0.3)}
-    .node-meta{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
-    .node-meta b{color:var(--t2);font-weight:500}
-    .node-note{font-family:var(--mono);font-size:.62rem;color:var(--warn);margin-top:6px}
-    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border2);border-radius:8px;overflow:hidden}
-    th{
-      text-align:left;color:var(--t3);font-weight:600;
-      font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;
-      padding:10px 14px;border-bottom:1px solid var(--border2);background:rgba(0,0,0,0.15);
+
+    @media (prefers-reduced-motion: reduce) {
+      .status-shell {
+        opacity: 1;
+        transform: none;
+        animation: none;
+      }
+
+      .is-updating {
+        opacity: 1;
+        transition: none;
+      }
     }
-    td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.025);font-family:var(--mono);font-size:.7rem;color:var(--t2);vertical-align:middle}
-    tr:last-child td{border-bottom:none}
-    .footer{text-align:center;margin-top:28px;font-family:var(--mono);font-size:.62rem;color:var(--t3)}
-    .footer .live{color:var(--accent2)}
-    .err{text-align:center;padding:24px;font-family:var(--mono);font-size:.72rem;color:var(--danger)}
-    @media(max-width:480px){.node-grid{grid-template-columns:1fr}}
-  
-/* ══ normalisasi tema: tanpa scanline + palet konsisten ══ */
-body::before{display:none!important}
-</style>
+
+    @keyframes status-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      background: var(--accent-btn);
+      color: var(--on-primary, #0b0f14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .brand-mark svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .brand-text {
+      display: grid;
+      gap: 0;
+    }
+
+    .brand-name {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .brand-sub {
+      font-size: 12.5px;
+      color: var(--text-2);
+      line-height: 1.1;
+      margin-top: 2px;
+    }
+
+    .status-updated {
+      font-size: 13px;
+      color: var(--text-2);
+      text-align: right;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--surface) 86%, transparent);
+      color: var(--text-2);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .status-banner {
+      position: relative;
+      display: grid;
+      gap: 4px;
+      padding: 20px 22px;
+      border: 1px solid var(--status-ok-border);
+      border-radius: 16px;
+      background: var(--status-ok-soft);
+      margin-bottom: 24px;
+    }
+
+    .status-banner h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--status-ok);
+      flex-shrink: 0;
+    }
+
+    .status-banner.is-ok .status-dot {
+      background: var(--status-ok);
+    }
+
+    .status-banner.is-degraded {
+      border-color: var(--status-warn-border);
+      background: var(--status-warn-soft);
+    }
+
+    .status-banner.is-degraded .status-dot {
+      background: var(--status-warn);
+    }
+
+    .status-banner.is-outage {
+      border-color: var(--status-danger-border);
+      background: var(--status-danger-soft);
+    }
+
+    .status-banner.is-outage .status-dot {
+      background: var(--status-danger);
+    }
+
+    .status-banner p {
+      margin: 0;
+      max-width: 68ch;
+      color: var(--text-2);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .summary-bar {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr 1fr 1fr;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--surface) 84%, transparent);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .summary-cell {
+      padding: 18px 16px;
+      border-right: 1px solid var(--border);
+    }
+
+    .summary-cell:last-child {
+      border-right: 0;
+    }
+
+    .summary-cell:nth-child(odd) {
+      border-left: 0;
+    }
+
+    .summary-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text-2);
+      font-size: 13px;
+    }
+
+    .summary-value {
+      display: block;
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .summary-value--headline {
+      font-size: 30px;
+      color: var(--accent-text);
+    }
+
+    .summary-value--ok {
+      color: var(--status-ok);
+    }
+
+    .summary-value--danger {
+      color: var(--status-danger);
+    }
+
+    .summary-value--warn {
+      color: var(--status-warn);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 26px 0 12px;
+    }
+
+    .section-head h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .section-head span {
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
+    .data-panel {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--surface) 84%, transparent);
+      overflow: hidden;
+    }
+
+    .summary-bar,
+    .data-panel {
+      transition: opacity 0.18s ease;
+    }
+
+    .surface-note {
+      color: var(--text-2);
+      font-size: 13px;
+      margin-bottom: 12px;
+      max-width: 60ch;
+    }
+
+    .device-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 2fr) auto 82px 78px;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .device-row:last-child {
+      border-bottom: 0;
+    }
+
+    .device-row--pending {
+      background: color-mix(in srgb, var(--status-warn) 4%, transparent);
+    }
+
+    .device-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .device-uptime,
+    .device-latency {
+      justify-self: end;
+      color: var(--text-2);
+      font-size: 13px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      padding: 5px 11px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .status-pill--up {
+      background: var(--status-ok-soft);
+      border-color: var(--status-ok-border);
+      color: var(--status-ok);
+    }
+
+    .status-pill--down {
+      background: var(--status-danger-soft);
+      border-color: var(--status-danger-border);
+      color: var(--status-danger);
+    }
+
+    .status-pill--pending {
+      background: var(--status-warn-soft);
+      border-color: var(--status-warn-border);
+      color: var(--status-warn);
+    }
+
+    .status-pill--maintenance {
+      background: var(--status-warn-soft);
+      border-color: var(--status-warn-border);
+      color: var(--status-warn);
+    }
+
+    .service-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .service-table th {
+      background: color-mix(in srgb, var(--surface) 72%, transparent);
+      color: var(--text-2);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .service-table td {
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text-2);
+    }
+
+    .service-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .service-name {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .service-status {
+      text-align: center;
+    }
+
+    .service-uptime {
+      text-align: right;
+    }
+
+    .status-footer {
+      margin-top: 28px;
+      text-align: center;
+      color: var(--text-3);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .status-error {
+      font-size: 14px;
+      color: var(--status-danger);
+      text-align: center;
+      padding: 24px;
+      border: 1px dashed var(--status-danger-border);
+      border-radius: 12px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .status-shell {
+        padding: 20px 16px 32px;
+      }
+
+      .site-header {
+        margin-bottom: 20px;
+      }
+
+      .summary-bar {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .summary-cell {
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .summary-cell:nth-child(2) {
+        border-right: 0;
+      }
+
+      .summary-cell:nth-child(3),
+      .summary-cell:nth-child(4) {
+        border-bottom: 0;
+      }
+
+      .summary-cell:nth-child(3) {
+        border-right: 1px solid var(--border);
+      }
+
+      .device-row {
+        grid-template-columns: 1fr auto;
+        gap: 6px 12px;
+      }
+
+      .device-uptime,
+      .device-latency {
+        grid-column: 1;
+        justify-self: start;
+        font-size: 13px;
+      }
+
+      .service-status,
+      .service-uptime {
+        text-align: left;
+      }
+
+      .theme-toggle {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .status-shell {
+        padding-top: 62px;
+      }
+
+      .header-actions {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+      }
+
+      .brand-sub {
+        display: none;
+      }
+
+      .service-table thead {
+        display: none;
+      }
+
+      .service-table tbody,
+      .service-table tr,
+      .service-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .service-table tr {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .service-table td {
+        padding: 0 0 4px;
+        border: 0;
+        position: relative;
+      }
+
+      .service-table td:last-child {
+        padding-bottom: 0;
+      }
+
+      .service-status,
+      .service-uptime {
+        color: var(--text-2);
+        font-size: 13px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .summary-bar {
+        grid-template-columns: 1fr;
+      }
+
+      .summary-cell {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .summary-cell:last-child {
+        border-bottom: 0;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .status-shell {
+        padding: 62px 12px 28px;
+      }
+
+      .site-header {
+        margin-bottom: 16px;
+      }
+
+      .status-banner {
+        padding: 16px;
+      }
+
+      .status-banner h1 {
+        font-size: 20px;
+      }
+
+      .summary-value {
+        font-size: 22px;
+      }
+
+      .summary-value--headline {
+        font-size: 26px;
+      }
+
+      .device-row {
+        padding: 12px 14px;
+      }
+    }
+  </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="hero">
-      <div class="hero-logo"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true" style="width:62%;height:62%;display:block"><path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linejoin="round"/><path d="M10 16.5h3.6l1.8-4 2.8 8 1.8-4H22" stroke="rgba(3,18,26,.9)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h1>NMS<span>KOPEGTEL</span> — STATUS</h1>
-      <p id="genAt">memuat status layanan...</p>
+<body class="status-page">
+  <a class="skip-link" href="#statusBanner">Lewati ke status</a>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("nms_theme");
+        if (t !== "light" && t !== "dark") {
+          t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+      } catch (_) {}
+    })();
+  </script>
+
+  <div class="status-shell">
+    <header class="site-header">
+      <a class="brand" href="/status">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12h4l2.5-6 4 12 2.5-6H21"></path>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">NMS Kopegtel</span>
+          <span class="brand-sub">Status layanan</span>
+        </span>
+      </a>
+
+      <div class="header-actions">
+        <p class="status-updated" id="genAt">Memuat status layanan...</p>
+        <button class="theme-toggle" id="themeBtn" aria-label="Ganti tema" aria-pressed="false" title="Ganti tema">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="status-banner is-ok" id="statusBanner" aria-labelledby="statusTitle">
+      <h1 id="statusTitle"><span class="status-dot"></span>Semua sistem berjalan normal</h1>
+      <p id="statusCaption">Tidak ada gangguan terdeteksi. Data diperbarui otomatis tiap 30 detik.</p>
+    </section>
+
+    <div class="summary-bar" role="group" aria-label="Ringkasan status">
+      <div class="summary-cell">
+        <span class="summary-label">Rata-rata uptime 24 jam</span>
+        <strong class="summary-value summary-value--headline mono" id="sumUptime">—</strong>
+      </div>
+      <div class="summary-cell">
+        <span class="summary-label">Perangkat aktif</span>
+        <strong class="summary-value mono summary-value--ok" id="sumUp">—</strong>
+      </div>
+      <div class="summary-cell">
+        <span class="summary-label">Perangkat terputus</span>
+        <strong class="summary-value mono" id="sumDown">—</strong>
+      </div>
+      <div class="summary-cell">
+        <span class="summary-label">Pemeliharaan</span>
+        <strong class="summary-value mono summary-value--warn" id="sumMaint">—</strong>
+      </div>
     </div>
 
-    <div class="overall ok" id="overall">MEMUAT...</div>
+    <p class="surface-note">Layanan terpantau dari ringkasan publik. Detail infrastruktur tidak ditampilkan.</p>
 
-    <div class="summary-row">
-      <div class="sum-card"><div class="sk">nodes up</div><div class="sv" id="sumUp" style="color:var(--success)">—</div></div>
-      <div class="sum-card"><div class="sk">nodes down</div><div class="sv" id="sumDown" style="color:var(--danger)">—</div></div>
-      <div class="sum-card"><div class="sk">maintenance</div><div class="sv" id="sumMaint" style="color:var(--warn)">—</div></div>
-      <div class="sum-card"><div class="sk">avg uptime 24h</div><div class="sv" id="sumUptime" style="color:var(--accent)">—</div></div>
-    </div>
+    <section>
+      <div class="section-head">
+        <h2>Perangkat</h2>
+        <span id="nodeCount">0 perangkat</span>
+      </div>
+      <div class="data-panel" id="nodeList" aria-live="polite">
+        <div class="device-row">
+          <span class="device-name">Memuat perangkat...</span>
+          <span class="status-pill status-pill--pending">Menunggu</span>
+          <span class="device-uptime mono">—</span>
+          <span class="device-latency mono">—</span>
+        </div>
+      </div>
+    </section>
 
-    <div class="sec-label">nodes</div>
-    <div class="node-grid" id="nodeGrid"></div>
+    <section>
+      <div class="section-head">
+        <h2>Layanan</h2>
+        <span id="serviceCount">0 layanan</span>
+      </div>
+      <div class="data-panel">
+        <table class="service-table">
+          <thead>
+            <tr>
+              <th>Layanan</th>
+              <th class="service-status">Status</th>
+              <th class="service-uptime">Uptime 24 jam</th>
+            </tr>
+          </thead>
+          <tbody id="svcBody">
+            <tr>
+              <td colspan="3">Memuat layanan...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-    <div class="sec-label">services</div>
-    <table>
-      <thead><tr><th>Service</th><th>Status</th><th>Uptime 24h</th></tr></thead>
-      <tbody id="svcBody"></tbody>
-    </table>
-
-    <div class="footer"><span class="live">▌</span> auto-refresh 30s · data agregat publik, tanpa detail infrastruktur internal</div>
+    <p class="status-footer">
+      Diperbarui otomatis tiap 30 detik. Data agregat publik, tanpa detail infrastruktur internal.
+    </p>
   </div>
 
   <script>
-    function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-    const PILL_TXT = {up:'UP', down:'DOWN', pending:'PENDING', maintenance:'MAINTENANCE', online:'ONLINE', offline:'OFFLINE'};
+    (function () {
+      function setTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        try { localStorage.setItem("nms_theme", theme); } catch (_) {}
 
-    async function refresh(){
-      try{
-        const res = await fetch('/api/public/status', {cache:'no-store'});
-        if(!res.ok) throw new Error('HTTP ' + res.status);
-        const j = await res.json();
-        const s = j.summary || {};
-        document.getElementById('genAt').textContent = 'update: ' + (j.generated_at || '—');
-        document.getElementById('sumUp').textContent = s.up ?? '—';
-        document.getElementById('sumDown').textContent = s.down ?? '—';
-        document.getElementById('sumMaint').textContent = s.maintenance ?? '—';
-        document.getElementById('sumUptime').textContent = (s.avg_uptime_24h != null ? s.avg_uptime_24h + '%' : '—');
+        var btn = document.getElementById("themeBtn");
+        if (btn) {
+          var dark = theme === "dark";
+          btn.setAttribute("aria-pressed", dark ? "true" : "false");
+          btn.title = dark ? "Ganti ke mode terang" : "Ganti ke mode gelap";
+          btn.innerHTML = dark
+            ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>'
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"></path></svg>';
+        }
 
-        const ov = document.getElementById('overall');
-        if((s.down || 0) > 0){ ov.className = 'overall outage'; ov.textContent = 'GANGGUAN TERDETEKSI'; }
-        else if((s.maintenance || 0) > 0 || (s.pending || 0) > 0){ ov.className = 'overall degraded'; ov.textContent = 'SEBAGIAN DALAM PEMELIHARAAN'; }
-        else { ov.className = 'overall ok'; ov.textContent = 'SEMUA SISTEM NORMAL'; }
-
-        const ng = document.getElementById('nodeGrid');
-        const nodes = j.nodes || [];
-        ng.innerHTML = nodes.length ? nodes.map(n => `
-          <div class="node ${esc(n.status)}">
-            <div class="node-name">${esc(n.name)}</div>
-            <span class="pill ${esc(n.status)}">${esc(PILL_TXT[n.status] || n.status)}</span>
-            <div class="node-meta">uptime 24h: <b>${n.uptime_24h != null ? esc(n.uptime_24h) + '%' : '—'}</b>${n.avg_ms != null ? ' · <b>' + esc(n.avg_ms) + ' ms</b>' : ''}</div>
-            ${n.note ? `<div class="node-note">${esc(n.note)}</div>` : ''}
-          </div>`).join('')
-          : '<div class="err">Belum ada node terdaftar.</div>';
-
-        const sb = document.getElementById('svcBody');
-        const svcs = j.services || [];
-        sb.innerHTML = svcs.length ? svcs.map(v => `
-          <tr>
-            <td style="color:var(--t1)">${esc(v.name)}</td>
-            <td><span class="pill ${esc(v.status)}">${esc(PILL_TXT[v.status] || v.status)}</span></td>
-            <td>${v.uptime_24h != null ? esc(v.uptime_24h) + '%' : '—'}</td>
-          </tr>`).join('')
-          : '<tr><td colspan="3" style="text-align:center;padding:20px">Belum ada service terdaftar.</td></tr>';
-      } catch(e){
-        console.error(e);
-        document.getElementById('overall').className = 'overall outage';
-        document.getElementById('overall').textContent = 'GAGAL MEMUAT STATUS';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", theme === "dark" ? "#0b0f14" : "#eef1f6");
       }
-    }
-    refresh();
-    setInterval(refresh, 30000);
+
+      function toggleTheme() {
+        var current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+        setTheme(current === "dark" ? "light" : "dark");
+      }
+
+      try {
+        var stored = localStorage.getItem("nms_theme");
+        if (stored !== "light" && stored !== "dark") {
+          stored = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+        }
+        setTheme(stored);
+      } catch (_) {
+        setTheme("dark");
+      }
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var shell = document.querySelector(".status-shell");
+      var genAt = document.getElementById("genAt");
+      var nodeCount = document.getElementById("nodeCount");
+      var serviceCount = document.getElementById("serviceCount");
+      var nodeGrid = document.getElementById("nodeList");
+      var svcBody = document.getElementById("svcBody");
+
+      var STATUS_TEXT = {
+        up: "Aktif",
+        online: "Aktif",
+        down: "Terputus",
+        offline: "Terputus",
+        pending: "Menunggu",
+        maintenance: "Pemeliharaan"
+      };
+
+      var lastPayload = "";
+
+      function esc(value) {
+        return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+          return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+        });
+      }
+
+      function formatTimestamp(value) {
+        if (!value) return "Memuat status layanan...";
+        var date = new Date(String(value).replace(" ", "T"));
+        if (isNaN(date.getTime())) return "Diperbarui " + value;
+        try {
+          return "Diperbarui " + new Intl.DateTimeFormat("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "Asia/Jakarta"
+          }).format(date) + " WIB";
+        } catch (e) {
+          return "Diperbarui " + value;
+        }
+      }
+
+      function updateBanner(summary) {
+        var banner = document.getElementById("statusBanner");
+        var title = document.getElementById("statusTitle");
+        var caption = document.getElementById("statusCaption");
+
+        if ((summary.down || 0) > 0) {
+          banner.className = "status-banner is-outage";
+          title.innerHTML = '<span class="status-dot"></span>Sebagian layanan mengalami gangguan';
+          caption.textContent = "Beberapa perangkat tidak dapat dijangkau. Data tetap dipantau 30 detik sekali.";
+        } else if ((summary.maintenance || 0) > 0 || (summary.pending || 0) > 0) {
+          banner.className = "status-banner is-degraded";
+          title.innerHTML = '<span class="status-dot"></span>Sebagian layanan dalam pemeliharaan';
+          caption.textContent = "Pemeliharaan aktif sedang dilakukan. Layanan lain tetap berjalan normal.";
+        } else {
+          banner.className = "status-banner is-ok";
+          title.innerHTML = '<span class="status-dot"></span>Semua sistem berjalan normal';
+          caption.textContent = "Tidak ada gangguan terdeteksi. Data diperbarui otomatis tiap 30 detik.";
+        }
+      }
+
+      function renderNodes(nodes) {
+        nodeCount.textContent = nodes.length + (nodes.length === 1 ? " perangkat" : " perangkat");
+        if (!nodes.length) {
+          nodeGrid.innerHTML = '<div class="device-row"><span class="device-name">Belum ada perangkat terdaftar.</span><span class="device-uptime mono">—</span></div>';
+          return;
+        }
+
+        nodeGrid.innerHTML = nodes.map(function (n) {
+          var status = n.status || "pending";
+          var uptime = n.uptime_24h != null ? esc(n.uptime_24h) + " %" : "—";
+          var latency = n.avg_ms != null ? esc(n.avg_ms) + " ms" : "—";
+          var pending = status === "pending" ? " device-row--pending" : "";
+          return '<div class="device-row' + pending + '">' +
+            '<span class="device-name">' + esc(n.name) + '</span>' +
+            '<span class="status-pill status-pill--' + esc(status) + '">' + esc(STATUS_TEXT[status] || status) + '</span>' +
+            '<span class="device-uptime mono">' + uptime + '</span>' +
+            '<span class="device-latency mono">' + latency + '</span>' +
+          '</div>';
+        }).join("");
+      }
+
+      function renderServices(services) {
+        serviceCount.textContent = services.length + (services.length === 1 ? " layanan" : " layanan");
+        if (!services.length) {
+          svcBody.innerHTML = '<tr><td colspan="3">Belum ada layanan terdaftar.</td></tr>';
+          return;
+        }
+
+        svcBody.innerHTML = services.map(function (v) {
+          var uptime = v.uptime_24h != null ? esc(v.uptime_24h) + " %" : "—";
+          return '<tr>' +
+            '<td class="service-name">' + esc(v.name) + '</td>' +
+            '<td class="service-status"><span class="status-pill status-pill--' + esc(v.status) + '">' + esc(STATUS_TEXT[v.status] || v.status) + '</span></td>' +
+            '<td class="service-uptime"><span class="mono">' + uptime + '</span></td>' +
+          '</tr>';
+        }).join("");
+      }
+
+      function renderSummary(summary) {
+        document.getElementById("sumUptime").textContent = summary.avg_uptime_24h != null ? summary.avg_uptime_24h + " %" : "—";
+        document.getElementById("sumUp").textContent = summary.up != null ? summary.up : 0;
+        document.getElementById("sumDown").textContent = summary.down != null ? summary.down : 0;
+        document.getElementById("sumMaint").textContent = summary.maintenance != null ? summary.maintenance : 0;
+      }
+
+      async function refresh() {
+        if (shell) shell.classList.add("is-updating");
+        try {
+          var res = await fetch("/api/public/status", { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+
+          var data = await res.json();
+          var summary = data.summary || {};
+          var nodes = Array.isArray(data.nodes) ? data.nodes : [];
+          var services = Array.isArray(data.services) ? data.services : [];
+
+          genAt.textContent = formatTimestamp(data.generated_at);
+          updateBanner(summary);
+          renderSummary(summary);
+
+          var payloadSignature = JSON.stringify({ summary: summary, nodes: nodes, services: services });
+          if (payloadSignature !== lastPayload) {
+            renderNodes(nodes);
+            renderServices(services);
+            lastPayload = payloadSignature;
+          }
+
+          if (shell) shell.classList.remove("is-updating");
+        } catch (e) {
+          console.error(e);
+          var banner = document.getElementById("statusBanner");
+          var title = document.getElementById("statusTitle");
+          var caption = document.getElementById("statusCaption");
+          banner.className = "status-banner is-outage";
+          title.innerHTML = '<span class="status-dot"></span>Memuat status gagal';
+          caption.textContent = "Status layanan belum tersedia. Coba lagi beberapa saat.";
+          genAt.textContent = "Gagal memuat status";
+          if (shell) shell.classList.remove("is-updating");
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 30000);
+
+      var themeBtn = document.getElementById("themeBtn");
+      if (themeBtn) {
+        themeBtn.addEventListener("click", function () {
+          var current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+          var next = current === "dark" ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", next);
+          try { localStorage.setItem("nms_theme", next); } catch (e) {}
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", next === "dark" ? "#0b0f14" : "#eef1f6");
+          themeBtn.innerHTML = next === "dark"
+            ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>'
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"></path></svg>';
+          themeBtn.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
+        });
+      }
+    })();
   </script>
 </body>
 </html>

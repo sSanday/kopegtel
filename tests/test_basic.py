@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tempfile
+import time
 import unittest
 
 _tmp = tempfile.mkdtemp(prefix="nms_test_")
@@ -49,6 +50,59 @@ class NmsTest(unittest.TestCase):
         self.assertIn("status", body)
         self.assertNotIn("hosts", body)
         self.assertNotIn("db_rows", body)
+
+    def test_login_form_controls(self):
+        response = m.app.test_client().get("/login?next=/settings")
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('<html lang="id" data-theme="dark">', html)
+        self.assertIn('<form id="loginForm" method="POST">', html)
+        self.assertIn('id="themeBtn"', html)
+        self.assertIn('id="lihatSandi"', html)
+        self.assertIn('name="remember" value="1" checked', html)
+        self.assertNotIn("novalidate", html)
+
+    def test_login_error_preserves_escaped_username(self):
+        response = m.app.test_client().post(
+            "/login", data={"username": '<script>alert("x")</script>', "password": "wrong"}
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Username atau password salah.", html)
+        self.assertIn('aria-describedby="pesanError"', html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertNotIn('<script>alert("x")</script>', html)
+
+    def test_login_remember_and_next(self):
+        response = m.app.test_client().post(
+            "/login?next=/settings",
+            data={"username": "admin", "password": "admin12345", "remember": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/settings")
+        self.assertTrue(
+            any(
+                cookie.startswith("remember_token=")
+                for cookie in response.headers.getlist("Set-Cookie")
+            )
+        )
+
+    def test_login_terkunci_sediakan_hitung_mundur(self):
+        klien = m.app.test_client()
+        ip = "127.0.0.1"
+        awal = m.login_failures.get(ip)
+        m.login_failures[ip] = (0, time.time() + 45, time.time())
+        try:
+            html = klien.post(
+                "/login", data={"username": "admin", "password": "salah"}
+            ).get_data(as_text=True)
+        finally:
+            if awal:
+                m.login_failures[ip] = awal
+            else:
+                m.login_failures.pop(ip, None)
+        self.assertIn("data-terkunci=", html)
+        self.assertIn("Terlalu banyak percobaan gagal", html)
 
     def test_history_invalid_400(self):
         r = self.client.get("/api/history?hours=abc")
@@ -244,6 +298,36 @@ class NmsTest(unittest.TestCase):
         r = self.client.get("/api/host/10.99.99.99/history?hours=1&metric=latency")
         self.assertEqual(r.status_code, 200)
         self.assertIn(0.0, r.get_json()["values"])
+
+    def test_host_history_cpu_fallback_device_health(self):
+        conn, c = m.get_db()
+        c.execute(
+            "INSERT INTO device_health (host,cpu,mem_used,storage_used,timestamp) VALUES "
+            "('10.99.99.97',12.5,40.0,55.0,datetime('now','localtime'))"
+        )
+        conn.commit()
+        conn.close()
+        r = self.client.get("/api/host/10.99.99.97/history?hours=1&metric=cpu")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(12.5, r.get_json()["values"])
+        r2 = self.client.get("/api/host/10.99.99.97/history?hours=1&metric=ram")
+        self.assertIn(40.0, r2.get_json()["values"])
+        r3 = self.client.get("/api/host/10.99.99.97/history?hours=1&metric=disk")
+        self.assertIn(55.0, r3.get_json()["values"])
+
+    def test_host_history_cpu_utamakan_agent_metrics(self):
+        conn, c = m.get_db()
+        c.execute(
+            "INSERT INTO agent_metrics (host,cpu_percent,ram_percent,disk_percent,"
+            "net_in,net_out,timestamp,source) VALUES "
+            "('10.99.99.97',77.0,30.0,20.0,1.0,2.0,datetime('now','localtime'),'agent')"
+        )
+        conn.commit()
+        conn.close()
+        r = self.client.get("/api/host/10.99.99.97/history?hours=1&metric=cpu")
+        body = r.get_json()
+        self.assertIn(77.0, body["values"])
+        self.assertNotIn(12.5, body["values"])
 
 
 if __name__ == "__main__":

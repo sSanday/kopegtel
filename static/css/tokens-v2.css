@@ -31,7 +31,9 @@
 
   /* IBM Plex belum ada di static/fonts, jadi system-ui dulu.
      Setelah woff2 Plex diunduh, ganti dua baris di bawah. */
-  --font-sans: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --mono: var(--font-mono);
   --font-serif: Georgia, "Times New Roman", serif;
 
   --radius: 6px;

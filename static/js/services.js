@@ -149,7 +149,7 @@
     if (!allServices || !allServices.length) {
       tbody.innerHTML = '<tr><td colspan="7"><div class="empty-box" role="status">' + ICON_CHART +
         '<b>Belum ada service yang dipantau</b>Tambahkan service pertama untuk mulai memantau ketersediaan dan latency.<br>' +
-        '<button type="button" class="btn btn-primary" id="btnEmptyAdd" style="margin-top:14px">+ Tambah service pertama</button></div></td></tr>';
+        '<button type="button" class="btn btn-primary" id="btnEmptyAdd" style="margin-top:14px">Tambah service pertama</button></div></td></tr>';
       var ea = $("btnEmptyAdd");
       if (ea) ea.addEventListener("click", openModal);
     } else if (!rows.length) {
@@ -235,11 +235,11 @@
     var cur = sel.value;
     var cur2 = $("histSvc2") ? $("histSvc2").value : "";
     var opts = (allServices || []).map(function (s) { return '<option value="' + Number(s.id) + '">' + esc(s.name) + " (#" + Number(s.id) + ")</option>"; }).join("");
-    sel.innerHTML = '<option value="">— Pilih service —</option>' + opts;
+    sel.innerHTML = '<option value="">Pilih service</option>' + opts;
     if (cur && Array.from(sel.options).some(function (o) { return o.value === cur; })) sel.value = cur;
     var sel2 = $("histSvc2");
     if (sel2) {
-      sel2.innerHTML = '<option value="">+ Bandingkan…</option>' + opts;
+      sel2.innerHTML = '<option value="">Bandingkan</option>' + opts;
       if (cur2 && cur2 !== sel.value && Array.from(sel2.options).some(function (o) { return o.value === cur2; })) sel2.value = cur2;
     }
     updateHistEmpty();

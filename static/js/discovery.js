@@ -176,10 +176,9 @@
       devices = Array.isArray(d.devices) ? d.devices : [];
       renderResults();
       var n = devices.length;
-      $("scanState").textContent = n
-        ? "Pemindaian selesai."
-        : "Pemindaian selesai — tidak ada perangkat SNMP yang merespons.";
-      toast(n ? n + " perangkat ditemukan." : "Tidak ada perangkat yang merespons.", n ? "success" : "error");
+      var message = d && d.message ? d.message : (n ? "Pemindaian selesai." : "Pemindaian selesai - tidak ada perangkat SNMP yang merespons.");
+      $("scanState").textContent = message;
+      toast(n ? n + " perangkat ditemukan." : message, n ? "success" : "error");
       loadScheduleStatus();
     }).catch(function (err) {
       devices = [];

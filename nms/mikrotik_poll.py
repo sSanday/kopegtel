@@ -26,7 +26,7 @@ from nms.mikrotik import (
     _mt_reboot_kind,
 )
 from nms.notify import send_telegram_alert
-from nms.snmp import _snmp_get, _valid_oid, discover_interfaces
+from nms.snmp import _snmp_get, _valid_oid, discover_interfaces, snmp_walk
 
 snmp_state = {}
 
@@ -89,9 +89,10 @@ def get_snmp_bandwidth(ip, community, if_index):
 
 
 MT_DEFAULT_OIDS = {
-    "cpu": "1.3.6.1.4.1.14988.1.1.3.11.0",
-    "mem": "1.3.6.1.4.1.14988.1.1.3.12.0",
-    "storage": "1.3.6.1.4.1.14988.1.1.3.13.0",
+    # Standar HOST-RESOURCES-MIB (bekerja di kebanyakan RouterOS).
+    "cpu": "1.3.6.1.2.1.25.3.3.1.2.1",
+    "mem": "1.3.6.1.2.1.25.2.3.1.6.1",
+    "storage": "1.3.6.1.2.1.25.2.3.1.6.2",
     "temp": "1.3.6.1.4.1.14988.1.1.3.10.0",
 }
 
@@ -117,29 +118,102 @@ def resolve_mt_oids(host_row):
     return out
 
 
+def _hrs_walk(ip, community, base, max_rows=64):
+    try:
+        return snmp_walk(ip, community, base, max_rows=max_rows) or []
+    except Exception:
+        return []
+
+
+def _std_cpu_percent(ip, community):
+    """CPU load rata-rata (0-100) dari HOST-RESOURCES-MIB hrProcessorLoad."""
+    vals = []
+    for _oid, _tag, iv, _sv in _hrs_walk(ip, community, "1.3.6.1.2.1.25.3.3.1.2", 32):
+        if iv is not None and 0 <= iv <= 100:
+            vals.append(float(iv))
+    if vals:
+        return round(sum(vals) / len(vals), 1)
+    return None
+
+
+def _storage_index(ip, community, want_memory):
+    """Cari index hrStorage yang cocok (memori vs non-memori)."""
+    for oid, _tag, _iv, sv in _hrs_walk(
+        ip, community, "1.3.6.1.2.1.25.2.3.1.3", 64
+    ):
+        desc = str(sv or "").lower()
+        is_mem = ("memory" in desc) or ("ram" in desc)
+        if is_mem == want_memory:
+            try:
+                return oid.rsplit(".", 1)[-1]
+            except Exception:
+                continue
+    return None
+
+
+def _storage_percent(ip, community, idx):
+    if not idx:
+        return None
+    vals = _snmp_get(
+        ip,
+        community,
+        [
+            f"1.3.6.1.2.1.25.2.3.1.5.{idx}",
+            f"1.3.6.1.2.1.25.2.3.1.6.{idx}",
+        ],
+    )
+    if len(vals) == 2 and vals[0] not in (None, 0) and vals[1] is not None:
+        try:
+            size, used = float(vals[0]), float(vals[1])
+            if size > 0:
+                return round(used / size * 100.0, 1)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def get_mikrotik_health(ip, community, oids):
     """Ambil CPU/mem/storage (%) + suhu mentah via SNMP.
 
     Kembalikan dict {cpu, mem, storage, temp_raw} (None bila tak terjawab).
     """
-    keys = [k for k in ("cpu", "mem", "storage", "temp") if oids.get(k)]
-    if not keys:
-        return {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
-    vals = _snmp_get(ip, community, [oids[k] for k in keys])
-    if len(vals) != len(keys):
-        vals = [None] * len(keys)
-    res = {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
-    for k, v in zip(keys, vals):
-        if v is None:
-            continue
-        try:
-            f = float(v)
-        except (ValueError, TypeError):
-            continue
-        if k == "temp":
-            res["temp_raw"] = f
-        elif 0 <= f <= 100:
-            res[k] = f
+    # CPU/mem/storage dicoba via GET skalar (multi-OID). Jika jumlah nilai
+    # tidak cocok (OID tidak valid di perangkat), biarkan None → fallback standar.
+    keys = [k for k in ("cpu", "mem", "storage") if oids.get(k)]
+    res0 = {"cpu": None, "mem": None, "storage": None, "temp_raw": None}
+    if keys:
+        vals = _snmp_get(ip, community, [oids[k] for k in keys])
+        if len(vals) != len(keys):
+            vals = [None] * len(keys)
+        for k, v in zip(keys, vals):
+            if v is None:
+                continue
+            try:
+                f = float(v)
+            except (ValueError, TypeError):
+                continue
+            if 0 <= f <= 100:
+                res0[k] = f
+    # Suhu diambil terpisah agar OID CPU/mem/storage yang tidak valid
+    # tidak menyebabkan seluruh respons (termasuk suhu) dibuang.
+    temp_oid = oids.get("temp")
+    if temp_oid:
+        tvals = _snmp_get(ip, community, [temp_oid])
+        if len(tvals) == 1 and tvals[0] is not None:
+            try:
+                res0["temp_raw"] = float(tvals[0])
+            except (ValueError, TypeError):
+                pass
+    res = res0
+    # Fallback standar HOST-RESOURCES-MIB bila OID kustom/tabel tidak menghasilkan nilai.
+    if res["cpu"] is None:
+        res["cpu"] = _std_cpu_percent(ip, community)
+    if res["mem"] is None:
+        idx = _storage_index(ip, community, True)
+        res["mem"] = _storage_percent(ip, community, idx)
+    if res["storage"] is None:
+        idx = _storage_index(ip, community, False)
+        res["storage"] = _storage_percent(ip, community, idx)
     return res
 
 

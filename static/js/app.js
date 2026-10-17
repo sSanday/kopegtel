@@ -6,7 +6,7 @@
   "use strict";
 
   /* ---------- Konfigurasi ---------- */
-  var PALETTE = ["#14b8a6", "#0ea5e9", "#a78bfa", "#f59e0b", "#f43f5e"];
+  var PALETTE = ["#e2e8f0", "#94a3b8", "#4ade80", "#fbbf24", "#f87171"];
   var REFRESH_MS = 30000;
   var EVENTS_PAGE = 8;
 
@@ -33,7 +33,7 @@
   var ICON_ALERT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 17H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>';
   var ICON_EYE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M1.5 8S4 4.2 8 4.2 14.5 8 14.5 8 12 11.8 8 11.8 1.5 8 1.5 8Z"/><circle cx="8" cy="8" r="1.8"/></svg>';
   var ICON_EYE_OFF = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="vertical-align:-2px"><path d="M1.5 8S4 4.2 8 4.2c1.4 0 2.7.4 3.8 1M14.5 8S12 11.8 8 11.8c-1.4 0-2.7-.4-3.8-1"/><path d="M2.5 2.5l11 11"/></svg>';
-  var NOTIF_ICON = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="%230b0f14"/><circle cx="50" cy="50" r="26" fill="none" stroke="%232dd4bf" stroke-width="7"/><circle cx="50" cy="50" r="9" fill="%234ade80"/></svg>';
+  var NOTIF_ICON = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="%230b0f14"/><circle cx="50" cy="50" r="26" fill="none" stroke="%23cbd5e1" stroke-width="7"/><circle cx="50" cy="50" r="9" fill="%234ade80"/></svg>';
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -208,7 +208,7 @@
       { key: "total", cv: "sparkTotal", dl: "deltaTotal", color: css("--text-3", "#8593a6"), fmt: function (d) { return String(Math.round(d)); }, pol: "neutral" },
       { key: "up", cv: "sparkUp", dl: "deltaUp", color: css("--ok-text", "#4ade80"), fmt: function (d) { return String(Math.round(d)); }, pol: "normal" },
       { key: "down", cv: "sparkDown", dl: "deltaDown", color: css("--down-text", "#f87171"), fmt: function (d) { return String(Math.round(d)); }, pol: "invert" },
-      { key: "uptime", cv: "sparkUptime", dl: "deltaUptime", color: css("--accent-text", "#5eead4"), fmt: function (d) { return d.toFixed(1) + "%"; }, pol: "normal", eps: 0.05 }
+      { key: "uptime", cv: "sparkUptime", dl: "deltaUptime", color: css("--accent-text", "#f8fafc"), fmt: function (d) { return d.toFixed(1) + "%"; }, pol: "normal", eps: 0.05 }
     ];
     if (h.length < 2) {
       cfgs.forEach(function (c) {
@@ -522,7 +522,7 @@
         var host = pair[0], vals = pair[1];
         var displayName = window.aliasMap && window.aliasMap[host] ? window.aliasMap[host] : host;
         cds.push({
-          label: displayName + " (keluar)", data: vals, borderColor: "#0ea5e9", backgroundColor: "#0ea5e922",
+          label: displayName + " (keluar)", data: vals, borderColor: "#fbbf24", backgroundColor: "#fbbf2433",
           borderWidth: 1.5, tension: 0.35, fill: false, pointRadius: 0, pointHoverRadius: 4,
           pointHitRadius: 12, borderDash: [5, 3], spanGaps: true
         });
@@ -1098,6 +1098,8 @@
       $("fiberTarget").value = data.fiber_rx_target != null ? data.fiber_rx_target : -18;
       $("fiberWarn").value = data.fiber_rx_warn != null ? data.fiber_rx_warn : -25;
       $("fiberCrit").value = data.fiber_rx_crit != null ? data.fiber_rx_crit : -27;
+      $("fiberScaleMin").value = data.fiber_rx_scale_min != null ? data.fiber_rx_scale_min : -35;
+      $("fiberScaleMax").value = data.fiber_rx_scale_max != null ? data.fiber_rx_scale_max : 0;
       $("fiberTxMin").value = data.fiber_tx_min != null ? data.fiber_tx_min : 0;
       $("fiberTxMax").value = data.fiber_tx_max != null ? data.fiber_tx_max : 5;
       $("fiberDegDb").value = data.fiber_degrade_db != null ? data.fiber_degrade_db : 3;
@@ -1130,12 +1132,15 @@
     }
     var fOver = num("fiberOverload"), fTgt = num("fiberTarget"), fWarn = num("fiberWarn"), fCrit = num("fiberCrit");
     var fTxMin = num("fiberTxMin"), fTxMax = num("fiberTxMax");
+    var fScaleMin = num("fiberScaleMin"), fScaleMax = num("fiberScaleMax");
     var franges = [["overload fiber", fOver], ["target fiber", fTgt], ["warning fiber", fWarn], ["critical fiber", fCrit]];
     for (var j = 0; j < franges.length; j++) {
       if (!Number.isFinite(franges[j][1]) || franges[j][1] < -40 || franges[j][1] > 10) { toast(franges[j][0] + " harus angka -40..10 dBm.", "error"); return; }
     }
     if (!(fCrit < fWarn && fWarn <= fOver)) { toast("Urutan harus: critical < warning ≤ overload.", "error"); return; }
     if (!Number.isFinite(fTxMin) || !Number.isFinite(fTxMax) || fTxMin > fTxMax) { toast("Tx min harus ≤ Tx max.", "error"); return; }
+    if (!Number.isFinite(fScaleMin) || !Number.isFinite(fScaleMax) || fScaleMin < -80 || fScaleMax > 20 || fScaleMin >= fScaleMax) { toast("Skala Rx harus berada di -80..20 dBm dengan min < max.", "error"); return; }
+    if (!(fScaleMin <= fCrit && fOver <= fScaleMax)) { toast("Ambang Rx harus berada di dalam skala.", "error"); return; }
     var fDegDb = num("fiberDegDb"), fDegDays = int("fiberDegDays"), fStaleMin = int("fiberStaleMin");
     var fFlapFlips = int("fiberFlapFlips"), fFlapHours = int("fiberFlapHours");
     if (!Number.isFinite(fDegDb) || fDegDb < 0.5 || fDegDb > 10) { toast("Degradasi harus 0,5–10 dB.", "error"); return; }
@@ -1167,6 +1172,7 @@
     var payload = {
       cpu_threshold: cpu, ram_threshold: ram, disk_threshold: disk,
       fiber_rx_overload: fOver, fiber_rx_target: fTgt, fiber_rx_warn: fWarn, fiber_rx_crit: fCrit,
+      fiber_rx_scale_min: fScaleMin, fiber_rx_scale_max: fScaleMax,
       fiber_tx_min: fTxMin, fiber_tx_max: fTxMax, fiber_degrade_db: fDegDb, fiber_degrade_days: fDegDays,
       fiber_stale_min: fStaleMin, fiber_flap_flips: fFlapFlips, fiber_flap_hours: fFlapHours,
       fiber_parent_min: fParentMin, temp_threshold: tW, temp_crit: tC, mt_temp_div: tDiv,
@@ -1343,7 +1349,16 @@
       if (el) el.textContent = "Refresh dalam " + countdownLeft + " dtk";
     }, 1000);
 
-    refresh(false).then(function () { sorotFromQuery(); });
+    refresh(false).then(function () {
+      sorotFromQuery();
+      if (location.hash === "#fiber-rx-settings" && $("settingsModal")) {
+        openSettingsModal();
+        setTimeout(function () {
+          var target = $("fiber-rx-settings");
+          if (target && target.scrollIntoView) target.scrollIntoView({ block: "center" });
+        }, 0);
+      }
+    });
     renderKpiTrends();
     connectTelemetryStream();
     setInterval(function () { refresh(false); }, REFRESH_MS);

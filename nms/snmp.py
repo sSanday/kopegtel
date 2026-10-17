@@ -58,9 +58,8 @@ def _encode_snmp_v1_get(community, oid_list, _pdu_tag=0xA0):
     pdu = encode_tlv(_pdu_tag, req_id + b"\x02\x01\x00\x02\x01\x00" + varbind_list)
     comm_bytes = str(community or "")[:128].encode()
 
-    _ver = (
-        1 if os.environ.get("SNMP_VERSION", "1").strip().lower() in ("2", "2c") else 0
-    )
+    # SNMP Auto-Discovery + monitoring berjalan di SNMPv2c.
+    _ver = 1
     version = bytes([0x02, 0x01, _ver])
     comm_tlv = encode_tlv(0x04, comm_bytes)
     return encode_tlv(0x30, version + comm_tlv + pdu)
@@ -88,7 +87,7 @@ def _ber_read_tlv(data, pos):
         return None
 
 
-_SNMP_VALUE_TAGS = (0x02, 0x41, 0x42, 0x43, 0x46)
+_SNMP_VALUE_TAGS = (0x02, 0x04, 0x41, 0x42, 0x43, 0x46)
 
 
 def _extract_snmp_values(resp):
@@ -109,8 +108,14 @@ def _extract_snmp_values(resp):
                 last_was_oid = False
                 walk(val)
                 continue
-            if last_was_oid and tag in _SNMP_VALUE_TAGS and 1 <= len(val) <= 9:
-                found.append(int.from_bytes(val, "big", signed=(tag == 0x02)))
+            if last_was_oid and tag in _SNMP_VALUE_TAGS:
+                if tag == 0x04:
+                    try:
+                        found.append(val.decode("utf-8"))
+                    except UnicodeDecodeError:
+                        found.append(val.decode("latin-1"))
+                elif 1 <= len(val) <= 9:
+                    found.append(int.from_bytes(val, "big", signed=(tag == 0x02)))
             last_was_oid = False
 
     try:
@@ -324,7 +329,9 @@ def detect_vendor(sys_descr, sys_name):
     return "Generic"
 
 
-def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
+def discover_subnet(
+    network, community, timeout=0.8, max_hosts=256, workers=32, return_diagnostics=False
+):
     net = ipaddress.ip_network(str(network).strip(), strict=False)
     hosts = list(net.hosts())
     if len(hosts) > max_hosts:
@@ -334,11 +341,33 @@ def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
         raise ValueError("community wajib diisi dan maksimal 128 karakter")
     timeout = max(0.2, min(float(timeout), 3.0))
 
+    diagnostics = {
+        "hosts": len(hosts),
+        "responded": 0,
+        "timeout": 0,
+        "no_response": 0,
+        "partial": 0,
+        "community_or_error": 0,
+    }
+
     def probe(addr):
-        vals = _snmp_get(
-            str(addr), community, [SYS_DESCR_OID, SYS_NAME_OID], timeout=timeout
+        vals, error = _snmp_get(
+            str(addr),
+            community,
+            [SYS_DESCR_OID, SYS_NAME_OID],
+            timeout=timeout,
+            return_status=True,
         )
+        if error:
+            if "time" in str(error).lower() or "timeout" in str(error).lower():
+                diagnostics["timeout"] += 1
+            elif "partial" in str(error).lower():
+                diagnostics["partial"] += 1
+            else:
+                diagnostics["community_or_error"] += 1
+            return None
         if vals and any(v is not None for v in vals):
+            diagnostics["responded"] += 1
             return {
                 "ip": str(addr),
                 "sys_descr": vals[0],
@@ -346,6 +375,7 @@ def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
                 "vendor": detect_vendor(vals[0], vals[1]),
                 "reachable": True,
             }
+        diagnostics["no_response"] += 1
         return None
 
     results = []
@@ -355,10 +385,13 @@ def discover_subnet(network, community, timeout=0.8, max_hosts=256, workers=32):
             item = future.result()
             if item:
                 results.append(item)
-    return sorted(results, key=lambda x: ipaddress.ip_address(x["ip"]))
+    results = sorted(results, key=lambda x: ipaddress.ip_address(x["ip"]))
+    if return_diagnostics:
+        return results, diagnostics
+    return results
 
 
-def _snmp_get(ip, community, oids, timeout=2.0):
+def _snmp_get(ip, community, oids, timeout=2.0, *, return_status=False):
     """Satu request SNMP GET untuk banyak OID. Kembalikan list int/None.
 
     Posisi dipertahankan:(vals[i] untuk oids[i], None bila tak terjawab).
@@ -377,10 +410,16 @@ def _snmp_get(ip, community, oids, timeout=2.0):
         resp, _ = sock.recvfrom(8192)
         vals = _extract_snmp_values(resp)
         if len(vals) == len(oids):
+            if return_status:
+                return list(vals), None
             return list(vals)
+        if return_status:
+            return [None] * len(oids), "partial_response"
         return [None] * len(oids)
     except Exception as e:
         print(f"[SNMP ERROR] {ip}: {e}")
+        if return_status:
+            return [None] * len(oids), str(e)
         return [None] * len(oids)
     finally:
         if sock is not None:

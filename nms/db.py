@@ -173,6 +173,12 @@ def init_db():
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_target', '-18.0')"
     )
     c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_scale_min', '-35.0')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_rx_scale_max', '0.0')"
+    )
+    c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_degrade_db', '3.0')"
     )
     c.execute(
@@ -203,14 +209,23 @@ def init_db():
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('temp_crit', '75.0')"
     )
     c.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_cpu_oid', '1.3.6.1.4.1.14988.1.1.3.11.0')"
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_cpu_oid', '1.3.6.1.2.1.25.3.3.1.2.1')"
     )
     c.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_mem_oid', '1.3.6.1.4.1.14988.1.1.3.12.0')"
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_mem_oid', '1.3.6.1.2.1.25.2.3.1.6.1')"
     )
     c.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.4.1.14988.1.1.3.13.0')"
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_storage_oid', '1.3.6.1.2.1.25.2.3.1.6.2')"
     )
+    # migrasi default lama (OID kesehatan MikroTik yang bukan persentase CPU/mem/storage)
+    for key, old_oid, new_oid in (
+        ("mt_cpu_oid", "1.3.6.1.4.1.14988.1.1.3.11.0", "1.3.6.1.2.1.25.3.3.1.2.1"),
+        ("mt_mem_oid", "1.3.6.1.4.1.14988.1.1.3.12.0", "1.3.6.1.2.1.25.2.3.1.6.1"),
+        ("mt_storage_oid", "1.3.6.1.4.1.14988.1.1.3.13.0", "1.3.6.1.2.1.25.2.3.1.6.2"),
+    ):
+        c.execute(
+            "UPDATE settings SET value=? WHERE key=? AND value=?", (new_oid, key, old_oid)
+        )
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')"
     )
@@ -1034,6 +1049,37 @@ def log_alert(host, alert_type, severity, message):
     except Exception as e:
         conn.close()
         return False
+
+def get_or_create_alert(host, alert_type, severity, message):
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT id FROM alert_history WHERE host=? AND message=? AND resolved_at IS NULL LIMIT 1",
+            (host, message),
+        )
+        row = c.fetchone()
+        if row:
+            aid = row["id"]
+            # Keep severity/current state consistent if an active record already exists.
+            c.execute(
+                "UPDATE alert_history SET severity=? WHERE id=?",
+                (severity, aid),
+            )
+            conn.commit()
+            conn.close()
+            return aid
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+            (host, alert_type, severity, message, timestamp),
+        )
+        conn.commit()
+        aid = c.lastrowid
+        conn.close()
+        return aid
+    except Exception as e:
+        conn.close()
+        return None
 
 
 def resolve_alert(alert_id):

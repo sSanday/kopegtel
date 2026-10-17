@@ -195,7 +195,7 @@
         var ackInfo = ack
           ? '<span class="ack-badge">' + ICON_CHECK + "Di-ack " + (a.acknowledged_by ? "oleh " + esc(a.acknowledged_by) : "") + (a.acknowledged_at ? " · " + esc(a.acknowledged_at) : "") + "</span>"
           : "";
-        var assignInfo = a.assigned_to ? '<div style="font-size:11.5px;color:var(--text-2);margin-top:5px">PIC: ' + esc(a.assigned_to) + "</div>" : "";
+        var assignInfo = a.assigned_to ? '<div style="font-size:12px;color:var(--text-2);margin-top:5px">PIC: ' + esc(a.assigned_to) + "</div>" : "";
         html += '<tr class="sev-' + esc(sev) + '">' +
           '<td data-label="Severity"><span class="sev-tag ' + esc(sev) + '">' + esc(SEV_LABEL[sev] || sev) + "</span></td>" +
           '<td data-label="Host" class="a-host"><a href="/host/' + encodeURIComponent(a.host) + '"><b>' + esc(name) + "</b></a>" +

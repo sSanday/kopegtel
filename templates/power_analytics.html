@@ -29,7 +29,7 @@
     .chip b{color:var(--text);font-weight:600}
     .btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--text);font-family:var(--font-sans);font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:.15s;white-space:nowrap}
     .btn:hover{background:var(--surface-2);border-color:var(--text-3)}
-    .btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:#fff}
+    .btn.primary{background:var(--accent-btn);border-color:var(--accent-btn);color:var(--on-primary,#0b0f14)}
     .btn.primary:hover{background:var(--accent-btn-hover);border-color:var(--accent-btn-hover)}
     .btn.ghost{background:transparent;border-color:var(--border-strong);color:var(--text-2)}
     .btn.ghost:hover{color:var(--text);background:var(--surface-2)}
@@ -50,6 +50,8 @@
     .kpi .bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
     .kpi.alert{border-color:var(--down-text)}
     .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;margin-bottom:16px;box-shadow:var(--shadow-sm)}
+    .card.tbl{padding:10px 12px 12px}
+    .card.tbl .table-scroll{border-radius:8px}
     .term{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
     .dots{display:none}
     .term-t{font-size:15px;font-weight:700;color:var(--text)}
@@ -70,7 +72,7 @@
     .technical{font-family:var(--mono);font-variant-numeric:tabular-nums}
     .wbar{height:6px;border-radius:99px;background:var(--surface-3);margin-top:6px;overflow:hidden;min-width:90px}
     .wbar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
-    .tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
+    .tag{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;border-radius:99px;padding:5px 12px;white-space:nowrap}
     .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
     .tag.ok{background:var(--ok-soft);color:var(--ok-text)}
     .tag.high{background:var(--down-soft);color:var(--down-text)}
@@ -86,8 +88,9 @@
     label:first-child{margin-top:0}
     .collapse-btn svg{width:18px;height:18px;flex:0 0 18px}
     .err{font-size:12px;color:var(--down-text);min-height:1.1em;margin-top:6px}
-    .note{font-size:12.5px;color:var(--text-2);margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;line-height:1.7}
+    .note{font-size:12.5px;color:var(--text-2);margin-top:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;line-height:1.7;max-width:500px}
     .info-box{display:flex;align-items:flex-start;gap:10px;margin-bottom:22px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;font-size:12.5px;color:var(--text-2);line-height:1.7}
+    .info-box > span:last-child{max-width:500px}
     .acc-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);margin-bottom:18px;overflow:hidden;box-shadow:var(--shadow-sm)}
     .acc-panel>summary{cursor:pointer;list-style:none;padding:16px 20px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;color:var(--text)}
     .acc-panel>summary::-webkit-details-marker{display:none}
@@ -111,13 +114,13 @@
       .table-scroll tbody tr{display:block;border:1px solid var(--border);border-radius:14px;margin:10px 12px;background:var(--surface);padding:4px 0}
       .table-scroll tbody td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:11px 13px;border-bottom:1px solid var(--border)}
       .table-scroll tbody td:last-child{border-bottom:none}
-      .table-scroll tbody td::before{content:attr(data-label);font-size:11.5px;font-weight:600;color:var(--text-2);flex-shrink:0}
+      .table-scroll tbody td::before{content:attr(data-label);font-size:12px;font-weight:600;color:var(--text-2);flex-shrink:0}
       .table-scroll tbody td>*:last-child{text-align:right}
       .table-scroll tbody td.num{text-align:right}
     }
     @page{size:A4 portrait;margin:12mm 12mm 15mm}
     .print-footer{display:none}
-    @media print{html,body{background:#fff!important;color:#111!important;font-size:12px!important}body{--bg:#fff;--surface:#fff;--surface-2:#f7f8fa;--surface-3:#eef1f4;--border:#cbd5e1;--border-strong:#94a3b8;--text:#111827;--text-2:#334155;--text-3:#64748b;--accent:#0f766e;--accent-text:#0f766e;--ok-text:#166534;--down-text:#b91c1c;--warn-text:#92400e}.sidebar,.header,.crumbs,.toolbar,.forms,.skip-link,.scrim{display:none!important}.app{display:block!important}.main-col{display:block!important}.page{max-width:none!important;padding:0!important}.wrap{padding:0!important}.card,.kpi,.info-box,.note{background:#fff!important;border-color:#b8c0ca!important;box-shadow:none!important}.kpi .v,.kpi .k,.kpi .s,.term-t,.term-m,th,td{color:#111!important}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.wbar i,.tag,.consumer-bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-head{display:flex!important;flex-direction:column;gap:2px;border-bottom:2px solid #0f766e;padding-bottom:10px;margin-bottom:14px;color:#111}.print-head strong{font-size:18px}.print-head span{font-size:16px;font-weight:700}.print-head small{font-size:11px;color:#334155}.print-footer{display:block;position:fixed;bottom:-7mm;left:0;right:0;font-size:9px;color:#475569;border-top:1px solid #cbd5e1;padding-top:3px}.page-number{float:right}.page-number::after{content:"Halaman " counter(page)}}
+    @media print{html,body{background:#fff!important;color:#111!important;font-size:12px!important}body{--bg:#fff;--surface:#fff;--surface-2:#f7f8fa;--surface-3:#eef1f4;--border:#cbd5e1;--border-strong:#94a3b8;--text:#111827;--text-2:#334155;--text-3:#64748b;--accent:#0f766e;--accent-text:#0f766e;--ok-text:#166534;--down-text:#b91c1c;--warn-text:#92400e}.sidebar,.header,.crumbs,.toolbar,.forms,.skip-link,.scrim{display:none!important}.app{display:block!important}.main-col{display:block!important}.page{max-width:none!important;padding:0!important}.wrap{padding:0!important}.card,.kpi,.info-box,.note{background:#fff!important;border-color:#b8c0ca!important;box-shadow:none!important}.kpi .v,.kpi .k,.kpi .s,.term-t,.term-m,th,td{color:#111!important}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.wbar i,.tag,.consumer-bar i{-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-head{display:flex!important;flex-direction:column;gap:2px;border-bottom:2px solid #0f766e;padding-bottom:10px;margin-bottom:14px;color:#111}.print-head strong{font-size:18px}.print-head span{font-size:16px;font-weight:700}.print-head small{font-size:12px;color:#334155}.print-footer{display:block;position:fixed;bottom:-7mm;left:0;right:0;font-size:12px;color:#475569;border-top:1px solid #cbd5e1;padding-top:3px}.page-number{float:right}.page-number::after{content:"Halaman " counter(page)}}
     .print-head{display:none}
     .chart-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--text-2);font-size:13px;line-height:1.6;padding:20px;pointer-events:none}
     .chart-empty b{color:var(--text);font-size:14px}
@@ -125,7 +128,7 @@
     .consumer-row .cr-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
     .consumer-row .cr-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
     .consumer-row .cr-watts{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
-    .consumer-row .cr-pct{font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums}
+    .consumer-row .cr-pct{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums}
     .consumer-bar{height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden}
     .consumer-bar i{display:block;height:100%;border-radius:99px;background:var(--accent)}
   </style>
@@ -208,7 +211,7 @@
     </div>
 
     <div class="sec-label">Perangkat <span class="count" id="devCount">—</span></div>
-    <div class="card">
+    <div class="card tbl">
       <div class="term"><span class="term-t">Perangkat</span><span class="term-m" id="devMeta">—</span></div>
       <div class="table-scroll"><table>
         <caption class="sr-only">Daftar perangkat yang dipantau</caption>
@@ -322,11 +325,11 @@ function renderTrend(trend,bucket){
   if(empty)empty.style.display='none';const cv=$('chTrend');if(cv)cv.style.display='';
   const grid='rgba(148,163,184,.12)';
   chTrend=new Chart($('chTrend'),{data:{labels:trend.map(t=>t.label),datasets:[
-    {type:'line',label:'avg watt',data:trend.map(t=>num(t.avg_watts)),borderColor:'#2dd4bf',backgroundColor:'rgba(45,212,191,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0,yAxisID:'y'},
-    {type:'bar',label:'kWh',data:trend.map(t=>num(t.energy_kwh)),backgroundColor:'rgba(45,212,191,.5)',borderRadius:3,yAxisID:'y1'}]},
+    {type:'line',label:'avg watt',data:trend.map(t=>num(t.avg_watts)),borderColor:'#94a3b8',backgroundColor:'rgba(148,163,184,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0,yAxisID:'y'},
+    {type:'bar',label:'kWh',data:trend.map(t=>num(t.energy_kwh)),backgroundColor:'rgba(148,163,184,.5)',borderRadius:3,yAxisID:'y1'}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
     plugins:{legend:{labels:{color:'#8593a6',boxWidth:12,font:{size:10}}},tooltip:{backgroundColor:'#121821',borderColor:'rgba(255,255,255,.1)',borderWidth:1,titleFont:{size:11},callbacks:{label:c=>` ${c.dataset.label}: ${c.dataset.label==='kWh'?num(c.raw).toFixed(4)+' kWh':num(c.raw).toFixed(1)+' W'}`}}},
-    scales:{y:{beginAtZero:true,grid:{color:grid},ticks:{color:'#8593a6',font:{size:10}}},y1:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},ticks:{color:'#2dd4bf',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#8593a6',maxTicksLimit:10,font:{size:10}}}}}});
+    scales:{y:{beginAtZero:true,grid:{color:grid},ticks:{color:'#8593a6',font:{size:10}}},y1:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},ticks:{color:'#94a3b8',font:{size:10}}},x:{grid:{display:false},ticks:{color:'#8593a6',maxTicksLimit:10,font:{size:10}}}}}});
   document.getElementById('chTrend').style.height='300px';
   $('trendHint').textContent=trend.length?`${trend.length} titik · per-${bucket==='day'?'hari':'jam'}`:'Belum ada sampel — tambah pengukuran atau tunggu polling SNMP';
 }
@@ -357,7 +360,7 @@ async function fetchHost(){
   try{const h=await api(`/api/power/history?host=${encodeURIComponent(curHost)}&hours=${curHours}&bucket=raw`);
     const rows=h.data||[];
     if(chTrend)chTrend.destroy();
-    chTrend=new Chart($('chTrend'),{type:'line',data:{labels:rows.map(r=>r.timestamp),datasets:[{label:curHost+' watt',data:rows.map(r=>num(r.watts)),borderColor:'#2dd4bf',backgroundColor:'rgba(45,212,191,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0}]},
+    chTrend=new Chart($('chTrend'),{type:'line',data:{labels:rows.map(r=>r.timestamp),datasets:[{label:curHost+' watt',data:rows.map(r=>num(r.watts)),borderColor:'#94a3b8',backgroundColor:'rgba(148,163,184,.08)',fill:true,tension:.3,borderWidth:2,pointRadius:0}]},
     options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true},x:{ticks:{maxTicksLimit:8}}}}});
     $('trendHint').textContent=`${rows.length} sampel · ${curHost}`;
     const empty=$('trendEmpty');

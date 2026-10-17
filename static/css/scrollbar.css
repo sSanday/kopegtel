@@ -1,0 +1,61 @@
+/* ============================================================
+   scrollbar.css - satu sumber gaya scrollbar untuk seluruh
+   dashboard (halaman utama, sidebar, tabel, panel, modal).
+   Dipakai oleh static/css/app.css dan templates/fiber.html.
+   ============================================================ */
+
+:root,
+[data-theme="dark"] {
+  --sb-track: transparent;
+  --sb-thumb: #2c3b4e;
+  --sb-thumb-hover: #3d5168;
+}
+
+[data-theme="light"] {
+  --sb-track: transparent;
+  --sb-thumb: #c3cdd9;
+  --sb-thumb-hover: #a3b2c3;
+}
+
+*::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--sb-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb);
+  border-radius: 999px;
+  border: 4px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--sb-thumb-hover);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb) var(--sb-track);
+  }
+}

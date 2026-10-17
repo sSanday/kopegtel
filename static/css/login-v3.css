@@ -87,7 +87,7 @@ h1 {
   border-radius: var(--radius);
   transition: border-color 120ms ease;
 }
-.isi--sandi input { padding-right: 104px; }
+.isi-sandi input { padding-right: 104px; }
 .isi input::placeholder { color: var(--text-3); }
 .isi input:hover { border-color: var(--text-3); }
 .isi input:focus {
@@ -176,8 +176,8 @@ h1 {
 .merek b {
   font-size: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--text);
 }
-.merek--mobile { display: none; }
-.merek--mobile b { font-size: 15px; }
+.merek-mobile { display: none; }
+.merek-mobile b { font-size: 15px; }
 
 .topo { margin: auto 0; padding: 0; max-width: 520px; }
 .topo svg { display: block; width: 100%; height: auto; }
@@ -187,7 +187,7 @@ h1 {
 .topo-jalur {
   fill: none; stroke: var(--garis-topo); stroke-width: 1.25;
 }
-.topo-jalur--aksen { stroke: var(--accent); }
+.topo-jalur-aksen { stroke: var(--accent); }
 .topo-simbol {
   fill: none; stroke: var(--garis-topo); stroke-width: 1.25;
   stroke-linecap: round; stroke-linejoin: round;
@@ -233,7 +233,7 @@ h1 {
   .login-form { border-right: none; padding: 40px 32px; }
   .login-form-dalam { max-width: 440px; }
   .login-sisi { display: none; }
-  .merek--mobile { display: flex; margin: 0 0 40px; }
+  .merek-mobile { display: flex; margin: 0 0 40px; }
 }
 
 @media (max-width: 560px) {
