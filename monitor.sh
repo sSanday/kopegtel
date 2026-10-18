@@ -5,7 +5,7 @@
 
 set -e
 
-PROJECT_DIR="/home/sandayy/nms-dashboard1"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
 APP_LOG="$LOG_DIR/app.log"
 HEALTH_CHECK_URL="http://localhost:5000/health"

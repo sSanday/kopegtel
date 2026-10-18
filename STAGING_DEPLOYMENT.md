@@ -27,7 +27,7 @@ git log --oneline -1
 
 ### Step 1: Prepare Staging Environment
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 
 # Backup current database (if exists)
 cp network.db network.db.backup.$(date +%s)

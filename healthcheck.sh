@@ -3,7 +3,7 @@
 # NMS Dashboard - Health Check & Status API
 # Used for monitoring and alerting
 
-PROJECT_DIR="/home/sandayy/nms-dashboard1"
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HEALTH_URL="http://localhost:5000/health"
 API_URL="http://localhost:5000/api"
 LOG_FILE="$PROJECT_DIR/logs/healthcheck.log"

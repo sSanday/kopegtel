@@ -70,7 +70,7 @@ cat SECURITY_IMPROVEMENTS.md
 Jalankan verification script sebelum deploy:
 
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 bash verify-deployment.sh
 ```
 
@@ -227,13 +227,13 @@ bash healthcheck.sh
 
 ```bash
 # Daily health check
-0 0 * * * /home/sandayy/nms-dashboard1/healthcheck.sh --report
+0 0 * * * ~/nms-dashboard/healthcheck.sh --report
 
 # Weekly full report
-0 0 * * 0 /home/sandayy/nms-dashboard1/healthcheck.sh --report
+0 0 * * 0 ~/nms-dashboard/healthcheck.sh --report
 
 # Monitor logs (daily)
-0 8 * * * tail -100 /home/sandayy/nms-dashboard1/logs/app.log | mail -s "NMS Dashboard Logs" admin@example.com
+0 8 * * * tail -100 ~/nms-dashboard/logs/app.log | mail -s "NMS Dashboard Logs" admin@example.com
 ```
 
 ---

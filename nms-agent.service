@@ -1,14 +1,15 @@
+# Sesuaikan <path-proyek> dan <user-linux> sebelum install ke systemd.
 [Unit]
 Description=NMS KOPEGTEL Agent
 After=network.target
 
 [Service]
-WorkingDirectory=/home/sandayy/nms-dashboard1
-EnvironmentFile=/home/sandayy/nms-dashboard1/.env
-ExecStart=/home/sandayy/nms-dashboard1/env/bin/python nms-agent.py
+WorkingDirectory=<path-proyek>
+EnvironmentFile=<path-proyek>/.env
+ExecStart=<path-proyek>/env/bin/python nms-agent.py
 Restart=always
 RestartSec=10
-User=sandayy
+User=<user-linux>
 
 [Install]
 WantedBy=multi-user.target

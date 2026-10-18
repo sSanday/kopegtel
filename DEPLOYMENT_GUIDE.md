@@ -4,7 +4,7 @@
 
 ### 1. Setup Environment
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 cp .env.example .env
 ```
 

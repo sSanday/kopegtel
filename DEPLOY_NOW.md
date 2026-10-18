@@ -10,14 +10,14 @@
 
 ### Option 1: Docker (RECOMMENDED)
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 docker-compose up -d
 ```
 Access: http://localhost:5000
 
 ### Option 2: Systemd
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 sudo cp nms-dashboard.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start nms-dashboard
@@ -26,7 +26,7 @@ sudo systemctl enable nms-dashboard
 
 ### Option 3: Gunicorn
 ```bash
-cd /home/sandayy/nms-dashboard1
+cd ~/nms-dashboard
 gunicorn -w 4 -b 0.0.0.0:5000 app:app &
 ```
 
