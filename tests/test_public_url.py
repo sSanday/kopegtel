@@ -8,7 +8,7 @@ _tmp = tempfile.mkdtemp(prefix="nms_test_publicurl_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DASHBOARD_USERNAME", "admin")
-os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("DASHBOARD_PASSWORD", "PantauNms2026")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "")
 os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
@@ -35,7 +35,7 @@ class PublicUrlTest(unittest.TestCase):
         conn.commit()
         conn.close()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 

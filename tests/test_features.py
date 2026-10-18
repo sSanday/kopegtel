@@ -7,7 +7,7 @@ _tmp = tempfile.mkdtemp(prefix="nms_test_features_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DASHBOARD_USERNAME", "admin")
-os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("DASHBOARD_PASSWORD", "PantauNms2026")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "")
 os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
@@ -48,7 +48,7 @@ class MaintenanceTest(unittest.TestCase):
         conn.commit()
         conn.close()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -189,7 +189,9 @@ class SlaAndInterfaceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_sla_page_and_api(self):
         self.assertEqual(self.client.get("/sla").status_code, 200)
@@ -210,7 +212,9 @@ class ScheduledDiscoveryTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_schedule_and_change_detection(self):
         original_discover = m.discover_subnet
@@ -247,7 +251,9 @@ class SnmpDiscoveryTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_discovery_validation_and_result(self):
         r = self.client.post(
@@ -311,7 +317,9 @@ class IncidentDashboardTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_page_and_escalation(self):
         self.assertEqual(self.client.get("/incidents").status_code, 200)
@@ -346,7 +354,9 @@ class AlertCorrelationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_incidents_groups_active_alerts(self):
         conn, c = m.get_db()
@@ -379,7 +389,9 @@ class AlertWorkflowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = m.app.test_client()
-        cls.client.post("/login", data={"username": "admin", "password": "admin12345"})
+        cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
 
     def test_ack_assign_note(self):
         conn, c = m.get_db()
@@ -426,7 +438,7 @@ class SslServiceTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -526,7 +538,7 @@ class PublicStatusTest(unittest.TestCase):
     def setUpClass(cls):
         cls.client = m.app.test_client()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         cls.anon = m.app.test_client()

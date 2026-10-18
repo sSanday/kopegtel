@@ -6,7 +6,7 @@ _tmp = tempfile.mkdtemp(prefix="nms_test_fiber_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DASHBOARD_USERNAME", "admin")
-os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("DASHBOARD_PASSWORD", "PantauNms2026")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "")
 os.environ.setdefault("AGENT_API_KEY", "test-agent-key")
@@ -142,7 +142,7 @@ class FiberApiTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_sn()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -318,7 +318,7 @@ class FiberLinkBudgetTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_sn()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -450,7 +450,7 @@ class OdpApiTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_odp()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -622,7 +622,7 @@ class FiberMuteOverrideTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -725,7 +725,7 @@ class FiberMaintenanceTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -790,7 +790,7 @@ class FiberImportOltTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_extra(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -978,7 +978,7 @@ class FiberMuteExpiryTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -1074,7 +1074,7 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         r = cls.client.post(
@@ -1203,7 +1203,7 @@ class FiberImportUpsertTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -1282,7 +1282,7 @@ class FiberStaleTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -1439,7 +1439,7 @@ class FiberDegradationTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_new(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -1568,7 +1568,7 @@ class FiberOltPresetTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_olt_p(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -1819,7 +1819,7 @@ class FiberPagingSummaryTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_pg(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         for sn, rx in ((SN_PG_A, -19.0), (SN_PG_B, -26.0), (SN_PG_C, -29.0)):
@@ -1924,7 +1924,7 @@ class FiberDailySummaryTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_pg(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -2037,7 +2037,7 @@ class FiberDowntimeTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -2228,7 +2228,7 @@ class FiberFlapTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -2355,7 +2355,7 @@ class FiberDegradeNotifyTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_dt(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
         r = cls.client.get("/api/settings", headers=XRW_HDR)
@@ -2522,7 +2522,7 @@ class FiberTopoTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_topo(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 
@@ -2668,7 +2668,7 @@ class FiberParentTest(unittest.TestCase):
         cls.client = m.app.test_client()
         _cleanup_par(cls.client)
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
 

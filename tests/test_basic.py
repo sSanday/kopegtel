@@ -8,7 +8,7 @@ _tmp = tempfile.mkdtemp(prefix="nms_test_")
 os.environ["NMS_DB_PATH"] = os.path.join(_tmp, "test.db")
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["DASHBOARD_USERNAME"] = "admin"
-os.environ["DASHBOARD_PASSWORD"] = "admin12345"
+os.environ["DASHBOARD_PASSWORD"] = "PantauNms2026"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
 os.environ["AGENT_API_KEY"] = "test-agent-key"
@@ -36,7 +36,7 @@ class NmsTest(unittest.TestCase):
         conn.commit()
         conn.close()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
 
         assert r.status_code == 302, f"login gagal, status={r.status_code}"
@@ -77,7 +77,7 @@ class NmsTest(unittest.TestCase):
     def test_login_remember_and_next(self):
         response = m.app.test_client().post(
             "/login?next=/settings",
-            data={"username": "admin", "password": "admin12345", "remember": "1"},
+            data={"username": "admin", "password": "PantauNms2026", "remember": "1"},
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], "/settings")

@@ -11,7 +11,7 @@ _tmp = tempfile.mkdtemp(prefix="nms_test_notify_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DASHBOARD_USERNAME", "admin")
-os.environ.setdefault("DASHBOARD_PASSWORD", "admin12345")
+os.environ.setdefault("DASHBOARD_PASSWORD", "PantauNms2026")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "")
 os.environ.setdefault("SMTP_HOST", "")
@@ -249,7 +249,7 @@ class EndpointNotifyTest(unittest.TestCase):
         cls.addClassCleanup(cls._env_patcher.stop)
         cls.client = m.app.test_client()
         r = cls.client.post(
-            "/login", data={"username": "admin", "password": "admin12345"}
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
         )
         assert r.status_code == 302
 

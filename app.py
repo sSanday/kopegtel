@@ -6,6 +6,7 @@ import os
 import re
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -52,6 +53,7 @@ from nms.config import (
     LOGIN_FAIL_TTL_S,
     MAX_HOSTS,
     SECRET_KEY,
+    dashboard_password_is_weak,
 )
 
 from nms.db import (
@@ -396,6 +398,8 @@ def _verify_admin(username, password):
 
 
 def _seed_admin_from_env():
+    pw_weak = dashboard_password_is_weak(DASHBOARD_PASSWORD)
+    dev_mode = os.environ.get("FLASK_ENV", "production") != "production"
     try:
         from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -407,7 +411,33 @@ def _seed_admin_from_env():
             c.execute("SELECT value FROM settings WHERE key='admin_pass_hash'")
             r = c.fetchone()
             db_hash = r["value"] if r else None
+            if (db_user or db_hash) and pw_weak:
+                # Admin sudah ada di database: cukup peringatan, jangan paksa
+                # menghentikan aplikasi yang sedang berjalan.
+                logger.warning(
+                    "[AUTH] DASHBOARD_PASSWORD di .env lemah (kosong, <10 "
+                    "karakter, atau kata umum). Ubah password via UI atau set "
+                    "password kuat di .env lalu jalankan NMS_RESET_ADMIN=1."
+                )
             if not db_hash:
+                if pw_weak:
+                    _hint = (
+                        "Set DASHBOARD_PASSWORD kuat (min 10 karakter, bukan "
+                        "kata umum) di file .env lalu jalankan ulang aplikasi. "
+                        "Untuk memulihkan admin, gunakan NMS_RESET_ADMIN=1 "
+                        "sebelumnya."
+                    )
+                    if dev_mode:
+                        print(
+                            "[WARN] DASHBOARD_PASSWORD lemah (development, "
+                            f"tidak dihentikan). {_hint}"
+                        )
+                    else:
+                        print(
+                            "[FATAL] DASHBOARD_PASSWORD lemah; menolak membuat "
+                            f"admin pertama. {_hint}"
+                        )
+                        sys.exit(1)
                 c.execute(
                     "INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_user', ?)",
                     (DASHBOARD_USERNAME,),
