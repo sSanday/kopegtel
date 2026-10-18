@@ -9,4 +9,6 @@ urllib3==2.8.0
 paramiko==5.1.0
 flask-limiter==4.1.1
 dnspython==2.6.1
+pyotp==2.10.0
+segno==1.6.6
 psycopg[binary]>=3.2,<4

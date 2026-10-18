@@ -186,7 +186,11 @@ CREATE TABLE users (
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'operator',
         created_at TEXT NOT NULL,
-        last_login TEXT
+        last_login TEXT,
+        totp_secret TEXT DEFAULT '',
+        totp_enabled INTEGER DEFAULT 0,
+        totp_last_step INTEGER DEFAULT 0,
+        totp_recovery TEXT DEFAULT ''
     );
 CREATE TABLE host_thresholds (
         id SERIAL PRIMARY KEY,

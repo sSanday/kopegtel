@@ -77,6 +77,7 @@ from nms.db import (
     get_host_threshold,
     get_setting,
     get_target_hosts,
+    get_user,
     init_db,
     list_backups,
     list_host_thresholds,
@@ -93,6 +94,7 @@ from nms.notify import audit, channel_status, send_alert, send_telegram_alert
 from nms.validators import validate_backup_filename, validate_dns_query_name
 from nms.anomaly import summarize_anomalies
 from nms import service_checks
+from nms import twofa as twofa
 from nms.query_helpers import (
     get_all_agent_metrics,
     get_all_host_stats,
@@ -1253,15 +1255,7 @@ def login():
         password = request.form.get("password", "")[:200]
         if _verify_admin(username, password):
             login_failures.pop(client_ip, None)
-            user = AdminUser(username=username)
             remember = request.form.get("remember") == "1"
-            login_user(user, remember=remember, duration=timedelta(days=7))
-            session["admin_v"] = _get_session_version()
-            session["_last_activity"] = time.time()
-            try:
-                audit(user.username, "auth.login", f"from {client_ip}")
-            except Exception:
-                pass
             next_page = request.args.get("next")
 
             if (
@@ -1271,6 +1265,26 @@ def login():
                 or "\\" in next_page
             ):
                 next_page = None
+
+            if twofa.enabled_for(username):
+                # Password benar, TAPI 2FA aktif: jangan login_user dulu.
+                session["2fa_pending"] = {
+                    "u": username,
+                    "t": time.time(),
+                    "remember": remember,
+                    "next": next_page,
+                }
+                return redirect(url_for("login_2fa"))
+
+            user = AdminUser(username=username)
+            login_user(user, remember=remember, duration=timedelta(days=7))
+            session["admin_v"] = _get_session_version()
+            session["_last_activity"] = time.time()
+            twofa.touch_last_login(username)
+            try:
+                audit(username, "auth.login", f"from {client_ip}")
+            except Exception:
+                pass
             return redirect(next_page or url_for("index"))
         else:
             fails += 1
@@ -1290,6 +1304,105 @@ def login():
                 login_failures[client_ip] = (fails, 0, now_ts)
                 error = "Username atau password salah."
     return render_template("login.html", error=error, blocked_seconds=blocked_seconds)
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+@limiter.limit("10/minute")
+def login_2fa():
+    """Langkah kedua login: kode TOTP 6 digit ATAU satu recovery code.
+
+    Sesi "pending" dibuat di /login setelah password benar, kedaluwarsa 5
+    menit (twofa.PENDING_TTL_S). Pembatas gagal PER USERNAME: 5 gagal ->
+    diblokir 5 menit (penghitung in-memory per proses; gunicorn di repo
+    ini 1 worker — lihat nms/twofa.py).
+    """
+    pend = session.get("2fa_pending")
+    if not isinstance(pend, dict) or not pend.get("u"):
+        return redirect(url_for("login"))
+    username = str(pend.get("u") or "")[:50]
+
+    if request.method == "GET":
+        return render_template("login_2fa.html", error=None, blocked_seconds=None)
+
+    now_ts = time.time()
+    if now_ts - float(pend.get("t") or 0) > twofa.PENDING_TTL_S:
+        session.pop("2fa_pending", None)
+        return redirect(url_for("login"))
+
+    blocked_seconds = twofa.fail_block_remaining(username, now_ts)
+    if blocked_seconds > 0:
+        try:
+            audit(username, "auth.2fa.failed", f"diblokir {blocked_seconds}s")
+        except Exception:
+            pass
+        return render_template(
+            "login_2fa.html",
+            error=f"Terlalu banyak percobaan gagal. Diblokir {blocked_seconds} detik.",
+            blocked_seconds=blocked_seconds,
+        )
+
+    code = (request.form.get("code") or "")[:32]
+    ok, reason = twofa.verify_login_code(username, code)
+    if ok:
+        twofa.clear_2fa_failures(username)
+        user = AdminUser(username=username)
+        login_user(
+            user,
+            remember=bool(pend.get("remember")),
+            duration=timedelta(days=7),
+        )
+        session["admin_v"] = _get_session_version()
+        session["_last_activity"] = time.time()
+        session.pop("2fa_pending", None)
+        client_ip = get_client_ip()
+        twofa.touch_last_login(username)
+        try:
+            audit(username, "auth.login", f"from {client_ip}")
+        except Exception:
+            pass
+        try:
+            audit(username, "auth.2fa.success", reason)
+        except Exception:
+            pass
+        if reason == "recovery":
+            # Recovery code terpakai: audit khusus + notifikasi channel aktif.
+            try:
+                audit(username, "auth.2fa.recovery_used", f"from {client_ip}")
+            except Exception:
+                pass
+            try:
+                send_alert(
+                    f"⚠️ Recovery code 2FA dipakai untuk {username} "
+                    f"(sisa {twofa.recovery_left(username)}) di NMS KOPEGTEL",
+                    severity="warning",
+                    event="auth.2fa.recovery_used",
+                )
+            except Exception:
+                pass
+        next_page = pend.get("next") or None
+        if (
+            not next_page
+            or not next_page.startswith("/")
+            or next_page.startswith("//")
+            or "\\" in next_page
+        ):
+            next_page = None
+        return redirect(next_page or url_for("index"))
+
+    fails, _ = twofa.record_2fa_fail(username, now_ts)
+    try:
+        audit(username, "auth.2fa.failed", f"{reason} ({fails}x)")
+    except Exception:
+        pass
+    try:
+        log_system_event("AUDIT", username, f"auth.2fa.failed {reason} ({fails}x)")
+    except Exception:
+        pass
+    if reason == "replay":
+        error = "Kode sudah dipakai. Gunakan kode terbaru."
+    else:
+        error = "Kode salah."
+    return render_template("login_2fa.html", error=error, blocked_seconds=None)
 
 
 @app.route("/logout", methods=["POST"])
@@ -2752,6 +2865,136 @@ def api_change_password():
     return jsonify({"status": "success"})
 
 
+# ---- 2FA TOTP (login web) ----------------------------------------------------
+
+
+@app.route("/api/2fa/setup", methods=["POST"])
+@api_login_required
+@limiter.limit("5/minute")
+def api_2fa_setup():
+    """Buat secret TOTP baru (belum aktif). Wajib password saat ini."""
+    import io
+    import pyotp
+    import segno
+
+    data = request.get_json(silent=True) or {}
+    cur = str(data.get("current_password") or "")[:200]
+    if not cur:
+        return jsonify({"error": "Password saat ini wajib diisi"}), 400
+    if not _verify_admin(current_user.username, cur):
+        return jsonify({"error": "Password saat ini salah"}), 400
+
+    username = current_user.username
+    secret = pyotp.random_base32()
+    twofa.ensure_2fa_row(username)
+    twofa.store_pending_secret(username, secret)
+
+    otpauth = pyotp.TOTP(secret).provisioning_uri(
+        name=username, issuer_name="NMS KOPEGTEL"
+    )
+    buf = io.BytesIO()
+    segno.make(otpauth, error="m").save(
+        buf, kind="svg", scale=5, border=2, dark="#10131a", light="#ffffff"
+    )
+    qr_svg = buf.getvalue().decode("utf-8")
+    try:
+        audit(username, "auth.2fa.setup", "")
+    except Exception:
+        pass
+    return jsonify({"secret": secret, "otpauth_uri": otpauth, "qr_svg": qr_svg})
+
+
+@app.route("/api/2fa/enable", methods=["POST"])
+@api_login_required
+@limiter.limit("10/minute")
+def api_2fa_enable():
+    """Aktifkan 2FA dengan kode valid dari secret setup; keluarkan recovery codes."""
+    from nms.twofa import generate_recovery_codes, matched_totp_step
+
+    username = current_user.username
+    stored = twofa.state(username)["secret"]
+    if not stored:
+        return jsonify({"error": "Jalankan setup 2FA terlebih dahulu"}), 400
+
+    data = request.get_json(silent=True) or {}
+    step = matched_totp_step(stored, data.get("code", ""))
+    if step is None:
+        return jsonify({"error": "Kode TOTP salah"}), 400
+
+    codes, hashes = generate_recovery_codes()
+    twofa.replace_secret_and_recover(username, stored, hashes, last_step=step)
+    try:
+        audit(username, "auth.2fa.enabled", "")
+    except Exception:
+        pass
+    try:
+        send_alert(
+            f"🔐 2FA DIAKTIFKAN untuk {username} di NMS KOPEGTEL",
+            severity="warning",
+            event="auth.2fa.enabled",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success", "recovery_codes": codes})
+
+
+@app.route("/api/2fa/disable", methods=["POST"])
+@api_login_required
+@limiter.limit("5/minute")
+def api_2fa_disable():
+    """Nonaktifkan 2FA. Wajib password DAN kode TOTP/recovery code."""
+    username = current_user.username
+    data = request.get_json(silent=True) or {}
+    cur = str(data.get("current_password") or "")[:200]
+    code = str(data.get("code") or "")[:32]
+    if not cur:
+        return jsonify({"error": "Password saat ini wajib diisi"}), 400
+    if not code:
+        return jsonify({"error": "Kode TOTP atau recovery code wajib diisi"}), 400
+    if not _verify_admin(username, cur):
+        return jsonify({"error": "Password saat ini salah"}), 400
+    if not twofa.state(username)["enabled"]:
+        return jsonify({"error": "2FA belum aktif"}), 400
+
+    ok, _reason = twofa.consume_recovery_or_totp(username, code)
+    if not ok:
+        twofa.record_2fa_fail(username, time.time())
+        try:
+            audit(username, "auth.2fa.failed", "disable salah")
+        except Exception:
+            pass
+        return jsonify({"error": "Kode salah"}), 400
+
+    twofa.disable(username)
+    twofa.clear_2fa_failures(username)
+    try:
+        audit(username, "auth.2fa.disabled", "")
+    except Exception:
+        pass
+    try:
+        send_alert(
+            f"🔓 2FA DINONAKTIFKAN untuk {username} di NMS KOPEGTEL",
+            severity="warning",
+            event="auth.2fa.disabled",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/2fa/status", methods=["GET"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_2fa_status():
+    username = current_user.username
+    return jsonify(
+        {
+            "enabled": twofa.state(username)["enabled"],
+            "recovery_left": twofa.recovery_left(username),
+        }
+    )
+
+
 @app.route("/api/agent/report", methods=["POST"])
 @limiter.limit("60/minute")
 def agent_report():
@@ -3606,6 +3849,53 @@ def update_user_role_endpoint(username):
         return jsonify({"status": "success"}), 200
     else:
         return jsonify({"error": message}), 400
+
+
+@app.route("/api/users/<username>/2fa/reset", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("10/minute")
+def api_users_2fa_reset(username):
+    """Admin mereset 2FA user lain (darurat perangkat hilang).
+
+    Admin TIDAK boleh mereset dirinya lewat endpoint ini — pakai
+    /api/2fa/disable (butuh password + kode) supaya lebih aman.
+    """
+    username = str(username or "").strip()[:50]
+    if not username:
+        return jsonify({"error": "Username wajib diisi"}), 400
+    if username == current_user.username:
+        return (
+            jsonify(
+                {
+                    "error": "Gunakan /api/2fa/disable untuk menonaktifkan 2FA akun sendiri"
+                }
+            ),
+            400,
+        )
+    if get_user(username) is None:
+        return jsonify({"error": "User tidak ditemukan"}), 404
+
+    if not twofa.disable(username):
+        return jsonify({"error": "Gagal mereset 2FA"}), 500
+    try:
+        audit(
+            current_user.username,
+            "auth.2fa.reset",
+            f"target={username}",
+            target=username,
+        )
+    except Exception:
+        pass
+    try:
+        send_alert(
+            f"🔁 2FA user {username} direset oleh admin {current_user.username}",
+            severity="warning",
+            event="auth.2fa.reset",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
 
 
 @app.route("/api/dashboard/summary", methods=["GET"])

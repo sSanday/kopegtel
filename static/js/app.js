@@ -1234,6 +1234,148 @@
     });
   }
 
+  /* ---------- Autentikasi Dua Faktor (TOTP) ---------- */
+  var faRecoveryCodes = [];
+  function faFail(m) {
+    var e = $("faError");
+    e.textContent = m;
+    e.style.display = "block";
+  }
+  function faClear() { $("faError").style.display = "none"; }
+  function faShow(result) {
+    $("faSetupPanel").style.display = result ? "none" : "block";
+    $("faSetupResult").style.display = result ? "block" : "none";
+    $("faDisablePanel").style.display = "none";
+    $("faRecoveryPanel").style.display = "none";
+  }
+  function faRenderStatus(ini) {
+    if (ini.enabled) {
+      $("faStatus").textContent = "Aktif — recovery code tersisa: " + ini.recovery_left;
+      $("faSetupPanel").style.display = "none";
+      $("faSetupResult").style.display = "none";
+      $("faDisablePanel").style.display = "block";
+      $("faRecoveryPanel").style.display = "none";
+    } else {
+      $("faStatus").textContent = "Nonaktif";
+      $("faSetupPanel").style.display = "block";
+      $("faSetupResult").style.display = "none";
+      $("faDisablePanel").style.display = "none";
+      $("faRecoveryPanel").style.display = "none";
+    }
+  }
+  function load2faStatus() {
+    fetch("/api/2fa/status", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (r) {
+        if (!r.ok) { faFail(r.j.error || "Gagal memuat status 2FA"); return; }
+        faRenderStatus(r.j);
+      })
+      .catch(function (ex) { console.error(ex); faFail("Gagal memuat status 2FA."); });
+  }
+  function open2faModal() {
+    faClear();
+    $("faPass").value = ""; $("faCode").value = "";
+    $("faDisPass").value = ""; $("faDisCode").value = "";
+    faShow(false);
+    $("faModal").classList.add("open");
+    load2faStatus();
+  }
+  function close2faModal() { $("faModal").classList.remove("open"); }
+  function do2faSetup(e) {
+    e.preventDefault();
+    faClear();
+    var cur = $("faPass").value;
+    if (!cur) { faFail("Password saat ini wajib diisi."); return; }
+    var btn = $("btn2faSetup");
+    btn.disabled = true; btn.textContent = "Membuat QR…";
+    fetch("/api/2fa/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ current_password: cur })
+    }).then(function (res) {
+      return res.json().then(function (j) { return { ok: res.ok, j: j }; });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.j.error || "Gagal setup 2FA");
+      $("faQr").innerHTML = r.j.qr_svg;
+      $("faSecret").textContent = r.j.secret;
+      $("faSetupPanel").style.display = "none";
+      $("faSetupResult").style.display = "block";
+      setTimeout(function () { $("faCode").focus(); }, 80);
+    }).catch(function (ex) {
+      console.error(ex);
+      faFail(ex.message || "Terjadi kesalahan jaringan.");
+    }).finally(function () {
+      btn.disabled = false; btn.textContent = "Buat QR 2FA";
+    });
+  }
+  function do2faEnable(e) {
+    e.preventDefault();
+    faClear();
+    var kode = $("faCode").value.replace(/\D+/g, "");
+    if (kode.length !== 6) { faFail("Masukkan 6 digit kode dari aplikasi."); return; }
+    var btn = $("btn2faEnable");
+    btn.disabled = true; btn.textContent = "Mengaktifkan…";
+    fetch("/api/2fa/enable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ code: kode })
+    }).then(function (res) {
+      return res.json().then(function (j) { return { ok: res.ok, j: j }; });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.j.error || "Gagal aktifkan 2FA");
+      faRecoveryCodes = r.j.recovery_codes || [];
+      var list = $("faRecoveryList");
+      list.innerHTML = "";
+      faRecoveryCodes.forEach(function (c) {
+        var d = document.createElement("div");
+        var span = document.createElement("span");
+        span.textContent = c;
+        var b = document.createElement("button");
+        b.type = "button"; b.className = "btn"; b.textContent = "Salin";
+        b.style.cssText = "padding:2px 8px;margin-left:8px;font-size:11px";
+        b.addEventListener("click", function () { navigator.clipboard.writeText(c); toast("Recovery code disalin."); });
+        d.appendChild(span); d.appendChild(b);
+        list.appendChild(d);
+      });
+      $("faSetupResult").style.display = "none";
+      $("faRecoveryPanel").style.display = "block";
+      $("faStatus").textContent = "Aktif — recovery code tersisa: " + faRecoveryCodes.length;
+      toast("2FA berhasil diaktifkan. Simpan recovery codes!");
+    }).catch(function (ex) {
+      console.error(ex);
+      faFail(ex.message || "Terjadi kesalahan jaringan.");
+    }).finally(function () {
+      btn.disabled = false; btn.textContent = "Aktifkan 2FA";
+    });
+  }
+  function do2faDisable(e) {
+    e.preventDefault();
+    faClear();
+    var cur = $("faDisPass").value;
+    var kode = $("faDisCode").value.trim();
+    if (!cur) { faFail("Password saat ini wajib diisi."); return; }
+    if (!kode) { faFail("Kode TOTP atau recovery code wajib diisi."); return; }
+    var btn = $("btn2faDisable");
+    btn.disabled = true; btn.textContent = "Menonaktifkan…";
+    fetch("/api/2fa/disable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ current_password: cur, code: kode })
+    }).then(function (res) {
+      return res.json().then(function (j) { return { ok: res.ok, j: j }; });
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.j.error || "Gagal nonaktifkan 2FA");
+      $("faDisPass").value = ""; $("faDisCode").value = "";
+      toast("2FA dinonaktifkan.");
+      load2faStatus();
+    }).catch(function (ex) {
+      console.error(ex);
+      faFail(ex.message || "Terjadi kesalahan jaringan.");
+    }).finally(function () {
+      btn.disabled = false; btn.textContent = "Nonaktifkan 2FA";
+    });
+  }
+
   /* ---------- Inisialisasi ---------- */
   function bind(id, ev, fn) {
     var el = $(id);
@@ -1300,6 +1442,18 @@
     bind("menuPassword", "click", function () { closeAllMenus(); openPasswordModal(); });
     bind("btnClosePassword", "click", closePasswordModal);
     bind("btnCancelPassword", "click", closePasswordModal);
+    bind("menu2fa", "click", function () { closeAllMenus(); open2faModal(); });
+    bind("btnClose2fa", "click", close2faModal);
+    bind("btnDone2fa", "click", close2faModal);
+    bind("btn2faSetup", "click", function (ev) { ev.preventDefault(); do2faSetup(ev); });
+    bind("btn2faEnable", "click", function (ev) { ev.preventDefault(); do2faEnable(ev); });
+    bind("btn2faDisable", "click", function (ev) { ev.preventDefault(); do2faDisable(ev); });
+    bind("btnCopySecret", "click", function () {
+      navigator.clipboard.writeText($("faSecret").textContent); toast("Secret disalin.");
+    });
+    bind("btnCopyRecovery", "click", function () {
+      navigator.clipboard.writeText(faRecoveryCodes.join("\n")); toast("Semua recovery codes disalin.");
+    });
     bind("passwordForm", "submit", savePassword);
 
     document.querySelectorAll("#filterSeg .seg-btn").forEach(function (b) {

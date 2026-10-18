@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#10131a">
+<meta name="description" content="Verifikasi dua faktor — masuk ke dasbor NMS Kopegtel">
+<title>Verifikasi 2FA · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login-v4.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#10131a" : "#f4f0ea");
+  } catch (_) {}
+})();
+</script>
+</head>
+<body{% if error %} class="login-page is-login-failed"{% else %} class="login-page"{% endif %}>
+<a class="skip-link" href="#form2fa">Lewati ke formulir verifikasi</a>
+
+<div class="auth">
+  <button class="icon-btn auth-theme" id="themeBtn" aria-label="Ganti tema" aria-pressed="false" title="Ganti tema">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"></path></svg>
+  </button>
+
+  <div class="auth-shell">
+    <header class="auth-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name">NMS Kopegtel</span>
+        <span class="brand-sub">Monitoring Jaringan</span>
+      </span>
+    </header>
+
+    <section class="auth-card{% if error %} is-failed{% endif %}" id="kartu2fa" aria-label="Verifikasi dua faktor">
+      <h1 class="auth-judul" id="authJudul">Verifikasi Dua Faktor</h1>
+      <p class="auth-sub">Masukkan kode 6 digit dari aplikasi autentikator (Google Authenticator, Aegis, dan sejenisnya).</p>
+
+      {% if error %}
+      <div class="form-error" id="pesanError" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <form id="form2fa" method="POST" action="{{ url_for('login_2fa') }}">
+        <div class="field">
+          <label for="code" id="codeLabel">Kode autentikator</label>
+          <input type="text" id="code" name="code" autocomplete="one-time-code"
+                 placeholder="123456" inputmode="numeric" pattern="[0-9]{6}"
+                 maxlength="6" autocapitalize="none" autocorrect="off" spellcheck="false" required
+                 autofocus{% if error %} aria-invalid="true" aria-describedby="pesanError"{% endif %}>
+          <p class="field-hint">Kode berganti setiap 30 detik.</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-kirim" id="tombolVerifikasi">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="tombolLabel">Verifikasi</span>
+        </button>
+      </form>
+
+      <p class="auth-arah" style="margin-top:14px;">
+        <a href="#" id="btnRecovery">Pakai recovery code</a>
+        &nbsp;·&nbsp;
+        <a href="{{ url_for('login') }}">Kembali ke masuk</a>
+      </p>
+    </section>
+
+    <footer class="auth-status">
+      <a href="/status">Status jaringan publik</a>
+    </footer>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Toggle tema (perilaku sama dengan halaman masuk).
+  var tombolTema = document.getElementById("themeBtn");
+  if (tombolTema) {
+    tombolTema.addEventListener("click", function () {
+      var el = document.documentElement;
+      var berikut = el.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      el.setAttribute("data-theme", berikut);
+      try { localStorage.setItem("nms_theme", berikut); } catch (_) {}
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute("content", berikut === "dark" ? "#10131a" : "#f4f0ea");
+      tombolTema.setAttribute("aria-pressed", berikut === "dark" ? "false" : "true");
+    });
+  }
+
+  // Beralih antar kode 6 digit dan recovery code.
+  var tombol = document.getElementById("btnRecovery");
+  var kode = document.getElementById("code");
+  var label = document.getElementById("codeLabel");
+  if (tombol && kode) {
+    tombol.addEventListener("click", function (e) {
+      e.preventDefault();
+      var pakaiRecovery = kode.getAttribute("inputmode") === "numeric";
+      if (pakaiRecovery) {
+        kode.removeAttribute("inputmode");
+        kode.removeAttribute("pattern");
+        kode.setAttribute("maxlength", "16");
+        kode.setAttribute("autocomplete", "off");
+        kode.placeholder = "XXXX-XXXX";
+        label.textContent = "Recovery code";
+        tombol.textContent = "Pakai kode 6 digit";
+      } else {
+        kode.setAttribute("inputmode", "numeric");
+        kode.setAttribute("pattern", "[0-9]{6}");
+        kode.setAttribute("maxlength", "6");
+        kode.setAttribute("autocomplete", "one-time-code");
+        kode.placeholder = "123456";
+        label.textContent = "Kode autentikator";
+        tombol.textContent = "Pakai recovery code";
+      }
+      kode.value = "";
+      kode.focus();
+    });
+  }
+
+  // Hanya angka untuk mode kode 6 digit.
+  if (kode) {
+    kode.addEventListener("input", function () {
+      if (kode.getAttribute("inputmode") === "numeric") {
+        kode.value = kode.value.replace(/\D+/g, "").slice(0, 6);
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

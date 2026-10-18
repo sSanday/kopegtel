@@ -107,7 +107,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Available deployment methods:"
 echo "  • Docker:      docker-compose up -d"
 echo "  • Systemd:     sudo systemctl start nms-dashboard"
-echo "  • Bare metal:  gunicorn -w 4 -b 0.0.0.0:5000 app:app"
+echo "  • Bare metal:  gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 app:app"
 echo ""
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

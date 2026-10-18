@@ -124,8 +124,24 @@ def init_db():
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'operator',
         created_at TEXT NOT NULL,
-        last_login TEXT
+        last_login TEXT,
+        totp_secret TEXT DEFAULT '',
+        totp_enabled INTEGER DEFAULT 0,
+        totp_last_step INTEGER DEFAULT 0,
+        totp_recovery TEXT DEFAULT ''
     )""")
+
+    # Kolom 2FA (aman SQLite dan PostgreSQL) pada tabel users lama.
+    for _col, _ddl in (
+        ("totp_secret", "ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT ''"),
+        ("totp_enabled", "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0"),
+        (
+            "totp_last_step",
+            "ALTER TABLE users ADD COLUMN totp_last_step INTEGER DEFAULT 0",
+        ),
+        ("totp_recovery", "ALTER TABLE users ADD COLUMN totp_recovery TEXT DEFAULT ''"),
+    ):
+        _add_column_compat(c, _ddl)
 
     c.execute("""CREATE TABLE IF NOT EXISTS host_thresholds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1007,6 +1023,126 @@ def update_user_role(username, role):
     except Exception as e:
         conn.close()
         return False, str(e)
+
+
+# ---- Kode 2FA (TOTP) ---------------------------------------------------------
+
+
+def get_user_2fa(username):
+    """State 2FA user, atau None bila baris users tidak ada.
+
+    totp_secret tersimpan TERENKRIPSI (nms.crypto), totp_recovery JSON
+    berisi hash recovery code (plaintext TIDAK pernah disimpan).
+    """
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT username, totp_secret, totp_enabled, totp_last_step, "
+            "totp_recovery, last_login FROM users WHERE username=?",
+            (username,),
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def ensure_2fa_row(username, role="admin"):
+    """Pastikan baris users ada untuk username (dipakai CRUD 2FA).
+
+    Password hash acak yang tidak dapat dipakai login: password
+    sebenarnya diverifikasi via settings (admin_pass_hash), bukan tabel
+    users.
+    """
+    conn, c = get_db()
+    try:
+        c.execute("SELECT 1 FROM users WHERE username=?", (username,))
+        if c.fetchone():
+            return True
+        from werkzeug.security import generate_password_hash
+
+        c.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                username,
+                generate_password_hash("2fa-state-" + os.urandom(24).hex()),
+                role,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def set_user_2fa(username, **cols):
+    """Update subset kolom 2FA: totp_secret/totp_enabled/totp_last_step/totp_recovery."""
+    allowed = {
+        "totp_secret": str,
+        "totp_enabled": int,
+        "totp_last_step": int,
+        "totp_recovery": str,
+    }
+    pairs = []
+    values = []
+    for key, cast in allowed.items():
+        if key in cols and cols[key] is not None:
+            pairs.append(f"{key}=?")
+            values.append(cast(cols[key]))
+    if not pairs:
+        return False
+    if not ensure_2fa_row(username):
+        return False
+    conn, c = get_db()
+    try:
+        c.execute(
+            f"UPDATE users SET {', '.join(pairs)} WHERE username=?",
+            (*values, username),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def clear_user_2fa(username):
+    """Kosongkan seluruh state 2FA. Kembalikan True bila baris diubah."""
+    if not ensure_2fa_row(username):
+        return False
+    conn, c = get_db()
+    try:
+        c.execute(
+            "UPDATE users SET totp_secret='', totp_enabled=0, "
+            "totp_last_step=0, totp_recovery='' WHERE username=?",
+            (username,),
+        )
+        conn.commit()
+        return c.rowcount > 0
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def touch_last_login(username):
+    """Perbarui last_login bila baris users ada; diam-diam abaikan bila tidak."""
+    conn, c = get_db()
+    try:
+        c.execute(
+            "UPDATE users SET last_login=? WHERE username=?",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), username),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
 
 
 def set_host_threshold(host, cpu=None, ram=None, disk=None):

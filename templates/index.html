@@ -97,6 +97,7 @@
             <button type="button" id="menuSettings" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Pengaturan</button>
             <button type="button" id="menuHosts" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/></svg>Kelola Host</button>
             <button type="button" id="menuPassword" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3l6 6-9 9H6v-6l9-9z"/><path d="M13 5l6 6"/></svg>Ganti Password</button>
+            <button type="button" id="menu2fa" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M9 20h1M14 20h1"/></svg>Autentikasi Dua Faktor</button>
             <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
               <button type="submit" class="danger" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4H6v16h8M11 12H3M7 8l-4 4 4 4"/></svg>Keluar</button>
             </form>
@@ -328,6 +329,80 @@
     <div class="modal-foot">
       <button class="btn" id="btnCancelPassword" type="button">Batal</button>
       <button class="btn btn-primary" id="btnSavePassword" type="submit" form="passwordForm">Simpan Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL AUTENTIKASI DUA FAKTOR ============ -->
+<div class="modal-overlay" id="faModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="faTitle">
+    <div class="modal-header">
+      <div><div class="modal-title" id="faTitle">Autentikasi Dua Faktor</div><div class="modal-sub">Kode TOTP (Google Authenticator, Aegis, dll.) untuk login web</div></div>
+      <button class="modal-close" id="btnClose2fa" aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Status</label>
+        <div id="faStatus" style="font-size:13px;color:var(--text-2)">Memuat…</div>
+      </div>
+
+      <!-- Panel: belum aktif (setup) -->
+      <div id="faSetupPanel">
+        <form id="faSetupForm">
+          <div class="field">
+            <label for="faPass">Password saat ini (wajib untuk setup)</label>
+            <input type="password" id="faPass" autocomplete="current-password" required>
+          </div>
+          <button class="btn" id="btn2faSetup" type="submit">Buat QR 2FA</button>
+        </form>
+
+        <div id="faSetupResult" style="display:none">
+          <div id="faQr" style="text-align:center;background:#fff;border-radius:10px;padding:10px;max-width:260px;margin:10px auto"></div>
+          <div class="field">
+            <label>Secret (input manual)</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <code id="faSecret" style="font-size:13px;word-break:break-all;flex:1"></code>
+              <button type="button" class="btn" id="btnCopySecret" style="padding:4px 10px">Salin</button>
+            </div>
+          </div>
+          <form id="faEnableForm">
+            <div class="field">
+              <label for="faCode">Kode 6 digit dari aplikasi autentikator</label>
+              <input type="text" id="faCode" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" required>
+            </div>
+            <button class="btn btn-primary" id="btn2faEnable" type="submit">Aktifkan 2FA</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Panel: recovery codes sekali tampil -->
+      <div id="faRecoveryPanel" style="display:none">
+        <div class="field">
+          <label>Recovery codes (untuk kehilangan perangkat — tampil SEKALI, simpan sekarang!)</label>
+          <div id="faRecoveryList" style="font-family:var(--mono,monospace);font-size:13px;line-height:1.8"></div>
+          <button type="button" class="btn" id="btnCopyRecovery" style="margin-top:6px">Salin semua</button>
+        </div>
+      </div>
+
+      <!-- Panel: aktif (nonaktifkan) -->
+      <div id="faDisablePanel" style="display:none">
+        <form id="faDisableForm">
+          <div class="field">
+            <label for="faDisPass">Password saat ini</label>
+            <input type="password" id="faDisPass" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="faDisCode">Kode TOTP atau satu recovery code</label>
+            <input type="text" id="faDisCode" placeholder="123456 / XXXX-XXXX" autocomplete="off" required>
+          </div>
+          <button class="btn danger" id="btn2faDisable" type="submit">Nonaktifkan 2FA</button>
+        </form>
+      </div>
+
+      <div class="form-error" id="faError" role="alert" style="display:none"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnDone2fa" type="button">Tutup</button>
     </div>
   </div>
 </div>
