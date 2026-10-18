@@ -347,7 +347,9 @@ class SnmpWalkTest(unittest.TestCase):
         orig = _snmpmod._snmp_getnext
         _snmpmod._snmp_getnext = lambda ip, comm, oid, timeout=2.5: next(it)
         try:
-            out = _snmpmod.snmp_walk("1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2")
+            out = _snmpmod.snmp_walk(
+                "1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", use_bulk=False
+            )
             self.assertEqual(len(out), 2)
         finally:
             _snmpmod._snmp_getnext = orig
@@ -362,7 +364,7 @@ class SnmpWalkTest(unittest.TestCase):
         )
         try:
             out = _snmpmod.snmp_walk(
-                "1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", max_rows=64
+                "1.2.3.4", "pub", "1.3.6.1.2.1.2.2.1.2", max_rows=64, use_bulk=False
             )
             self.assertEqual(len(out), 1)
         finally:
