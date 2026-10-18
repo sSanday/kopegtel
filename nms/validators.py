@@ -32,6 +32,28 @@ def validate_ip_or_hostname(value):
     return False, "Invalid IP/hostname format"
 
 
+def validate_dns_query_name(value):
+    """Validate a DNS query name (hostname to query).
+
+    Max total length 253 chars, labels 1-63 chars, only letters/digits/
+    hyphens, no leading or trailing hyphen, optional trailing dot.
+
+    Returns: (valid: bool, error: str or None)
+    """
+    name = str(value or "").strip()
+    if not name:
+        return False, "Query name required"
+    if len(name) > 253:
+        return False, "Query name too long (max 253)"
+    labels = name.rstrip(".").split(".")
+    for label in labels:
+        if not label or len(label) > 63:
+            return False, "Invalid query name label"
+        if not re.fullmatch(r"[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?", label):
+            return False, "Invalid query name format"
+    return True, None
+
+
 def validate_backup_filename(filename):
     """Validate backup filename to prevent path traversal.
 

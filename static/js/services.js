@@ -98,7 +98,7 @@
       if (statusFilter !== "all" && st !== statusFilter) return false;
       if (typeFilter !== "all" && String(s.type || "").toLowerCase() !== typeFilter) return false;
       if (q) {
-        var target = s.type === "tcp" ? s.ip + ":" + (s.port != null ? s.port : "-") : (s.url || "");
+        var target = targetOf(s);
         var hay = (s.name + " " + s.ip + " " + target + " " + s.type).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
       }
@@ -128,7 +128,11 @@
   }
 
   function targetOf(s) {
-    return s.type === "tcp" ? s.ip + ":" + (s.port != null ? s.port : "-") : (s.url || "-");
+    var t = String(s.type || "").toLowerCase();
+    if (t === "tcp") return s.ip + ":" + (s.port != null ? s.port : "-");
+    if (t === "icmp") return "Ping " + (s.ip || "-");
+    if (t === "dns") return (s.query ? s.query + " @ " : "") + (s.ip || "-");
+    return s.url || "-";
   }
 
   function renderServices() {
@@ -564,10 +568,16 @@
   function toggleFields() {
     var t = $("svcType").value;
     var isTcp = t === "tcp";
+    var isHttp = t === "http";
+    var isDns = t === "dns";
     $("portGroup").style.display = isTcp ? "" : "none";
-    $("urlGroup").style.display = isTcp ? "none" : "";
+    $("urlGroup").style.display = isHttp ? "" : "none";
+    $("queryGroup").style.display = isDns ? "" : "none";
+    $("expectedGroup").style.display = (isHttp || isDns) ? "" : "none";
     $("svcPort").required = isTcp;
-    $("svcUrl").required = !isTcp;
+    $("svcUrl").required = isHttp;
+    var lbl = $("svcExpectedLabel");
+    if (lbl) lbl.textContent = isDns ? "Jawaban yang diharapkan (opsional)" : "Keyword (opsional)";
   }
   function submitForm(e) {
     e.preventDefault();
@@ -578,18 +588,26 @@
     var ip = $("svcIp").value.trim();
     var port = $("svcPort").value;
     var url = $("svcUrl").value.trim();
+    var query = ($("svcQuery").value || "").trim();
+    var expected = ($("svcExpected").value || "").trim();
     if (!name) { fail("Nama service wajib diisi."); $("svcName").focus(); return; }
     if (!ip) { fail("Host IP / domain wajib diisi."); $("svcIp").focus(); return; }
     var payload = { name: name, type: type, ip: ip };
     if (type === "tcp") {
       var p = parseInt(port, 10);
       if (!Number.isFinite(p) || p < 1 || p > 65535) { fail("TCP Port harus angka 1–65535."); $("svcPort").focus(); return; }
-      payload.port = p;
-      payload.url = "";
-    } else {
+      payload.port = p; payload.url = ""; payload.query = ""; payload.expected = "";
+    } else if (type === "http") {
       if (!/^https?:\/\/\S+$/i.test(url)) { fail("URL harus diawali http(s)://"); $("svcUrl").focus(); return; }
-      payload.url = url;
-      payload.port = "";
+      if (expected.length > 200) { fail("Keyword maksimal 200 karakter."); $("svcExpected").focus(); return; }
+      payload.url = url; payload.port = ""; payload.query = ""; payload.expected = expected;
+    } else if (type === "icmp") {
+      payload.url = ""; payload.port = ""; payload.query = ""; payload.expected = "";
+    } else {
+      if (!query) { fail("Nama yang di-query wajib diisi untuk tipe DNS."); $("svcQuery").focus(); return; }
+      if (query.length > 253) { fail("Nama yang di-query maksimal 253 karakter."); $("svcQuery").focus(); return; }
+      if (expected.length > 200) { fail("Jawaban yang diharapkan maksimal 200 karakter."); $("svcExpected").focus(); return; }
+      payload.query = query; payload.expected = expected; payload.port = ""; payload.url = "";
     }
     var btn = $("submitBtn");
     btn.disabled = true;

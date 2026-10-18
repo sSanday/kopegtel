@@ -46,6 +46,21 @@ def _insert_system_log(c, event_type, host, message, timestamp=None):
     )
 
 
+def _add_column_compat(c, ddl):
+    """ALTER TABLE ADD COLUMN yang aman untuk SQLite dan PostgreSQL.
+
+    SQLite: kolom ganda -> sqlite3.OperationalError. PostgreSQL: psycopg
+    DuplicateObject dengan pesan "already exists". Keduanya tunda.
+    """
+    try:
+        c.execute(ddl)
+    except sqlite3.OperationalError:
+        pass  # SQLite: kolom sudah ada
+    except Exception as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+
+
 def init_db():
     conn, c = get_db()
 
@@ -79,7 +94,9 @@ def init_db():
         source TEXT NOT NULL DEFAULT 'manual',
         timestamp TEXT NOT NULL
     )""")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_power_host_clock ON power_metrics(host, timestamp)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_power_host_clock ON power_metrics(host, timestamp)"
+    )
     c.execute("""CREATE TABLE IF NOT EXISTS power_devices (
         name TEXT PRIMARY KEY,
         rated_watts REAL,
@@ -224,7 +241,8 @@ def init_db():
         ("mt_storage_oid", "1.3.6.1.4.1.14988.1.1.3.13.0", "1.3.6.1.2.1.25.2.3.1.6.2"),
     ):
         c.execute(
-            "UPDATE settings SET value=? WHERE key=? AND value=?", (new_oid, key, old_oid)
+            "UPDATE settings SET value=? WHERE key=? AND value=?",
+            (new_oid, key, old_oid),
         )
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_temp_oid', '1.3.6.1.4.1.14988.1.1.3.10.0')"
@@ -289,6 +307,7 @@ def init_db():
             c.execute(_ddl)
         except sqlite3.OperationalError:
             pass
+    _add_column_compat(c, "ALTER TABLE hosts ADD COLUMN ssh_hostkey TEXT DEFAULT ''")
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_backup_keep', '10')"
     )
@@ -323,6 +342,8 @@ def init_db():
         type TEXT NOT NULL,
         port INTEGER,
         url TEXT,
+        query TEXT DEFAULT '',
+        expected TEXT DEFAULT '',
         status TEXT DEFAULT 'PENDING',
         latency REAL,
         last_checked TEXT
@@ -425,6 +446,10 @@ def init_db():
             c.execute(_ddl)
         except sqlite3.OperationalError:
             pass
+
+    # Kolom tipe ICMP/DNS + keyword HTTP (aman SQLite dan PostgreSQL).
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN query TEXT DEFAULT ''")
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN expected TEXT DEFAULT ''")
 
     c.execute("""CREATE TABLE IF NOT EXISTS service_history(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1049,6 +1074,7 @@ def log_alert(host, alert_type, severity, message):
     except Exception as e:
         conn.close()
         return False
+
 
 def get_or_create_alert(host, alert_type, severity, message):
     conn, c = get_db()

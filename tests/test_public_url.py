@@ -1,4 +1,5 @@
 """Test URL publik + tautan halaman host di notifikasi Telegram."""
+
 import os
 import tempfile
 import unittest
@@ -57,9 +58,7 @@ class PublicUrlTest(unittest.TestCase):
         r = self.client.get("/api/settings", headers=JSON_HDR)
         # trailing slash dinormalisasi
         self.assertEqual(r.get_json()["public_url"], "http://192.168.1.5:5000")
-        r = self.client.post(
-            "/api/settings", json={"public_url": ""}, headers=JSON_HDR
-        )
+        r = self.client.post("/api/settings", json={"public_url": ""}, headers=JSON_HDR)
         self.assertEqual(r.status_code, 200)
 
     def test_down_dan_pulih_memuat_tautan(self):
@@ -70,9 +69,11 @@ class PublicUrlTest(unittest.TestCase):
         )
         orig_ping = _monmod.ping_host
         orig_tg = _monmod.send_telegram_alert
+        orig_sa = _monmod.send_alert
         sent = []
         _monmod.ping_host = lambda h: (-1, 100.0) if h == LINK_HOST else (0.5, 0.0)
         _monmod.send_telegram_alert = lambda msg: sent.append(msg)
+        _monmod.send_alert = lambda msg, severity="warning", event="": sent.append(msg)
         try:
             m.status_memory[LINK_HOST] = False
             m.check_network()
@@ -98,13 +99,12 @@ class PublicUrlTest(unittest.TestCase):
         finally:
             _monmod.ping_host = orig_ping
             _monmod.send_telegram_alert = orig_tg
+            _monmod.send_alert = orig_sa
             m.status_memory.pop(LINK_HOST, None)
             m.down_since.pop(LINK_HOST, None)
             conn, c = m.get_db()
             c.execute("DELETE FROM down_events WHERE host=?", (LINK_HOST,))
-            c.execute(
-                "DELETE FROM settings WHERE key=?", ("public_url",)
-            )
+            c.execute("DELETE FROM settings WHERE key=?", ("public_url",))
             conn.commit()
             conn.close()
 

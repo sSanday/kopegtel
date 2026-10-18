@@ -155,7 +155,14 @@ def fiber_eval(rx, tx=None, th=None):
     return r_status, r_sev, advice, need
 
 
-FIBER_SPLITTER_LOSS = {"1:2": 3.6, "1:4": 7.2, "1:8": 10.5, "1:16": 13.8, "1:32": 17.1, "1:64": 20.4}
+FIBER_SPLITTER_LOSS = {
+    "1:2": 3.6,
+    "1:4": 7.2,
+    "1:8": 10.5,
+    "1:16": 13.8,
+    "1:32": 17.1,
+    "1:64": 20.4,
+}
 FIBER_PER_KM_DB = 0.35
 FIBER_CONNECTOR_DB = 0.5
 FIBER_SPLICE_DB = 0.1

@@ -64,7 +64,8 @@ class NmsTest(unittest.TestCase):
 
     def test_login_error_preserves_escaped_username(self):
         response = m.app.test_client().post(
-            "/login", data={"username": '<script>alert("x")</script>', "password": "wrong"}
+            "/login",
+            data={"username": '<script>alert("x")</script>', "password": "wrong"},
         )
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)

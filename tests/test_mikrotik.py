@@ -1,6 +1,9 @@
+import base64
+import hashlib
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 _tmp = tempfile.mkdtemp(prefix="nms_test_mikrotik_")
 os.environ.setdefault("NMS_DB_PATH", os.path.join(_tmp, "test.db"))
@@ -1043,6 +1046,210 @@ class MikrotikBackupTest(unittest.TestCase):
         finally:
             _mrtmod.fetch_mikrotik_config = orig_fetch
             self.client.delete(f"/api/hosts/{MT_BK_HOST}", headers=XRW_HDR)
+
+
+# ---- TOFU host key SSH ------------------------------------------------------
+
+
+def _expected_fp(blob):
+    dig = hashlib.sha256(blob).digest()
+    return "ssh-ed25519 SHA256:" + base64.b64encode(dig).decode().rstrip("=")
+
+
+class _FakeKey:
+    """Objek host key tiruan (API minimal: get_name + asbytes)."""
+
+    def __init__(self, blob=b"keyA", name="ssh-ed25519"):
+        self._blob = blob
+        self._name = name
+
+    def get_name(self):
+        return self._name
+
+    def asbytes(self):
+        return self._blob
+
+
+_TOFU_KEY = {"key": _FakeKey(b"keyA")}
+
+
+class _FakeOut:
+    def read(self, n=-1):
+        return CFG_V1.encode("utf-8")
+
+
+class _FakeSSHClient:
+    """SSHClient tiruan, tanpa koneksi sungguhan.
+
+    connect() mensimulasi negosiasi: server mengirim key aktif
+    (_TOFU_KEY["key"]) dan policy default paramiko mengevaluasinya —
+    pengecualian dari policy (mismatch) menyebar keluar connect(),
+    persis perilaku paramiko nyata.
+    """
+
+    def __init__(self):
+        self.policy = None
+
+    def set_missing_host_key_policy(self, policy):
+        self.policy = policy
+
+    def connect(self, host, **kwargs):
+        self.policy.missing_host_key(self, host, _TOFU_KEY["key"])
+
+    def exec_command(self, cmd, timeout=None):
+        return None, _FakeOut(), None
+
+    def close(self):
+        pass
+
+
+class TofuPolicyUnitTest(unittest.TestCase):
+    def test_fingerprint_format(self):
+        self.assertEqual(
+            _mtmod._hostkey_fingerprint(_FakeKey(b"keyA")), _expected_fp(b"keyA")
+        )
+
+    def test_key_pertama_ditangkap_oleh_on_new_key(self):
+        captured = []
+        pol = _mtmod._make_tofu_policy("", captured.append)
+        pol.missing_host_key(None, MT_BK_HOST, _FakeKey(b"keyA"))
+        self.assertEqual(captured, [_expected_fp(b"keyA")])
+
+    def test_key_cocok_lolos(self):
+        pol = _mtmod._make_tofu_policy(_expected_fp(b"keyA"), None)
+        pol.missing_host_key(None, MT_BK_HOST, _FakeKey(b"keyA"))
+
+    def test_key_beda_ditolak(self):
+        pol = _mtmod._make_tofu_policy(_expected_fp(b"keyA"), None)
+        with self.assertRaises(_mtmod.MikrotikHostKeyMismatch):
+            pol.missing_host_key(None, MT_BK_HOST, _FakeKey(b"keyB"))
+
+    def test_fetch_mismatch_pesan_khusus(self):
+        _TOFU_KEY["key"] = _FakeKey(b"keyB")
+        with mock.patch("paramiko.SSHClient", _FakeSSHClient):
+            ok, payload = _mtmod.fetch_mikrotik_config(
+                MT_BK_HOST,
+                "admin",
+                "rahasia",
+                expected_hostkey=_expected_fp(b"keyA"),
+            )
+        self.assertFalse(ok)
+        self.assertEqual(payload, _mtmod.MT_SSHKEY_MISMATCH_MSG)
+
+    def test_fetch_key_pertama_lolos_dan_diterima(self):
+        _TOFU_KEY["key"] = _FakeKey(b"keyA")
+        holder = {}
+        with mock.patch("paramiko.SSHClient", _FakeSSHClient):
+            ok, payload = _mtmod.fetch_mikrotik_config(
+                MT_BK_HOST,
+                "admin",
+                "rahasia",
+                expected_hostkey="",
+                on_new_key=lambda fp: holder.update(fp=fp),
+            )
+        self.assertTrue(ok)
+        self.assertEqual(holder["fp"], _expected_fp(b"keyA"))
+
+
+class MikrotikHostKeyTest(unittest.TestCase):
+    """TOFU menyeluruh melewati poller -> DB (tanpa koneksi SSH nyata)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        _cleanup_bk()
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "admin12345"}
+        )
+        assert r.status_code == 302, f"login gagal, status={r.status_code}"
+
+    @classmethod
+    def tearDownClass(cls):
+        _cleanup_bk()
+
+    def _count(self, event_type):
+        conn, c = m.get_db()
+        try:
+            return c.execute(
+                "SELECT COUNT(*) FROM system_logs WHERE host=? AND event_type=?",
+                (MT_BK_HOST, event_type),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    def _ssh_hostkey(self):
+        conn, c = m.get_db()
+        try:
+            return c.execute(
+                "SELECT ssh_hostkey FROM hosts WHERE ip=?", (MT_BK_HOST,)
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_tofu_pertama_sama_beda(self):
+        r = self.client.post(
+            "/api/hosts",
+            json={
+                "ip": MT_BK_HOST,
+                "snmp_community": "",
+                "ssh_user": "admin",
+                "ssh_pass": "rahasia",
+                "ssh_port": 22,
+                "backup_enable": 1,
+            },
+            headers=JSON_HDR,
+        )
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        sent = []
+        orig_tg = _mtmod.send_telegram_alert
+        _mtmod.send_telegram_alert = lambda msg: sent.append(msg)
+        _TOFU_KEY["key"] = _FakeKey(b"keyA")
+        try:
+            with mock.patch("paramiko.SSHClient", _FakeSSHClient):
+                # 1) Key pertama dipercaya dan tersimpan di DB.
+                m.poll_mt_backups()
+                self.assertEqual(self._ssh_hostkey(), _expected_fp(b"keyA"))
+                self.assertEqual(self._count("MT_SSHKEY_TRUSTED"), 1)
+                self.assertEqual(self._count("MT_SSHKEY_MISMATCH"), 0)
+
+                # 2) Key sama: lolos, tidak ada log TRUSTED tambahan.
+                m.poll_mt_backups()
+                self.assertEqual(self._count("MT_SSHKEY_TRUSTED"), 1)
+                self.assertEqual(self._count("MT_SSHKEY_MISMATCH"), 0)
+
+                # 3) Key beda ditolak: log mismatch + satu alert saja.
+                _TOFU_KEY["key"] = _FakeKey(b"keyB")
+                m.poll_mt_backups()
+                self.assertEqual(self._count("MT_SSHKEY_MISMATCH"), 1)
+                self.assertEqual(len(sent), 1)
+                self.assertIn("HOST KEY", sent[0])
+
+                # 4) Siklus berikut masih mismatch: dedupe, tanpa alert lagi.
+                sent.clear()
+                m.poll_mt_backups()
+                self.assertEqual(self._count("MT_SSHKEY_MISMATCH"), 1)
+                self.assertEqual(sent, [])
+
+                # 5) Endpoint reset admin-only: ssh_hostkey dikosongkan.
+                r = self.client.post(
+                    f"/api/mikrotik/{MT_BK_HOST}/hostkey/reset", headers=JSON_HDR
+                )
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(self._ssh_hostkey(), "")
+                self.assertGreaterEqual(self._count("MT_SSHKEY_RESET"), 1)
+
+                # 6) Setelah reset: key sama yang "baru" dipercaya ulang.
+                _TOFU_KEY["key"] = _FakeKey(b"keyB")
+                m.poll_mt_backups()
+                self.assertEqual(self._ssh_hostkey(), _expected_fp(b"keyB"))
+        finally:
+            _mtmod.send_telegram_alert = orig_tg
+
+    def test_reset_host_tidak_dikenal(self):
+        r = self.client.post(
+            "/api/mikrotik/10.99.99.150/hostkey/reset", headers=JSON_HDR
+        )
+        self.assertEqual(r.status_code, 404)
 
 
 if __name__ == "__main__":

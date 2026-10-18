@@ -17,6 +17,21 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+# Notifikasi Email (SMTP). PORT 465 = SSL implisit, selain itu STARTTLS.
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", "")
+ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO", "")
+try:
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+except (ValueError, TypeError):
+    SMTP_PORT = 587
+
+# Notifikasi Webhook generik. WEBHOOK_SECRET opsional (HMAC-SHA256 body).
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
+
 AGENT_API_KEY = os.environ.get("AGENT_API_KEY", "")
 
 # AGENT_API_KEY is required for security

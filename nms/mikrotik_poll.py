@@ -138,9 +138,7 @@ def _std_cpu_percent(ip, community):
 
 def _storage_index(ip, community, want_memory):
     """Cari index hrStorage yang cocok (memori vs non-memori)."""
-    for oid, _tag, _iv, sv in _hrs_walk(
-        ip, community, "1.3.6.1.2.1.25.2.3.1.3", 64
-    ):
+    for oid, _tag, _iv, sv in _hrs_walk(ip, community, "1.3.6.1.2.1.25.2.3.1.3", 64):
         desc = str(sv or "").lower()
         is_mem = ("memory" in desc) or ("ram" in desc)
         if is_mem == want_memory:
@@ -859,7 +857,61 @@ def _mt_backup_keep():
     return min(50, max(3, k))
 
 
-def fetch_mikrotik_config(host, username, password, port=22, timeout=20):
+MT_SSHKEY_MISMATCH_MSG = "Host key berubah, kemungkinan router diganti atau ada MITM"
+
+
+class MikrotikHostKeyMismatch(Exception):
+    """Host key server berbeda dari yang tersimpan (TOFU gagal)."""
+
+
+def _hostkey_fingerprint(key):
+    """Fingerprint host key utk log/DB: "tipe SHA256:base64" (bukan key utuh)."""
+    import base64
+
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return f"{key.get_name()} SHA256:{base64.b64encode(digest).decode().rstrip('=')}"
+
+
+def _same_hostkey(stored, fp):
+    return (stored or "").strip() == (fp or "").strip()
+
+
+def _make_tofu_policy(expected_hostkey, on_new_key):
+    """Policy host key TOFU (trust on first use).
+
+    expected_hostkey kosong: key pertama dipercaya, fingerprint dikirim ke
+    on_new_key agar caller menyimpannya ke DB. Cocok: lanjut. Beda:
+    raise MikrotikHostKeyMismatch (koneksi ditolak).
+    """
+    import paramiko
+
+    class _TofuHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+        def __init__(self, expected="", on_new=None):
+            self.expected = (expected or "").strip()
+            self.on_new = on_new
+
+        def missing_host_key(self, client, hostname, key):
+            fp = _hostkey_fingerprint(key)
+            if not self.expected:
+                if callable(self.on_new):
+                    self.on_new(fp)
+                return
+            if _same_hostkey(self.expected, fp):
+                return
+            raise MikrotikHostKeyMismatch(MT_SSHKEY_MISMATCH_MSG)
+
+    return _TofuHostKeyPolicy(expected_hostkey or "", on_new_key)
+
+
+def fetch_mikrotik_config(
+    host,
+    username,
+    password,
+    port=22,
+    timeout=20,
+    expected_hostkey="",
+    on_new_key=None,
+):
     """Ambil /export via SSH. Kembalikan (ok, text_atau_error)."""
     try:
         import paramiko
@@ -876,7 +928,9 @@ def fetch_mikrotik_config(host, username, password, port=22, timeout=20):
     client = None
     try:
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.set_missing_host_key_policy(
+            _make_tofu_policy(expected_hostkey, on_new_key)
+        )
         client.connect(
             host,
             port=port,
@@ -897,6 +951,8 @@ def fetch_mikrotik_config(host, username, password, port=22, timeout=20):
         if not text:
             return False, "export kosong"
         return True, text
+    except MikrotikHostKeyMismatch:
+        return False, MT_SSHKEY_MISMATCH_MSG
     except Exception as e:
         return False, f"SSH gagal: {e}"[:300]
     finally:
@@ -919,6 +975,27 @@ def _store_mt_backup(c, host, ok, payload, timestamp):
                 "UPDATE hosts SET backup_last=?, backup_ok=0 WHERE ip=?",
                 (timestamp, host),
             )
+            if payload == MT_SSHKEY_MISMATCH_MSG:
+                # Dedupe: satu alert saja per periode mismatch (sampai
+                # di-reset lalu di-trust ulang), jangan spam tiap siklus.
+                c.execute(
+                    "SELECT event_type FROM system_logs WHERE host=?"
+                    " AND event_type IN ('MT_SSHKEY_TRUSTED','MT_SSHKEY_MISMATCH')"
+                    " ORDER BY id DESC LIMIT 1",
+                    (host,),
+                )
+                last = c.fetchone()
+                if last and last["event_type"] == "MT_SSHKEY_MISMATCH":
+                    return None
+                _insert_system_log(
+                    c, "MT_SSHKEY_MISMATCH", host, "Host key SSH berubah", timestamp
+                )
+                return (
+                    "🔐 *HOST KEY SSH BERUBA*\n"
+                    f"Host: `{host}`\n"
+                    "Kemungkinan router direset/diganti, atau ada MITM.\n"
+                    "Cek halaman MikroTik → Reset host key."
+                )
             _insert_system_log(c, "MT_BACKUP_FAIL", host, str(payload)[:200], timestamp)
         except sqlite3.OperationalError:
             pass
@@ -1004,7 +1081,7 @@ def _mt_backup_candidates():
         conn, c = get_db()
         try:
             c.execute(
-                "SELECT ip, ssh_user, ssh_pass, ssh_port FROM hosts "
+                "SELECT ip, ssh_user, ssh_pass, ssh_port, ssh_hostkey FROM hosts "
                 "WHERE backup_enable=1"
             )
             rows = [dict(r) for r in c.fetchall()]
@@ -1024,6 +1101,7 @@ def poll_mt_backups():
     if not cands:
         return
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_keys = {}
 
     def _one(h):
         try:
@@ -1032,6 +1110,8 @@ def poll_mt_backups():
                 h.get("ssh_user") or "",
                 h.get("ssh_pass") or "",
                 h.get("ssh_port") or 22,
+                expected_hostkey=(h.get("ssh_hostkey") or "").strip(),
+                on_new_key=(lambda fp, _h=h["ip"]: new_keys.setdefault(_h, fp)),
             )
         except Exception as e:
             return h["ip"], (False, f"fetch gagal: {e}"[:200])
@@ -1046,6 +1126,18 @@ def poll_mt_backups():
         try:
             for host, (ok, payload) in results.items():
                 try:
+                    if host in new_keys:
+                        c.execute(
+                            "UPDATE hosts SET ssh_hostkey=? WHERE ip=?",
+                            (new_keys[host], host),
+                        )
+                        _insert_system_log(
+                            c,
+                            "MT_SSHKEY_TRUSTED",
+                            host,
+                            "Host key SSH dipercaya pertama kali (TOFU)",
+                            timestamp,
+                        )
                     msg = _store_mt_backup(c, host, ok, payload, timestamp)
                 except Exception as e:
                     print(f"[MT-BACKUP] {host} gagal: {e}")

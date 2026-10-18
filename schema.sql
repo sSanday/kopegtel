@@ -20,7 +20,7 @@ CREATE TABLE down_events (
 CREATE TABLE hosts (
         id SERIAL PRIMARY KEY,
         ip TEXT UNIQUE NOT NULL
-    , snmp_community TEXT DEFAULT '', if_index INTEGER DEFAULT 1, alias TEXT DEFAULT '', category TEXT DEFAULT 'Uncategorized', snmp_profile TEXT DEFAULT 'auto', cpu_oid TEXT DEFAULT '', mem_oid TEXT DEFAULT '', storage_oid TEXT DEFAULT '', temp_oid TEXT DEFAULT '', ssh_user TEXT DEFAULT '', ssh_pass TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22, backup_enable INTEGER NOT NULL DEFAULT 0, backup_last TEXT DEFAULT '', backup_ok INTEGER NOT NULL DEFAULT 0);
+    , snmp_community TEXT DEFAULT '', if_index INTEGER DEFAULT 1, alias TEXT DEFAULT '', category TEXT DEFAULT 'Uncategorized', snmp_profile TEXT DEFAULT 'auto', cpu_oid TEXT DEFAULT '', mem_oid TEXT DEFAULT '', storage_oid TEXT DEFAULT '', temp_oid TEXT DEFAULT '', ssh_user TEXT DEFAULT '', ssh_pass TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22, backup_enable INTEGER NOT NULL DEFAULT 0, backup_last TEXT DEFAULT '', backup_ok INTEGER NOT NULL DEFAULT 0, ssh_hostkey TEXT DEFAULT '');
 CREATE TABLE agent_metrics (
         id SERIAL PRIMARY KEY,
         host TEXT NOT NULL,
@@ -38,6 +38,8 @@ CREATE TABLE services (
         type TEXT NOT NULL,
         port INTEGER,
         url TEXT,
+        query TEXT DEFAULT '',
+        expected TEXT DEFAULT '',
         status TEXT DEFAULT 'PENDING',
         latency REAL,
         last_checked TEXT

@@ -87,9 +87,10 @@ from nms.db import (
     update_alert_workflow,
     mark_alerts_escalated,
 )
-from nms.notify import audit, send_telegram_alert
-from nms.validators import validate_backup_filename
+from nms.notify import audit, channel_status, send_alert, send_telegram_alert
+from nms.validators import validate_backup_filename, validate_dns_query_name
 from nms.anomaly import summarize_anomalies
+from nms import service_checks
 from nms.query_helpers import (
     get_all_agent_metrics,
     get_all_host_stats,
@@ -211,6 +212,10 @@ if LIMITER_AVAILABLE:
         default_limits=["20000 per day", "2000 per hour"],
         storage_uri="memory://",
     )
+    # Gate untuk test (tests/conftest.py): matikan rate limit agar login
+    # antar file test tidak tak kena 429.
+    if os.environ.get("NMS_DISABLE_LIMITER", "0") == "1":
+        limiter.enabled = False
 else:
 
     class NoOpLimiter:
@@ -670,45 +675,23 @@ def _is_url_allowed_for_monitoring(url):
 
 
 def check_single_service(svc):
-    svc_id, ip, name, svc_type, port, url = svc
-    start_time = time.time()
-    status = "OFFLINE"
+    """Pembungkus -> nms.service_checks. Signature/return tetap sama.
 
-    if svc_type == "tcp":
-        try:
-            port_int = int(port)
-            if not 1 <= port_int <= 65535:
-                raise ValueError("port out of range")
-            with socket.create_connection((ip, port_int), timeout=5):
-                status = "ONLINE"
-        except Exception:
-            pass
-    elif svc_type == "http":
-        try:
-            if not _is_url_allowed_for_monitoring(url):
-                status = "OFFLINE"
-            else:
-                import urllib3
-
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-                r = requests.get(
-                    url,
-                    timeout=5,
-                    verify=os.environ.get("NMS_SSL_VERIFY", "1") != "0",
-                    headers={"User-Agent": "NMS-KOPEGTEL/1.0"},
-                )
-                if r.status_code < 400:
-                    status = "ONLINE"
-        except Exception:
-            pass
-    else:
-
-        status = "PENDING"
-
-    latency = (time.time() - start_time) * 1000
-    if status == "OFFLINE":
-        latency = 0
+    Tuple: (id, ip, name, type, port, url[, query, expected]) — dua elemen
+    terakhir opsional agar pemanggil/test lama (6-tuple) tetap jalan.
+    """
+    svc_id, ip, name, svc_type, port, url = svc[:6]
+    query = str(svc[6] or "") if len(svc) > 6 else ""
+    expected = str(svc[7] or "") if len(svc) > 7 else ""
+    status, latency = service_checks.run_check(
+        svc_type,
+        ip,
+        port,
+        url,
+        query=query,
+        expected=expected,
+        is_url_allowed=_is_url_allowed_for_monitoring,
+    )
     return svc_id, status, latency
 
 
@@ -866,20 +849,34 @@ def check_services():
 
         conn, c = get_db()
         try:
-            c.execute("SELECT id, ip, name, type, port, url FROM services")
-            services = [dict(s) for s in c.fetchall()]
+            try:
+                c.execute(
+                    "SELECT id, ip, name, type, port, url, query, expected FROM services"
+                )
+            except Exception:
+                # DB lama tanpa kolom query/expected -> tuple 6 elemen
+                c.execute("SELECT id, ip, name, type, port, url FROM services")
+            services = []
+            for row in c.fetchall():
+                s = dict(row)
+                services.append(
+                    (
+                        s.get("id"),
+                        s.get("ip"),
+                        s.get("name"),
+                        s.get("type"),
+                        s.get("port"),
+                        s.get("url"),
+                        (s.get("query") or ""),
+                        (s.get("expected") or ""),
+                    )
+                )
         finally:
             conn.close()
 
         results = []
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [
-                executor.submit(
-                    check_single_service,
-                    (s["id"], s["ip"], s["name"], s["type"], s["port"], s["url"]),
-                )
-                for s in services
-            ]
+            futures = [executor.submit(check_single_service, s) for s in services]
             for future in as_completed(futures):
                 try:
                     results.append(future.result())
@@ -1216,7 +1213,9 @@ def login():
         fails, blocked_until, _ = login_failures.get(client_ip, (0, 0, 0))
         if now_ts < blocked_until:
             blocked_seconds = int(blocked_until - now_ts)
-            error = f"Terlalu banyak percobaan gagal. Coba lagi {blocked_seconds} detik."
+            error = (
+                f"Terlalu banyak percobaan gagal. Coba lagi {blocked_seconds} detik."
+            )
             return render_template(
                 "login.html", error=error, blocked_seconds=blocked_seconds
             )
@@ -1330,7 +1329,14 @@ def api_power_history():
     if bucket not in ("raw", "hour", "day"):
         bucket = "raw"
     try:
-        return jsonify({"host": host, "hours": hours, "bucket": bucket, "data": get_power_history(host, hours, bucket)})
+        return jsonify(
+            {
+                "host": host,
+                "hours": hours,
+                "bucket": bucket,
+                "data": get_power_history(host, hours, bucket),
+            }
+        )
     except Exception as e:
         logger.warning(f"power history gagal: {e}")
         return jsonify({"error": "gagal memuat histori daya"}), 500
@@ -1346,20 +1352,30 @@ def api_power_devices():
     conn, c = get_db()
     try:
         try:
-            c.execute("SELECT ip, alias, snmp_community, power_oid, power_scale, power_rated_watts FROM hosts ORDER BY ip ASC")
+            c.execute(
+                "SELECT ip, alias, snmp_community, power_oid, power_scale, power_rated_watts FROM hosts ORDER BY ip ASC"
+            )
             snmp_hosts = [dict(r) for r in c.fetchall()]
             for h in snmp_hosts:
                 h.pop("snmp_community", None)
         except Exception:
             snmp_hosts = []
         try:
-            c.execute("SELECT name, rated_watts, threshold_watts, source, notes, updated_at FROM power_devices ORDER BY name ASC")
+            c.execute(
+                "SELECT name, rated_watts, threshold_watts, source, notes, updated_at FROM power_devices ORDER BY name ASC"
+            )
             manual = [dict(r) for r in c.fetchall()]
         except Exception:
             manual = []
     finally:
         conn.close()
-    return jsonify({"devices": summary["devices"], "snmp_hosts": snmp_hosts, "manual_devices": manual})
+    return jsonify(
+        {
+            "devices": summary["devices"],
+            "snmp_hosts": snmp_hosts,
+            "manual_devices": manual,
+        }
+    )
 
 
 @app.route("/api/power/metrics", methods=["POST"])
@@ -1387,17 +1403,30 @@ def api_power_metrics():
 def api_power_snmp(host_ip):
     conn, c = get_db()
     try:
-        c.execute("SELECT ip, snmp_community, power_oid, power_scale FROM hosts WHERE ip=?", (host_ip,))
+        c.execute(
+            "SELECT ip, snmp_community, power_oid, power_scale FROM hosts WHERE ip=?",
+            (host_ip,),
+        )
         host = c.fetchone()
         host = dict(host) if host else None
     finally:
         conn.close()
     if not host or not (host.get("power_oid") or "").strip():
-        return jsonify({"error": "Host tidak ditemukan atau power_oid belum dikonfigurasi"}), 400
+        return (
+            jsonify(
+                {"error": "Host tidak ditemukan atau power_oid belum dikonfigurasi"}
+            ),
+            400,
+        )
     if not _valid_oid(host["power_oid"]):
         return jsonify({"error": "power_oid tidak valid"}), 400
     try:
-        values = _snmp_get(host["ip"], host.get("snmp_community") or "", [host["power_oid"]], timeout=3.0)
+        values = _snmp_get(
+            host["ip"],
+            host.get("snmp_community") or "",
+            [host["power_oid"]],
+            timeout=3.0,
+        )
     except Exception as e:
         return jsonify({"error": f"SNMP gagal: {e}"}), 502
     raw = values[0] if values else None
@@ -1411,7 +1440,9 @@ def api_power_snmp(host_ip):
         saved = record_power_metric(host_ip, watts=watts, source="snmp")
     except Exception as e:
         return jsonify({"error": f"gagal menyimpan: {e}"}), 500
-    return jsonify({"ok": True, "host": host_ip, "watts": watts, "source": "snmp", **saved})
+    return jsonify(
+        {"ok": True, "host": host_ip, "watts": watts, "source": "snmp", **saved}
+    )
 
 
 @app.route("/api/power/poll-snmp", methods=["POST"])
@@ -1468,8 +1499,16 @@ def api_power_device_upsert():
     if not name:
         return jsonify({"error": "nama perangkat wajib diisi"}), 400
     try:
-        rated = float(data["rated_watts"]) if data.get("rated_watts") not in (None, "") else None
-        thr = float(data["threshold_watts"]) if data.get("threshold_watts") not in (None, "") else None
+        rated = (
+            float(data["rated_watts"])
+            if data.get("rated_watts") not in (None, "")
+            else None
+        )
+        thr = (
+            float(data["threshold_watts"])
+            if data.get("threshold_watts") not in (None, "")
+            else None
+        )
     except (TypeError, ValueError):
         return jsonify({"error": "rated/threshold harus angka"}), 400
     source = str(data.get("source", "manual"))[:30] or "manual"
@@ -1533,7 +1572,10 @@ def api_power_settings():
     conn, c = get_db()
     try:
         for k, v in vals.items():
-            c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, str(v)))
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (k, str(v)),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -1551,9 +1593,21 @@ def api_power_export():
     rows = get_power_history(host, hours, "raw")
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["timestamp", "host", "watts", "voltage", "current", "energy_kwh", "source"])
+    writer.writerow(
+        ["timestamp", "host", "watts", "voltage", "current", "energy_kwh", "source"]
+    )
     for r in rows:
-        writer.writerow([r.get("timestamp"), r.get("host"), r.get("watts"), r.get("voltage"), r.get("current"), r.get("energy_kwh"), r.get("source")])
+        writer.writerow(
+            [
+                r.get("timestamp"),
+                r.get("host"),
+                r.get("watts"),
+                r.get("voltage"),
+                r.get("current"),
+                r.get("energy_kwh"),
+                r.get("source"),
+            ]
+        )
     return Response(
         output.getvalue(),
         mimetype="text/csv",
@@ -1774,12 +1828,8 @@ def api_host_stats(ip):
                 if ag
                 else (
                     {
-                        "cpu": (
-                            round((mt_row["cpu"] or 0), 1) if mt_row else 0
-                        ),
-                        "ram": (
-                            round((mt_row["mem_used"] or 0), 1) if mt_row else 0
-                        ),
+                        "cpu": (round((mt_row["cpu"] or 0), 1) if mt_row else 0),
+                        "ram": (round((mt_row["mem_used"] or 0), 1) if mt_row else 0),
                         "disk": (
                             round((mt_row["storage_used"] or 0), 1) if mt_row else 0
                         ),
@@ -1793,7 +1843,9 @@ def api_host_stats(ip):
                         {
                             "cpu": round((mt_row["cpu"] or 0), 1) if mt_row else 0,
                             "ram": round((mt_row["mem_used"] or 0), 1) if mt_row else 0,
-                            "disk": round((mt_row["storage_used"] or 0), 1) if mt_row else 0,
+                            "disk": (
+                                round((mt_row["storage_used"] or 0), 1) if mt_row else 0
+                            ),
                             "net_in": 0.0,
                             "net_out": 0.0,
                             "last_seen": (mt_row["timestamp"] if mt_row else None),
@@ -1950,7 +2002,10 @@ def api_snmp_discovery():
         logger.warning(f"Simpan riwayat discovery gagal: {exc}")
     message = f"Pemindaian selesai - {len(results)} perangkat ditemukan."
     if not results:
-        if diagnostics.get("timeout", 0) == diagnostics.get("hosts", 0) and diagnostics.get("hosts", 0) > 0:
+        if (
+            diagnostics.get("timeout", 0) == diagnostics.get("hosts", 0)
+            and diagnostics.get("hosts", 0) > 0
+        ):
             message = "Pemindaian selesai - semua host timeout atau tidak ada balasan."
         elif diagnostics.get("community_or_error", 0) > 0:
             message = (
@@ -3408,6 +3463,35 @@ def get_users():
     return jsonify({"users": users})
 
 
+@app.route("/api/notify/test", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("5/minute")
+def api_notify_test():
+    """Kirim pesan uji ke SEMUA channel aktif, lapor hasil per channel."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    results = send_alert(
+        f"🔔 *PESAN UJI NOTIFIKASI*\nSumber : NMS KOPEGTEL\nWaktu  : {ts}",
+        severity="critical",
+        event="notify.test",
+    )
+    out = {}
+    for name, active in channel_status().items():
+        out[name] = {
+            "active": active,
+            "result": results.get(name, "skipped"),
+        }
+    try:
+        audit(
+            current_user.username,
+            "notify.test",
+            " ".join(f"{k}={v['result']}" for k, v in out.items()),
+        )
+    except Exception:
+        pass
+    return jsonify({"results": out})
+
+
 @app.route("/api/users", methods=["POST"])
 @api_login_required
 @require_role("admin")
@@ -4117,13 +4201,17 @@ def add_service_api():
     svc_type = str(data.get("type") or "tcp").strip().lower()
     port_raw = data.get("port")
     url = str(data.get("url") or "").strip()
+    query = str(data.get("query") or "").strip()
+    expected = str(data.get("expected") or "").strip()
 
     if not ip or not name:
         return jsonify({"error": "IP dan Name diperlukan"}), 400
-    if svc_type not in ("tcp", "http"):
-        return jsonify({"error": "Type harus tcp atau http"}), 400
+    if svc_type not in ("tcp", "http", "icmp", "dns"):
+        return jsonify({"error": "Type harus tcp, http, icmp, atau dns"}), 400
     if len(name) > 100 or len(ip) > 255:
         return jsonify({"error": "Name/IP terlalu panjang"}), 400
+    if len(expected) > 200:
+        return jsonify({"error": "Expected/keyword terlalu panjang (maks 200)"}), 400
 
     port = None
     if svc_type == "tcp":
@@ -4134,12 +4222,28 @@ def add_service_api():
         if not 1 <= port <= 65535:
             return jsonify({"error": "TCP Port harus 1-65535"}), 400
         url = None
-    else:
+        query = ""
+        expected = ""
+    elif svc_type == "http":
         if not url or not re.match(r"^https?://[^\s/$.?#].[^\s]*$", url, re.IGNORECASE):
             return jsonify({"error": "URL http harus diawali http(s)://"}), 400
         if len(url) > 500:
             return jsonify({"error": "URL terlalu panjang"}), 400
         port = None
+        query = ""
+    elif svc_type == "icmp":
+        # Cukup IP/host: tidak ada port, URL, query, ataupun expected.
+        port = None
+        url = None
+        query = ""
+        expected = ""
+    else:
+        # dns: nama yang di-query wajib & valid hostname
+        ok, err = validate_dns_query_name(query)
+        if not ok:
+            return jsonify({"error": err or "Query DNS bermasalah"}), 400
+        port = None
+        url = None
 
     conn, c = get_db()
 
@@ -4147,16 +4251,24 @@ def add_service_api():
         c.execute(
             "SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?", (ip, port)
         )
-    else:
+    elif svc_type == "http":
         c.execute(
             "SELECT id FROM services WHERE ip=? AND type='http' AND url=?", (ip, url)
+        )
+    elif svc_type == "icmp":
+        c.execute("SELECT id FROM services WHERE ip=? AND type='icmp'", (ip,))
+    else:
+        c.execute(
+            "SELECT id FROM services WHERE ip=? AND type='dns' AND query=?",
+            (ip, query),
         )
     if c.fetchone():
         conn.close()
         return jsonify({"error": "Service monitor ini sudah ada"}), 400
     c.execute(
-        "INSERT INTO services (ip, name, type, port, url) VALUES (?, ?, ?, ?, ?)",
-        (ip, name, svc_type, port, url),
+        "INSERT INTO services (ip, name, type, port, url, query, expected)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (ip, name, svc_type, port, url, query, expected),
     )
     new_id = c.lastrowid
     conn.commit()

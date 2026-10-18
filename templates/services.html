@@ -108,6 +108,8 @@
             <option value="all">Semua tipe</option>
             <option value="tcp">TCP Port</option>
             <option value="http">HTTP URL</option>
+            <option value="icmp">ICMP Ping</option>
+            <option value="dns">DNS Query</option>
           </select>
         </div>
         <label class="search" style="margin-left:0;flex:1;min-width:200px;max-width:none">
@@ -192,7 +194,7 @@
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
     <div class="modal-header">
-      <div><div class="modal-title" id="addTitle">Tambah Service</div><div class="modal-sub">Pantau endpoint TCP port atau URL HTTP</div></div>
+      <div><div class="modal-title" id="addTitle">Tambah Service</div><div class="modal-sub">Pantau TCP port, URL HTTP, ping ICMP, atau query DNS</div></div>
       <button class="modal-close" id="btnCloseModal" aria-label="Tutup">✕</button>
     </div>
     <div class="modal-body">
@@ -207,6 +209,8 @@
             <select id="svcType" style="width:100%">
               <option value="tcp">TCP Port</option>
               <option value="http">HTTP URL</option>
+              <option value="icmp">ICMP Ping</option>
+              <option value="dns">DNS Query</option>
             </select>
           </div>
         </div>
@@ -221,6 +225,14 @@
         <div class="field" id="urlGroup" style="display:none">
           <label for="svcUrl">URL</label>
           <input type="url" id="svcUrl" placeholder="https://example.com">
+        </div>
+        <div class="field" id="queryGroup" style="display:none">
+          <label for="svcQuery">Nama yang di-query</label>
+          <input type="text" id="svcQuery" placeholder="misal: google.com" autocomplete="off">
+        </div>
+        <div class="field" id="expectedGroup" style="display:none">
+          <label for="svcExpected" id="svcExpectedLabel">Jawaban yang diharapkan (opsional)</label>
+          <input type="text" id="svcExpected" placeholder="misal: 8.8.8.8 (DNS) atau Dashboard (HTTP)" autocomplete="off">
         </div>
         <div class="form-error" id="formError" role="alert" style="display:none"></div>
       </form>

@@ -9,9 +9,9 @@ from datetime import datetime
 from flask import Blueprint, Response, jsonify, render_template, request
 from flask_login import current_user, login_required
 
-from nms.auth import api_login_required
+from nms.auth import api_login_required, require_role
 from nms.crypto import decrypt_secret
-from nms.db import _commit_with_retry, db_lock, get_db
+from nms.db import _commit_with_retry, _insert_system_log, db_lock, get_db
 from nms.format import _fmt_uptime
 from nms.mikrotik import _mt_evaluate, _mt_stale_info
 from nms.mikrotik_poll import (
@@ -329,7 +329,7 @@ def _mt_backup_host_row(host):
     conn, c = get_db()
     try:
         c.execute(
-            "SELECT ip, ssh_user, ssh_pass, ssh_port, backup_enable,"
+            "SELECT ip, ssh_user, ssh_pass, ssh_port, ssh_hostkey, backup_enable,"
             " backup_last, backup_ok FROM hosts WHERE ip=?",
             (host,),
         )
@@ -438,12 +438,19 @@ def api_mt_backup_now(host):
     if not row:
         return jsonify({"error": "Host tidak ditemukan"}), 404
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    new_key = {"fp": None}
+
+    def _capture(fp):
+        new_key["fp"] = fp
+
     try:
         ok, payload = fetch_mikrotik_config(
             host,
             row.get("ssh_user") or "",
             row.get("ssh_pass") or "",
             row.get("ssh_port") or 22,
+            expected_hostkey=(row.get("ssh_hostkey") or "").strip(),
+            on_new_key=_capture,
         )
     except Exception as e:
         return jsonify({"error": f"fetch gagal: {e}"}), 502
@@ -451,6 +458,18 @@ def api_mt_backup_now(host):
     with db_lock:
         conn, c = get_db()
         try:
+            if new_key["fp"]:
+                c.execute(
+                    "UPDATE hosts SET ssh_hostkey=? WHERE ip=?",
+                    (new_key["fp"], host),
+                )
+                _insert_system_log(
+                    c,
+                    "MT_SSHKEY_TRUSTED",
+                    host,
+                    "Host key SSH dipercaya pertama kali (TOFU)",
+                    timestamp,
+                )
             tg_msg = _store_mt_backup(c, host, ok, payload, timestamp)
             _commit_with_retry(conn)
         except sqlite3.OperationalError as e:
@@ -475,6 +494,44 @@ def api_mt_backup_now(host):
     return jsonify(
         {"status": "success", "taken_at": timestamp, "notified": bool(tg_msg)}
     )
+
+
+@mikrotik_bp.route("/api/mikrotik/<path:host>/hostkey/reset", methods=["POST"])
+@api_login_required
+@require_role("admin")
+def api_mt_hostkey_reset(host):
+    """Kosongkan ssh_hostkey host (dipakai saat router direset/diganti).
+
+    Koneksi SSH berikutnya akan di-trust ulang (TOFU).
+    """
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM hosts WHERE ip=?", (host,))
+        if not c.fetchone():
+            return jsonify({"error": "Host tidak ditemukan"}), 404
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("UPDATE hosts SET ssh_hostkey='' WHERE ip=?", (host,))
+        _insert_system_log(
+            c,
+            "MT_SSHKEY_RESET",
+            host,
+            "SSH host key direset, akan dipercaya ulang saat koneksi berikutnya",
+            timestamp,
+        )
+        _commit_with_retry(conn)
+    except sqlite3.OperationalError as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return jsonify({"error": f"DB sibuk: {e}"}), 503
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "mt.hostkey_reset", host)
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
 
 
 @mikrotik_bp.route("/api/mikrotik/<path:host>/iface/<int:idx>/history")

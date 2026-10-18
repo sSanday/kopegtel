@@ -19,7 +19,7 @@ from nms.db import (
     get_target_hosts,
     log_system_event,
 )
-from nms.notify import send_telegram_alert
+from nms.notify import send_alert, send_telegram_alert
 from nms.query_helpers import get_all_agent_metrics
 from nms.thread_safe import ThreadSafeDict
 
@@ -45,9 +45,13 @@ def _host_detail_link(host):
             return ""
         if not (parsed.hostname or ""):
             return ""
-        return f"\nDetail : [Buka halaman host]({base}/host/{quote(str(host), safe='')})"
+        return (
+            f"\nDetail : [Buka halaman host]({base}/host/{quote(str(host), safe='')})"
+        )
     except Exception:
         return ""
+
+
 _PING_RTT_RES = (
     re.compile(r"rtt min/avg/max/mdev = [\d.]+/([\d.]+)/"),
     re.compile(r"round-trip min/avg/max(?:/stddev)? = [\d.]+/([\d.]+)/"),
@@ -232,7 +236,10 @@ def check_network():
                                     else ""
                                 )
                                 telegram_queue.append(
-                                    f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}{_host_detail_link(host)}"
+                                    (
+                                        "critical",
+                                        f"🚨 *ALARM!*\nHost   : `{host}`\nStatus : *DOWN*\nWaktu  : {timestamp}{_impact}{_host_detail_link(host)}",
+                                    )
                                 )
                             else:
                                 print(
@@ -294,7 +301,10 @@ def check_network():
                                 timestamp,
                             )
                             telegram_queue.append(
-                                f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}{_host_detail_link(host)}"
+                                (
+                                    "info",
+                                    f"✅ *PULIH!*\nHost    : `{host}`\nLatency : {latency:.2f} ms\nLoss    : {packet_loss:.0f}%{duration_str}{_host_detail_link(host)}",
+                                )
                             )
                             try:
                                 for _k in [
@@ -331,9 +341,11 @@ def check_network():
         finally:
             conn.close()
 
-    for msg in telegram_queue:
+    for sev, msg in telegram_queue:
         try:
-            send_telegram_alert(msg)
+            # Dispatch semua channel aktif (paralel, bounded ~10s) —
+            # DOWN=critical, PULIH=info, sisanya default wrapper.
+            send_alert(msg, severity=sev)
         except Exception as e:
             print(f"[WARN] telegram gagal: {e}")
 

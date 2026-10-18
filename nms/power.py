@@ -69,7 +69,11 @@ def record_power_metric(host, watts=None, voltage=None, current=None, source="ma
                     elapsed = max(0.0, (cur_ts - prev_ts).total_seconds())
                     # trapezoid, batasi gap 6 jam agar kWh tidak meledak saat data lama
                     elapsed = min(elapsed, 6 * 3600)
-                    energy = ((float(prev["watts"]) + float(watts)) / 2.0) * elapsed / 3600000.0
+                    energy = (
+                        ((float(prev["watts"]) + float(watts)) / 2.0)
+                        * elapsed
+                        / 3600000.0
+                    )
                     energy = max(0.0, energy)
                 except (ValueError, TypeError):
                     energy = 0.0
@@ -81,7 +85,13 @@ def record_power_metric(host, watts=None, voltage=None, current=None, source="ma
             conn.commit()
         finally:
             conn.close()
-    return {"host": host, "watts": watts, "energy_kwh": energy, "timestamp": now, "source": source}
+    return {
+        "host": host,
+        "watts": watts,
+        "energy_kwh": energy,
+        "timestamp": now,
+        "source": source,
+    }
 
 
 def _bucket_rows(rows, bucket):
@@ -96,7 +106,16 @@ def _bucket_rows(rows, bucket):
             key = ts.strftime("%Y-%m-%d")
         else:
             key = ts.strftime("%Y-%m-%d %H:00")
-        b = buckets.setdefault(key, {"label": key, "watts_sum": 0.0, "watts_n": 0, "watts_max": 0.0, "energy_kwh": 0.0})
+        b = buckets.setdefault(
+            key,
+            {
+                "label": key,
+                "watts_sum": 0.0,
+                "watts_n": 0,
+                "watts_max": 0.0,
+                "energy_kwh": 0.0,
+            },
+        )
         w = float(r.get("watts") or 0.0)
         b["watts_sum"] += w
         b["watts_n"] += 1
@@ -108,7 +127,9 @@ def _bucket_rows(rows, bucket):
         out.append(
             {
                 "label": b["label"],
-                "avg_watts": round(b["watts_sum"] / b["watts_n"], 2) if b["watts_n"] else 0.0,
+                "avg_watts": (
+                    round(b["watts_sum"] / b["watts_n"], 2) if b["watts_n"] else 0.0
+                ),
                 "peak_watts": round(b["watts_max"], 2),
                 "energy_kwh": round(b["energy_kwh"], 4),
             }
@@ -129,9 +150,7 @@ def get_power_summary(hours=24):
         )
         rows = [dict(r) for r in c.fetchall()]
         # latest per host
-        c.execute(
-            "SELECT host, MAX(timestamp) AS ts FROM power_metrics GROUP BY host"
-        )
+        c.execute("SELECT host, MAX(timestamp) AS ts FROM power_metrics GROUP BY host")
         # ambil latest global per host (tidak dibatasi hours agar perangkat tetap muncul)
         c.execute(
             "SELECT p.host, p.watts, p.voltage, p.current, p.energy_kwh, p.source, p.timestamp"
@@ -159,7 +178,9 @@ def get_power_summary(hours=24):
 
     total_watts = round(sum(float(r.get("watts") or 0.0) for r in latest_all), 2)
     period_energy = round(sum(float(r.get("energy_kwh") or 0.0) for r in rows), 4)
-    peak_watts = round(max([float(r.get("watts") or 0.0) for r in rows], default=0.0), 2)
+    peak_watts = round(
+        max([float(r.get("watts") or 0.0) for r in rows], default=0.0), 2
+    )
     cost = round(period_energy * float(settings["tariff_per_kwh"]), 2)
 
     # per-device dengan estimasi biaya & status threshold

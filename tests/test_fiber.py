@@ -14,9 +14,7 @@ os.environ.setdefault("NMS_DISABLE_SCHEDULER", "1")
 
 import app as m
 
-m.app.config["RATELIMIT_ENABLED"] = False
-if hasattr(m, "limiter") and hasattr(m.limiter, "enabled"):
-    m.limiter.enabled = False
+# limiter dimatikan global via tests/conftest.py (NMS_DISABLE_LIMITER)
 from nms import fiber as _fibmod
 from nms import fiber_poll as _fmod
 from nms import fiber_routes as _frmod
@@ -2725,10 +2723,13 @@ class FiberParentTest(unittest.TestCase):
         real_tg_app = m.send_telegram_alert
         real_tg_fmod = _fmod.send_telegram_alert
         real_tg_mon = _monmod.send_telegram_alert
+        real_sa_mon = _monmod.send_alert
         _tg_fake = lambda msg: sent.append(msg)
+        _sa_fake = lambda msg, severity="warning", event="": sent.append(msg)
         m.send_telegram_alert = _tg_fake
         _fmod.send_telegram_alert = _tg_fake
         _monmod.send_telegram_alert = _tg_fake
+        _monmod.send_alert = _sa_fake
         down = {OLT_PAR_IP: True}
         _monmod.ping_host = lambda h: (-1.0, 100.0) if down.get(h) else (0.5, 0.0)
         try:
@@ -2789,6 +2790,7 @@ class FiberParentTest(unittest.TestCase):
             m.send_telegram_alert = real_tg_app
             _fmod.send_telegram_alert = real_tg_fmod
             _monmod.send_telegram_alert = real_tg_mon
+            _monmod.send_alert = real_sa_mon
             for fid in (f1, f2):
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             self.client.delete(f"/api/hosts/{OLT_PAR_IP}", headers=XRW_HDR)
