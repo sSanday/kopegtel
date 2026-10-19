@@ -819,6 +819,10 @@ select:focus-visible{outline:none;border-color:var(--accent);box-shadow:var(--fo
   <h2 class="sec-label" id="obLabel" style="display:none">Mulai konfigurasi</h2>
   <div class="ob-panel" id="obPanel" style="display:none"></div>
   <div class="odp-grid" id="sumGrid" style="display:none"></div>
+  <div class="card-x" id="trendCard" style="margin-bottom:var(--s-4);display:none">
+    <div class="cx-h">Prediksi Degradasi<span style="margin-left:auto;font-size:13px;font-weight:400;color:var(--t2)">estimasi Theil&#8211;Sen dari riwayat Rx harian</span></div>
+    <div id="trendGrid"><div style="color:var(--t3);font-size:13px;padding:4px 0">Memuat&#8230;</div></div>
+  </div>
   <div class="duo" id="duoRow">
     <div class="card-x" id="worstCard">
       <div class="cx-h">Worst Rx — 5 terburuk<span style="margin-left:auto;font-size:13px;font-weight:400;color:var(--t2)">klik untuk lihat grafik</span></div>
@@ -875,7 +879,7 @@ select:focus-visible{outline:none;border-color:var(--accent);box-shadow:var(--fo
   </div></div>
   <div class="chart-card">
     <div class="chart-hd">
-      <div><div class="chart-title" id="ctitle">Riwayat Rx</div><div class="chart-sub" id="chSub"></div><div class="rxstat" id="rxStats"></div><div class="chart-sub" id="slaLine"></div></div>
+      <div><div class="chart-title" id="ctitle">Riwayat Rx</div><div class="chart-sub" id="chSub"></div><div class="rxstat" id="rxStats"></div><div class="chart-sub" id="trendBadge"></div><div class="chart-sub" id="slaLine"></div></div>
       <div class="chart-ctl">
         <label for="ontSel" style="font-size:13px;color:var(--t2)">Pilih ONT</label>
         <select id="ontSel" onchange="loadHist()" title="Pilih ONT"></select>
@@ -1213,6 +1217,8 @@ async function fetchSummary(){
   const _showData=!_isEmpty;
   const _hz=document.getElementById('healthZone');
   if(_hz)_hz.style.display=_showData?'':'none';
+  const _trendCard=document.getElementById('trendCard');
+  if(_trendCard)_trendCard.style.display=_showData?'':'none';
   const _duo=document.getElementById('duoRow');
   if(_duo)_duo.style.display=_showData?'':'none';
   const _fb=document.querySelector('.filter-bar');
@@ -1262,6 +1268,61 @@ function jumpToOnt(id){
   sel.value=id;loadHist();
   document.getElementById('ch').scrollIntoView({behavior:'smooth',block:'center'});
 }
+const _fmtDbm=v=>v==null?'—':String(Math.round(v*100)/100).replace('.',',');
+async function setTrendBadge(id){
+  const tb=document.getElementById('trendBadge');
+  if(!tb)return;
+  tb.textContent='';
+  if(!id)return;
+  let j=null;
+  try{
+    const r=await fetch(`/api/fiber/${id}/trend`,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(r.ok)j=await r.json();
+  }catch(_){return;}
+  if(!j)return;
+  const rate=j.slope_db_per_day;
+  const rateTxt=rate==null?'—':`${rate>0?'+':'−'}${_fmtDbm(Math.abs(rate))}`;
+  const sim=j.simulated?' <span style="color:var(--warn)">· simulasi</span>':'';
+  if(j.status==='degrading'){
+    const hasWarn=j.eta_warn_days!=null;
+    const lvl=hasWarn?['Warn',j.eta_warn_days,j.eta_warn_range,j.warn]:['Crit',j.eta_crit_days,j.eta_crit_range,j.crit];
+    let txt;
+    if(lvl[1]!=null){
+      const rng=lvl[2]&&lvl[2].min!=null&&lvl[2].max!=null?` (${_fmtDbm(lvl[2].min)}–${_fmtDbm(lvl[2].max)} hari)`:'';
+      txt=`<b style="color:var(--warn)">Turun ${rateTxt} dB/hari</b> — menyentuh ${lvl[0]} (${_fmtDbm(lvl[3])}) dalam ±${_fmtDbm(Math.round(lvl[1]))} hari${rng}`;
+    }else{
+      txt=`<b style="color:var(--warn)">Turun ${rateTxt} dB/hari</b> — level ${lvl[0]} (${_fmtDbm(lvl[3])}) sudah tersentuh`;
+    }
+    tb.innerHTML=`📈 ${txt}${sim}`;
+  }else if(j.status==='improving'){
+    tb.innerHTML=`📈 Tren membaik (${rateTxt} dB/hari)${sim}`;
+  }else if(j.status==='stable'){
+    tb.innerHTML=`📈 Tren stabil (${rateTxt} dB/hari)${sim}`;
+  }else{
+    tb.innerHTML=`Data belum cukup untuk prediksi${j.reason==='perubahan mendadak'?' (baru saja terjadi perubahan mendadak)':''}${sim}`;
+  }
+}
+async function loadTrendPx(){
+  const tg=document.getElementById('trendGrid');
+  if(!tg)return;
+  let j=null;
+  try{
+    const r=await fetch('/api/fiber/trend/summary?limit=5',{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    if(r.ok)j=await r.json();
+  }catch(_){j=null;}
+  const items=(j&&j.items)||[];
+  if(!items.length){tg.innerHTML='<div class="thin-empty">Belum ada prediksi — dibangun dari riwayat Rx harian (min. 5 hari × 20 sampel).</div>';return;}
+  tg.innerHTML=items.map((o,i)=>{
+    const lvl=o.eta_level==='Warn'?'🟡 Warn':'🔴 Crit';
+    const rng=o.eta_range&&o.eta_range.min!=null&&o.eta_range.max!=null?` (rentang ${_fmtDbm(o.eta_range.min)}–${_fmtDbm(o.eta_range.max)} hari)`:'';
+    return `<div class="worst-row" onclick="jumpToOnt(${o.ont_id})" title="Klik untuk melihat grafik riwayat">
+      <span class="wrank">${i+1}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.customer||o.ont_sn)}</b><span style="font-size:12.5px;font-weight:600;color:var(--warn)">${lvl} ±${_fmtDbm(o.eta_days)} hari</span></div>
+        <div class="cell-sub">${esc(o.ont_sn)} · Rx ${_fmtDbm(o.rx_now)} dBm · turun ±${_fmtDbm(Math.abs(o.slope_db_per_day))} dB/hari${rng}</div>
+      </div></div>`;
+  }).join('');
+}
 async function fetchPage(){
   const p=new URLSearchParams({page:PAGE,per_page:PERPAGE,sort:SORT});
   if(curF!=='all')p.set('status',curF);
@@ -1298,6 +1359,7 @@ async function load(){
   await fetchPage();
   renderOnboarding();
   loadHist();
+  loadTrendPx();
 }
 function renderOnboarding(){
   const steps=[
@@ -1601,6 +1663,7 @@ async function loadHist(){
   const empty=document.getElementById('chartEmpty');
   const showEmpty=show=>{if(empty){if(show)empty.removeAttribute('hidden');else empty.setAttribute('hidden','');}};
   const id=document.getElementById('ontSel').value;
+  const _tb=document.getElementById('trendBadge');if(_tb)_tb.textContent='';
   if(!id){if(chart){chart.destroy();chart=null;}showEmpty(true);return;}
   showEmpty(false);
   document.getElementById('histExp').href=`/api/fiber/${id}/history/export?hours=${histH}`;
@@ -1612,6 +1675,7 @@ async function loadHist(){
     const _rs=document.getElementById('rxStats');
     if(_rs)_rs.textContent=_rx.length?`terkini ${_rx[_rx.length-1].toFixed(1)} · min ${Math.min(..._rx).toFixed(1)} · max ${Math.max(..._rx).toFixed(1)} dBm`:'';
   }catch(_){}
+  setTrendBadge(id);
   document.getElementById('ctitle').textContent='Riwayat Rx — '+(j.ont?.ont_sn||'ONT');
   try{
     const rs=await fetch(`/api/fiber/${id}/sla?days=30`,{headers:{'X-Requested-With':'XMLHttpRequest'}});

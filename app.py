@@ -144,6 +144,7 @@ from nms.fiber_poll import (
     fiber_flap_memory,
     poll_fiber_monitor,
     poll_fiber_snmp,
+    poll_fiber_trend,
     send_fiber_summary,
 )
 from nms.mikrotik import (
@@ -1161,6 +1162,9 @@ if SCHEDULER_ENABLED:
         func=poll_fiber_snmp, trigger="interval", seconds=300, **_job_defaults
     )
     scheduler.add_job(
+        func=poll_fiber_trend, trigger="interval", hours=3, **_job_defaults
+    )
+    scheduler.add_job(
         func=poll_power_snmp, trigger="interval", seconds=300, **_job_defaults
     )
     scheduler.add_job(
@@ -1188,6 +1192,19 @@ if SCHEDULER_ENABLED:
         scheduler.start()
     except Exception as e:
         print(f"[WARN] scheduler gagal start: {e}")
+
+    def _startup_fiber_trend():
+        try:
+            poll_fiber_trend()
+        except Exception as e:
+            print(f"[FIBER-TREND] startup gagal: {e}", flush=True)
+
+    try:
+        _trend_timer = threading.Timer(90.0, _startup_fiber_trend)
+        _trend_timer.daemon = True
+        _trend_timer.start()
+    except Exception as e:
+        print(f"[WARN] jadwal startup fiber trend gagal: {e}")
 
     def _startup_backup_catchup():
         try:
@@ -2559,6 +2576,16 @@ def api_get_settings():
             "fiber_flap_flips": get_setting("fiber_flap_flips", FIBER_FLAP_FLIPS),
             "fiber_flap_hours": get_setting("fiber_flap_hours", FIBER_FLAP_HOURS),
             "fiber_parent_min": get_setting("fiber_parent_min", FIBER_PARENT_MIN),
+            "fiber_trend_enabled": get_setting("fiber_trend_enabled", 1, type_cast=int),
+            "fiber_trend_window_days": get_setting(
+                "fiber_trend_window_days", 14, type_cast=int
+            ),
+            "fiber_trend_min_slope": get_setting(
+                "fiber_trend_min_slope", 0.05, type_cast=float
+            ),
+            "fiber_trend_horizon_days": get_setting(
+                "fiber_trend_horizon_days", 14, type_cast=int
+            ),
             "temp_threshold": get_setting("temp_threshold", 60.0),
             "temp_crit": get_setting("temp_crit", 75.0),
             "mt_cpu_oid": get_setting(
@@ -2667,6 +2694,42 @@ def api_save_settings():
         if not 2 <= v <= 50:
             return jsonify({"error": "fiber_parent_min harus 2-50 ONT"}), 400
         vals["fiber_parent_min"] = v
+    v = data.get("fiber_trend_enabled")
+    if v is not None:
+        try:
+            v = 1 if int(float(v)) else 0
+        except (ValueError, TypeError):
+            return jsonify({"error": "fiber_trend_enabled harus 0 atau 1"}), 400
+        vals["fiber_trend_enabled"] = v
+    for key, lo, hi in (
+        ("fiber_trend_window_days", 7, 30),
+        ("fiber_trend_horizon_days", 3, 60),
+    ):
+        v = data.get(key)
+        if v is None:
+            continue
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": f"{key} harus angka {lo}-{hi}"}), 400
+        if not lo <= v <= hi:
+            return jsonify({"error": f"{key} harus {lo}-{hi}"}), 400
+        vals[key] = v
+    v = data.get("fiber_trend_min_slope")
+    if v is not None:
+        try:
+            v = float(v)
+        except (ValueError, TypeError):
+            return (
+                jsonify({"error": "fiber_trend_min_slope harus angka 0.01-1.0"}),
+                400,
+            )
+        if not 0.01 <= v <= 1.0:
+            return (
+                jsonify({"error": "fiber_trend_min_slope harus 0.01-1.0 dB/hari"}),
+                400,
+            )
+        vals["fiber_trend_min_slope"] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
         if v is None:

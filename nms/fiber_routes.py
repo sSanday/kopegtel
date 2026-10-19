@@ -39,6 +39,12 @@ from nms.fiber_poll import (
     fiber_flap_memory,
 )
 from nms.format import _csv_safe, _fmt_duration, _parse_latlon
+from nms.fiber_trend import (
+    _trend_settings as _fiber_trend_settings,
+    compute_trend_from_points,
+    fiber_trend_memory,
+    load_daily_points,
+)
 from nms.mikrotik import SYSUP_OID
 from nms.notify import audit
 from nms.olt import OLT_VENDOR_PRESETS, _olt_raw_to_dbm
@@ -342,6 +348,104 @@ def api_fiber_summary():
             "degrade_thresh_db": _dthresh,
         }
     )
+
+
+@fiber_bp.route("/api/fiber/trend/summary")
+@api_login_required
+def api_fiber_trend_summary():
+    """ONT dengan prediksi tren Rx paling mendesak (dari cache poll job).
+
+    Urut ETA terdekat; hanya degrading non-simulator ber-confidence
+    >= "sedang" dan punya ETA valid. limit dibatasi 1..50 (default 10).
+    """
+
+    def _eta_of(res):
+        for key in ("eta_warn_days", "eta_crit_days"):
+            v = res.get(key)
+            if v is not None:
+                return float(v)
+        return None
+
+    try:
+        limit = int(request.args.get("limit", 10))
+    except (ValueError, TypeError):
+        limit = 10
+    limit = min(50, max(1, limit))
+    items = []
+    for _fid, res in fiber_trend_memory.items():
+        if not isinstance(res, dict) or res.get("status") != "degrading":
+            continue
+        if res.get("simulated") or (res.get("source") or "") == "simulator":
+            continue
+        if res.get("confidence") not in ("sedang", "tinggi"):
+            continue
+        eta = _eta_of(res)
+        if eta is None:
+            continue
+        level = "Warn" if res.get("eta_warn_days") is not None else "Crit"
+        items.append(
+            {
+                "ont_id": res.get("ont_id", _fid),
+                "ont_sn": res.get("ont_sn"),
+                "customer": res.get("customer"),
+                "olt_name": res.get("olt_name"),
+                "odp_name": res.get("odp_name"),
+                "rx_now": res.get("rx_now"),
+                "slope_db_per_day": res.get("slope_db_per_day"),
+                "eta_days": round(eta, 1),
+                "eta_level": level,
+                "eta_level_value": res.get("warn" if level == "Warn" else "crit"),
+                "eta_at": res.get(f"eta_{level.lower()}_at"),
+                "eta_range": res.get(f"eta_{level.lower()}_range"),
+                "confidence": res.get("confidence"),
+                "n_days": res.get("n_days"),
+                "computed_at": res.get("computed_at"),
+            }
+        )
+    items.sort(key=lambda x: (x["eta_days"], (x.get("ont_sn") or "").lower()))
+    return jsonify({"items": items[:limit], "count": len(items)})
+
+
+@fiber_bp.route("/api/fiber/<int:fid>/trend")
+@api_login_required
+def api_fiber_trend(fid):
+    """Prediksi tren Rx satu ONT (dihitung segar dari fiber_history)."""
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,))
+        row = c.fetchone()
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    if not row:
+        return jsonify({"error": "ONT tidak ditemukan"}), 404
+    o = dict(row)
+    window, min_slope, horizon = _fiber_trend_settings()
+    points = load_daily_points([fid], window).get(fid, [])
+    result = compute_trend_from_points(
+        points,
+        _th_for_ont(o),
+        settings={
+            "min_slope": min_slope,
+            "simulated": (o.get("source") or "").strip().lower() == "simulator",
+        },
+    )
+    th_of_ont = _th_for_ont(o)
+    result.update(
+        {
+            "ont_id": fid,
+            "ont_sn": o.get("ont_sn"),
+            "customer": o.get("customer"),
+            "warn": th_of_ont["warn"],
+            "crit": th_of_ont["crit"],
+            "window": window,
+            "min_slope_applied": min_slope,
+            "horizon_days": horizon,
+        }
+    )
+    return jsonify(result)
 
 
 @fiber_bp.route("/api/fiber", methods=["POST"])

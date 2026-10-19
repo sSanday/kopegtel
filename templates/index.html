@@ -499,6 +499,10 @@
             <div class="field"><label for="fiberParentMin">Batas induk massal</label><div class="input-wrap"><input type="number" id="fiberParentMin" step="1" min="2" max="50" required><span class="unit">ONT</span></div></div>
             <div class="field"><label for="fiberFlapFlips">Batas flap</label><div class="input-wrap"><input type="number" id="fiberFlapFlips" step="1" min="2" max="20" required><span class="unit">x</span></div></div>
             <div class="field"><label for="fiberFlapHours">Jendela flap</label><div class="input-wrap"><input type="number" id="fiberFlapHours" step="1" min="1" max="72" required><span class="unit">jam</span></div></div>
+            <div class="field"><label for="fiberTrendEnable">Prediksi tren Rx</label><select id="fiberTrendEnable"><option value="1">Aktif</option><option value="0">Nonaktif</option></select></div>
+            <div class="field"><label for="fiberTrendWindow">Jendela tren</label><div class="input-wrap"><input type="number" id="fiberTrendWindow" step="1" min="7" max="30" required><span class="unit">hari</span></div></div>
+            <div class="field"><label for="fiberTrendSlope">Batas slope tren</label><div class="input-wrap"><input type="number" id="fiberTrendSlope" step="0.01" min="0.01" max="1" required><span class="unit">dB/hari</span></div></div>
+            <div class="field"><label for="fiberTrendHorizon">Ambang alert tren</label><div class="input-wrap"><input type="number" id="fiberTrendHorizon" step="1" min="3" max="60" required><span class="unit">hari</span></div></div>
           </div>
         </div>
         <div class="set-card">

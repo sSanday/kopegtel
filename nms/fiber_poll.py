@@ -33,7 +33,15 @@ from nms.monitor import (
     fiber_parent_down,
     refresh_fiber_parent_map,
 )
-from nms.notify import send_telegram_alert
+from nms.notify import send_alert, send_telegram_alert
+from nms.fiber_trend import (
+    FIBER_TREND_DEDUPE_S,
+    _trend_settings,
+    compute_all_trends,
+    fiber_trend_alert_mem,
+    fiber_trend_enabled,
+    fiber_trend_memory,
+)
 from nms.olt import _olt_raw_to_dbm
 from nms.snmp import _snmp_get, _valid_oid
 from nms.thread_safe import ThreadSafeDict
@@ -169,6 +177,13 @@ def send_fiber_summary():
         lines.append(
             f"↔ `{o['ont_sn']}`{extra} — flapping {flips}x/{_fh} jam, cek konektor/ODP"
         )
+    try:
+        _pred = [_fiber_trend_line(r) for r in _fiber_trend_top(limit=3)]
+        if _pred:
+            lines.append("🔮 *Prediksi tren Rx*")
+            lines.extend(_pred)
+    except Exception as e:
+        print(f"[FIBER-SUMMARY] blok prediksi gagal: {e}")
     if not lines:
         lines.append("✅ Semua ONT terpantau normal.")
     try:
@@ -184,6 +199,179 @@ def send_fiber_summary():
         f"📉degradasi {counts['degrading']} ↔flap {counts['flapping']} 🔇mute {counts['muted']}\n\n"
         + "\n".join(lines)
     )
+
+
+def _fiber_trend_top(limit=3):
+    """Entry trend paling mendesak dari fiber_trend_memory (untuk summary).
+
+    Kriteria: degrading, non-simulator, confidence >= "sedang", punya ETA
+    valid. Diurutkan ETA terdekat (warn lebih dulu dari crit).
+    """
+
+    def _rank(res):
+        for key in ("eta_warn_days", "eta_crit_days"):
+            v = res.get(key)
+            if v is not None:
+                return float(v)
+        return None
+
+    def _level(res):
+        return "Warn" if res.get("eta_warn_days") is not None else "Crit"
+
+    out = []
+    for _fid, res in fiber_trend_memory.items():
+        if not isinstance(res, dict) or res.get("status") != "degrading":
+            continue
+        if res.get("simulated") or (res.get("source") or "") == "simulator":
+            continue
+        if res.get("confidence") not in ("sedang", "tinggi"):
+            continue
+        if _rank(res) is None:
+            continue
+        out.append((_rank(res), _level(res), res))
+    out.sort(key=lambda t: (t[0], t[1].lower(), t[2].get("ont_id", 0)))
+    return out[: max(0, int(limit))]
+
+
+def _fiber_trend_line(res):
+    """Satu baris 'Prediksi' untuk send_fiber_summary."""
+    rate = abs(res.get("slope_db_per_day") or 0.0)
+    cust = _fiber_summary_clean(res.get("customer"))
+    extra = f" ({cust})" if cust else ""
+    level = "Warn" if res.get("eta_warn_days") is not None else "Crit"
+    eta = res.get("eta_warn_days" if level == "Warn" else "eta_crit_days")
+    val = res.get("warn" if level == "Warn" else "crit")
+    rng = res.get(f"eta_{level.lower()}_range") or {}
+    lo, hi = rng.get("min"), rng.get("max")
+    rng_txt = f" ({lo}-{hi})" if lo is not None and hi is not None else ""
+    return (
+        f"🔮 `{res.get('ont_sn')}`{extra} — turun ±{rate:.2f} dB/hari, "
+        f"sentuh {level} ({val} dBm) dalam ±{eta:.0f} hari{rng_txt}"
+    )
+
+
+def check_fiber_trend_alerts(results=None, now=None):
+    """Peringatan dini hasil prediksi tren Rx (event "fiber_trend").
+
+    Syarat SEMUA: status degrading, confidence >= "sedang", ETA warn atau
+    crit <= fiber_trend_horizon_days, bukan simulator, tidak mute, tidak
+    maintenance, tidak stale, dan Rx terkini belum melewati level tersebut.
+    Dedupe per ONT per level 7 hari; kunci dedupe dibersihkan saat ONT
+    tidak lagi degrading.
+    """
+    if results is None:
+        results = dict(fiber_trend_memory.items())
+    if not results:
+        return
+    _window, _min_slope, horizon = _trend_settings()
+    now = now or datetime.now()
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT * FROM fiber_onts ORDER BY id ASC")
+            onts = {dict(r)["id"]: dict(r) for r in c.fetchall()}
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[FIBER-TREND] load ONT gagal: {e}")
+        return
+    maint_map = get_active_maintenance_map()
+    messages = []
+    for fid, res in results.items():
+        if not isinstance(res, dict):
+            continue
+        if res.get("status") != "degrading":
+            fiber_trend_alert_mem.pop((fid, "warn"), None)
+            fiber_trend_alert_mem.pop((fid, "crit"), None)
+            continue
+        o = onts.get(fid)
+        if not o:
+            continue
+        if (o.get("source") or "").strip().lower() == "simulator" or res.get(
+            "simulated"
+        ):
+            continue
+        if res.get("confidence") not in ("sedang", "tinggi"):
+            continue
+        stale, _age = _fiber_stale_info(o, now)
+        if stale or _is_mute_active(o, now):
+            continue
+        if _fiber_maintenance_info(o, maint_map)[0]:
+            continue
+        # Pilih level terdekat yang masih valid dan belum tersentuh.
+        cand = []
+        for lvl, key in (("warn", "eta_warn_days"), ("crit", "eta_crit_days")):
+            eta = res.get(key)
+            if eta is None:
+                continue
+            level_val = res.get(lvl)
+            try:
+                if level_val is not None and res.get("rx_now") is not None:
+                    if float(res["rx_now"]) <= float(level_val):
+                        continue  # Rx terkini sudah di bawah level
+            except (ValueError, TypeError):
+                pass
+            if float(eta) <= horizon:
+                cand.append((float(eta), lvl))
+        if not cand:
+            continue
+        cand.sort()
+        eta_days, lvl = cand[0]
+        dkey = (fid, lvl)
+        if (
+            time.time() - float(fiber_trend_alert_mem.get(dkey, 0))
+            < FIBER_TREND_DEDUPE_S
+        ):
+            continue
+        fiber_trend_alert_mem[dkey] = time.time()
+        rate = abs(float(res.get("slope_db_per_day") or 0.0))
+        cust = _fiber_summary_clean(o.get("customer"))
+        level_val = res.get(lvl)
+        rng = res.get(f"eta_{lvl}_range") or {}
+        lo, hi = rng.get("min"), rng.get("max")
+        rng_txt = (
+            f"{lo}-{hi}" if lo is not None and hi is not None else "rentang tidak pasti"
+        )
+        at = res.get(f"eta_{lvl}_at") or "?"
+        sn_txt = o.get("ont_sn") or f"ONT #{fid}"
+        head = f"ONT: `{sn_txt}`" + (f" ({cust})" if cust else "")
+        messages.append(
+            f"🔮 *FIBER PREDIKSI TREN RX*\n"
+            f"{head}\n"
+            f"Turun ±{rate:.2f} dB/hari — Rx kini {res.get('rx_now')} dBm\n"
+            f"Prediksi sentuh {lvl.capitalize()} ({level_val} dBm) "
+            f"dalam ±{eta_days:.0f} hari\n"
+            f"(rentang {rng_txt} hari, perkiraan {at})\n"
+            f"Cek konektor/bending/splicing sebelum terlanjur kritis."
+        )
+    for msg in messages:
+        try:
+            send_alert(msg, severity="warning", event="fiber_trend")
+        except Exception as e:
+            print(f"[FIBER-TREND] alert gagal: {e}")
+
+
+def poll_fiber_trend():
+    """Job scheduler (interval 3 jam): hitung prediksi tren Rx semua ONT.
+
+    Fitur bisa dimatikan via settings (fiber_trend_enabled=0). Peringatan
+    dini dikirim lewat send_alert dengan dedupe 7 hari per ONT per level.
+    """
+    if not fiber_trend_enabled():
+        # Fitur mati: bersihkan kunci dedupe agar alert segar saat diaktifkan.
+        keys = [k for k in fiber_trend_alert_mem.keys()]
+        for k in keys:
+            fiber_trend_alert_mem.pop(k, None)
+        return
+    try:
+        results = compute_all_trends()
+    except Exception as e:
+        print(f"[FIBER-TREND] poll gagal: {e}")
+        return
+    try:
+        check_fiber_trend_alerts(results)
+    except Exception as e:
+        print(f"[FIBER-TREND] alert pass gagal: {e}")
 
 
 fiber_alarm_memory = ThreadSafeDict()

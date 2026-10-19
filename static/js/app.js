@@ -1108,6 +1108,10 @@
       $("fiberFlapFlips").value = data.fiber_flap_flips != null ? data.fiber_flap_flips : 4;
       $("fiberFlapHours").value = data.fiber_flap_hours != null ? data.fiber_flap_hours : 24;
       $("fiberParentMin").value = data.fiber_parent_min != null ? data.fiber_parent_min : 5;
+      $("fiberTrendEnable").value = (data.fiber_trend_enabled != null ? String(data.fiber_trend_enabled) : "1") === "1" ? "1" : "0";
+      $("fiberTrendWindow").value = data.fiber_trend_window_days != null ? data.fiber_trend_window_days : 14;
+      $("fiberTrendSlope").value = data.fiber_trend_min_slope != null ? data.fiber_trend_min_slope : 0.05;
+      $("fiberTrendHorizon").value = data.fiber_trend_horizon_days != null ? data.fiber_trend_horizon_days : 14;
       $("tempWarn").value = data.temp_threshold != null ? data.temp_threshold : 60;
       $("tempCrit").value = data.temp_crit != null ? data.temp_crit : 75;
       $("mtCpuOid").value = data.mt_cpu_oid || "";
@@ -1150,6 +1154,11 @@
     if (!Number.isInteger(fFlapHours) || fFlapHours < 1 || fFlapHours > 72) { toast("Jendela flap harus 1–72 jam.", "error"); return; }
     var fParentMin = int("fiberParentMin");
     if (!Number.isInteger(fParentMin) || fParentMin < 2 || fParentMin > 50) { toast("Batas induk massal harus 2–50 ONT.", "error"); return; }
+    var fTrendEnable = $("fiberTrendEnable").value === "1" ? 1 : 0;
+    var fTrendWindow = int("fiberTrendWindow"), fTrendSlope = num("fiberTrendSlope"), fTrendHorizon = int("fiberTrendHorizon");
+    if (!Number.isInteger(fTrendWindow) || fTrendWindow < 7 || fTrendWindow > 30) { toast("Jendela tren harus 7–30 hari.", "error"); return; }
+    if (!Number.isFinite(fTrendSlope) || fTrendSlope < 0.01 || fTrendSlope > 1) { toast("Batas slope tren harus 0,01–1 dB/hari.", "error"); return; }
+    if (!Number.isInteger(fTrendHorizon) || fTrendHorizon < 3 || fTrendHorizon > 60) { toast("Ambang alert tren harus 3–60 hari.", "error"); return; }
     var tW = num("tempWarn"), tC = num("tempCrit"), tDiv = num("mtTempDiv");
     if (!Number.isFinite(tW) || tW < 0 || tW > 150 || !Number.isFinite(tC) || tC < 0 || tC > 150) { toast("Suhu warning/critical harus 0–150 °C.", "error"); return; }
     if (!(tW < tC)) { toast("Suhu warning harus lebih kecil dari critical.", "error"); return; }
@@ -1175,7 +1184,9 @@
       fiber_rx_scale_min: fScaleMin, fiber_rx_scale_max: fScaleMax,
       fiber_tx_min: fTxMin, fiber_tx_max: fTxMax, fiber_degrade_db: fDegDb, fiber_degrade_days: fDegDays,
       fiber_stale_min: fStaleMin, fiber_flap_flips: fFlapFlips, fiber_flap_hours: fFlapHours,
-      fiber_parent_min: fParentMin, temp_threshold: tW, temp_crit: tC, mt_temp_div: tDiv,
+      fiber_parent_min: fParentMin, fiber_trend_enabled: fTrendEnable,
+      fiber_trend_window_days: fTrendWindow, fiber_trend_min_slope: fTrendSlope, fiber_trend_horizon_days: fTrendHorizon,
+      temp_threshold: tW, temp_crit: tC, mt_temp_div: tDiv,
       mt_stale_min: mtStale, mt_backup_keep: mtKeep, public_url: $("publicUrl").value.trim()
     };
     Object.keys(mtOids).forEach(function (k) { payload[k] = mtOids[k]; });

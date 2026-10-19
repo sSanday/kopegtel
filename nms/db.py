@@ -227,6 +227,18 @@ def init_db():
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_flap_hours', '24')"
     )
     c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_trend_enabled', '1')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_trend_window_days', '14')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_trend_min_slope', '0.05')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_trend_horizon_days', '14')"
+    )
+    c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')"
     )
     c.execute(
