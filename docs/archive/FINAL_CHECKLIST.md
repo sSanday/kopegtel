@@ -10,7 +10,7 @@
 ### Documentation Provided
 - ✅ `AUDIT_FINAL_REPORT.md` - Detailed findings & recommendations
 - ✅ `SECURITY_IMPROVEMENTS.md` - Security fixes implemented
-- ✅ `DEPLOYMENT_GUIDE.md` - Deployment instructions
+- ✅ `../DEPLOYMENT_GUIDE.md` - Deployment instructions
 - ✅ `MEDIUM_PRIORITY_FIXES.md` - Performance & stability roadmap
 - ✅ `README_AUDIT_SUMMARY.txt` - Quick reference guide
 - ✅ `FINAL_CHECKLIST.md` - This file
@@ -217,7 +217,7 @@ Endpoint: /api/stats (100 hosts)
 ## 📚 DOCUMENTATION READING ORDER
 
 **For Production Deployment:**
-1. `DEPLOYMENT_GUIDE.md` - Setup & configuration
+1. `../DEPLOYMENT_GUIDE.md` - Setup & configuration
 2. `README_AUDIT_SUMMARY.txt` - Quick reference
 3. `SECURITY_IMPROVEMENTS.md` - What changed
 
@@ -228,7 +228,7 @@ Endpoint: /api/stats (100 hosts)
 4. `nms/validators.py` - Validation framework
 
 **For Operations:**
-1. `DEPLOYMENT_GUIDE.md` - Deployment & troubleshooting
+1. `../DEPLOYMENT_GUIDE.md` - Deployment & troubleshooting
 2. Production checklist (this file)
 3. Monitoring setup documentation
 

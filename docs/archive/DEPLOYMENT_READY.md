@@ -207,9 +207,9 @@ gunicorn -w 4 -b 0.0.0.0:5000 app:app
 ## 📚 DOCUMENTATION
 
 All documentation included:
-- ✅ IMPROVEMENT_REPORT.md - Detailed improvements
-- ✅ DEPLOYMENT_GUIDE.md - Deployment instructions
-- ✅ SECURITY_IMPROVEMENTS.md - Security details
+- ✅ IMPROVEMENT_REPORT.md - Detailed improvements (same folder)
+- ✅ ../DEPLOYMENT_GUIDE.md - Deployment instructions
+- ✅ SECURITY_IMPROVEMENTS.md - Security details (same folder)
 - ✅ verify-deployment.sh - Verification script
 - ✅ README.md - Project overview
 

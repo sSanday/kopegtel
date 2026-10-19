@@ -22,7 +22,7 @@ cat DEPLOY_NOW.md
 ```
 
 ### 1.2 Improvement Report (5 min)
-**File:** `IMPROVEMENT_REPORT.md`
+**File:** `docs/archive/IMPROVEMENT_REPORT.md`
 
 Baca untuk:
 - ✅ Detail semua perubahan
@@ -32,7 +32,7 @@ Baca untuk:
 - ✅ Next steps recommendation
 
 ```bash
-cat IMPROVEMENT_REPORT.md | head -100
+cat docs/archive/IMPROVEMENT_REPORT.md | head -100
 ```
 
 ### 1.3 Deployment Guide (5 min)
@@ -49,7 +49,7 @@ cat DEPLOYMENT_GUIDE.md | head -100
 ```
 
 ### 1.4 Security Information (2 min)
-**File:** `SECURITY_IMPROVEMENTS.md`
+**File:** `docs/archive/SECURITY_IMPROVEMENTS.md`
 
 Baca untuk:
 - ✅ Security fixes applied
@@ -58,7 +58,7 @@ Baca untuk:
 - ✅ Access control
 
 ```bash
-cat SECURITY_IMPROVEMENTS.md
+cat docs/archive/SECURITY_IMPROVEMENTS.md
 ```
 
 ---

@@ -187,8 +187,8 @@ curl -X POST http://localhost:5000/api/agent/report \
 
 ## 📚 Additional Resources
 
-- **Security:** Read `SECURITY_IMPROVEMENTS.md`
-- **Audit Report:** Read `AUDIT_FINAL_REPORT.md`
+- **Security:** Read `docs/archive/SECURITY_IMPROVEMENTS.md`
+- **Audit Report:** Read `docs/archive/AUDIT_FINAL_REPORT.md`
 - **Configuration:** See `.env.example`
 - **API Testing:** Use `/health` endpoint
 - **Logs:** Check `logs/app.log`

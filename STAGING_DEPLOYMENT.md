@@ -343,7 +343,7 @@ If issues during staging:
 1. Check logs: `docker-compose logs app`
 2. Run health check: `bash healthcheck.sh`
 3. Review MONITORING_GUIDE.md
-4. Check IMPROVEMENT_REPORT.md
+4. Check docs/archive/IMPROVEMENT_REPORT.md
 
 ---
 

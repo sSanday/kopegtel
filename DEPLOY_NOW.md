@@ -80,7 +80,7 @@ tail -f logs/app.log
 ---
 
 ## Support
-- Documentation: IMPROVEMENT_REPORT.md
+- Documentation: docs/archive/IMPROVEMENT_REPORT.md
 - Deployment guide: DEPLOYMENT_GUIDE.md
 - Pre-deploy check: bash verify-deployment.sh
 
