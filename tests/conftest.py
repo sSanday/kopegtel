@@ -9,3 +9,7 @@ Environment variable dibaca saat app.py diimport pertama kali.
 import os
 
 os.environ.setdefault("NMS_DISABLE_LIMITER", "1")
+# Matikan receiver trap UDP global agar test tidak bind port 1162.
+# Tindakan verifikasi socket/tcp receiver dilakukan eksplisit di
+# tests/test_snmp_trap.py dengan env-nya sendiri dan port acak.
+os.environ.setdefault("NMS_DISABLE_TRAP_RECEIVER", "1")

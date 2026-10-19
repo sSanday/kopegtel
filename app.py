@@ -179,6 +179,10 @@ from nms.power import (
     poll_power_snmp,
     record_power_metric,
 )
+from nms.snmp_trap import (
+    SNMP_TRAP_COMMUNITY_MAX as NMS_SNMP_TRAP_COMMUNITY_MAX,
+    start_trap_receiver,
+)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
@@ -1233,6 +1237,14 @@ if SCHEDULER_ENABLED:
 
 if SCHEDULER_ENABLED:
     send_startup_alert()
+
+# Receiver SNMP trap (thread daemon UDP). start_trap_receiver sendiri mengecek
+# env NMS_DISABLE_TRAP_RECEIVER + setting snmp_trap_enabled, dan gagal aman
+# bila port sudah dipakai.
+try:
+    start_trap_receiver()
+except Exception as _trap_err:
+    print(f"[TRAP] receiver gagal start: {_trap_err}")
 
 
 _manual_svc_lock = threading.Lock()
@@ -2586,6 +2598,11 @@ def api_get_settings():
             "fiber_trend_horizon_days": get_setting(
                 "fiber_trend_horizon_days", 14, type_cast=int
             ),
+            "snmp_trap_enabled": get_setting("snmp_trap_enabled", 1, type_cast=int),
+            "snmp_trap_port": get_setting("snmp_trap_port", 1162, type_cast=int),
+            "snmp_trap_community": get_setting(
+                "snmp_trap_community", "", type_cast=str
+            ),
             "temp_threshold": get_setting("temp_threshold", 60.0),
             "temp_crit": get_setting("temp_crit", 75.0),
             "mt_cpu_oid": get_setting(
@@ -2730,6 +2747,26 @@ def api_save_settings():
                 400,
             )
         vals["fiber_trend_min_slope"] = v
+    v = data.get("snmp_trap_enabled")
+    if v is not None:
+        try:
+            v = 1 if int(float(v)) else 0
+        except (ValueError, TypeError):
+            return jsonify({"error": "snmp_trap_enabled harus 0 atau 1"}), 400
+        vals["snmp_trap_enabled"] = v
+    v = data.get("snmp_trap_port")
+    if v is not None:
+        try:
+            v = int(float(v))
+        except (ValueError, TypeError):
+            return jsonify({"error": "snmp_trap_port harus angka 1024-65535"}), 400
+        if not 1024 <= v <= 65535:
+            return jsonify({"error": "snmp_trap_port harus 1024-65535"}), 400
+        vals["snmp_trap_port"] = v
+    v = data.get("snmp_trap_community")
+    if v is not None:
+        v = str(v).strip()[:NMS_SNMP_TRAP_COMMUNITY_MAX]
+        vals["snmp_trap_community"] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
         if v is None:
@@ -5593,6 +5630,69 @@ def logs_page():
 @login_required
 def audit_logs_page():
     return render_template("audit.html")
+
+
+@app.route("/api/traps")
+@api_login_required
+def api_list_traps():
+    """Riwayat SNMP trap terstruktur (tabel snmp_traps)."""
+    try:
+        page = int(request.args.get("page", 1))
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        limit = int(request.args.get("limit", 50))
+    except (ValueError, TypeError):
+        limit = 50
+    page = max(page, 1)
+    limit = min(max(limit, 1), 200)
+    offset = (page - 1) * limit
+    source = (request.args.get("source") or "").strip()
+    category = (request.args.get("category") or "").strip()
+    only_invalid = request.args.get("invalid") == "1"
+
+    conn, c = get_db()
+    try:
+        query = "SELECT * FROM snmp_traps WHERE 1=1"
+        params = []
+        if source:
+            query += " AND source_ip=?"
+            params.append(source)
+        if category:
+            query += " AND category=?"
+            params.append(category)
+        if only_invalid:
+            query += " AND community_ok=0"
+        c.execute(f"SELECT COUNT(*) as total FROM ({query})", params)
+        total = c.fetchone()["total"]
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend((limit, offset))
+        c.execute(query, params)
+        rows = c.fetchall()
+        traps = []
+        for r in rows:
+            traps.append(
+                {
+                    "id": r["id"],
+                    "received_at": r["received_at"],
+                    "source_ip": r["source_ip"],
+                    "source_port": r["source_port"],
+                    "community_ok": r["community_ok"],
+                    "snmp_version": r["snmp_version"],
+                    "trap_oid": r["trap_oid"],
+                    "generic": r["generic"],
+                    "specific": r["specific"],
+                    "if_index": r["if_index"],
+                    "if_oper": r["if_oper"],
+                    "sys_uptime": r["sys_uptime"],
+                    "category": r["category"],
+                    "message": r["message"],
+                    "raw_vars": r["raw_vars"],
+                }
+            )
+        return jsonify({"traps": traps, "total": total, "page": page, "limit": limit})
+    finally:
+        conn.close()
 
 
 @app.route("/api/system_logs")

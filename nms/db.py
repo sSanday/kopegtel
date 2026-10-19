@@ -239,6 +239,15 @@ def init_db():
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_trend_horizon_days', '14')"
     )
     c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_trap_enabled', '1')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_trap_port', '1162')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_trap_community', '')"
+    )
+    c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')"
     )
     c.execute(
@@ -557,6 +566,26 @@ def init_db():
       last_changed TEXT,
       PRIMARY KEY (host, if_index)
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS snmp_traps(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      received_at TEXT NOT NULL,
+      source_ip TEXT NOT NULL,
+      source_port INTEGER DEFAULT 0,
+      community_ok INTEGER NOT NULL DEFAULT 1,
+      snmp_version TEXT DEFAULT '2c',
+      trap_oid TEXT DEFAULT '',
+      generic INTEGER,
+      specific INTEGER,
+      if_index INTEGER,
+      if_oper INTEGER,
+      sys_uptime INTEGER,
+      category TEXT DEFAULT 'other',
+      message TEXT DEFAULT '',
+      raw_vars TEXT DEFAULT ''
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_snmp_traps_time ON snmp_traps(received_at DESC)"
+    )
     c.execute("""CREATE TABLE IF NOT EXISTS iface_traffic(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       host TEXT NOT NULL,
@@ -817,6 +846,14 @@ def cleanup_old_data():
                 deleted_iface = 0
             try:
                 c.execute(
+                    "DELETE FROM snmp_traps WHERE received_at < datetime('now', 'localtime', '-90 days')"
+                )
+                deleted_traps = c.rowcount
+            except Exception as e:
+                print(f"[CLEANUP] snmp_traps gagal: {e}")
+                deleted_traps = 0
+            try:
+                c.execute(
                     "DELETE FROM power_metrics WHERE timestamp < datetime('now', 'localtime', '-90 days')"
                 )
                 deleted_power = c.rowcount
@@ -842,7 +879,7 @@ def cleanup_old_data():
         except Exception as e:
             print(f"[CLEANUP] checkpoint gagal: {e}")
     print(
-        f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} power={deleted_power} baris lama dihapus."
+        f"[CLEANUP] ping_logs={deleted} agent_metrics={deleted_agent} system_logs={deleted_logs} down_events={deleted_events} maintenance={deleted_maint} svc_hist={deleted_svc_hist} fiber={deleted_fiber} fiber_down={deleted_fiber_down} mthealth={deleted_mt} ifacetraf={deleted_iface} traps={deleted_traps} power={deleted_power} baris lama dihapus."
     )
 
 

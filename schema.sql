@@ -220,3 +220,21 @@ CREATE TABLE audit_logs (
         detail TEXT,
         ip_address TEXT
     );
+CREATE TABLE snmp_traps (
+        id SERIAL PRIMARY KEY,
+        received_at TEXT NOT NULL,
+        source_ip TEXT NOT NULL,
+        source_port INTEGER DEFAULT 0,
+        community_ok INTEGER NOT NULL DEFAULT 1,
+        snmp_version TEXT DEFAULT '2c',
+        trap_oid TEXT DEFAULT '',
+        generic INTEGER,
+        specific INTEGER,
+        if_index INTEGER,
+        if_oper INTEGER,
+        sys_uptime INTEGER,
+        category TEXT DEFAULT 'other',
+        message TEXT DEFAULT '',
+        raw_vars TEXT DEFAULT ''
+    );
+CREATE INDEX idx_snmp_traps_time ON snmp_traps(received_at DESC);
