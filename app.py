@@ -5180,6 +5180,12 @@ def triggers_page():
     return render_template("triggers.html")
 
 
+@app.route("/problems")
+@login_required
+def problems_page():
+    return render_template("problems.html")
+
+
 @app.route("/api/triggers")
 @api_login_required
 def get_triggers():
@@ -5643,6 +5649,176 @@ def get_triggers():
 
 def _like_escape(s):
     return str(s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_PROBLEM_SEVERITIES = {"info": 0, "warning": 1, "high": 2, "disaster": 3}
+
+
+def _problem_row(r):
+    """Normalisasi satu baris alert_history menjadi objek Problems."""
+    d = dict(r)
+    d["status"] = "RESOLVED" if d.get("resolved_at") else "PROBLEM"
+    stamps = [
+        s
+        for s in (
+            d.get("triggered_at"),
+            d.get("acknowledged_at"),
+            d.get("resolved_at"),
+            d.get("escalated_at"),
+        )
+        if s
+    ]
+    d["update_at"] = max(stamps) if stamps else None
+    return d
+
+
+@app.route("/api/problems")
+@api_login_required
+@limiter.limit("120/minute")
+def api_problems():
+    """Daftar masalah gaya Zabbix dari alert_history.
+
+    show: recent (aktif + pulih dalam jendela), problems (aktif saja),
+    history (semua status dalam jendela). Filter host/problem (LIKE),
+    severity (csv), age_less_days, ack=all|unack|ack, by_me, sort.
+    format=csv mengembalikan CSV siap unduh.
+    """
+    show = (request.args.get("show") or "recent").lower()
+    if show not in ("recent", "problems", "history"):
+        show = "recent"
+    host_q = (request.args.get("host") or "").strip()
+    problem_q = (request.args.get("problem") or "").strip()
+    type_q = (request.args.get("type") or "").strip()
+    severity_raw = (request.args.get("severity") or "").lower()
+    severities = [
+        s.strip() for s in severity_raw.split(",") if s.strip() in _PROBLEM_SEVERITIES
+    ]
+    age_raw = (request.args.get("age_less_days") or "").strip()
+    age_days = None
+    if age_raw:
+        try:
+            age_days = max(1, int(age_raw))
+        except (TypeError, ValueError):
+            age_days = None
+    ack = (request.args.get("ack") or "all").lower()
+    if ack not in ("all", "unack", "ack"):
+        ack = "all"
+    by_me = request.args.get("by_me") == "1"
+    fmt = (request.args.get("format") or "json").lower()
+    if fmt not in ("json", "csv"):
+        fmt = "json"
+    sort = (request.args.get("sort") or "time_desc").lower()
+    if sort not in ("time_desc", "time_asc"):
+        sort = "time_desc"
+    limit_raw = (request.args.get("limit") or "").strip()
+    try:
+        limit = max(1, min(int(limit_raw or 500), 1000))
+    except (TypeError, ValueError):
+        limit = 500
+
+    now = datetime.now()
+    where, params = [], []
+    if show == "problems":
+        where.append("resolved_at IS NULL")
+    elif show == "recent":
+        window_days = age_days if age_days is not None else 7
+        cut = (now - timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
+        where.append("(resolved_at IS NULL OR resolved_at >= ?)")
+        params.append(cut)
+    if age_days is not None:
+        where.append("triggered_at >= ?")
+        params.append((now - timedelta(days=age_days)).strftime("%Y-%m-%d %H:%M:%S"))
+    if host_q:
+        where.append("host LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(host_q) + "%")
+    if problem_q:
+        where.append("message LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(problem_q) + "%")
+    if type_q:
+        where.append("alert_type LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(type_q) + "%")
+    if severities:
+        where.append("severity IN (%s)" % ",".join("?" for _ in severities))
+        params.extend(severities)
+    if ack == "unack":
+        where.append("acknowledged_at IS NULL")
+    elif ack == "ack":
+        where.append("acknowledged_at IS NOT NULL")
+    if by_me:
+        where.append("acknowledged_by = ?")
+        params.append(str(getattr(current_user, "username", "") or ""))
+
+    order = "ASC" if sort == "time_asc" else "DESC"
+    conn, c = get_db()
+    try:
+        sql = (
+            "SELECT id, host, alert_type, severity, message, triggered_at,"
+            " resolved_at, duration_s, acknowledged_at, acknowledged_by,"
+            " assigned_to, note, escalated_at FROM alert_history"
+        )
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY triggered_at %s, id %s LIMIT %d" % (order, order, limit)
+        c.execute(sql, params)
+        rows = [_problem_row(r) for r in c.fetchall()]
+
+        if fmt == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(
+                [
+                    "id",
+                    "time",
+                    "severity",
+                    "status",
+                    "recovery_time",
+                    "host",
+                    "problem",
+                    "duration_s",
+                    "update",
+                    "acknowledged_by",
+                    "acknowledged_at",
+                    "type",
+                    "note",
+                ]
+            )
+            for d in rows:
+                w.writerow(
+                    [
+                        d.get("id"),
+                        d.get("triggered_at"),
+                        d.get("severity"),
+                        d.get("status"),
+                        d.get("resolved_at") or "",
+                        d.get("host"),
+                        d.get("message"),
+                        d.get("duration_s") if d.get("duration_s") is not None else "",
+                        d.get("update_at") or "",
+                        d.get("acknowledged_by") or "",
+                        d.get("acknowledged_at") or "",
+                        d.get("alert_type") or "",
+                        d.get("note") or "",
+                    ]
+                )
+            nama = now.strftime("problems-%Y%m%d-%H%M%S.csv")
+            return Response(
+                buf.getvalue(),
+                mimetype="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={nama}"},
+            )
+
+        c.execute("SELECT DISTINCT host FROM alert_history ORDER BY host ASC LIMIT 500")
+        host_options = [r["host"] for r in c.fetchall()]
+        return jsonify(
+            {
+                "problems": rows,
+                "count": len(rows),
+                "host_options": host_options,
+                "show": show,
+            }
+        )
+    finally:
+        conn.close()
 
 
 @app.route("/logs")
