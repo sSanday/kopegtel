@@ -195,8 +195,6 @@ button { font: inherit; }
 .nav-sub .nav-link:hover { color: var(--text); }
 .nav .nav-sub .nav-link.active { color: var(--text); }
 .nav-sub .nav-link.active::before { left: -18px; }
-.nav-link.nav-stub { opacity: 0.55; cursor: default; }
-.nav-link.nav-stub:hover { background: transparent; color: var(--text-3); }
 body.nav-collapsed .nav-sub { display: none !important; }
 body.nav-collapsed .nav-sub-head span,
 body.nav-collapsed .nav-sub-head .chev { display: none; }

@@ -2530,6 +2530,201 @@ def api_hosts_zbx():
     )
 
 
+@app.route("/latest-data")
+@login_required
+def latest_data_page():
+    return render_template("latest_data.html")
+
+
+@app.route("/api/latest-data", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_latest_data():
+    """Item terkini per host (gaya Zabbix): nilai terakhir + perubahan.
+
+    Sumber nyata: device_health (SNMP), agent_metrics (agent), dan
+    ping_logs (latensi). Satu item per metrik yang benar-benar punya data.
+    """
+    host_q = (request.args.get("host") or "").strip()
+    group_q = (request.args.get("group") or "").strip()
+    name_q = (request.args.get("name") or "").strip()
+    source_f = (request.args.get("source") or "all").lower()
+    if source_f not in ("all", "snmp", "agent", "ping"):
+        source_f = "all"
+    sort = (request.args.get("sort") or "name_asc").lower()
+    if sort not in ("name_asc", "name_desc", "check_desc", "check_asc"):
+        sort = "name_asc"
+
+    conn, c = get_db()
+    try:
+        c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
+        host_rows = [dict(r) for r in c.fetchall()]
+        categories = sorted({r["category"] or "Uncategorized" for r in host_rows})
+
+        items = []
+        for r in host_rows:
+            ip = r["ip"]
+            alias = (r["alias"] or "").strip()
+            display = alias or ip
+            category = r["category"] or "Uncategorized"
+
+            c.execute(
+                "SELECT timestamp, cpu, mem_used, storage_used, temp_c"
+                " FROM device_health WHERE host=?"
+                " ORDER BY timestamp DESC, id DESC LIMIT 2",
+                (ip,),
+            )
+            health = c.fetchall()
+            if health:
+                new = health[0]
+                prev = health[1] if len(health) > 1 else None
+                for key, nm, unit in (
+                    ("cpu", "CPU load", "%"),
+                    ("mem_used", "Memory used", "%"),
+                    ("storage_used", "Storage used", "%"),
+                    ("temp_c", "Temperature", "°C"),
+                ):
+                    v = new[key]
+                    if v is None:
+                        continue
+                    delta = prev_val = prev_ts = None
+                    if prev is not None and prev[key] is not None:
+                        delta = round(float(v) - float(prev[key]), 2)
+                        prev_val = round(float(prev[key]), 2)
+                        prev_ts = prev["timestamp"]
+                    items.append(
+                        {
+                            "host": display,
+                            "ip": ip,
+                            "category": category,
+                            "name": nm,
+                            "unit": unit,
+                            "value": round(float(v), 2),
+                            "delta": delta,
+                            "prev": prev_val,
+                            "prev_check": prev_ts,
+                            "check": new["timestamp"],
+                            "source": "snmp",
+                        }
+                    )
+
+            c.execute(
+                "SELECT timestamp, cpu_percent, ram_percent, disk_percent,"
+                " net_in, net_out FROM agent_metrics WHERE host=?"
+                " ORDER BY timestamp DESC, id DESC LIMIT 2",
+                (ip,),
+            )
+            agent = c.fetchall()
+            if agent:
+                new = agent[0]
+                prev = agent[1] if len(agent) > 1 else None
+                for key, nm, unit in (
+                    ("cpu_percent", "CPU (agent)", "%"),
+                    ("ram_percent", "Memory (agent)", "%"),
+                    ("disk_percent", "Disk (agent)", "%"),
+                    ("net_in", "Net in (agent)", "KB/s"),
+                    ("net_out", "Net out (agent)", "KB/s"),
+                ):
+                    v = new[key]
+                    if v is None:
+                        continue
+                    delta = prev_val = prev_ts = None
+                    if prev is not None and prev[key] is not None:
+                        delta = round(float(v) - float(prev[key]), 2)
+                        prev_val = round(float(prev[key]), 2)
+                        prev_ts = prev["timestamp"]
+                    items.append(
+                        {
+                            "host": display,
+                            "ip": ip,
+                            "category": category,
+                            "name": nm,
+                            "unit": unit,
+                            "value": round(float(v), 2),
+                            "delta": delta,
+                            "prev": prev_val,
+                            "prev_check": prev_ts,
+                            "check": new["timestamp"],
+                            "source": "agent",
+                        }
+                    )
+
+            c.execute(
+                "SELECT timestamp, latency FROM ping_logs WHERE host=?"
+                " ORDER BY timestamp DESC, id DESC LIMIT 2",
+                (ip,),
+            )
+            pings = c.fetchall()
+            if pings:
+                new = pings[0]
+                prev = pings[1] if len(pings) > 1 else None
+                v = new["latency"]
+                # -1 berarti ping gagal (lihat /api/history) — bukan item valid
+                if v is not None and float(v) >= 0:
+                    delta = prev_val = prev_ts = None
+                    if prev is not None and prev["latency"] is not None:
+                        delta = round(float(v) - float(prev["latency"]), 2)
+                        prev_val = round(float(prev["latency"]), 2)
+                        prev_ts = prev["timestamp"]
+                    items.append(
+                        {
+                            "host": display,
+                            "ip": ip,
+                            "category": category,
+                            "name": "Ping latency",
+                            "unit": "ms",
+                            "value": round(float(v), 2),
+                            "delta": delta,
+                            "prev": prev_val,
+                            "prev_check": prev_ts,
+                            "check": new["timestamp"],
+                            "source": "ping",
+                        }
+                    )
+    finally:
+        conn.close()
+
+    total = len(items)
+    low_host, low_group, low_name = host_q.lower(), group_q.lower(), name_q.lower()
+    if low_host:
+        items = [
+            d
+            for d in items
+            if low_host in d["host"].lower() or low_host in d["ip"].lower()
+        ]
+    if low_group:
+        items = [d for d in items if low_group in d["category"].lower()]
+    if low_name:
+        items = [d for d in items if low_name in d["name"].lower()]
+    if source_f != "all":
+        items = [d for d in items if d["source"] == source_f]
+
+    if sort == "name_desc":
+        items.sort(key=lambda d: (d["name"].lower(), d["host"].lower()), reverse=True)
+    elif sort == "check_desc":
+        items.sort(
+            key=lambda d: (d["check"], d["host"].lower(), d["name"].lower()),
+            reverse=True,
+        )
+    elif sort == "check_asc":
+        items.sort(key=lambda d: (d["check"], d["host"].lower(), d["name"].lower()))
+    else:
+        items.sort(key=lambda d: (d["name"].lower(), d["host"].lower()))
+
+    return jsonify(
+        {
+            "items": items,
+            "count": len(items),
+            "total": total,
+            "categories": categories,
+            "hosts": sorted(
+                {((h["alias"] or "").strip() or h["ip"]) for h in host_rows}
+                | {h["ip"] for h in host_rows}
+            ),
+        }
+    )
+
+
 @app.route("/api/hosts/bulk/import", methods=["POST"])
 @api_login_required
 @require_role("admin")
