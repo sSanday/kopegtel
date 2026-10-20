@@ -84,6 +84,7 @@ from nms.db import (
     list_users,
     log_system_event,
     resolve_alert,
+    resolve_db_path,
     restore_database,
     set_host_threshold,
     update_user_role,
@@ -2603,6 +2604,15 @@ def api_get_settings():
             "snmp_trap_community": get_setting(
                 "snmp_trap_community", "", type_cast=str
             ),
+            "notify_telegram_min_sev": get_setting(
+                "notify_telegram_min_sev", "info", type_cast=str
+            ),
+            "notify_email_min_sev": get_setting(
+                "notify_email_min_sev", "critical", type_cast=str
+            ),
+            "notify_webhook_min_sev": get_setting(
+                "notify_webhook_min_sev", "warning", type_cast=str
+            ),
             "temp_threshold": get_setting("temp_threshold", 60.0),
             "temp_crit": get_setting("temp_crit", 75.0),
             "mt_cpu_oid": get_setting(
@@ -2767,6 +2777,21 @@ def api_save_settings():
     if v is not None:
         v = str(v).strip()[:NMS_SNMP_TRAP_COMMUNITY_MAX]
         vals["snmp_trap_community"] = v
+    for key in (
+        "notify_telegram_min_sev",
+        "notify_email_min_sev",
+        "notify_webhook_min_sev",
+    ):
+        v = data.get(key)
+        if v is None:
+            continue
+        v = str(v).strip().lower()
+        if v not in ("info", "warning", "critical"):
+            return (
+                jsonify({"error": f"{key} harus info, warning, atau critical"}),
+                400,
+            )
+        vals[key] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
         if v is None:
