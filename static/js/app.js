@@ -91,7 +91,7 @@
 
   function setActiveNav() {
     var path = window.location.pathname || "/";
-    var map = { "/": "dashboard", "/triggers": "monitoring", "/services": "services", "/inventory": "inventory", "/logs": "logs", "/reports": "reports", "/fiber": "fiber", "/mikrotik": "mikrotik", "/power-analytics": "power", "/discovery": "discovery" };
+    var map = { "/": "dashboard", "/triggers": "monitoring", "/problems": "monitoring", "/hosts": "monitoring", "/topo": "maps", "/services": "services", "/inventory": "inventory", "/logs": "logs", "/reports": "reports", "/fiber": "fiber", "/mikrotik": "mikrotik", "/power-analytics": "power", "/discovery": "discovery" };
     var key = map[path] || "dashboard";
     var params = new URLSearchParams(window.location.search || "");
     var sev = (params.get("severity") || "").toLowerCase();
