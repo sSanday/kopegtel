@@ -105,18 +105,6 @@ def init_db():
         notes TEXT DEFAULT '',
         updated_at TEXT NOT NULL
     )""")
-    try:
-        c.execute("ALTER TABLE hosts ADD COLUMN power_oid TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE hosts ADD COLUMN power_scale REAL DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE hosts ADD COLUMN power_rated_watts REAL DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass
 
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,6 +235,21 @@ def init_db():
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('snmp_trap_community', '')"
     )
+    # Ambang severity minimum per channel notifikasi (lihat nms/notify.py):
+    # info < warning < critical. Semua channel aktif bila konfigurasinya
+    # lengkap; nilai kosong di sini hanya bawaan, tak mengubah perilaku.
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value)"
+        " VALUES ('notify_telegram_min_sev', 'info')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value)"
+        " VALUES ('notify_email_min_sev', 'critical')"
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO settings (key, value)"
+        " VALUES ('notify_webhook_min_sev', 'warning')"
+    )
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('fiber_parent_min', '5')"
     )
@@ -345,6 +348,21 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     _add_column_compat(c, "ALTER TABLE hosts ADD COLUMN ssh_hostkey TEXT DEFAULT ''")
+    # Kolom power: ALTER harus SETELAH tabel hosts dibuat. Dulu blok ini
+    # terletak sebelum CREATE hosts sehingga pada DB fresh pengecualian
+    # "no such table: hosts" tertelan dan kolom tidak pernah dibuat.
+    for _col, _ddl in (
+        ("power_oid", "ALTER TABLE hosts ADD COLUMN power_oid TEXT DEFAULT ''"),
+        ("power_scale", "ALTER TABLE hosts ADD COLUMN power_scale REAL DEFAULT 1"),
+        (
+            "power_rated_watts",
+            "ALTER TABLE hosts ADD COLUMN power_rated_watts REAL DEFAULT NULL",
+        ),
+    ):
+        try:
+            c.execute(_ddl)
+        except sqlite3.OperationalError:
+            pass
     c.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('mt_backup_keep', '10')"
     )
@@ -846,7 +864,7 @@ def cleanup_old_data():
                 deleted_iface = 0
             try:
                 c.execute(
-                    "DELETE FROM snmp_traps WHERE received_at < datetime('now', 'localtime', '-90 days')"
+                    "DELETE FROM snmp_traps WHERE received_at < datetime('now', 'localtime', '-30 days')"
                 )
                 deleted_traps = c.rowcount
             except Exception as e:

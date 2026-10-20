@@ -418,5 +418,53 @@ class TrapApiTest(unittest.TestCase):
         )
 
 
+class TrapRetentionCleanupTest(unittest.TestCase):
+    """Retensi snmp_traps 30 hari: baris lama dihapus cleanup_old_data."""
+
+    def test_retensi_30_hari(self):
+        from datetime import datetime, timedelta
+
+        old = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d %H:%M:%S")
+        fresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO snmp_traps (received_at, source_ip, category)"
+                " VALUES (?, '192.0.2.40', 'other')",
+                (old,),
+            )
+            c.execute(
+                "INSERT INTO snmp_traps (received_at, source_ip, category)"
+                " VALUES (?, '192.0.2.40', 'other')",
+                (fresh,),
+            )
+            m._commit_with_retry(conn)
+            fresh_id, old_id = [
+                r[0]
+                for r in c.execute(
+                    "SELECT id FROM snmp_traps WHERE source_ip='192.0.2.40'"
+                    " ORDER BY id DESC LIMIT 2"
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+        m.cleanup_old_data()
+
+        conn, c = m.get_db()
+        try:
+            alive = {
+                r[0]
+                for r in c.execute(
+                    "SELECT id FROM snmp_traps WHERE id IN (?,?)",
+                    (old_id, fresh_id),
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        self.assertIn(fresh_id, alive)
+        self.assertNotIn(old_id, alive)
+
+
 if __name__ == "__main__":
     unittest.main()

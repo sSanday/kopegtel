@@ -266,5 +266,39 @@ class EndpointNotifyTest(unittest.TestCase):
         self.assertEqual(r.status_code, 405)
 
 
+class NotifySettingsApiTest(unittest.TestCase):
+    """notify_*_min_sev: default DB, tampil di GET, divalidasi di POST."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = m.app.test_client()
+        r = cls.client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
+        assert r.status_code == 302, f"login gagal: {r.status_code}"
+
+    def test_get_menampilkan_default(self):
+        r = self.client.get("/api/settings")
+        self.assertEqual(r.status_code, 200)
+        j = r.get_json()
+        self.assertEqual(j["notify_telegram_min_sev"], "info")
+        self.assertEqual(j["notify_email_min_sev"], "critical")
+        self.assertEqual(j["notify_webhook_min_sev"], "warning")
+
+    def test_post_validasi_dan_simpan(self):
+        # Nilai valid disimpan, lalu dibaca balik via GET.
+        r = self.client.post("/api/settings", json={"notify_email_min_sev": "info"})
+        self.assertEqual(r.status_code, 200)
+        r = self.client.get("/api/settings")
+        self.assertEqual(r.get_json()["notify_email_min_sev"], "info")
+        # Nilai tidak valid ditolak; nilai tersimpan tidak berubah.
+        r = self.client.post("/api/settings", json={"notify_email_min_sev": "loud"})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.get("/api/settings")
+        self.assertEqual(r.get_json()["notify_email_min_sev"], "info")
+        # Kembalikan default agar tidak mengubah perilaku relay test lain.
+        self.client.post("/api/settings", json={"notify_email_min_sev": "critical"})
+
+
 if __name__ == "__main__":
     unittest.main()

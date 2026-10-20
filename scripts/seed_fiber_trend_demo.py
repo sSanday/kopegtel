@@ -28,8 +28,11 @@ import argparse
 import random
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from nms.db import _commit_with_retry, get_db
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from nms.db import _commit_with_retry, get_db, init_db  # noqa: E402
 
 PREFIX = "DEMO-TREND-"
 DAYS = 21
@@ -160,6 +163,9 @@ def main():
         help="hapus ONT demo dan seluruh riwayatnya",
     )
     args = parser.parse_args()
+    # Pastikan skema tersedia (idempoten) agar demo bisa dijalankan pada
+    # DB kosong/baru, bukan hanya DB produksi yang sudah terinisialisasi.
+    init_db()
     try:
         if args.cleanup:
             cleanup()

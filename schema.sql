@@ -20,7 +20,7 @@ CREATE TABLE down_events (
 CREATE TABLE hosts (
         id SERIAL PRIMARY KEY,
         ip TEXT UNIQUE NOT NULL
-    , snmp_community TEXT DEFAULT '', if_index INTEGER DEFAULT 1, alias TEXT DEFAULT '', category TEXT DEFAULT 'Uncategorized', snmp_profile TEXT DEFAULT 'auto', cpu_oid TEXT DEFAULT '', mem_oid TEXT DEFAULT '', storage_oid TEXT DEFAULT '', temp_oid TEXT DEFAULT '', ssh_user TEXT DEFAULT '', ssh_pass TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22, backup_enable INTEGER NOT NULL DEFAULT 0, backup_last TEXT DEFAULT '', backup_ok INTEGER NOT NULL DEFAULT 0, ssh_hostkey TEXT DEFAULT '');
+    , snmp_community TEXT DEFAULT '', if_index INTEGER DEFAULT 1, alias TEXT DEFAULT '', category TEXT DEFAULT 'Uncategorized', snmp_profile TEXT DEFAULT 'auto', cpu_oid TEXT DEFAULT '', mem_oid TEXT DEFAULT '', storage_oid TEXT DEFAULT '', temp_oid TEXT DEFAULT '', ssh_user TEXT DEFAULT '', ssh_pass TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22, backup_enable INTEGER NOT NULL DEFAULT 0, backup_last TEXT DEFAULT '', backup_ok INTEGER NOT NULL DEFAULT 0, ssh_hostkey TEXT DEFAULT '', power_oid TEXT DEFAULT '', power_scale REAL DEFAULT 1, power_rated_watts REAL DEFAULT NULL);
 CREATE TABLE agent_metrics (
         id SERIAL PRIMARY KEY,
         host TEXT NOT NULL,
@@ -238,3 +238,22 @@ CREATE TABLE snmp_traps (
         raw_vars TEXT DEFAULT ''
     );
 CREATE INDEX idx_snmp_traps_time ON snmp_traps(received_at DESC);
+CREATE TABLE power_metrics (
+        id SERIAL PRIMARY KEY,
+        host TEXT NOT NULL,
+        watts REAL,
+        voltage REAL,
+        current REAL,
+        energy_kwh REAL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'manual',
+        timestamp TEXT NOT NULL
+    );
+CREATE INDEX idx_power_host_clock ON power_metrics(host, timestamp);
+CREATE TABLE power_devices (
+        name TEXT PRIMARY KEY,
+        rated_watts REAL,
+        threshold_watts REAL,
+        source TEXT NOT NULL DEFAULT 'manual',
+        notes TEXT DEFAULT '',
+        updated_at TEXT NOT NULL
+    );

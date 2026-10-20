@@ -12,6 +12,7 @@ Skenario:
 
 import os
 import random
+import sys
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta
@@ -608,6 +609,69 @@ class TrendAlertTest(unittest.TestCase):
                 m._commit_with_retry(conn)
             finally:
                 conn.close()
+
+
+class SeedDemoScriptTest(unittest.TestCase):
+    """scripts/seed_fiber_trend_demo.py: seed lalu --cleanup (subprocess DB tmp).
+
+    Regressi bootstrap nms: tanpa sys.path bootstrap, pemanggilan persis
+    seperti di docstring (python scripts/seed_fiber_trend_demo.py) gagal
+    ModuleNotFoundError. DB yang dipakai bukan DB modul test ini.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls._tmpdir = tempfile.mkdtemp(prefix="nms_review_seed_demo_")
+        cls._db = os.path.join(cls._tmpdir, "seed_demo.db")
+        cls._repos = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+
+        shutil.rmtree(cls._tmpdir, ignore_errors=True)
+
+    def _run(self, arg=""):
+        import subprocess
+
+        env = os.environ.copy()
+        env["NMS_DB_PATH"] = self._db
+        env["NMS_DISABLE_SCHEDULER"] = "1"
+        env["NMS_DISABLE_TRAP_RECEIVER"] = "1"
+        env["TELEGRAM_BOT_TOKEN"] = ""
+        env["TELEGRAM_CHAT_ID"] = ""
+        cmd = [sys.executable, os.path.join("scripts", "seed_fiber_trend_demo.py")]
+        if arg:
+            cmd.append(arg)
+        return subprocess.run(
+            cmd,
+            cwd=self._repos,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    def _demo_count(self):
+        import sqlite3
+
+        conn = sqlite3.connect(self._db)
+        try:
+            return conn.execute(
+                "SELECT COUNT(*) FROM fiber_onts WHERE ont_sn LIKE 'DEMO-TREND-%'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_seed_lalu_cleanup(self):
+        r = self._run()
+        self.assertEqual(r.returncode, 0, f"seed gagal: {r.stdout} {r.stderr}")
+        self.assertEqual(self._demo_count(), 4)
+        r2 = self._run(arg="--cleanup")
+        self.assertEqual(r2.returncode, 0, f"cleanup gagal: {r2.stdout} {r2.stderr}")
+        self.assertEqual(self._demo_count(), 0)
 
 
 if __name__ == "__main__":

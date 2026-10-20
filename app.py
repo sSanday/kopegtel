@@ -84,6 +84,7 @@ from nms.db import (
     list_users,
     log_system_event,
     resolve_alert,
+    resolve_db_path,
     restore_database,
     set_host_threshold,
     update_user_role,
@@ -2342,6 +2343,193 @@ def api_add_host():
     return jsonify({"status": "success"})
 
 
+@app.route("/hosts")
+@login_required
+def hosts_page():
+    return render_template("hosts.html")
+
+
+@app.route("/api/hosts/zbx", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_hosts_zbx():
+    """Daftar host gaya Zabbix: availability (ping/SNMP/agent), maintenance,
+    masalah aktif, dan jumlah data terkini per host."""
+    name_q = (request.args.get("name") or "").strip()
+    ip_q = (request.args.get("ip") or "").strip()
+    group_q = (request.args.get("group") or "").strip()
+    status_f = (request.args.get("status") or "all").lower()
+    if status_f not in ("all", "normal", "maintenance"):
+        status_f = "all"
+    only_problems = request.args.get("only_problems") == "1"
+    severity_raw = (request.args.get("severity") or "").lower()
+    severities = [
+        s.strip() for s in severity_raw.split(",") if s.strip() in _PROBLEM_SEVERITIES
+    ]
+    sort = (request.args.get("sort") or "name_asc").lower()
+    if sort not in ("name_asc", "name_desc", "problems_desc"):
+        sort = "name_asc"
+
+    maint_map = get_active_maintenance_map()
+    try:
+        ping_map = dict(status_memory.items())
+    except Exception:
+        ping_map = {}
+
+    now = datetime.now()
+
+    def _age_min(ts):
+        try:
+            return (
+                now - datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+            ).total_seconds() / 60
+        except (TypeError, ValueError):
+            return None
+
+    def _label_hit(label, ip, alias):
+        lbl = (label or "").lower()
+        ip_l = (ip or "").lower()
+        alias_l = (alias or "").lower()
+        if not lbl:
+            return False
+        return (
+            lbl == ip_l
+            or bool(alias_l and alias_l in lbl)
+            or bool(ip_l and ip_l in lbl)
+        )
+
+    try:
+        active_alerts = get_active_alerts()
+    except Exception:
+        active_alerts = []
+
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT host, MAX(timestamp) AS last, COUNT(*) AS cnt"
+            " FROM device_health GROUP BY host"
+        )
+        health_map = {
+            r["host"]: {"last": r["last"], "count": r["cnt"] or 0} for r in c.fetchall()
+        }
+        c.execute(
+            "SELECT host, MAX(timestamp) AS last FROM agent_metrics GROUP BY host"
+        )
+        agent_map = {r["host"]: r["last"] for r in c.fetchall()}
+        c.execute("SELECT DISTINCT category FROM hosts ORDER BY category ASC")
+        categories = [r["category"] or "Uncategorized" for r in c.fetchall()]
+
+        c.execute(
+            "SELECT id, ip, alias, category, snmp_community, snmp_profile"
+            " FROM hosts ORDER BY id ASC"
+        )
+        rows = []
+        for r in c.fetchall():
+            d = dict(r)
+            ip = d["ip"]
+            alias = (d["alias"] or "").strip()
+            category = d["category"] or "Uncategorized"
+            display = alias or ip
+
+            ping_view = ping_map.get(ip)
+            ping_state = (
+                "unknown" if ping_view is None else ("up" if ping_view else "down")
+            )
+
+            snmp_mon = (
+                bool((d["snmp_community"] or "").strip())
+                and (d["snmp_profile"] or "auto") != "generic"
+            )
+            health = health_map.get(ip) or {"last": None, "count": 0}
+            age_m = _age_min(health["last"])
+            if not snmp_mon:
+                snmp_state = "none"
+            elif age_m is None:
+                snmp_state = "unknown"
+            elif age_m <= 120:
+                snmp_state = "ok"
+            else:
+                snmp_state = "stale"
+
+            agent_last = agent_map.get(ip)
+            agent_age = _age_min(agent_last)
+            if agent_last is None:
+                agent_state = "none"
+            elif agent_age is not None and agent_age <= 5:
+                agent_state = "ok"
+            else:
+                agent_state = "stale"
+
+            maint = maint_map.get(ip)
+            in_maint = maint is not None
+
+            matched = [a for a in active_alerts if _label_hit(a.get("host"), ip, alias)]
+            worst = None
+            sev_hit = False
+            for a in matched:
+                sev = (a.get("severity") or "").lower()
+                rank = _PROBLEM_SEVERITIES.get(sev)
+                if rank is None:
+                    continue
+                if worst is None or rank > _PROBLEM_SEVERITIES[worst]:
+                    worst = sev
+                if not severities or sev in severities:
+                    sev_hit = True
+            if severities and not sev_hit:
+                continue
+
+            rows.append(
+                {
+                    "id": d["id"],
+                    "ip": ip,
+                    "name": display,
+                    "category": category,
+                    "ping": ping_state,
+                    "snmp": snmp_state,
+                    "agent": agent_state,
+                    "snmp_monitored": snmp_mon,
+                    "maintenance": in_maint,
+                    "maintenance_reason": (maint or {}).get("reason") or "",
+                    "latest_count": health["count"],
+                    "problems_count": len(matched),
+                    "worst_severity": worst,
+                }
+            )
+    finally:
+        conn.close()
+
+    total = len(rows)
+    low = (name_q or "").lower()
+    if low:
+        rows = [d for d in rows if low in d["name"].lower() or low in d["ip"].lower()]
+    if ip_q:
+        rows = [d for d in rows if ip_q.lower() in d["ip"].lower()]
+    if group_q:
+        rows = [d for d in rows if group_q.lower() in (d["category"] or "").lower()]
+    if status_f == "maintenance":
+        rows = [d for d in rows if d["maintenance"]]
+    elif status_f == "normal":
+        rows = [d for d in rows if not d["maintenance"]]
+    if only_problems:
+        rows = [d for d in rows if d["problems_count"] > 0]
+
+    if sort == "name_desc":
+        rows.sort(key=lambda d: (d["name"].lower(), d["ip"]), reverse=True)
+    elif sort == "problems_desc":
+        rows.sort(key=lambda d: (-d["problems_count"], d["name"].lower(), d["ip"]))
+    else:
+        rows.sort(key=lambda d: (d["name"].lower(), d["ip"]))
+
+    return jsonify(
+        {
+            "hosts": rows,
+            "count": len(rows),
+            "total": total,
+            "categories": categories,
+        }
+    )
+
+
 @app.route("/api/hosts/bulk/import", methods=["POST"])
 @api_login_required
 @require_role("admin")
@@ -2603,6 +2791,15 @@ def api_get_settings():
             "snmp_trap_community": get_setting(
                 "snmp_trap_community", "", type_cast=str
             ),
+            "notify_telegram_min_sev": get_setting(
+                "notify_telegram_min_sev", "info", type_cast=str
+            ),
+            "notify_email_min_sev": get_setting(
+                "notify_email_min_sev", "critical", type_cast=str
+            ),
+            "notify_webhook_min_sev": get_setting(
+                "notify_webhook_min_sev", "warning", type_cast=str
+            ),
             "temp_threshold": get_setting("temp_threshold", 60.0),
             "temp_crit": get_setting("temp_crit", 75.0),
             "mt_cpu_oid": get_setting(
@@ -2767,6 +2964,21 @@ def api_save_settings():
     if v is not None:
         v = str(v).strip()[:NMS_SNMP_TRAP_COMMUNITY_MAX]
         vals["snmp_trap_community"] = v
+    for key in (
+        "notify_telegram_min_sev",
+        "notify_email_min_sev",
+        "notify_webhook_min_sev",
+    ):
+        v = data.get(key)
+        if v is None:
+            continue
+        v = str(v).strip().lower()
+        if v not in ("info", "warning", "critical"):
+            return (
+                jsonify({"error": f"{key} harus info, warning, atau critical"}),
+                400,
+            )
+        vals[key] = v
     for key in ("temp_threshold", "temp_crit"):
         v = data.get(key)
         if v is None:
@@ -5155,6 +5367,12 @@ def triggers_page():
     return render_template("triggers.html")
 
 
+@app.route("/problems")
+@login_required
+def problems_page():
+    return render_template("problems.html")
+
+
 @app.route("/api/triggers")
 @api_login_required
 def get_triggers():
@@ -5618,6 +5836,176 @@ def get_triggers():
 
 def _like_escape(s):
     return str(s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_PROBLEM_SEVERITIES = {"info": 0, "warning": 1, "high": 2, "disaster": 3}
+
+
+def _problem_row(r):
+    """Normalisasi satu baris alert_history menjadi objek Problems."""
+    d = dict(r)
+    d["status"] = "RESOLVED" if d.get("resolved_at") else "PROBLEM"
+    stamps = [
+        s
+        for s in (
+            d.get("triggered_at"),
+            d.get("acknowledged_at"),
+            d.get("resolved_at"),
+            d.get("escalated_at"),
+        )
+        if s
+    ]
+    d["update_at"] = max(stamps) if stamps else None
+    return d
+
+
+@app.route("/api/problems")
+@api_login_required
+@limiter.limit("120/minute")
+def api_problems():
+    """Daftar masalah gaya Zabbix dari alert_history.
+
+    show: recent (aktif + pulih dalam jendela), problems (aktif saja),
+    history (semua status dalam jendela). Filter host/problem (LIKE),
+    severity (csv), age_less_days, ack=all|unack|ack, by_me, sort.
+    format=csv mengembalikan CSV siap unduh.
+    """
+    show = (request.args.get("show") or "recent").lower()
+    if show not in ("recent", "problems", "history"):
+        show = "recent"
+    host_q = (request.args.get("host") or "").strip()
+    problem_q = (request.args.get("problem") or "").strip()
+    type_q = (request.args.get("type") or "").strip()
+    severity_raw = (request.args.get("severity") or "").lower()
+    severities = [
+        s.strip() for s in severity_raw.split(",") if s.strip() in _PROBLEM_SEVERITIES
+    ]
+    age_raw = (request.args.get("age_less_days") or "").strip()
+    age_days = None
+    if age_raw:
+        try:
+            age_days = max(1, int(age_raw))
+        except (TypeError, ValueError):
+            age_days = None
+    ack = (request.args.get("ack") or "all").lower()
+    if ack not in ("all", "unack", "ack"):
+        ack = "all"
+    by_me = request.args.get("by_me") == "1"
+    fmt = (request.args.get("format") or "json").lower()
+    if fmt not in ("json", "csv"):
+        fmt = "json"
+    sort = (request.args.get("sort") or "time_desc").lower()
+    if sort not in ("time_desc", "time_asc"):
+        sort = "time_desc"
+    limit_raw = (request.args.get("limit") or "").strip()
+    try:
+        limit = max(1, min(int(limit_raw or 500), 1000))
+    except (TypeError, ValueError):
+        limit = 500
+
+    now = datetime.now()
+    where, params = [], []
+    if show == "problems":
+        where.append("resolved_at IS NULL")
+    elif show == "recent":
+        window_days = age_days if age_days is not None else 7
+        cut = (now - timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
+        where.append("(resolved_at IS NULL OR resolved_at >= ?)")
+        params.append(cut)
+    if age_days is not None:
+        where.append("triggered_at >= ?")
+        params.append((now - timedelta(days=age_days)).strftime("%Y-%m-%d %H:%M:%S"))
+    if host_q:
+        where.append("host LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(host_q) + "%")
+    if problem_q:
+        where.append("message LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(problem_q) + "%")
+    if type_q:
+        where.append("alert_type LIKE ? ESCAPE '\\'")
+        params.append("%" + _like_escape(type_q) + "%")
+    if severities:
+        where.append("severity IN (%s)" % ",".join("?" for _ in severities))
+        params.extend(severities)
+    if ack == "unack":
+        where.append("acknowledged_at IS NULL")
+    elif ack == "ack":
+        where.append("acknowledged_at IS NOT NULL")
+    if by_me:
+        where.append("acknowledged_by = ?")
+        params.append(str(getattr(current_user, "username", "") or ""))
+
+    order = "ASC" if sort == "time_asc" else "DESC"
+    conn, c = get_db()
+    try:
+        sql = (
+            "SELECT id, host, alert_type, severity, message, triggered_at,"
+            " resolved_at, duration_s, acknowledged_at, acknowledged_by,"
+            " assigned_to, note, escalated_at FROM alert_history"
+        )
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY triggered_at %s, id %s LIMIT %d" % (order, order, limit)
+        c.execute(sql, params)
+        rows = [_problem_row(r) for r in c.fetchall()]
+
+        if fmt == "csv":
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow(
+                [
+                    "id",
+                    "time",
+                    "severity",
+                    "status",
+                    "recovery_time",
+                    "host",
+                    "problem",
+                    "duration_s",
+                    "update",
+                    "acknowledged_by",
+                    "acknowledged_at",
+                    "type",
+                    "note",
+                ]
+            )
+            for d in rows:
+                w.writerow(
+                    [
+                        d.get("id"),
+                        d.get("triggered_at"),
+                        d.get("severity"),
+                        d.get("status"),
+                        d.get("resolved_at") or "",
+                        d.get("host"),
+                        d.get("message"),
+                        d.get("duration_s") if d.get("duration_s") is not None else "",
+                        d.get("update_at") or "",
+                        d.get("acknowledged_by") or "",
+                        d.get("acknowledged_at") or "",
+                        d.get("alert_type") or "",
+                        d.get("note") or "",
+                    ]
+                )
+            nama = now.strftime("problems-%Y%m%d-%H%M%S.csv")
+            return Response(
+                buf.getvalue(),
+                mimetype="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={nama}"},
+            )
+
+        c.execute("SELECT DISTINCT host FROM alert_history ORDER BY host ASC LIMIT 500")
+        host_options = [r["host"] for r in c.fetchall()]
+        return jsonify(
+            {
+                "problems": rows,
+                "count": len(rows),
+                "host_options": host_options,
+                "show": show,
+            }
+        )
+    finally:
+        conn.close()
 
 
 @app.route("/logs")

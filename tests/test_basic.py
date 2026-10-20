@@ -331,5 +331,68 @@ class NmsTest(unittest.TestCase):
         self.assertNotIn(12.5, body["values"])
 
 
+class FreshSchemaTest(unittest.TestCase):
+    """Regresi X.2: kolom hosts power_* dibuat pada DB BARU.
+
+    Dulu ALTER TABLE hosts (power_oid/power_scale/power_rated_watts)
+    berada SEBELUM CREATE TABLE hosts sehingga pada DB fresh eksepsi
+    "no such table: hosts" tertelah lenyap dan kolom tak pernah dibuat.
+    """
+
+    def test_kolom_power_hosts_dibuat_dan_idempoten(self):
+        import tempfile as _temp
+        from unittest.mock import patch
+
+        tmp = _temp.mkdtemp(prefix="nms_schema_fresh_")
+        db = os.path.join(tmp, "fresh.db")
+        with patch.dict(os.environ, {"NMS_DB_PATH": db}):
+            m.init_db()
+            m.init_db()  # idempoten: tidak error, tidak kolom ganda
+            conn = sqlite3.connect(db)
+            try:
+                cols = [
+                    r[1] for r in conn.execute("PRAGMA table_info(hosts)").fetchall()
+                ]
+                ping_cols = [
+                    r[1]
+                    for r in conn.execute("PRAGMA table_info(ping_logs)").fetchall()
+                ]
+            finally:
+                conn.close()
+        self.assertIn("power_oid", cols)
+        self.assertIn("power_scale", cols)
+        self.assertIn("power_rated_watts", cols)
+        # Dua kali init_db tidak boleh menghasilkan kolom duplikat.
+        self.assertEqual(len(cols), len(set(cols)))
+        self.assertEqual(len(ping_cols), len(set(ping_cols)))
+
+
+class ManualBackupFixTest(unittest.TestCase):
+    """Regresi: /api/backups/manual memakai resolve_db_path yang belum
+    diimpor di app.py -> NameError pada setiap POST. Kini fungsi diimpor
+    dan endpoint berhasil membuat backup manual (BASE_DIR dipatch ke tmp).
+    """
+
+    def test_manual_backup_berjalan(self):
+        import tempfile as _temp
+        from unittest.mock import patch
+
+        client = m.app.test_client()
+        r = client.post(
+            "/login", data={"username": "admin", "password": "PantauNms2026"}
+        )
+        assert r.status_code == 302, f"login gagal: {r.status_code}"
+
+        tmp = _temp.mkdtemp(prefix="nms_manual_backup_")
+        with patch.object(m, "BASE_DIR", tmp):
+            r = client.post(
+                "/api/backups/manual",
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        backup_files = os.listdir(os.path.join(tmp, "backups"))
+        self.assertTrue(backup_files, "tidak ada file backup manual yang dibuat")
+
+
 if __name__ == "__main__":
     unittest.main()
