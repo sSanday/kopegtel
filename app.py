@@ -2343,6 +2343,193 @@ def api_add_host():
     return jsonify({"status": "success"})
 
 
+@app.route("/hosts")
+@login_required
+def hosts_page():
+    return render_template("hosts.html")
+
+
+@app.route("/api/hosts/zbx", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_hosts_zbx():
+    """Daftar host gaya Zabbix: availability (ping/SNMP/agent), maintenance,
+    masalah aktif, dan jumlah data terkini per host."""
+    name_q = (request.args.get("name") or "").strip()
+    ip_q = (request.args.get("ip") or "").strip()
+    group_q = (request.args.get("group") or "").strip()
+    status_f = (request.args.get("status") or "all").lower()
+    if status_f not in ("all", "normal", "maintenance"):
+        status_f = "all"
+    only_problems = request.args.get("only_problems") == "1"
+    severity_raw = (request.args.get("severity") or "").lower()
+    severities = [
+        s.strip() for s in severity_raw.split(",") if s.strip() in _PROBLEM_SEVERITIES
+    ]
+    sort = (request.args.get("sort") or "name_asc").lower()
+    if sort not in ("name_asc", "name_desc", "problems_desc"):
+        sort = "name_asc"
+
+    maint_map = get_active_maintenance_map()
+    try:
+        ping_map = dict(status_memory.items())
+    except Exception:
+        ping_map = {}
+
+    now = datetime.now()
+
+    def _age_min(ts):
+        try:
+            return (
+                now - datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+            ).total_seconds() / 60
+        except (TypeError, ValueError):
+            return None
+
+    def _label_hit(label, ip, alias):
+        lbl = (label or "").lower()
+        ip_l = (ip or "").lower()
+        alias_l = (alias or "").lower()
+        if not lbl:
+            return False
+        return (
+            lbl == ip_l
+            or bool(alias_l and alias_l in lbl)
+            or bool(ip_l and ip_l in lbl)
+        )
+
+    try:
+        active_alerts = get_active_alerts()
+    except Exception:
+        active_alerts = []
+
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT host, MAX(timestamp) AS last, COUNT(*) AS cnt"
+            " FROM device_health GROUP BY host"
+        )
+        health_map = {
+            r["host"]: {"last": r["last"], "count": r["cnt"] or 0} for r in c.fetchall()
+        }
+        c.execute(
+            "SELECT host, MAX(timestamp) AS last FROM agent_metrics GROUP BY host"
+        )
+        agent_map = {r["host"]: r["last"] for r in c.fetchall()}
+        c.execute("SELECT DISTINCT category FROM hosts ORDER BY category ASC")
+        categories = [r["category"] or "Uncategorized" for r in c.fetchall()]
+
+        c.execute(
+            "SELECT id, ip, alias, category, snmp_community, snmp_profile"
+            " FROM hosts ORDER BY id ASC"
+        )
+        rows = []
+        for r in c.fetchall():
+            d = dict(r)
+            ip = d["ip"]
+            alias = (d["alias"] or "").strip()
+            category = d["category"] or "Uncategorized"
+            display = alias or ip
+
+            ping_view = ping_map.get(ip)
+            ping_state = (
+                "unknown" if ping_view is None else ("up" if ping_view else "down")
+            )
+
+            snmp_mon = (
+                bool((d["snmp_community"] or "").strip())
+                and (d["snmp_profile"] or "auto") != "generic"
+            )
+            health = health_map.get(ip) or {"last": None, "count": 0}
+            age_m = _age_min(health["last"])
+            if not snmp_mon:
+                snmp_state = "none"
+            elif age_m is None:
+                snmp_state = "unknown"
+            elif age_m <= 120:
+                snmp_state = "ok"
+            else:
+                snmp_state = "stale"
+
+            agent_last = agent_map.get(ip)
+            agent_age = _age_min(agent_last)
+            if agent_last is None:
+                agent_state = "none"
+            elif agent_age is not None and agent_age <= 5:
+                agent_state = "ok"
+            else:
+                agent_state = "stale"
+
+            maint = maint_map.get(ip)
+            in_maint = maint is not None
+
+            matched = [a for a in active_alerts if _label_hit(a.get("host"), ip, alias)]
+            worst = None
+            sev_hit = False
+            for a in matched:
+                sev = (a.get("severity") or "").lower()
+                rank = _PROBLEM_SEVERITIES.get(sev)
+                if rank is None:
+                    continue
+                if worst is None or rank > _PROBLEM_SEVERITIES[worst]:
+                    worst = sev
+                if not severities or sev in severities:
+                    sev_hit = True
+            if severities and not sev_hit:
+                continue
+
+            rows.append(
+                {
+                    "id": d["id"],
+                    "ip": ip,
+                    "name": display,
+                    "category": category,
+                    "ping": ping_state,
+                    "snmp": snmp_state,
+                    "agent": agent_state,
+                    "snmp_monitored": snmp_mon,
+                    "maintenance": in_maint,
+                    "maintenance_reason": (maint or {}).get("reason") or "",
+                    "latest_count": health["count"],
+                    "problems_count": len(matched),
+                    "worst_severity": worst,
+                }
+            )
+    finally:
+        conn.close()
+
+    total = len(rows)
+    low = (name_q or "").lower()
+    if low:
+        rows = [d for d in rows if low in d["name"].lower() or low in d["ip"].lower()]
+    if ip_q:
+        rows = [d for d in rows if ip_q.lower() in d["ip"].lower()]
+    if group_q:
+        rows = [d for d in rows if group_q.lower() in (d["category"] or "").lower()]
+    if status_f == "maintenance":
+        rows = [d for d in rows if d["maintenance"]]
+    elif status_f == "normal":
+        rows = [d for d in rows if not d["maintenance"]]
+    if only_problems:
+        rows = [d for d in rows if d["problems_count"] > 0]
+
+    if sort == "name_desc":
+        rows.sort(key=lambda d: (d["name"].lower(), d["ip"]), reverse=True)
+    elif sort == "problems_desc":
+        rows.sort(key=lambda d: (-d["problems_count"], d["name"].lower(), d["ip"]))
+    else:
+        rows.sort(key=lambda d: (d["name"].lower(), d["ip"]))
+
+    return jsonify(
+        {
+            "hosts": rows,
+            "count": len(rows),
+            "total": total,
+            "categories": categories,
+        }
+    )
+
+
 @app.route("/api/hosts/bulk/import", methods=["POST"])
 @api_login_required
 @require_role("admin")
