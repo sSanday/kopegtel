@@ -278,16 +278,6 @@ class NmsTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertFalse(m.status_memory.get("10.99.99.99", False))
 
-    def test_delete_inventory_404(self):
-        r = self.client.delete(
-            "/api/inventory/999999",
-            headers={
-                "X-Requested-With": "XMLHttpRequest",
-                "Content-Type": "application/json",
-            },
-        )
-        self.assertEqual(r.status_code, 404)
-
     def test_host_history_latency_nol_bukan_none(self):
         conn, c = m.get_db()
         c.execute(

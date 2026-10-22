@@ -91,11 +91,8 @@
 
   function setActiveNav() {
     var path = window.location.pathname || "/";
-    var map = { "/": "dashboard", "/triggers": "monitoring", "/problems": "monitoring", "/hosts": "monitoring", "/latest-data": "monitoring", "/topo": "maps", "/services": "services", "/inventory": "inventory", "/logs": "logs", "/reports": "reports", "/fiber": "fiber", "/mikrotik": "mikrotik", "/power-analytics": "power", "/discovery": "discovery" };
+    var map = { "/": "dashboard", "/problems": "monitoring", "/hosts": "monitoring", "/latest-data": "monitoring", "/maps": "maps", "/fiber": "fiber", "/mikrotik": "mikrotik", "/discovery": "discovery" };
     var key = map[path] || "dashboard";
-    var params = new URLSearchParams(window.location.search || "");
-    var sev = (params.get("severity") || "").toLowerCase();
-    if (path === "/triggers" && (sev.indexOf("disaster") !== -1 || sev.indexOf("high") !== -1)) key = "alerts";
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.classList.toggle("active", el.getAttribute("data-nav") === key);
       if (el.getAttribute("data-nav") === key) el.removeAttribute("aria-current");

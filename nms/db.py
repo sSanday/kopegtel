@@ -517,6 +517,48 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)"
     )
 
+    # Peta topologi (gaya Zabbix): definisi peta, elemen (host/teks), tautan.
+    c.execute("""CREATE TABLE IF NOT EXISTS maps(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      width INTEGER NOT NULL DEFAULT 960,
+      height INTEGER NOT NULL DEFAULT 540,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS map_elements(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      map_id INTEGER NOT NULL,
+      uid TEXT NOT NULL,
+      etype TEXT NOT NULL,
+      label TEXT NOT NULL,
+      ip TEXT DEFAULT '',
+      x INTEGER NOT NULL DEFAULT 40,
+      y INTEGER NOT NULL DEFAULT 40
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS map_links(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      map_id INTEGER NOT NULL,
+      from_id INTEGER NOT NULL,
+      to_id INTEGER NOT NULL
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_map_elem ON map_elements(map_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_map_link ON map_links(map_id)")
+
+    # Riwayat event discovery (perangkat ditemukan/hilang per aturan pemindaian).
+    c.execute("""CREATE TABLE IF NOT EXISTS discovery_events(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      network TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      sys_name TEXT DEFAULT '',
+      vendor TEXT DEFAULT '',
+      status TEXT NOT NULL,
+      ts TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_disc_ev ON discovery_events(source, network, ip, id)"
+    )
+
     c.execute("""CREATE TABLE IF NOT EXISTS fiber_onts(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ont_sn TEXT UNIQUE NOT NULL,

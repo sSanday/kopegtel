@@ -94,27 +94,3 @@ def get_host_ping_history(c, hosts, time_range_hours=24):
         result[host].append((r["timestamp"], r["latency"]))
 
     return result
-
-
-def get_service_uptime_map(c, time_range_hours=24):
-    """Get uptime percentage for ALL services in single query.
-
-    Returns dict: {service_id: uptime_percentage}
-    """
-    c.execute(f"""
-        SELECT 
-            service_id,
-            COUNT(*) AS total,
-            SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS online
-        FROM service_history
-        WHERE timestamp > datetime('now','localtime','-{time_range_hours} hours')
-        GROUP BY service_id
-    """)
-
-    result = {}
-    for r in c.fetchall():
-        total = r["total"] or 1
-        online = r["online"] or 0
-        result[r["service_id"]] = round((online / total * 100), 1)
-
-    return result

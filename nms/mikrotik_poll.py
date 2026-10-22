@@ -15,7 +15,6 @@ from nms.db import (
     db_lock,
     get_db,
     get_setting,
-    log_alert,
 )
 from nms.format import _fmt_duration
 from nms.mikrotik import (
@@ -711,13 +710,17 @@ def poll_mikrotik_ifaces():
                                             (host, "interface_down"),
                                         )
                                         if not c.fetchone():
-                                            log_alert(
-                                                host,
-                                                "interface_down",
-                                                "high",
-                                                f"Interface {name} (ifIndex {idx}) down",
+                                            c.execute(
+                                                "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at) VALUES (?, ?, ?, ?, ?)",
+                                                (
+                                                    host,
+                                                    "interface_down",
+                                                    "high",
+                                                    f"Interface {name} (ifIndex {idx}) down",
+                                                    timestamp,
+                                                ),
                                             )
-                                    except Exception:
+                                    except sqlite3.OperationalError:
                                         pass
                                     tg_queue.append(
                                         f"🔌 *MIKROTIK PORT DOWN*\nHost: `{host}`\n"

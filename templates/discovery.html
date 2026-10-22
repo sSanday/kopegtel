@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0b0f14">
-<meta name="description" content="SNMP Auto-Discovery — temukan perangkat jaringan dan impor ke monitoring">
-<title>SNMP Auto-Discovery · NMS Kopegtel</title>
+<meta name="description" content="NMS Kopegtel — Status of discovery: kondisi perangkat yang ditemukan aturan pemindaian SNMP dan impor ke monitoring">
+<title>Status of discovery · NMS Kopegtel</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 <script>
@@ -22,7 +22,173 @@
   } catch (_) {}
 })();
 </script>
-<script src="{{ url_for('static', filename='js/discovery.js') }}" defer></script>
+<style>
+/* ============ Status of discovery (struktur Zabbix, tema aplikasi) ============ */
+.zbx { padding: 18px 22px 40px; max-width: 1400px; }
+
+.zbx-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.zbx-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
+.zbx-head .spacer { flex: 1; }
+.zbx-help { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; color: var(--text-2); text-decoration: none; font-weight: 700; border: 1px solid var(--border); }
+.zbx-help:hover { color: var(--text); background: var(--surface-2); }
+.zbx-btn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: 8px; font-weight: 600; font-size: 13px; padding: 8px 16px; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+}
+.zbx-btn:hover { background: var(--accent-soft); }
+.zbx-btn.primary { background: var(--accent-btn); color: var(--on-primary); border-color: transparent; }
+.zbx-btn.primary:hover { filter: brightness(1.08); }
+.zbx-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.zbx-btn[disabled]:hover { background: var(--surface-2); }
+
+/* ---- Bar filter: corong kanan ---- */
+.zbx-bar { display: flex; justify-content: flex-end; position: relative; z-index: 2; }
+.zbx-ftoggle {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.zbx-ftoggle .chev { width: 12px; height: 12px; transition: transform .15s; color: var(--text-3); }
+.zbx-ftoggle.open .chev { transform: rotate(180deg); }
+.zbx-ftoggle:hover { background: var(--surface-2); }
+
+/* ---- Panel filter ---- */
+.zbx-filter {
+  margin-top: 6px; padding: 22px 18px 16px; position: relative;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.zbx-filter.hidden { display: none; }
+.zbx-frow { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.zbx-frow > label.f { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
+.zbx-input {
+  width: min(400px, 80%); box-sizing: border-box;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 11px; font-size: 13px; font-family: inherit;
+}
+.zbx-input::placeholder { color: var(--text-3); }
+.zbx-input:focus { outline: none; border-color: var(--accent); }
+.zbx-factions { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
+.rule-pop {
+  position: absolute; top: calc(100% - 4px); left: 50%; transform: translateX(-50%);
+  z-index: 30; min-width: 300px; max-height: 260px; overflow: auto; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.4);
+}
+.rule-pop .rp-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; text-align: left; padding: 9px 11px; border-radius: 7px; cursor: pointer;
+  background: none; border: none; color: var(--text); font-size: 13px; font-family: inherit;
+}
+.rule-pop .rp-item:hover { background: var(--surface-2); }
+.rule-pop .rp-item .cnt { color: var(--text-3); font-size: 11.5px; }
+.rule-pop .rp-empty { padding: 14px 11px; color: var(--text-3); font-size: 12.5px; text-align: center; }
+
+/* ---- Tabel hasil ---- */
+.zbx-table-wrap {
+  margin-top: 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+}
+.zbx-scroll { overflow-x: auto; }
+table.zbx { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.zbx thead th {
+  text-align: left; font-weight: 600; color: var(--text-2);
+  padding: 10px 10px; white-space: nowrap; border-bottom: 1px solid var(--border);
+  background: var(--surface); font-size: 12.5px;
+}
+table.zbx thead th .th-sort {
+  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; font-family: inherit;
+}
+table.zbx thead th .th-sort:hover { color: var(--text); }
+.chev-mini { width: 11px; height: 11px; transition: transform .15s; }
+.chev-mini.asc { transform: rotate(180deg); }
+table.zbx tbody td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-2); }
+table.zbx tbody tr:hover td { background: var(--surface-2); }
+table.zbx tbody tr:last-child td { border-bottom: none; }
+td.chk { width: 34px; }
+td.chk input, .xcheck { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
+.dev-link { color: var(--accent); text-decoration: none; font-weight: 600; }
+.dev-link:hover { text-decoration: underline; }
+.dev-muted { color: var(--text-2); }
+.disc-badge { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.disc-badge.ok { background: rgba(63,178,127,.14); color: #3fb27f; border: 1px solid rgba(63,178,127,.35); }
+.disc-badge.bad { background: rgba(229,72,77,.12); color: #e5484d; border: 1px solid rgba(229,72,77,.35); }
+.reg-chip { display: inline-block; margin-left: 8px; font-size: 10.5px; font-weight: 700;
+  color: var(--text-3); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
+  vertical-align: 1px; }
+.durc { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rulec { white-space: nowrap; }
+.vendc { white-space: nowrap; }
+.ip-mono { font-variant-numeric: tabular-nums; }
+.zbx-empty { padding: 48px 12px 54px; text-align: center; color: var(--text-3); font-size: 13px; }
+.zbx-empty .mag { color: var(--text-3); opacity: .75; margin-bottom: 12px; }
+.zbx-empty .big { font-size: 14px; color: var(--text-2); font-weight: 500; margin-bottom: 5px; }
+.found-note { display: flex; align-items: center; gap: 18px; padding: 8px 10px 2px; color: var(--text-3); font-size: 12px; }
+.found-note .grow { flex: 1; }
+.zbx-bulk {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px 12px;
+  color: var(--text-3); font-size: 12.5px;
+}
+.zbx-bulk .lbl { min-width: 64px; }
+
+/* ---- Modal ---- */
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 400;
+  display: none; align-items: flex-start; justify-content: center; padding: 10vh 16px 16px;
+}
+.modal-back.on { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  width: min(470px, 100%); box-shadow: 0 18px 48px rgba(0,0,0,.35);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 15px; }
+.modal-x { background: none; border: none; color: var(--text-3); font-size: 18px; cursor: pointer; line-height: 1; }
+.modal-x:hover { color: var(--text); }
+.modal-body { padding: 16px 18px; display: grid; gap: 12px; }
+.frow { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; }
+.frow > label.f { font-size: 12.5px; color: var(--text-2); font-weight: 500; text-align: right; }
+.finput {
+  width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.finput:focus { outline: none; border-color: var(--accent); }
+.fhint { font-size: 11.5px; color: var(--text-3); min-height: 15px; margin-top: 4px; }
+.fhint.ok { color: #3fb27f; }
+.fhint.err { color: #e5484d; }
+.pw-field { display: flex; gap: 6px; }
+.pw-field .finput { flex: 1; }
+.pw-toggle {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center;
+  justify-content: center; width: 38px; flex: none; padding: 0;
+}
+.pw-toggle:hover { color: var(--text); }
+.check-line { display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; color: var(--text-2); line-height: 1.5; }
+.note-line { font-size: 11.5px; color: var(--text-3); line-height: 1.6; border-top: 1px dashed var(--border); padding-top: 10px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.modal-err { color: #e5484d; font-size: 12.5px; min-height: 16px; }
+
+/* toast */
+.toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 500; }
+.toast {
+  display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); transition: opacity .25s;
+}
+.toast svg { width: 16px; height: 16px; flex: none; }
+.toast.success svg { color: #3fb27f; }
+.toast.error svg { color: #e5484d; }
+
+@media (max-width: 720px) {
+  .zbx { padding: 14px 12px 30px; }
+}
+</style>
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -40,14 +206,6 @@
     <nav class="nav" aria-label="Menu">
       <div class="nav-group">Menu</div>
       <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
-      <a href="/services" class="nav-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Layanan</span></a>
-      <a href="/inventory" class="nav-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg><span>Inventaris</span></a>
-      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
-      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
-      <a href="/reports" class="nav-link" data-nav="reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg><span>Laporan</span></a>
-      <a href="/power-analytics" class="nav-link" data-nav="power"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg><span>Daya</span></a>
-      <a href="/logs" class="nav-link" data-nav="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 6h14M5 12h10M5 18h14"/></svg><span>Log</span></a>
-      <a href="/triggers?severity=disaster,high" class="nav-link" data-nav="alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Peringatan</span></a>
       <details class="nav-sub-wrap" open>
         <summary class="nav-sub-head">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
@@ -58,10 +216,12 @@
           <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
           <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
           <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
-          <a href="/topo" class="nav-link nav-sub-link" data-nav="maps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/maps" class="nav-link nav-sub-link" data-nav="maps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
           <a href="/discovery" class="nav-link nav-sub-link active" data-nav="discovery" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
         </div>
       </details>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
     </nav>
     <div class="sidebar-foot">
       <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
@@ -75,134 +235,612 @@
         <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       </span>
       <div>
-        <h1 class="page-title">SNMP Auto-Discovery</h1>
-        <p class="page-sub">Temukan perangkat di jaringan Anda dan impor ke monitoring</p>
+        <h1 class="page-title" style="font-size:16px;">Discovery</h1>
+        <p class="page-sub">Hasil pemindaian SNMP jaringan dan perangkat baru</p>
       </div>
       <div class="header-actions" style="margin-left:auto">
-        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"></button>
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">A</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">Admin</span>
+              <span class="user-btn-role">Kopegtel</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
       </div>
     </header>
 
-    <main class="page" id="konten">
-      <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Dashboard</a><span class="sep">/</span><span class="cur">Discovery</span></nav>
+    <main class="page zbx" id="konten">
+      <!-- ======== JUDUL & AKSI ======== -->
+      <div class="zbx-head">
+        <h1>Status of discovery</h1>
+        <div class="spacer"></div>
+        <a class="zbx-help" href="#" title="Status of discovery — kondisi terkini perangkat per aturan pemindaian; pilih aturan untuk memfilter, centang perangkat lalu impor ke monitoring" onclick="return false" aria-label="Bantuan">?</a>
+        <button class="zbx-btn" id="btnRunSched">Jalankan jadwal</button>
+        <button class="zbx-btn primary" id="btnScanOpen">Pindai sekarang</button>
+      </div>
 
-      <!-- Pindai jaringan -->
-      <section class="card" aria-label="Pindai jaringan" style="margin-top:14px">
-        <div class="card-head">
-          <div>
-            <h2 class="card-title">Pindai Jaringan</h2>
-            <p class="card-desc">Masukkan rentang CIDR dan community SNMP perangkat</p>
-          </div>
-        </div>
+      <!-- ======== BAR FILTER ======== -->
+      <div class="zbx-bar">
+        <button class="zbx-ftoggle" id="filterToggle" aria-expanded="true" aria-controls="filterPanel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
+          Filter
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+      </div>
 
-        <form id="scanForm">
-          <div class="maint-form" style="border-bottom:none;padding-bottom:14px">
-            <div class="field mf-4">
-              <label for="cidrInput">Rentang jaringan (CIDR)</label>
-              <input id="cidrInput" class="mono" type="text" placeholder="192.168.1.0/24" required autocomplete="off">
-              <div class="field-hint" id="cidrHint" aria-live="polite"></div>
-            </div>
-            <div class="field mf-3">
-              <label for="communityInput">SNMP community</label>
-              <div class="pw-field">
-                <input id="communityInput" type="password" placeholder="misal: public" required maxlength="128" autocomplete="off">
-                <button type="button" class="pw-toggle" id="communityToggle" aria-label="Tampilkan community" aria-pressed="false"></button>
-              </div>
-            </div>
-            <div class="field mf-2" style="align-self:end;justify-self:start">
-              <button type="submit" class="btn btn-primary" id="btnScan">Mulai Scan</button>
-            </div>
-          </div>
-        </form>
+      <!-- ======== PANEL FILTER ======== -->
+      <div class="zbx-filter" id="filterPanel">
+        <div class="zbx-frow">
+          <label class="f" for="fRule">Discovery rule</label>
+          <input class="zbx-input" id="fRule" placeholder="type here to search" autocomplete="off">
+          <button class="zbx-btn" id="btnRulePick">Pilih</button>
+        </div>
+        <div class="rule-pop" id="rulePop" hidden></div>
+        <div class="zbx-factions">
+          <button class="zbx-btn primary" id="btnApply">Terapkan</button>
+          <button class="zbx-btn" id="btnReset">Atur ulang</button>
+        </div>
+      </div>
 
-        <div class="info-box" style="margin:0 22px 18px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z"/><path d="M9.5 12l2 2 3.5-4"/></svg>
-          <span>Maksimum <b>256 alamat</b> per pemindaian. Community <b>tidak disimpan di server</b> — hanya dipakai untuk request ini.</span>
+      <!-- ======== TABEL ======== -->
+      <div class="zbx-table-wrap">
+        <div class="zbx-scroll">
+          <table class="zbx">
+            <thead>
+              <tr>
+                <th class="chk"><input type="checkbox" id="chkAll" aria-label="Pilih semua perangkat"></th>
+                <th>
+                  <button class="th-sort" id="sortName" aria-label="Urutkan berdasarkan nama perangkat">
+                    Name
+                    <svg class="chev-mini asc" id="chevName" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </th>
+                <th>IP address</th>
+                <th>Status</th>
+                <th>Uptime/Downtime</th>
+                <th>Discovery rule</th>
+                <th>Vendor</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
         </div>
-
-        <div class="sched-line">
-          <span>Scan terjadwal:</span>
-          <button class="btn" id="btnSaveSched" type="button">Simpan jadwal 6 jam</button>
-          <button class="btn" id="btnRunSched" type="button">Jalankan sekarang</button>
-          <span id="schedStatus" style="margin-left:auto"></span>
+        <div class="found-note">
+          <span id="schedNote"></span>
+          <span class="grow"></span>
+          <span id="foundNote"></span>
         </div>
-        <div class="sched-line" style="border-top:none;padding-top:0" id="lastScanLine" hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--text-3);flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <span id="lastScanText"></span>
+        <div class="zbx-bulk">
+          <span class="lbl" id="selLabel">0 dipilih</span>
+          <button class="zbx-btn" id="btnImport" disabled>Impor</button>
         </div>
-      </section>
-
-      <!-- Hasil -->
-      <section class="section" aria-label="Hasil pemindaian">
-        <div class="card">
-          <div class="card-head">
-            <div>
-              <h2 class="card-title">Hasil Pemindaian <span class="count-badge" id="resultCount"></span></h2>
-              <p class="card-desc" id="scanState" aria-live="polite">Belum ada hasil pemindaian.</p>
-            </div>
-          </div>
-          <div class="results-toolbar">
-            <label class="search" style="margin-left:0;flex:1;min-width:200px;max-width:340px">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
-              <input type="search" id="resultSearch" placeholder="Filter hasil…" aria-label="Filter hasil pemindaian" autocomplete="off">
-            </label>
-            <span class="updated-note" id="selCount"></span>
-            <span class="toolbar-spacer"></span>
-            <button class="btn btn-primary" id="btnImport" type="button" disabled>Import terpilih</button>
-          </div>
-          <div class="alarm-wrap">
-            <table class="alarm-table">
-              <caption class="sr-only">Perangkat hasil pemindaian SNMP</caption>
-              <thead>
-                <tr>
-                  <th scope="col" style="width:56px"><input type="checkbox" class="xcheck" id="selectAll" aria-label="Pilih semua perangkat"></th>
-                  <th scope="col" style="width:190px">IP</th>
-                  <th scope="col" style="width:170px">Vendor</th>
-                  <th scope="col" style="width:190px">System name</th>
-                  <th scope="col">Description</th>
-                </tr>
-              </thead>
-              <tbody id="resultBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+      </div>
     </main>
   </div>
 </div>
 
-<!-- ============ MODAL KONFIRMASI IMPORT ============ -->
-<div class="modal-overlay" id="importModal">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
-    <div class="modal-header">
-      <div><div class="modal-title" id="importTitle">Import perangkat</div><div class="modal-sub">Perangkat terpilih akan ditambahkan ke monitoring</div></div>
-      <button class="modal-close" id="btnImportClose" aria-label="Tutup">✕</button>
+<!-- ======== MODAL PINDAI ======== -->
+<div class="modal-back" id="scanBack" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="scanTitle">Pindai jaringan</h3>
+      <button class="modal-x" id="scanClose" aria-label="Tutup">×</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:14px;line-height:1.7;margin-bottom:16px"><b><span id="importCount">0</span> perangkat</b> akan diimpor ke daftar host dan langsung dipantau. Lanjutkan?</p>
-      <div class="field">
-        <label for="importCategory">Kategori perangkat</label>
-        <div class="select-wrap" style="width:100%">
-          <select id="importCategory" style="width:100%">
-            <option value="auto">Otomatis (ikut vendor)</option>
-            <option value="network">Network</option>
-            <option value="uncategorized">Tanpa kategori</option>
-          </select>
+      <div class="frow">
+        <label class="f" for="cidrInput">Rentang (CIDR)</label>
+        <div>
+          <input class="finput" id="cidrInput" placeholder="192.168.1.0/24" autocomplete="off">
+          <div class="fhint" id="cidrHint" aria-live="polite"></div>
         </div>
+      </div>
+      <div class="frow">
+        <label class="f" for="communityInput">SNMP community</label>
+        <div class="pw-field">
+          <input class="finput" id="communityInput" type="password" placeholder="misal: public" maxlength="128" autocomplete="off">
+          <button type="button" class="pw-toggle" id="communityToggle" aria-label="Tampilkan community" aria-pressed="false"></button>
+        </div>
+      </div>
+      <label class="check-line">
+        <input type="checkbox" id="saveSchedule" class="xcheck">
+        <span>Jadwalkan otomatis tiap 6 jam — rentang &amp; community disimpan sebagai rule terjadwal</span>
+      </label>
+      <div class="modal-err" id="scanErr"></div>
+      <div class="note-line">Maksimum <b>256 alamat</b> per pemindaian. Community scan manual hanya dipakai untuk request ini dan tidak disimpan di server.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="zbx-btn" id="scanCancel">Batal</button>
+      <button class="zbx-btn primary" id="btnScan">Mulai scan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== MODAL IMPORT ======== -->
+<div class="modal-back" id="importBack" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="importTitle">Import perangkat</h3>
+      <button class="modal-x" id="importClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;line-height:1.7;margin:0"><b><span id="importCount">0</span> perangkat</b> akan ditambahkan ke daftar host dan langsung dipantau.</p>
+      <div class="frow">
+        <label class="f" for="importCommunity">SNMP community</label>
+        <div class="pw-field">
+          <input class="finput" id="importCommunity" type="password" placeholder="opsional" maxlength="128" autocomplete="off">
+          <button type="button" class="pw-toggle" id="importCommunityToggle" aria-label="Tampilkan community" aria-pressed="false"></button>
+        </div>
+      </div>
+      <div class="frow">
+        <label class="f" for="importCategory">Kategori</label>
+        <select class="finput" id="importCategory">
+          <option value="auto">Otomatis (ikut vendor)</option>
+          <option value="network">Network</option>
+          <option value="uncategorized">Tanpa kategori</option>
+        </select>
       </div>
       <label class="check-line">
         <input type="checkbox" id="importSaveCommunity" class="xcheck" checked>
         <span>Simpan SNMP community ke host (dipakai untuk polling lanjutan)</span>
       </label>
+      <div class="modal-err" id="importErr"></div>
     </div>
     <div class="modal-foot">
-      <button class="btn" id="btnImportCancel" type="button">Batal</button>
-      <button class="btn btn-primary" id="btnImportConfirm" type="button">Import</button>
+      <button class="zbx-btn" id="importCancel">Batal</button>
+      <button class="zbx-btn primary" id="btnImportConfirm">Import</button>
     </div>
   </div>
 </div>
 
-<div class="toast-wrap" id="toasts" aria-live="polite"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+/* ================= Shell: tema, sidebar, menu ================= */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';
+  var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:19px;height:19px"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('nms_theme', t); } catch (_) {}
+    var b = $('themeBtn');
+    if (b) { b.innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON; b.title = t === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'; }
+  }
+  try {
+    var t = localStorage.getItem('nms_theme');
+    if (t !== 'light' && t !== 'dark') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    setTheme(t);
+  } catch (_) {}
+  var tb = $('themeBtn'); if (tb) tb.addEventListener('click', function () { setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'); });
+  try { if (localStorage.getItem('nms_nav') === 'collapsed' && window.innerWidth > 1100) document.body.classList.add('nav-collapsed'); } catch (_) {}
+  var st = $('sidebarToggle'); if (st) st.addEventListener('click', function () { document.body.classList.toggle('nav-open'); });
+  var sc = $('scrim'); if (sc) sc.addEventListener('click', function () { document.body.classList.remove('nav-open'); });
+  var cb = $('collapseBtn'); if (cb) cb.addEventListener('click', function () {
+    document.body.classList.toggle('nav-collapsed');
+    try { localStorage.setItem('nms_nav', document.body.classList.contains('nav-collapsed') ? 'collapsed' : 'open'); } catch (_) {}
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.body.classList.remove('nav-open'); });
+  var ub = $('userBtn'), um = $('userMenu');
+  if (ub && um) {
+    ub.addEventListener('click', function (e) { e.stopPropagation(); var open = um.style.display === 'none'; um.style.display = open ? 'block' : 'none'; ub.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+    document.addEventListener('click', function () { um.style.display = 'none'; ub.setAttribute('aria-expanded', 'false'); });
+    um.addEventListener('click', function (e) { e.stopPropagation(); });
+  }
+  window.toast = function (msg, type) {
+    var w = $('toasts'); if (!w) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (type === 'error' ? 'error' : 'success');
+    el.setAttribute('role', 'status');
+    el.innerHTML = (type === 'error'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 17H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>') + '<span></span>';
+    el.lastChild.textContent = msg;
+    w.appendChild(el);
+    setTimeout(function () { el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 250); }, 3500);
+  };
+})();
+
+/* ================= Status of discovery ================= */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  var ICON_MAG = '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>';
+  var ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>';
+  var ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M2.5 12S6 5.5 12 5.5c2 0 3.7.7 5.1 1.6M21.5 12S18 18.5 12 18.5c-2 0-3.7-.7-5.1-1.6"/><path d="M4 4l16 16"/></svg>';
+  var REFRESH_S = 30;
+
+  var state = { rule: '', sort: 'name_asc' };
+  var rows = [];
+  var rules = [];
+  var selected = {};        /* id event → true */
+  var lastCommunity = '';   /* community scan terakhir (in-memory saja) */
+
+  try {
+    var saved = JSON.parse(localStorage.getItem('nms_discovery_filter') || 'null');
+    if (saved && typeof saved.rule === 'string') state.rule = saved.rule;
+    if (saved && saved.sort === 'name_desc') state.sort = 'name_desc';
+  } catch (_) {}
+  if (state.rule) $('fRule').value = state.rule;
+  syncChev();
+
+  function syncChev() {
+    $('chevName').classList.toggle('asc', state.sort === 'name_asc');
+    $('sortName').setAttribute('aria-label', 'Urutkan berdasarkan nama perangkat (kini ' + (state.sort === 'name_asc' ? 'A-Z' : 'Z-A') + ')');
+  }
+
+  /* ---------- durasi uptime/downtime ---------- */
+  function fmtDur(ts) {
+    var t = new Date(String(ts).replace(' ', 'T'));
+    if (isNaN(t.getTime())) return '—';
+    var s = Math.max(0, Math.floor((Date.now() - t.getTime()) / 1000));
+    if (s < 60) return 'baru saja';
+    var m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d >= 1) return d + ' hari ' + (h % 24) + ' jam';
+    if (h >= 1) return h + ' jam ' + (m % 60) + ' menit';
+    return m + ' menit';
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    var tb = $('tbody');
+    if (!rows.length) {
+      var big = state.rule ? 'Tidak ada data sesuai filter.' : 'Tidak ada data';
+      var sub = state.rule
+        ? 'Coba kata kunci lain, atau klik Atur ulang.'
+        : 'Belum ada pemindaian. Klik <strong>Pindai sekarang</strong> untuk memindai jaringan.';
+      tb.innerHTML = '<tr><td colspan="7" class="zbx-empty"><div class="mag">' + ICON_MAG + '</div>' +
+        '<div class="big">' + big + '</div><div>' + sub + '</div></td></tr>';
+    } else {
+      var html = '';
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var nameHtml = r.monitored
+          ? '<a class="dev-link" href="/host/' + encodeURIComponent(r.ip) + '" title="Buka halaman detail host">' + esc(r.name) + '</a>'
+          : '<span class="dev-muted">' + esc(r.name) + '</span>';
+        html += '<tr data-id="' + r.id + '">' +
+          '<td class="chk"><input type="checkbox" class="xcheck pick" data-id="' + r.id + '"' +
+          (r.monitored ? ' disabled' : (selected[r.id] ? ' checked' : '')) +
+          ' aria-label="Pilih perangkat ' + esc(r.ip) + '"></td>' +
+          '<td>' + nameHtml + (r.monitored ? '<span class="reg-chip" title="IP sudah masuk daftar host terpantau">Terdaftar</span>' : '') + '</td>' +
+          '<td class="ip-mono">' + esc(r.ip) + '</td>' +
+          '<td><span class="disc-badge ' + (r.status === 'discovered' ? 'ok' : 'bad') + '">' +
+          (r.status === 'discovered' ? 'Ditemukan' : 'Hilang') + '</span></td>' +
+          '<td class="durc" data-ts="' + esc(r.ts) + '" title="' + esc(r.ts) + '">' + fmtDur(r.ts) + '</td>' +
+          '<td class="rulec">' + esc(r.rule) + '</td>' +
+          '<td class="vendc">' + esc(r.vendor || '—') + '</td>' +
+          '</tr>';
+      }
+      tb.innerHTML = html;
+    }
+    $('foundNote').textContent = 'Ditampilkan ' + rows.length + ' dari ' + rows.length + ' yang ditemukan';
+    syncBulk();
+  }
+  function syncBulk() {
+    var picks = document.querySelectorAll('#tbody .pick:not(:disabled)');
+    var n = 0;
+    picks.forEach(function (p) { if (p.checked) n++; });
+    $('selLabel').textContent = n + ' dipilih';
+    $('btnImport').disabled = n === 0;
+    var all = $('chkAll');
+    var canPick = picks.length;
+    var picked = document.querySelectorAll('#tbody .pick:checked').length;
+    all.disabled = canPick === 0;
+    all.checked = canPick > 0 && picked === canPick;
+    all.indeterminate = picked > 0 && picked < canPick;
+  }
+  function load() {
+    var q = new URLSearchParams();
+    q.set('sort', state.sort);
+    if (state.rule) q.set('rule', state.rule);
+    return fetch('/api/discovery/status?' + q.toString(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        rows = data.rows || [];
+        rules = data.rules || [];
+        var alive = {}; rows.forEach(function (r) { alive[r.id] = true; });
+        Object.keys(selected).forEach(function (k) { if (!alive[k]) delete selected[k]; });
+        render();
+        loadSchedNote();
+      })
+      .catch(function (err) { toast('Gagal memuat status discovery: ' + err.message, 'error'); });
+  }
+
+  /* ---------- catatan jadwal ---------- */
+  function loadSchedNote() {
+    fetch('/api/settings', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (s) {
+        var el = $('schedNote');
+        if (s.discovery_network) {
+          el.innerHTML = 'Jadwal aktif: <b>' + esc(s.discovery_network) + '</b> · dipindai otomatis tiap 6 jam';
+        } else {
+          el.textContent = 'Belum ada jadwal otomatis.';
+        }
+      })
+      .catch(function () {});
+  }
+
+  /* ---------- filter & sort ---------- */
+  $('filterToggle').addEventListener('click', function () {
+    var p = $('filterPanel');
+    var hide = p.classList.toggle('hidden');
+    this.classList.toggle('open', !hide);
+    this.setAttribute('aria-expanded', hide ? 'false' : 'true');
+  });
+  $('fRule').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('btnApply').click(); });
+  $('btnApply').addEventListener('click', function () {
+    state.rule = $('fRule').value.trim();
+    try { localStorage.setItem('nms_discovery_filter', JSON.stringify(state)); } catch (_) {}
+    load();
+  });
+  $('btnReset').addEventListener('click', function () {
+    state = { rule: '', sort: 'name_asc' };
+    $('fRule').value = '';
+    try { localStorage.setItem('nms_discovery_filter', JSON.stringify(state)); } catch (_) {}
+    syncChev();
+    load();
+  });
+  $('sortName').addEventListener('click', function () {
+    state.sort = state.sort === 'name_asc' ? 'name_desc' : 'name_asc';
+    try { localStorage.setItem('nms_discovery_filter', JSON.stringify(state)); } catch (_) {}
+    syncChev();
+    load();
+  });
+
+  /* ---------- popover pilih rule ---------- */
+  function closeRulePop() { $('rulePop').hidden = true; }
+  $('btnRulePick').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var pop = $('rulePop');
+    if (!pop.hidden) { pop.hidden = true; return; }
+    if (!rules.length) {
+      pop.innerHTML = '<div class="rp-empty">Belum ada rule — jalankan pemindaian dulu.</div>';
+    } else {
+      pop.innerHTML = rules.map(function (rl) {
+        return '<button type="button" class="rp-item" data-rule="' + esc(rl.label) + '">' +
+          '<span>' + esc(rl.label) + '</span><span class="cnt">' + rl.count + ' perangkat</span></button>';
+      }).join('');
+    }
+    pop.hidden = false;
+  });
+  $('rulePop').addEventListener('click', function (e) {
+    var b = e.target.closest('.rp-item');
+    if (!b) return;
+    var label = b.getAttribute('data-rule');
+    var network = label.slice(label.indexOf('·') + 2);
+    $('fRule').value = network;
+    $('rulePop').hidden = true;
+    $('btnApply').click();
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#rulePop') && !e.target.closest('#btnRulePick')) closeRulePop();
+  });
+
+  /* ---------- modal umum ---------- */
+  function modalOpen(id) { $(id).classList.add('on'); }
+  function modalHide(id) { $(id).classList.remove('on'); }
+  document.querySelectorAll('.modal-back').forEach(function (b) {
+    b.addEventListener('click', function (e) { if (e.target === b) modalHide(b.id); });
+    var x = b.querySelector('.modal-x');
+    if (x) x.addEventListener('click', function () { modalHide(b.id); });
+    var cbtn = b.querySelector('.modal-foot .zbx-btn');
+    if (cbtn) cbtn.addEventListener('click', function () { modalHide(b.id); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { ['scanBack', 'importBack'].forEach(function (id) { modalHide(id); }); closeRulePop(); }
+  });
+
+  /* ---------- toggle community ---------- */
+  function bindEye(btnId, inputId) {
+    var btn = $(btnId), inp = $(inputId);
+    if (!btn || !inp) return;
+    btn.innerHTML = ICON_EYE;
+    btn.addEventListener('click', function () {
+      var show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      btn.innerHTML = show ? ICON_EYE_OFF : ICON_EYE;
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.setAttribute('aria-label', show ? 'Sembunyikan community' : 'Tampilkan community');
+    });
+  }
+  bindEye('communityToggle', 'communityInput');
+  bindEye('importCommunityToggle', 'importCommunity');
+
+  /* ---------- validasi CIDR ---------- */
+  function validateCidr(str) {
+    var m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec((str || '').trim());
+    if (!m) return { ok: false, error: 'Format CIDR tidak valid, contoh: 192.168.1.0/24' };
+    for (var i = 1; i <= 4; i++) {
+      if (parseInt(m[i], 10) > 255) return { ok: false, error: 'Oktet IP harus 0–255' };
+    }
+    var prefix = parseInt(m[5], 10);
+    if (prefix > 32) return { ok: false, error: 'Prefix maksimal /32' };
+    var total = Math.pow(2, 32 - prefix);
+    if (total > 256) return { ok: false, error: 'Maksimum 256 alamat — gunakan prefix /24 atau lebih sempit' };
+    var usable = total <= 2 ? total : total - 2;
+    return { ok: true, count: usable };
+  }
+  $('cidrInput').addEventListener('input', function () {
+    var hint = $('cidrHint'), v = this.value.trim();
+    if (!v) { hint.textContent = ''; hint.className = 'fhint'; return; }
+    var r = validateCidr(v);
+    hint.textContent = r.ok ? '±' + r.count + ' alamat akan dipindai' : r.error;
+    hint.className = 'fhint ' + (r.ok ? 'ok' : 'err');
+  });
+
+  /* ---------- pindai ---------- */
+  $('btnScanOpen').addEventListener('click', function () {
+    $('scanErr').textContent = '';
+    $('cidrHint').textContent = ''; $('cidrHint').className = 'fhint';
+    $('cidrInput').value = '';
+    $('communityInput').value = lastCommunity;
+    $('saveSchedule').checked = false;
+    modalOpen('scanBack');
+    $('cidrInput').focus();
+  });
+  $('btnScan').addEventListener('click', function () {
+    var btn = $('btnScan');
+    var network = $('cidrInput').value.trim();
+    var community = $('communityInput').value;
+    var r = validateCidr(network);
+    if (!r.ok) { $('scanErr').textContent = r.error; $('cidrInput').focus(); return; }
+    if (!community) { $('scanErr').textContent = 'SNMP community wajib diisi.'; $('communityInput').focus(); return; }
+    btn.disabled = true;
+    btn.textContent = 'Memindai…';
+    $('scanErr').textContent = '';
+    fetch('/api/discovery/snmp', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ network: network, community: community })
+    })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.status < 300, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { $('scanErr').textContent = res.d.error || 'Discovery gagal.'; return; }
+        lastCommunity = community;
+        var n = res.d.count || 0;
+        var finish = function () {
+          modalHide('scanBack');
+          toast(n ? n + ' perangkat ditemukan.' : (res.d.message || 'Pemindaian selesai — tidak ada perangkat SNMP yang merespons.'), n ? 'success' : 'error');
+          load();
+        };
+        if ($('saveSchedule').checked) {
+          return fetch('/api/settings', {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ discovery_network: network, discovery_community: community })
+          })
+            .then(function (res2) { return res2.json().catch(function () { return {}; }).then(function (d2) { return { ok: res2.status < 300, d: d2 }; }); })
+            .then(function (res2) {
+              if (res2.ok) toast('Jadwal 6 jam tersimpan untuk ' + network + '.');
+              else $('scanErr').textContent = res2.d.error || 'Scan sukses, tapi jadwal gagal disimpan.';
+              finish();
+            });
+        }
+        finish();
+      })
+      .catch(function (e) { $('scanErr').textContent = 'Gagal: ' + e.message; })
+      .finally(function () { btn.disabled = false; btn.textContent = 'Mulai scan'; });
+  });
+
+  /* ---------- jalankan rule terjadwal sekarang ---------- */
+  $('btnRunSched').addEventListener('click', function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Menjalankan…';
+    fetch('/api/discovery/scheduled/run', { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.status < 300, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { toast(res.d.error || 'Gagal menjalankan scan', 'error'); return; }
+        var st = res.d.status;
+        if (st === 'disabled') toast('Belum ada rule terjadwal — centang "Jadwalkan otomatis" saat memindai.', 'error');
+        else {
+          var a = (res.d.added || []).length, rm = (res.d.removed || []).length;
+          toast('Scan terjadwal selesai — baru: ' + a + ', hilang: ' + rm + '.');
+          load();
+        }
+      })
+      .catch(function (e) { toast('Gagal: ' + e.message, 'error'); })
+      .finally(function () { btn.disabled = false; btn.textContent = 'Jalankan jadwal'; });
+  });
+
+  /* ---------- seleksi & import ---------- */
+  $('tbody').addEventListener('change', function (e) {
+    var box = e.target.closest('input.pick');
+    if (!box) return;
+    var id = Number(box.getAttribute('data-id'));
+    if (box.checked) selected[id] = true; else delete selected[id];
+    syncBulk();
+  });
+  $('chkAll').addEventListener('change', function () {
+    var on = this.checked;
+    document.querySelectorAll('#tbody .pick:not(:disabled)').forEach(function (b) {
+      var id = Number(b.getAttribute('data-id'));
+      b.checked = on;
+      if (on) selected[id] = true; else delete selected[id];
+    });
+    syncBulk();
+  });
+  $('btnImport').addEventListener('click', function () {
+    var list = selDevices();
+    if (!list.length) return;
+    $('importCount').textContent = list.length;
+    $('importCommunity').value = lastCommunity;
+    $('importSaveCommunity').checked = true;
+    $('importCategory').value = 'auto';
+    $('importErr').textContent = '';
+    modalOpen('importBack');
+  });
+  function selDevices() {
+    var seen = {}, out = [];
+    document.querySelectorAll('#tbody .pick:checked').forEach(function (b) {
+      var id = Number(b.getAttribute('data-id'));
+      var r = null;
+      for (var i = 0; i < rows.length; i++) if (rows[i].id === id) { r = rows[i]; break; }
+      if (!r || r.monitored || seen[r.ip]) return;
+      seen[r.ip] = true;
+      out.push({ ip: r.ip, sys_name: r.name === r.ip ? '' : r.name, vendor: r.vendor });
+    });
+    return out;
+  }
+  $('btnImportConfirm').addEventListener('click', function () {
+    var list = selDevices();
+    if (!list.length) { modalHide('importBack'); return; }
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Mengimpor…';
+    fetch('/api/discovery/import', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        devices: list,
+        community: $('importCommunity').value,
+        save_community: $('importSaveCommunity').checked,
+        category: $('importCategory').value
+      })
+    })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.status < 300, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { $('importErr').textContent = res.d.error || 'Import gagal.'; return; }
+        modalHide('importBack');
+        var skipped = res.d.skipped || [];
+        toast((res.d.count || 0) + ' host ditambahkan ke monitoring.' +
+          (skipped.length ? ' (' + skipped.length + ' dilewati)' : ''));
+        load();
+      })
+      .catch(function (e) { $('importErr').textContent = 'Gagal: ' + e.message; })
+      .finally(function () { btn.disabled = false; btn.textContent = 'Import'; });
+  });
+
+  /* ---------- auto refresh ---------- */
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch('/api/discovery/status?sort=' + state.sort + (state.rule ? '&rule=' + encodeURIComponent(state.rule) : ''),
+      { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        rows = data.rows || [];
+        rules = data.rules || [];
+        var alive = {}; rows.forEach(function (r) { alive[r.id] = true; });
+        Object.keys(selected).forEach(function (k) { if (!alive[k]) delete selected[k]; });
+        render();
+      })
+      .catch(function () {});
+  }, REFRESH_S * 1000);
+
+  load();
+})();
+</script>
 
 <script>
 // Redirect otomatis ke /login jika sesi habis (API 401)

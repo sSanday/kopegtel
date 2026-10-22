@@ -71,7 +71,6 @@ from nms.db import (
     generate_daily_report,
     get_active_alerts,
     get_alert_history,
-    get_or_create_alert,
     get_active_maintenance_map,
     get_db,
     get_host_threshold,
@@ -92,9 +91,8 @@ from nms.db import (
     mark_alerts_escalated,
 )
 from nms.notify import audit, channel_status, send_alert, send_telegram_alert
-from nms.validators import validate_backup_filename, validate_dns_query_name
+from nms.validators import validate_backup_filename
 from nms.anomaly import summarize_anomalies
-from nms import service_checks
 from nms import twofa as twofa
 from nms.query_helpers import (
     get_all_agent_metrics,
@@ -103,7 +101,6 @@ from nms.query_helpers import (
 from nms.crypto import encrypt_secret
 from nms.monitor import (
     FIBER_PARENT_MIN,
-    _fiber_oltkey,
     check_network,
     down_since,
     fiber_parent_down,
@@ -112,7 +109,7 @@ from nms.monitor import (
 )
 from nms.thread_safe import ThreadSafeDict
 from nms.monitor import agent_offline_memory, check_agent_heartbeat
-from nms.snmp import _valid_oid, _snmp_get, discover_subnet
+from nms.snmp import _valid_oid, discover_subnet
 import json
 from nms.fiber import (
     FIBER_DEGRADE_DAYS,
@@ -128,16 +125,11 @@ from nms.fiber import (
     FIBER_STALE_MIN,
     FIBER_TX_MAX,
     FIBER_TX_MIN,
-    _th_for_ont,
     fiber_eval,
 )
 from nms.auth import api_login_required, require_role
-from nms.format import _csv_safe, _fmt_duration
+from nms.format import _csv_safe
 from nms.fiber_poll import (
-    _fiber_degrade_settings,
-    _fiber_flap_settings,
-    _fiber_maintenance_info,
-    _fiber_stale_advice,
     _fiber_stale_info,
     _is_mute_active,
     fiber_alarm_memory,
@@ -150,9 +142,6 @@ from nms.fiber_poll import (
 )
 from nms.mikrotik import (
     MT_STALE_MIN,
-    REBOOT_ALARM_WINDOW_S,
-    _mt_evaluate,
-    _mt_stale_info,
 )
 from nms.mikrotik_poll import (
     MT_DEFAULT_OIDS,
@@ -173,13 +162,6 @@ from nms.mikrotik_poll import (
 from nms.mikrotik_routes import mikrotik_bp
 from nms.fiber_routes import fiber_bp
 from nms.blueprints import api_bp
-from nms.power import (
-    get_power_history,
-    get_power_settings,
-    get_power_summary,
-    poll_power_snmp,
-    record_power_metric,
-)
 from nms.snmp_trap import (
     SNMP_TRAP_COMMUNITY_MAX as NMS_SNMP_TRAP_COMMUNITY_MAX,
     start_trap_receiver,
@@ -712,246 +694,6 @@ def _is_url_allowed_for_monitoring(url):
     return True
 
 
-def check_single_service(svc):
-    """Pembungkus -> nms.service_checks. Signature/return tetap sama.
-
-    Tuple: (id, ip, name, type, port, url[, query, expected]) — dua elemen
-    terakhir opsional agar pemanggil/test lama (6-tuple) tetap jalan.
-    """
-    svc_id, ip, name, svc_type, port, url = svc[:6]
-    query = str(svc[6] or "") if len(svc) > 6 else ""
-    expected = str(svc[7] or "") if len(svc) > 7 else ""
-    status, latency = service_checks.run_check(
-        svc_type,
-        ip,
-        port,
-        url,
-        query=query,
-        expected=expected,
-        is_url_allowed=_is_url_allowed_for_monitoring,
-    )
-    return svc_id, status, latency
-
-
-SSL_WARN_DAYS = 30
-SSL_HIGH_DAYS = 7
-
-
-def _ssl_level(days_left):
-    if days_left is None:
-        return None
-    try:
-        d = int(days_left)
-    except (ValueError, TypeError):
-        return None
-    if d < 0:
-        return "expired"
-    if d <= SSL_HIGH_DAYS:
-        return "high"
-    if d <= SSL_WARN_DAYS:
-        return "warning"
-    return None
-
-
-def get_ssl_expiry(url, timeout=5):
-    import ssl as _ssl
-    from urllib.parse import urlparse
-
-    try:
-        parsed = urlparse(url or "")
-        if (parsed.scheme or "").lower() != "https":
-            return None, None
-        host = (parsed.hostname or "").strip()
-        if not host:
-            return None, None
-        try:
-            port = parsed.port or 443
-        except ValueError:
-            return None, None
-        if not 1 <= port <= 65535:
-            return None, None
-        ctx = _ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-                cert = ssock.getpeercert()
-        not_after = (cert or {}).get("notAfter")
-        if not not_after:
-            return None, None
-        exp = None
-        for fmt in ("%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z"):
-            try:
-                exp = datetime.strptime(str(not_after), fmt)
-                break
-            except ValueError:
-                continue
-        if exp is None:
-            return None, None
-        days_left = (exp - datetime.now(timezone.utc).replace(tzinfo=None)).days
-        return exp.strftime("%Y-%m-%d %H:%M:%S"), days_left
-    except Exception as e:
-        print(f"[SSL] {url}: {e}")
-        return None, None
-
-
-def check_ssl_expiry():
-    try:
-        conn, c = get_db()
-        try:
-            try:
-                c.execute(
-                    "SELECT id, ip, name, url, ssl_days_left, ssl_last_alert FROM services WHERE type='http' AND url LIKE 'https://%'"
-                )
-            except sqlite3.OperationalError:
-                return
-            rows = [dict(r) for r in c.fetchall()]
-        finally:
-            conn.close()
-    except Exception as e:
-        print(f"[SSL] load services gagal: {e}")
-        return
-    if not rows:
-        return
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for s in rows:
-        sid = s["id"]
-        url = s.get("url") or ""
-        if not _is_url_allowed_for_monitoring(url):
-            continue
-        exp_str, days = get_ssl_expiry(url)
-        if exp_str is None:
-            continue
-        level = _ssl_level(days)
-        prev_level = (s.get("ssl_last_alert") or "") or None
-        order = {"warning": 1, "high": 2, "expired": 3}
-        escalated = bool(
-            level
-            and level != prev_level
-            and (not prev_level or order.get(level, 0) > order.get(prev_level, 0))
-        )
-        with db_lock:
-            conn, c = get_db()
-            try:
-                try:
-                    c.execute(
-                        "UPDATE services SET ssl_expires_at=?, ssl_days_left=?, ssl_checked_at=?, ssl_last_alert=? WHERE id=?",
-                        (exp_str, days, timestamp, level or "", sid),
-                    )
-                except sqlite3.OperationalError as e:
-                    print(f"[DB LOCK] ssl update gagal: {e}")
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
-                    continue
-                if level:
-                    try:
-                        _insert_system_log(
-                            c,
-                            "SSL_EXPIRY" if level != "expired" else "SSL_EXPIRED",
-                            s.get("ip") or "-",
-                            f"{s.get('name')} {url} sisa {days} hari (exp {exp_str})",
-                            timestamp,
-                        )
-                    except Exception:
-                        pass
-                _commit_with_retry(conn)
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-        if escalated:
-            try:
-                if level == "expired":
-                    send_telegram_alert(
-                        f"🚨 *SSL EXPIRED*\nService: `{s.get('name')}`\nURL: {url}\nExpired: {exp_str}\nWaktu: {timestamp}"
-                    )
-                elif level == "high":
-                    send_telegram_alert(
-                        f"⚠️ *SSL SEGERA EXPIRE*\nService: `{s.get('name')}`\nURL: {url}\nSisa: *{days} hari*\nExp: {exp_str}"
-                    )
-                else:
-                    send_telegram_alert(
-                        f"ℹ️ *SSL Expire H-{days}*\nService: `{s.get('name')}`\nURL: {url}\nExp: {exp_str}"
-                    )
-            except Exception as e:
-                print(f"[WARN] telegram ssl gagal: {e}")
-
-
-def trigger_async_ssl_check():
-    threading.Thread(target=check_ssl_expiry, daemon=True).start()
-
-
-def check_services():
-    try:
-
-        conn, c = get_db()
-        try:
-            try:
-                c.execute(
-                    "SELECT id, ip, name, type, port, url, query, expected FROM services"
-                )
-            except Exception:
-                # DB lama tanpa kolom query/expected -> tuple 6 elemen
-                c.execute("SELECT id, ip, name, type, port, url FROM services")
-            services = []
-            for row in c.fetchall():
-                s = dict(row)
-                services.append(
-                    (
-                        s.get("id"),
-                        s.get("ip"),
-                        s.get("name"),
-                        s.get("type"),
-                        s.get("port"),
-                        s.get("url"),
-                        (s.get("query") or ""),
-                        (s.get("expected") or ""),
-                    )
-                )
-        finally:
-            conn.close()
-
-        results = []
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(check_single_service, s) for s in services]
-            for future in as_completed(futures):
-                try:
-                    results.append(future.result())
-                except Exception as e:
-                    print(f"[WARN] check service gagal: {e}")
-
-        if not results:
-            return
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        with db_lock:
-            conn, c = get_db()
-            try:
-                for svc_id, status, latency in results:
-                    c.execute(
-                        "UPDATE services SET status=?, latency=?, last_checked=? WHERE id=?",
-                        (status, latency, timestamp, svc_id),
-                    )
-                try:
-                    c.executemany(
-                        "INSERT INTO service_history (service_id, status, latency, timestamp) VALUES (?, ?, ?, ?)",
-                        [(sid, st, lat, timestamp) for sid, st, lat in results],
-                    )
-                except sqlite3.OperationalError as e:
-                    print(f"[DB LOCK] service_history gagal: {e}")
-                _commit_with_retry(conn)
-            except sqlite3.OperationalError as e:
-                print(f"[DB LOCK] check_services gagal: {e}")
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-            finally:
-                conn.close()
-    except Exception as e:
-        print(f"Error checking services: {e}")
-
-
 init_db()
 _seed_admin_from_env()
 
@@ -1059,6 +801,69 @@ def rebuild_alarm_memory():
 rebuild_alarm_memory()
 
 
+def _disc_record_events(c, source, network, found_devices):
+    """Catat transisi status perangkat untuk satu aturan pemindaian.
+
+    Perangkat yang belum tercatat (atau terakhir 'lost') -> event 'discovered';
+    yang hilang dari hasil terbaru -> event 'lost' (mewarisi nama/vendor
+    terakhir). Status yang tidak berubah tidak dicatat ulang sehingga durasi
+    uptime/downtime tetap berjalan. Return: jumlah event baru.
+    """
+    c.execute(
+        "SELECT e.ip, e.status, e.sys_name, e.vendor FROM discovery_events e"
+        " WHERE e.id IN (SELECT MAX(id) FROM discovery_events"
+        " WHERE source=? AND network=? GROUP BY ip)",
+        (source, network),
+    )
+    last = {r["ip"]: dict(r) for r in c.fetchall()}
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    found_ips = set()
+    added = 0
+    for dev in found_devices:
+        if not isinstance(dev, dict):
+            continue
+        ip = str(dev.get("ip") or "").strip()
+        if not ip:
+            continue
+        found_ips.add(ip)
+        prev = last.get(ip)
+        if prev is not None and prev["status"] == "discovered":
+            continue
+        c.execute(
+            "INSERT INTO discovery_events (source, network, ip, sys_name, vendor, status, ts)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (
+                source,
+                network,
+                ip,
+                str(dev.get("sys_name") or "")[:128],
+                str(dev.get("vendor") or "")[:64],
+                "discovered",
+                now,
+            ),
+        )
+        added += 1
+    lost = 0
+    for ip, prev in last.items():
+        if prev["status"] != "discovered" or ip in found_ips:
+            continue
+        c.execute(
+            "INSERT INTO discovery_events (source, network, ip, sys_name, vendor, status, ts)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (
+                source,
+                network,
+                ip,
+                str(prev.get("sys_name") or "")[:128],
+                str(prev.get("vendor") or "")[:64],
+                "lost",
+                now,
+            ),
+        )
+        lost += 1
+    return added, lost
+
+
 def run_scheduled_snmp_discovery():
     network = get_setting("discovery_network", "", type_cast=str).strip()
     community = get_setting("discovery_community", "", type_cast=str).strip()
@@ -1084,12 +889,18 @@ def run_scheduled_snmp_discovery():
             parts.append("Hilang: " + ", ".join(removed[:20]))
         send_telegram_alert("\n".join(parts))
     conn, c = get_db()
-    c.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-        ("discovery_last_hosts", json.dumps(sorted(current))),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        try:
+            _disc_record_events(c, "scheduled", network, found)
+        except Exception as exc:
+            logger.warning(f"Catat event discovery gagal: {exc}")
+        c.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            ("discovery_last_hosts", json.dumps(sorted(current))),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return {"status": "ok", "added": added, "removed": removed}
 
 
@@ -1143,9 +954,6 @@ if SCHEDULER_ENABLED:
         func=run_scheduled_snmp_discovery, trigger="interval", hours=6, **_job_defaults
     )
     scheduler.add_job(
-        func=check_services, trigger="interval", seconds=30, **_job_defaults
-    )
-    scheduler.add_job(
         func=check_agent_heartbeat, trigger="interval", seconds=60, **_job_defaults
     )
     scheduler.add_job(
@@ -1168,12 +976,6 @@ if SCHEDULER_ENABLED:
     )
     scheduler.add_job(
         func=poll_fiber_trend, trigger="interval", hours=3, **_job_defaults
-    )
-    scheduler.add_job(
-        func=poll_power_snmp, trigger="interval", seconds=300, **_job_defaults
-    )
-    scheduler.add_job(
-        func=check_ssl_expiry, trigger="interval", hours=6, **_job_defaults
     )
     scheduler.add_job(
         func=send_heartbeat, trigger="cron", hour=8, minute=0, **_job_defaults
@@ -1250,15 +1052,6 @@ except Exception as _trap_err:
 
 _manual_svc_lock = threading.Lock()
 _last_manual_svc = 0.0
-
-
-def trigger_manual_service_check():
-    global _last_manual_svc
-    with _manual_svc_lock:
-        if time.time() - _last_manual_svc < 60:
-            return
-        _last_manual_svc = time.time()
-    threading.Thread(target=check_services, daemon=True).start()
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -1453,12 +1246,6 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/power-analytics")
-@login_required
-def power_analytics_page():
-    return render_template("power_analytics.html")
-
-
 @app.route("/dashboard")
 @login_required
 def dashboard_page():
@@ -1473,318 +1260,6 @@ def dashboard_page():
         gangguan=[],
         riwayat_labels=[],
         riwayat_series={},
-    )
-
-
-@app.route("/api/power/summary")
-@api_login_required
-def api_power_summary():
-    try:
-        hours = int(request.args.get("hours", 24))
-    except (TypeError, ValueError):
-        hours = 24
-    try:
-        return jsonify(get_power_summary(hours))
-    except Exception as e:
-        logger.warning(f"power summary gagal: {e}")
-        return jsonify({"error": "gagal memuat ringkasan daya"}), 500
-
-
-@app.route("/api/power/history")
-@api_login_required
-def api_power_history():
-    try:
-        hours = int(request.args.get("hours", 24))
-    except (TypeError, ValueError):
-        hours = 24
-    host = (request.args.get("host") or "").strip()[:255] or None
-    bucket = (request.args.get("bucket") or "raw").strip().lower()
-    if bucket not in ("raw", "hour", "day"):
-        bucket = "raw"
-    try:
-        return jsonify(
-            {
-                "host": host,
-                "hours": hours,
-                "bucket": bucket,
-                "data": get_power_history(host, hours, bucket),
-            }
-        )
-    except Exception as e:
-        logger.warning(f"power history gagal: {e}")
-        return jsonify({"error": "gagal memuat histori daya"}), 500
-
-
-@app.route("/api/power/devices")
-@api_login_required
-def api_power_devices():
-    try:
-        summary = get_power_summary(int(request.args.get("hours", 24)))
-    except (TypeError, ValueError):
-        summary = get_power_summary(24)
-    conn, c = get_db()
-    try:
-        try:
-            c.execute(
-                "SELECT ip, alias, snmp_community, power_oid, power_scale, power_rated_watts FROM hosts ORDER BY ip ASC"
-            )
-            snmp_hosts = [dict(r) for r in c.fetchall()]
-            for h in snmp_hosts:
-                h.pop("snmp_community", None)
-        except Exception:
-            snmp_hosts = []
-        try:
-            c.execute(
-                "SELECT name, rated_watts, threshold_watts, source, notes, updated_at FROM power_devices ORDER BY name ASC"
-            )
-            manual = [dict(r) for r in c.fetchall()]
-        except Exception:
-            manual = []
-    finally:
-        conn.close()
-    return jsonify(
-        {
-            "devices": summary["devices"],
-            "snmp_hosts": snmp_hosts,
-            "manual_devices": manual,
-        }
-    )
-
-
-@app.route("/api/power/metrics", methods=["POST"])
-@api_login_required
-def api_power_metrics():
-    data = request.get_json(silent=True) or {}
-    try:
-        saved = record_power_metric(
-            data.get("host"),
-            watts=data.get("watts"),
-            voltage=data.get("voltage"),
-            current=data.get("current"),
-            source=data.get("source", "manual"),
-        )
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        logger.warning(f"simpan power gagal: {e}")
-        return jsonify({"error": "gagal menyimpan pengukuran"}), 500
-    return jsonify({"ok": True, **saved})
-
-
-@app.route("/api/power/snmp/<path:host_ip>", methods=["POST"])
-@api_login_required
-def api_power_snmp(host_ip):
-    conn, c = get_db()
-    try:
-        c.execute(
-            "SELECT ip, snmp_community, power_oid, power_scale FROM hosts WHERE ip=?",
-            (host_ip,),
-        )
-        host = c.fetchone()
-        host = dict(host) if host else None
-    finally:
-        conn.close()
-    if not host or not (host.get("power_oid") or "").strip():
-        return (
-            jsonify(
-                {"error": "Host tidak ditemukan atau power_oid belum dikonfigurasi"}
-            ),
-            400,
-        )
-    if not _valid_oid(host["power_oid"]):
-        return jsonify({"error": "power_oid tidak valid"}), 400
-    try:
-        values = _snmp_get(
-            host["ip"],
-            host.get("snmp_community") or "",
-            [host["power_oid"]],
-            timeout=3.0,
-        )
-    except Exception as e:
-        return jsonify({"error": f"SNMP gagal: {e}"}), 502
-    raw = values[0] if values else None
-    if raw is None:
-        return jsonify({"error": "SNMP power tidak merespons"}), 502
-    try:
-        watts = float(raw) * float(host.get("power_scale") or 1)
-    except (TypeError, ValueError):
-        return jsonify({"error": "nilai power SNMP tidak numerik"}), 502
-    try:
-        saved = record_power_metric(host_ip, watts=watts, source="snmp")
-    except Exception as e:
-        return jsonify({"error": f"gagal menyimpan: {e}"}), 500
-    return jsonify(
-        {"ok": True, "host": host_ip, "watts": watts, "source": "snmp", **saved}
-    )
-
-
-@app.route("/api/power/poll-snmp", methods=["POST"])
-@api_login_required
-def api_power_poll_snmp():
-    try:
-        result = poll_power_snmp()
-    except Exception as e:
-        return jsonify({"error": f"polling gagal: {e}"}), 500
-    return jsonify({"ok": True, **result})
-
-
-@app.route("/api/power/host-config", methods=["POST"])
-@api_login_required
-def api_power_host_config():
-    data = request.get_json(silent=True) or {}
-    ip = str(data.get("ip", "")).strip()
-    if not ip:
-        return jsonify({"error": "ip wajib diisi"}), 400
-    oid = str(data.get("power_oid") or "").strip()
-    if oid and not _valid_oid(oid):
-        return jsonify({"error": "power_oid tidak valid"}), 400
-    try:
-        scale = float(data.get("power_scale", 1) or 1)
-    except (TypeError, ValueError):
-        return jsonify({"error": "power_scale harus angka"}), 400
-    if not 0.0001 <= scale <= 1000000:
-        return jsonify({"error": "power_scale di luar batas"}), 400
-    rated = data.get("power_rated_watts")
-    try:
-        rated = float(rated) if rated not in (None, "") else None
-    except (TypeError, ValueError):
-        return jsonify({"error": "power_rated_watts harus angka"}), 400
-    conn, c = get_db()
-    try:
-        c.execute("SELECT ip FROM hosts WHERE ip=?", (ip,))
-        if not c.fetchone():
-            return jsonify({"error": "host tidak ditemukan di inventory"}), 404
-        c.execute(
-            "UPDATE hosts SET power_oid=?, power_scale=?, power_rated_watts=? WHERE ip=?",
-            (oid, scale, rated, ip),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/power/devices", methods=["POST"])
-@api_login_required
-def api_power_device_upsert():
-    data = request.get_json(silent=True) or {}
-    name = str(data.get("name", "")).strip()[:255]
-    if not name:
-        return jsonify({"error": "nama perangkat wajib diisi"}), 400
-    try:
-        rated = (
-            float(data["rated_watts"])
-            if data.get("rated_watts") not in (None, "")
-            else None
-        )
-        thr = (
-            float(data["threshold_watts"])
-            if data.get("threshold_watts") not in (None, "")
-            else None
-        )
-    except (TypeError, ValueError):
-        return jsonify({"error": "rated/threshold harus angka"}), 400
-    source = str(data.get("source", "manual"))[:30] or "manual"
-    notes = str(data.get("notes", ""))[:500]
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn, c = get_db()
-    try:
-        c.execute(
-            "INSERT INTO power_devices(name, rated_watts, threshold_watts, source, notes, updated_at)"
-            " VALUES(?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET"
-            " rated_watts=excluded.rated_watts, threshold_watts=excluded.threshold_watts,"
-            " source=excluded.source, notes=excluded.notes, updated_at=excluded.updated_at",
-            (name, rated, thr, source, notes, now),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/power/devices/<path:name>", methods=["DELETE"])
-@api_login_required
-def api_power_device_delete(name):
-    conn, c = get_db()
-    try:
-        c.execute("DELETE FROM power_devices WHERE name=?", (name,))
-        conn.commit()
-        deleted = c.rowcount
-    finally:
-        conn.close()
-    if not deleted:
-        return jsonify({"error": "perangkat tidak ditemukan"}), 404
-    return jsonify({"ok": True})
-
-
-@app.route("/api/power/settings", methods=["GET", "POST"])
-@api_login_required
-def api_power_settings():
-    if request.method == "GET":
-        return jsonify(get_power_settings())
-    data = request.get_json(silent=True) or {}
-    vals = {}
-    if "tariff_per_kwh" in data:
-        try:
-            tariff = float(data["tariff_per_kwh"])
-        except (TypeError, ValueError):
-            return jsonify({"error": "tarif harus angka"}), 400
-        if not 0 <= tariff <= 100000:
-            return jsonify({"error": "tarif 0..100000"}), 400
-        vals["power_tariff_per_kwh"] = tariff
-    if "threshold_watts" in data:
-        try:
-            thr = float(data["threshold_watts"])
-        except (TypeError, ValueError):
-            return jsonify({"error": "threshold harus angka"}), 400
-        if not 0 <= thr <= 10000000:
-            return jsonify({"error": "threshold di luar batas"}), 400
-        vals["power_threshold_watts"] = thr
-    if not vals:
-        return jsonify({"error": "tidak ada pengaturan dikirim"}), 400
-    conn, c = get_db()
-    try:
-        for k, v in vals.items():
-            c.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                (k, str(v)),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"ok": True, **get_power_settings()})
-
-
-@app.route("/api/power/export")
-@api_login_required
-def api_power_export():
-    try:
-        hours = int(request.args.get("hours", 168))
-    except (TypeError, ValueError):
-        hours = 168
-    host = (request.args.get("host") or "").strip() or None
-    rows = get_power_history(host, hours, "raw")
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(
-        ["timestamp", "host", "watts", "voltage", "current", "energy_kwh", "source"]
-    )
-    for r in rows:
-        writer.writerow(
-            [
-                r.get("timestamp"),
-                r.get("host"),
-                r.get("watts"),
-                r.get("voltage"),
-                r.get("current"),
-                r.get("energy_kwh"),
-                r.get("source"),
-            ]
-        )
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=power_{hours}h.csv"},
     )
 
 
@@ -2168,6 +1643,7 @@ def api_snmp_discovery():
                     ),
                 ),
             )
+            _disc_record_events(c, "manual", network, results)
             conn.commit()
         finally:
             conn.close()
@@ -2259,6 +1735,78 @@ def api_discovery_import():
     finally:
         conn.close()
     return jsonify({"added": added, "skipped": skipped, "count": len(added)}), 201
+
+
+def _disc_rule_label(source, network):
+    return ("Terjadwal" if source == "scheduled" else "Manual") + " · " + network
+
+
+@app.route("/api/discovery/status", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_discovery_status():
+    """Status discovery: kondisi terkini tiap perangkat per aturan pemindaian.
+
+    Satu baris per (aturan, IP) dari event terakhir — status 'discovered'
+    atau 'lost' — plus flag 'monitored' bila IP sudah masuk daftar host.
+    Filter `rule` cocokkan substring network; `sort` name_asc/name_desc.
+    """
+    rule_q = (request.args.get("rule") or "").strip()
+    sort = (request.args.get("sort") or "name_asc").lower()
+    if sort not in ("name_asc", "name_desc"):
+        sort = "name_asc"
+
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT e.id, e.source, e.network, e.ip, e.sys_name, e.vendor,"
+            " e.status, e.ts FROM discovery_events e"
+            " WHERE e.id IN (SELECT MAX(id) FROM discovery_events"
+            " GROUP BY source, network, ip)"
+        )
+        raw = [dict(r) for r in c.fetchall()]
+        c.execute("SELECT ip FROM hosts")
+        monitored = {r["ip"] for r in c.fetchall()}
+    finally:
+        conn.close()
+
+    rule_counts = {}
+    for r in raw:
+        if r["status"] not in ("discovered", "lost"):
+            continue
+        label = _disc_rule_label(r["source"], r["network"])
+        rule_counts[label] = rule_counts.get(label, 0) + 1
+
+    rows = []
+    for r in raw:
+        if r["status"] not in ("discovered", "lost"):
+            continue
+        if rule_q and rule_q.lower() not in r["network"].lower():
+            continue
+        rows.append(
+            {
+                "id": r["id"],
+                "source": r["source"],
+                "network": r["network"],
+                "rule": _disc_rule_label(r["source"], r["network"]),
+                "ip": r["ip"],
+                "name": (r["sys_name"] or "").strip() or r["ip"],
+                "vendor": (r["vendor"] or "").strip(),
+                "status": r["status"],
+                "ts": r["ts"],
+                "monitored": r["ip"] in monitored,
+            }
+        )
+    rows.sort(key=lambda d: d["name"].lower(), reverse=(sort == "name_desc"))
+    return jsonify(
+        {
+            "rows": rows,
+            "rules": [
+                {"label": lb, "count": n} for lb, n in sorted(rule_counts.items())
+            ],
+            "count": len(rows),
+        }
+    )
 
 
 @app.route("/api/hosts", methods=["POST"])
@@ -2418,9 +1966,11 @@ def api_hosts_zbx():
         agent_map = {r["host"]: r["last"] for r in c.fetchall()}
         c.execute("SELECT DISTINCT category FROM hosts ORDER BY category ASC")
         categories = [r["category"] or "Uncategorized" for r in c.fetchall()]
+        c.execute("SELECT ip, COUNT(*) AS cnt FROM services GROUP BY ip")
+        service_map = {r["ip"]: r["cnt"] or 0 for r in c.fetchall()}
 
         c.execute(
-            "SELECT id, ip, alias, category, snmp_community, snmp_profile"
+            "SELECT id, ip, alias, category, snmp_community, snmp_profile, ssh_port"
             " FROM hosts ORDER BY id ASC"
         )
         rows = []
@@ -2466,8 +2016,11 @@ def api_hosts_zbx():
             matched = [a for a in active_alerts if _label_hit(a.get("host"), ip, alias)]
             worst = None
             sev_hit = False
+            host_sevs = []
             for a in matched:
                 sev = (a.get("severity") or "").lower()
+                if sev and sev not in host_sevs:
+                    host_sevs.append(sev)
                 rank = _PROBLEM_SEVERITIES.get(sev)
                 if rank is None:
                     continue
@@ -2493,6 +2046,9 @@ def api_hosts_zbx():
                     "latest_count": health["count"],
                     "problems_count": len(matched),
                     "worst_severity": worst,
+                    "severities": host_sevs,
+                    "web_count": service_map.get(ip, 0),
+                    "ssh_port": d["ssh_port"] or 22,
                 }
             )
     finally:
@@ -2723,6 +2279,559 @@ def api_latest_data():
             ),
         }
     )
+
+
+# ------------------------------------------------------------------
+# Maps: daftar peta topologi (gaya Zabbix) di atas hosts nyata
+# ------------------------------------------------------------------
+
+
+def _map_valid_name(name):
+    name = str(name or "").strip()
+    if not (1 <= len(name) <= 128):
+        return None
+    return name
+
+
+def _map_valid_dim(v):
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    if not (100 <= n <= 65535):
+        return None
+    return n
+
+
+def _map_valid_pos(v):
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= n <= 100000):
+        return None
+    return n
+
+
+def _map_parse_content(raw_elems, raw_links):
+    """Validasi payload konten peta → (elements, links_kep presiduan uid)."""
+    if not isinstance(raw_elems, list) or len(raw_elems) > 500:
+        raise ValueError("elements harus berupa list (maksimal 500 item)")
+    uids = set()
+    elems = []
+    for i, raw in enumerate(raw_elems):
+        if not isinstance(raw, dict):
+            raise ValueError("elemen peta tidak valid")
+        uid = str(raw.get("uid") or "").strip()[:64] or f"e{i + 1}"
+        if uid in uids:
+            raise ValueError(f"uid elemen ganda: {uid}")
+        etype = str(raw.get("etype") or "").strip()
+        if etype not in ("host", "text"):
+            raise ValueError(f"tipe elemen tidak dikenal pada {uid}")
+        label = str(raw.get("label") or "").strip()[:128]
+        if not label:
+            raise ValueError(f"elemen {uid} tanpa label")
+        ip = str(raw.get("ip") or "").strip()[:45] if etype == "host" else ""
+        x = _map_valid_pos(raw.get("x", 40))
+        y = _map_valid_pos(raw.get("y", 40))
+        if x is None or y is None:
+            raise ValueError(f"posisi elemen {uid} tidak valid")
+        uids.add(uid)
+        elems.append(
+            {"uid": uid, "etype": etype, "label": label, "ip": ip, "x": x, "y": y}
+        )
+
+    links = []
+    pairs = set()
+    for raw in raw_links:
+        if not isinstance(raw, dict):
+            continue
+        a = str(raw.get("from") or "").strip()
+        b = str(raw.get("to") or "").strip()
+        if a == b or a not in uids or b not in uids:
+            continue
+        pair = tuple(sorted((a, b)))
+        if pair in pairs:
+            continue
+        pairs.add(pair)
+        links.append(pair)
+    return elems, links
+
+
+def _map_insert_content(c, map_id, elems, links):
+    """Ganti seluruh elemen+tautan peta (replace-semantics)."""
+    c.execute("DELETE FROM map_links WHERE map_id=?", (map_id,))
+    c.execute("DELETE FROM map_elements WHERE map_id=?", (map_id,))
+    id_by_uid = {}
+    for e in elems:
+        c.execute(
+            "INSERT INTO map_elements (map_id, uid, etype, label, ip, x, y)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (map_id, e["uid"], e["etype"], e["label"], e["ip"], e["x"], e["y"]),
+        )
+        id_by_uid[e["uid"]] = c.lastrowid
+    for a, b in links:
+        c.execute(
+            "INSERT INTO map_links (map_id, from_id, to_id) VALUES (?,?,?)",
+            (map_id, id_by_uid[a], id_by_uid[b]),
+        )
+    return len(elems), len(links)
+
+
+@app.route("/maps")
+@login_required
+def maps_page():
+    return render_template("maps.html")
+
+
+@app.route("/maps/<int:map_id>/edit")
+@login_required
+def map_edit_page(map_id):
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM maps WHERE id=?", (map_id,))
+        exist = c.fetchone()
+    finally:
+        conn.close()
+    if exist is None:
+        return "<p>Peta tidak ditemukan</p>", 404
+    return render_template("map_edit.html", map_id=map_id)
+
+
+@app.route("/api/maps", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_maps_list():
+    """Daftar peta: Name lebar tinggi + jumlah elemen, filter Name."""
+    name_q = (request.args.get("name") or "").strip()
+    sort = (request.args.get("sort") or "name_asc").lower()
+    if sort not in ("name_asc", "name_desc"):
+        sort = "name_asc"
+
+    conn, c = get_db()
+    try:
+        sql = (
+            "SELECT m.id, m.name, m.width, m.height, m.created_at,"
+            " (SELECT COUNT(*) FROM map_elements e WHERE e.map_id = m.id) AS elements"
+            " FROM maps m"
+        )
+        params = []
+        if name_q:
+            sql += " WHERE m.name LIKE ? ESCAPE '\\'"
+            params.append(f"%{_like_escape(name_q)}%")
+        sql += (
+            " ORDER BY m.name COLLATE NOCASE"
+            if sort == "name_asc"
+            else " ORDER BY m.name COLLATE NOCASE DESC"
+        )
+        c.execute(sql, params)
+        rows = []
+        for r in c.fetchall():
+            rows.append(
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "width": int(r["width"]),
+                    "height": int(r["height"]),
+                    "created_at": r["created_at"],
+                    "elements": int(r["elements"]),
+                }
+            )
+    finally:
+        conn.close()
+    return jsonify({"maps": rows, "count": len(rows)})
+
+
+@app.route("/api/maps", methods=["POST"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_maps_create():
+    data = request.get_json(silent=True) or {}
+    name = _map_valid_name(data.get("name"))
+    width = _map_valid_dim(data.get("width", 960))
+    height = _map_valid_dim(data.get("height", 540))
+    if name is None or width is None or height is None:
+        return (
+            jsonify({"error": "Nama 1-128 karakter; dimensi 100-65535"}),
+            400,
+        )
+    conn, c = get_db()
+    try:
+        c.execute(
+            "INSERT INTO maps (name, width, height) VALUES (?,?,?)",
+            (name, width, height),
+        )
+        new_id = c.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "map.create", name, f"maps/{new_id}")
+    except Exception:
+        pass
+    return (
+        jsonify({"id": new_id, "name": name, "width": width, "height": height}),
+        201,
+    )
+
+
+@app.route("/api/maps/<int:map_id>", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_maps_detail(map_id):
+    """Rincian peta: elemen (uid, posisi, status ping nyata) + tautan."""
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT id, name, width, height, created_at FROM maps WHERE id=?",
+            (map_id,),
+        )
+        mrow = c.fetchone()
+        if mrow is None:
+            return jsonify({"error": "Peta tidak ditemukan"}), 404
+        m = {
+            "id": mrow["id"],
+            "name": mrow["name"],
+            "width": int(mrow["width"]),
+            "height": int(mrow["height"]),
+            "created_at": mrow["created_at"],
+        }
+        c.execute(
+            "SELECT id, uid, etype, label, ip, x, y FROM map_elements"
+            " WHERE map_id=? ORDER BY id ASC",
+            (map_id,),
+        )
+        raw_elems = [dict(r) for r in c.fetchall()]
+        by_id = {r["id"]: r for r in raw_elems}
+        c.execute(
+            "SELECT from_id, to_id FROM map_links WHERE map_id=? ORDER BY id ASC",
+            (map_id,),
+        )
+        links = []
+        for l in c.fetchall():
+            a, b = by_id.get(l["from_id"]), by_id.get(l["to_id"])
+            if a is None or b is None or a is b:
+                continue
+            links.append({"from": a["uid"], "to": b["uid"]})
+
+        try:
+            ping_map = dict(status_memory.items())
+        except Exception:
+            ping_map = {}
+        try:
+            maint_map = get_active_maintenance_map()
+        except Exception:
+            maint_map = {}
+
+        elements = []
+        for e in raw_elems:
+            d = {
+                "uid": e["uid"],
+                "etype": e["etype"],
+                "label": e["label"],
+                "x": int(e["x"]),
+                "y": int(e["y"]),
+                "status": None,
+                "maintenance": False,
+            }
+            if e["etype"] == "host":
+                ip = e["ip"] or ""
+                d["ip"] = ip
+                pv = ping_map.get(ip)
+                d["status"] = "unknown" if pv is None else ("up" if pv else "down")
+                d["maintenance"] = ip in maint_map
+            elements.append(d)
+
+        hosts = []
+        c.execute(
+            "SELECT ip, alias FROM hosts ORDER BY alias COLLATE NOCASE ASC, ip ASC"
+        )
+        for r in c.fetchall():
+            alias = (r["alias"] or "").strip()
+            hosts.append({"ip": r["ip"], "alias": alias, "name": alias or r["ip"]})
+    finally:
+        conn.close()
+    return jsonify({"map": m, "elements": elements, "links": links, "hosts": hosts})
+
+
+@app.route("/api/maps/<int:map_id>", methods=["PATCH"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_maps_update(map_id):
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or not data:
+        return jsonify({"error": "Tidak ada perubahan"}), 400
+    sets, params = [], []
+    if "name" in data:
+        name = _map_valid_name(data.get("name"))
+        if name is None:
+            return jsonify({"error": "Nama 1-128 karakter"}), 400
+        sets.append("name=?")
+        params.append(name)
+    if "width" in data:
+        width = _map_valid_dim(data.get("width"))
+        if width is None:
+            return jsonify({"error": "Lebar 100-65535"}), 400
+        sets.append("width=?")
+        params.append(width)
+    if "height" in data:
+        height = _map_valid_dim(data.get("height"))
+        if height is None:
+            return jsonify({"error": "Tinggi 100-65535"}), 400
+        sets.append("height=?")
+        params.append(height)
+    if not sets:
+        return jsonify({"error": "Tidak ada kolom yang dikenal"}), 400
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name FROM maps WHERE id=?", (map_id,))
+        if c.fetchone() is None:
+            return jsonify({"error": "Peta tidak ditemukan"}), 404
+        c.execute(f"UPDATE maps SET {', '.join(sets)} WHERE id=?", params + [map_id])
+        conn.commit()
+        c.execute("SELECT id, name, width, height FROM maps WHERE id=?", (map_id,))
+        r = c.fetchone()
+        row = {
+            "id": r["id"],
+            "name": r["name"],
+            "width": int(r["width"]),
+            "height": int(r["height"]),
+        }
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "map.update", row["name"], f"maps/{map_id}")
+    except Exception:
+        pass
+    return jsonify(row)
+
+
+@app.route("/api/maps/<int:map_id>/content", methods=["PUT"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_maps_content(map_id):
+    """Simpan isi kanvas: ganti seluruh elemen + tautan (uid stabil klien)."""
+    data = request.get_json(silent=True) or {}
+    try:
+        elems, links = _map_parse_content(
+            data.get("elements"),
+            data.get("links") if isinstance(data.get("links"), list) else [],
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM maps WHERE id=?", (map_id,))
+        if c.fetchone() is None:
+            return jsonify({"error": "Peta tidak ditemukan"}), 404
+        ne, nl = _map_insert_content(c, map_id, elems, links)
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        audit(
+            current_user.username,
+            "map.content",
+            f"{ne} elemen, {nl} tautan",
+            f"maps/{map_id}",
+        )
+    except Exception:
+        pass
+    return jsonify({"elements": ne, "links": nl})
+
+
+@app.route("/api/maps", methods=["DELETE"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_maps_delete():
+    """Hapus peta terpilih (beserta elemen dan tautannya)."""
+    data = request.get_json(silent=True) or {}
+    raw = data.get("ids")
+    if not isinstance(raw, list) or not raw:
+        return jsonify({"error": "Tidak ada peta yang dipilih"}), 400
+    if len(raw) > 200:
+        return jsonify({"error": "Maksimal 200 peta per permintaan"}), 400
+    ids, seen = [], set()
+    for v in raw:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return jsonify({"error": "ids berisi id tidak valid"}), 400
+        if n not in seen:
+            seen.add(n)
+            ids.append(n)
+    deleted, names = 0, []
+    conn, c = get_db()
+    try:
+        for mid in ids:
+            c.execute("SELECT name FROM maps WHERE id=?", (mid,))
+            row = c.fetchone()
+            if row is None:
+                continue
+            c.execute("DELETE FROM map_elements WHERE map_id=?", (mid,))
+            c.execute("DELETE FROM map_links WHERE map_id=?", (mid,))
+            c.execute("DELETE FROM maps WHERE id=?", (mid,))
+            deleted += 1
+            names.append(row["name"])
+        conn.commit()
+    finally:
+        conn.close()
+    if deleted:
+        try:
+            audit(
+                current_user.username,
+                "map.delete",
+                ", ".join(names),
+                f"{deleted} peta",
+            )
+        except Exception:
+            pass
+    return jsonify({"deleted": deleted})
+
+
+@app.route("/api/maps/export", methods=["POST"])
+@api_login_required
+@limiter.limit("30/minute")
+def api_maps_export():
+    """Ekspor peta terpilih ke berkas JSON (round-trip dengan impor)."""
+    data = request.get_json(silent=True) or {}
+    raw = data.get("ids")
+    if not isinstance(raw, list) or not raw:
+        return jsonify({"error": "Pilih minimal satu peta"}), 400
+    if len(raw) > 200:
+        return jsonify({"error": "Maksimal 200 peta per permintaan"}), 400
+    ids, seen = [], set()
+    for v in raw:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return jsonify({"error": "ids berisi id tidak valid"}), 400
+        if n not in seen:
+            seen.add(n)
+            ids.append(n)
+    conn, c = get_db()
+    try:
+        payload = {
+            "version": 1,
+            "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "maps": [],
+        }
+        for mid in ids:
+            c.execute("SELECT name, width, height FROM maps WHERE id=?", (mid,))
+            m = c.fetchone()
+            if m is None:
+                continue
+            c.execute(
+                "SELECT uid, etype, label, ip, x, y FROM map_elements"
+                " WHERE map_id=? ORDER BY id ASC",
+                (mid,),
+            )
+            raw_elems = [dict(r) for r in c.fetchall()]
+            id_to_uid = {
+                r["id"]: r["uid"]
+                for r in c.execute(
+                    "SELECT id, uid FROM map_elements WHERE map_id=?", (mid,)
+                ).fetchall()
+            }
+            c.execute(
+                "SELECT from_id, to_id FROM map_links WHERE map_id=? ORDER BY id ASC",
+                (mid,),
+            )
+            links = []
+            for l in c.fetchall():
+                a, b = id_to_uid.get(l["from_id"]), id_to_uid.get(l["to_id"])
+                if not a or not b or a == b:
+                    continue
+                links.append({"from": a, "to": b})
+            payload["maps"].append(
+                {
+                    "name": m["name"],
+                    "width": int(m["width"]),
+                    "height": int(m["height"]),
+                    "elements": [
+                        {
+                            "uid": e["uid"],
+                            "etype": e["etype"],
+                            "label": e["label"],
+                            "ip": e["ip"],
+                            "x": int(e["x"]),
+                            "y": int(e["y"]),
+                        }
+                        for e in raw_elems
+                    ],
+                    "links": links,
+                }
+            )
+    finally:
+        conn.close()
+    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    resp = Response(body, mimetype="application/json")
+    resp.headers["Content-Disposition"] = 'attachment; filename="maps_export.json"'
+    return resp
+
+
+@app.route("/api/maps/import", methods=["POST"])
+@api_login_required
+@limiter.limit("30/minute")
+def api_maps_import():
+    """Impor JSON hasil ekspor: {version, maps:[name,width,elements,links]}.
+
+    Tautan dengan uid yang tidak dikenal dilewati; selain itu elemen
+    diterima apa adanya. Batas: 50 peta per permintaan.
+    """
+    data = request.get_json(silent=True) or {}
+    raw_maps = data.get("maps")
+    if not isinstance(raw_maps, list) or not raw_maps:
+        return jsonify({"error": "Tidak ada peta untuk diimpor"}), 400
+    if len(raw_maps) > 50:
+        return jsonify({"error": "Maksimal 50 peta per permintaan"}), 400
+    created, errs = [], []
+    conn, c = get_db()
+    try:
+        for raw in raw_maps:
+            if not isinstance(raw, dict):
+                errs.append("format peta tidak valid")
+                continue
+            name = _map_valid_name(raw.get("name"))
+            width = _map_valid_dim(raw.get("width", 960))
+            height = _map_valid_dim(raw.get("height", 540))
+            if name is None or width is None or height is None:
+                errs.append(f"'{str(raw.get('name') or '')[:32]}' tidak valid")
+                continue
+            try:
+                elems, links = _map_parse_content(
+                    raw.get("elements"),
+                    raw.get("links") if isinstance(raw.get("links"), list) else [],
+                )
+            except ValueError as exc:
+                errs.append(f"'{name[:32]}': {exc}")
+                continue
+            c.execute(
+                "INSERT INTO maps (name, width, height) VALUES (?,?,?)",
+                (name, width, height),
+            )
+            new_id = c.lastrowid
+            _map_insert_content(c, new_id, elems, links)
+            created.append({"id": new_id, "name": name})
+        conn.commit()
+    finally:
+        conn.close()
+    if created:
+        try:
+            audit(
+                current_user.username,
+                "map.import",
+                ", ".join(d["name"] for d in created),
+                f"{len(created)} peta",
+            )
+        except Exception:
+            pass
+    resp = {"created": created, "count": len(created)}
+    if errs:
+        resp["errors"] = errs
+    if not created:
+        return jsonify(resp), 400
+    return jsonify(resp), 201
 
 
 @app.route("/api/hosts/bulk/import", methods=["POST"])
@@ -5003,200 +5112,6 @@ def api_maintenance_delete(mid):
     return jsonify({"status": "success"})
 
 
-@app.route("/services")
-@login_required
-def services_page():
-    return render_template("services.html")
-
-
-@app.route("/api/services", methods=["GET"])
-@api_login_required
-def get_services_api():
-    conn, c = get_db()
-    c.execute("SELECT * FROM services")
-    rows = c.fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
-
-
-@app.route("/api/services", methods=["POST"])
-@api_login_required
-def add_service_api():
-    data = request.get_json(silent=True) or {}
-    ip = str(data.get("ip") or "").strip()
-    name = str(data.get("name") or "").strip()
-    svc_type = str(data.get("type") or "tcp").strip().lower()
-    port_raw = data.get("port")
-    url = str(data.get("url") or "").strip()
-    query = str(data.get("query") or "").strip()
-    expected = str(data.get("expected") or "").strip()
-
-    if not ip or not name:
-        return jsonify({"error": "IP dan Name diperlukan"}), 400
-    if svc_type not in ("tcp", "http", "icmp", "dns"):
-        return jsonify({"error": "Type harus tcp, http, icmp, atau dns"}), 400
-    if len(name) > 100 or len(ip) > 255:
-        return jsonify({"error": "Name/IP terlalu panjang"}), 400
-    if len(expected) > 200:
-        return jsonify({"error": "Expected/keyword terlalu panjang (maks 200)"}), 400
-
-    port = None
-    if svc_type == "tcp":
-        try:
-            port = int(port_raw or 0)
-        except (ValueError, TypeError):
-            return jsonify({"error": "TCP Port harus angka 1-65535"}), 400
-        if not 1 <= port <= 65535:
-            return jsonify({"error": "TCP Port harus 1-65535"}), 400
-        url = None
-        query = ""
-        expected = ""
-    elif svc_type == "http":
-        if not url or not re.match(r"^https?://[^\s/$.?#].[^\s]*$", url, re.IGNORECASE):
-            return jsonify({"error": "URL http harus diawali http(s)://"}), 400
-        if len(url) > 500:
-            return jsonify({"error": "URL terlalu panjang"}), 400
-        port = None
-        query = ""
-    elif svc_type == "icmp":
-        # Cukup IP/host: tidak ada port, URL, query, ataupun expected.
-        port = None
-        url = None
-        query = ""
-        expected = ""
-    else:
-        # dns: nama yang di-query wajib & valid hostname
-        ok, err = validate_dns_query_name(query)
-        if not ok:
-            return jsonify({"error": err or "Query DNS bermasalah"}), 400
-        port = None
-        url = None
-
-    conn, c = get_db()
-
-    if svc_type == "tcp":
-        c.execute(
-            "SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?", (ip, port)
-        )
-    elif svc_type == "http":
-        c.execute(
-            "SELECT id FROM services WHERE ip=? AND type='http' AND url=?", (ip, url)
-        )
-    elif svc_type == "icmp":
-        c.execute("SELECT id FROM services WHERE ip=? AND type='icmp'", (ip,))
-    else:
-        c.execute(
-            "SELECT id FROM services WHERE ip=? AND type='dns' AND query=?",
-            (ip, query),
-        )
-    if c.fetchone():
-        conn.close()
-        return jsonify({"error": "Service monitor ini sudah ada"}), 400
-    c.execute(
-        "INSERT INTO services (ip, name, type, port, url, query, expected)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (ip, name, svc_type, port, url, query, expected),
-    )
-    new_id = c.lastrowid
-    conn.commit()
-    conn.close()
-
-    try:
-        audit(current_user.username, "service.create", f"{name} {svc_type} {ip}")
-    except Exception:
-        pass
-
-    trigger_manual_service_check()
-    if svc_type == "http" and (url or "").lower().startswith("https://"):
-        trigger_async_ssl_check()
-    return jsonify({"status": "success", "id": new_id}), 201
-
-
-@app.route("/api/services/<int:svc_id>", methods=["DELETE"])
-@api_login_required
-def delete_service_api(svc_id):
-    conn, c = get_db()
-    c.execute("SELECT ip, name FROM services WHERE id=?", (svc_id,))
-    row = c.fetchone()
-    if not row:
-        conn.close()
-        return jsonify({"error": "Service tidak ditemukan"}), 404
-    c.execute("DELETE FROM services WHERE id=?", (svc_id,))
-    try:
-        c.execute("DELETE FROM service_history WHERE service_id=?", (svc_id,))
-    except sqlite3.OperationalError:
-        pass
-    conn.commit()
-    conn.close()
-    try:
-        audit(
-            current_user.username,
-            "service.delete",
-            f"{row['name']} {row['ip']} id={svc_id}",
-        )
-    except Exception:
-        pass
-    return jsonify({"status": "success"})
-
-
-@app.route("/api/services/<int:svc_id>/history")
-@api_login_required
-def api_service_history(svc_id):
-    try:
-        hours = int(request.args.get("hours", 24))
-    except (ValueError, TypeError):
-        return jsonify({"error": "hours harus angka 1-168"}), 400
-    hours = max(1, min(hours, 168))
-    conn, c = get_db()
-    try:
-        c.execute(
-            "SELECT id, name, type, ip, port, url, status FROM services WHERE id=?",
-            (svc_id,),
-        )
-        svc = c.fetchone()
-        if not svc:
-            return jsonify({"error": "Service tidak ditemukan"}), 404
-        c.execute(
-            "SELECT timestamp, latency, status FROM service_history "
-            "WHERE service_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
-            (svc_id, f"-{hours} hours"),
-        )
-        rows = c.fetchall()
-    finally:
-        conn.close()
-    labels = [
-        (
-            r["timestamp"].split(" ")[1]
-            if " " in (r["timestamp"] or "")
-            else r["timestamp"]
-        )
-        for r in rows
-    ]
-    values = [round(r["latency"], 2) if r["status"] == "ONLINE" else None for r in rows]
-    return jsonify(
-        {
-            "service": dict(svc),
-            "hours": hours,
-            "labels": labels,
-            "values": values,
-            "count": len(rows),
-        }
-    )
-
-
-@app.route("/api/services/<int:svc_id>/ssl-check", methods=["POST"])
-@api_login_required
-def api_service_ssl_check(svc_id):
-    conn, c = get_db()
-    c.execute("SELECT url FROM services WHERE id=?", (svc_id,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return jsonify({"error": "Service tidak ditemukan"}), 404
-    trigger_async_ssl_check()
-    return jsonify({"status": "queued"})
-
-
 @app.route("/sla")
 @login_required
 def sla_page():
@@ -5297,736 +5212,10 @@ def api_sla_sites():
     )
 
 
-@app.route("/inventory")
-@login_required
-def inventory_page():
-    return render_template("inventory.html")
-
-
-@app.route("/api/inventory", methods=["GET"])
-@api_login_required
-def api_inventory_list():
-    conn, c = get_db()
-    c.execute("SELECT * FROM inventory ORDER BY hostname ASC")
-    rows = [dict(r) for r in c.fetchall()]
-    c.execute("SELECT ip FROM hosts")
-    monitored = {r["ip"] for r in c.fetchall()}
-
-    last_map = {}
-    try:
-        c.execute("""
-            SELECT p.host, p.latency, p.timestamp FROM ping_logs p
-            INNER JOIN (SELECT host, MAX(id) AS mid FROM ping_logs GROUP BY host) m
-            ON m.mid = p.id
-        """)
-        for r in c.fetchall():
-            last_map[r["host"]] = (r["latency"], r["timestamp"])
-    except Exception:
-        last_map = {}
-    out = []
-    for inv in rows:
-        is_monitored = inv["ip"] in monitored
-        if inv["ip"] in last_map:
-            lat, ts = last_map[inv["ip"]]
-            live = "up" if lat != -1 else "down"
-            last_latency = round(lat, 2) if lat != -1 else None
-            last_seen = ts
-        else:
-
-            live = "pending" if is_monitored else "unmonitored"
-            last_latency = None
-            last_seen = None
-        out.append(
-            {
-                **inv,
-                "live": live,
-                "last_latency": last_latency,
-                "last_seen": last_seen,
-                "monitored": is_monitored,
-            }
-        )
-    conn.close()
-    return jsonify(out)
-
-
-IPV4_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
-
-INVENTORY_ASSET_STATUS = {"aktif", "cadangan", "rusak", "hilang"}
-
-
-def _validate_inventory(d):
-    hostname = (d.get("hostname") or "").strip()
-    ip = (d.get("ip") or "").strip()
-    if not hostname or not ip:
-        return None, "Hostname & IP wajib diisi"
-    if len(hostname) > 100 or len(ip) > 45:
-        return None, "Hostname/IP terlalu panjang"
-    if not IPV4_RE.match(ip):
-        return None, "Format IP tidak valid"
-    try:
-        if any(int(p) > 255 for p in ip.split(".")):
-            return None, "Format IP tidak valid"
-    except ValueError:
-        return None, "Format IP tidak valid"
-    device_type = (d.get("device_type") or "").strip()
-    brand_model = (d.get("brand_model") or "").strip()
-    location = (d.get("location") or "").strip()
-    pic_name = (d.get("pic_name") or "").strip()
-    pic_phone = (d.get("pic_phone") or "").strip()
-    install_date = (d.get("install_date") or "").strip()
-    asset_status = (d.get("asset_status") or "aktif").strip().lower()
-    asset_no = (d.get("asset_no") or "").strip()
-    notes = (d.get("notes") or "").strip()
-    if asset_status not in INVENTORY_ASSET_STATUS:
-        return None, "Status aset harus aktif/cadangan/rusak/hilang"
-    if len(device_type) > 50 or len(brand_model) > 100 or len(location) > 100:
-        return None, "Tipe/merek/lokasi terlalu panjang"
-    if (
-        len(pic_name) > 100
-        or len(pic_phone) > 30
-        or len(asset_no) > 50
-        or len(notes) > 500
-    ):
-        return None, "Data PIC/aset/catatan terlalu panjang"
-    if install_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", install_date):
-        return None, "Tanggal pasang harus YYYY-MM-DD"
-    if install_date:
-        try:
-            datetime.strptime(install_date, "%Y-%m-%d")
-        except ValueError:
-            return None, "Tanggal pasang tidak valid"
-    return {
-        "hostname": hostname,
-        "ip": ip,
-        "device_type": device_type,
-        "brand_model": brand_model,
-        "location": location,
-        "pic_name": pic_name,
-        "pic_phone": pic_phone,
-        "install_date": install_date,
-        "asset_status": asset_status,
-        "asset_no": asset_no,
-        "notes": notes,
-    }, None
-
-
-@app.route("/api/inventory", methods=["POST"])
-@api_login_required
-def api_inventory_create():
-    vals, err = _validate_inventory(request.get_json(silent=True) or {})
-    if err:
-        return jsonify({"error": err}), 400
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn, c = get_db()
-    try:
-        c.execute(
-            """INSERT INTO inventory(hostname,ip,device_type,brand_model,location,
-                     pic_name,pic_phone,install_date,asset_status,asset_no,notes,created_at,updated_at)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                vals["hostname"],
-                vals["ip"],
-                vals["device_type"],
-                vals["brand_model"],
-                vals["location"],
-                vals["pic_name"],
-                vals["pic_phone"],
-                vals["install_date"],
-                vals["asset_status"],
-                vals["asset_no"],
-                vals["notes"],
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-        iid = c.lastrowid
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        conn.close()
-        return jsonify({"error": "IP sudah terdaftar di inventory"}), 400
-    conn.close()
-    audit(current_user.username, "inventory.create", f"{vals['hostname']} {vals['ip']}")
-    return jsonify({"status": "ok", "id": iid})
-
-
-@app.route("/api/inventory/<int:iid>", methods=["PUT"])
-@api_login_required
-def api_inventory_update(iid):
-    vals, err = _validate_inventory(request.get_json(silent=True) or {})
-    if err:
-        return jsonify({"error": err}), 400
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn, c = get_db()
-    try:
-        c.execute(
-            """UPDATE inventory SET hostname=?, ip=?, device_type=?, brand_model=?, location=?,
-                     pic_name=?, pic_phone=?, install_date=?, asset_status=?, asset_no=?, notes=?, updated_at=?
-                     WHERE id=?""",
-            (
-                vals["hostname"],
-                vals["ip"],
-                vals["device_type"],
-                vals["brand_model"],
-                vals["location"],
-                vals["pic_name"],
-                vals["pic_phone"],
-                vals["install_date"],
-                vals["asset_status"],
-                vals["asset_no"],
-                vals["notes"],
-                now,
-                iid,
-            ),
-        )
-        if c.rowcount == 0:
-            conn.rollback()
-            conn.close()
-            return jsonify({"error": "Data tidak ditemukan"}), 404
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        conn.close()
-        return jsonify({"error": "IP sudah dipakai data lain"}), 400
-    conn.close()
-    audit(current_user.username, "inventory.update", str(iid))
-    return jsonify({"status": "ok"})
-
-
-@app.route("/api/inventory/<int:iid>", methods=["DELETE"])
-@api_login_required
-def api_inventory_delete(iid):
-    conn, c = get_db()
-    c.execute("DELETE FROM inventory WHERE id=?", (iid,))
-    deleted = c.rowcount
-    conn.commit()
-    conn.close()
-    if not deleted:
-        return jsonify({"error": "Data tidak ditemukan"}), 404
-    audit(current_user.username, "inventory.delete", str(iid))
-    return jsonify({"status": "ok"})
-
-
-@app.route("/api/inventory/export")
-@api_login_required
-def api_inventory_export():
-    conn, c = get_db()
-    c.execute("SELECT * FROM inventory ORDER BY hostname ASC")
-    rows = c.fetchall()
-    conn.close()
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(
-        [
-            "id",
-            "hostname",
-            "ip",
-            "tipe",
-            "merek_model",
-            "lokasi",
-            "pic",
-            "no_hp",
-            "tgl_pasang",
-            "status_aset",
-            "no_aset",
-            "catatan",
-        ]
-    )
-    for r in rows:
-        w.writerow(
-            [
-                r["id"],
-                _csv_safe(r["hostname"]),
-                _csv_safe(r["ip"]),
-                _csv_safe(r["device_type"]),
-                _csv_safe(r["brand_model"]),
-                _csv_safe(r["location"]),
-                _csv_safe(r["pic_name"]),
-                _csv_safe(r["pic_phone"]),
-                _csv_safe(r["install_date"]),
-                _csv_safe(r["asset_status"]),
-                _csv_safe(r["asset_no"]),
-                _csv_safe(r["notes"]),
-            ]
-        )
-    return Response(
-        buf.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=inventory.csv"},
-    )
-
-
-@app.route("/triggers")
-@login_required
-def triggers_page():
-    return render_template("triggers.html")
-
-
 @app.route("/problems")
 @login_required
 def problems_page():
     return render_template("problems.html")
-
-
-@app.route("/api/triggers")
-@api_login_required
-def get_triggers():
-
-    valid_hosts = set(get_target_hosts())
-    maint_map = get_active_maintenance_map()
-
-    alarms = []
-
-    for host, is_down in list(status_memory.items()):
-        if host not in valid_hosts:
-            continue
-        if is_down:
-            if host in maint_map:
-                reason = (maint_map[host].get("reason") or "").strip()[:200]
-                alarms.append(
-                    {
-                        "host": host,
-                        "severity": "warning",
-                        "message": f"In maintenance (DOWN suppressed){(' - ' + reason) if reason else ''}",
-                        "category": "maintenance",
-                    }
-                )
-            else:
-                alarms.append(
-                    {
-                        "host": host,
-                        "severity": "disaster",
-                        "message": "Host is DOWN (Unreachable)",
-                        "category": "availability",
-                    }
-                )
-
-    for host, is_offline in list(agent_offline_memory.items()):
-        if host not in valid_hosts:
-            continue
-        if host in maint_map:
-            continue
-        if is_offline and not status_memory.get(host, False):
-            alarms.append(
-                {
-                    "host": host,
-                    "severity": "high",
-                    "message": "NMS Agent is Offline / Not reporting",
-                    "category": "agent",
-                }
-            )
-
-    for host, status in list(agent_status_memory.items()):
-        if host not in valid_hosts:
-            continue
-        if not status_memory.get(host, False) and not agent_offline_memory.get(
-            host, False
-        ):
-            if status.get("cpu", False):
-                alarms.append(
-                    {
-                        "host": host,
-                        "severity": "warning",
-                        "message": "High CPU Usage",
-                        "category": "resource",
-                    }
-                )
-            if status.get("ram", False):
-                alarms.append(
-                    {
-                        "host": host,
-                        "severity": "warning",
-                        "message": "High RAM Usage",
-                        "category": "resource",
-                    }
-                )
-            if status.get("disk", False):
-                alarms.append(
-                    {
-                        "host": host,
-                        "severity": "warning",
-                        "message": "High Disk Usage",
-                        "category": "resource",
-                    }
-                )
-
-    try:
-        conn, c = get_db()
-        try:
-            c.execute(
-                "SELECT id, ip, name, type, url, status, ssl_days_left, ssl_expires_at FROM services"
-            )
-            for r in c.fetchall():
-                d = dict(r)
-                st = (d.get("status") or "").upper()
-                label = f"{d.get('name')} ({d.get('ip')})"
-                if st == "OFFLINE":
-                    alarms.append(
-                        {
-                            "host": label,
-                            "severity": "high",
-                            "message": f"Service OFFLINE: {d.get('name')} [{d.get('type')}]",
-                            "category": "service",
-                        }
-                    )
-                lvl = _ssl_level(d.get("ssl_days_left"))
-                if lvl and (d.get("url") or "").lower().startswith("https://"):
-                    try:
-                        days = int(d.get("ssl_days_left") or 0)
-                    except (ValueError, TypeError):
-                        days = None
-                    if lvl == "expired":
-                        alarms.append(
-                            {
-                                "host": label,
-                                "severity": "disaster",
-                                "message": f"SSL EXPIRED: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                                "category": "service",
-                            }
-                        )
-                    elif lvl == "high":
-                        alarms.append(
-                            {
-                                "host": label,
-                                "severity": "high",
-                                "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                                "category": "service",
-                            }
-                        )
-                    else:
-                        alarms.append(
-                            {
-                                "host": label,
-                                "severity": "warning",
-                                "message": f"SSL expire H-{days}: {d.get('url')} (exp {d.get('ssl_expires_at') or '-'})",
-                                "category": "service",
-                            }
-                        )
-        finally:
-            conn.close()
-    except Exception as e:
-        print(f"[TRIGGERS] service/ssl gagal: {e}")
-
-    try:
-        conn, c = get_db()
-        try:
-            c.execute("SELECT * FROM fiber_onts")
-            rows = [dict(r) for r in c.fetchall()]
-        finally:
-            conn.close()
-        maint_map = get_active_maintenance_map()
-        sev_rows = []
-        for d in rows:
-            try:
-                rx = None if d.get("rx_power") is None else float(d.get("rx_power"))
-            except (ValueError, TypeError):
-                continue
-            try:
-                tx = None if d.get("tx_power") is None else float(d.get("tx_power"))
-            except (ValueError, TypeError):
-                tx = None
-            if rx is None and tx is None:
-                continue
-            in_maint, maint_reason, maint_scope = _fiber_maintenance_info(d, maint_map)
-            if in_maint:
-                scope_txt = (
-                    f" ({maint_scope.upper()})"
-                    if maint_scope and maint_scope != "ont"
-                    else ""
-                )
-                alarms.append(
-                    {
-                        "host": f"{d.get('ont_sn')}",
-                        "severity": "warning",
-                        "message": f"Fiber dalam maintenance{scope_txt} — alarm disuppress{(' - ' + maint_reason) if maint_reason else ''}",
-                        "category": "maintenance",
-                    }
-                )
-                continue
-            if _is_mute_active(d):
-                continue
-            status, severity, advice, _need = fiber_eval(rx, tx, _th_for_ont(d))
-            stale, stale_age = _fiber_stale_info(d)
-            if stale and status in ("normal", "warning", "unknown"):
-                status, severity = "stale", "warning"
-                advice = _fiber_stale_advice(d, stale_age or "?")
-            _okey = _fiber_oltkey(d)
-            _parent = fiber_parent_down.get(_okey) if _okey else None
-            if severity:
-                sev_rows.append((_okey, d.get("ont_sn"), status))
-                if _parent:
-                    _pname = _parent.get("name") or _okey
-                    alarms.append(
-                        {
-                            "host": f"{d.get('ont_sn')}",
-                            "severity": "warning",
-                            "message": f"Fiber {status.upper()} disuppress — induk OLT '{_pname}' bermasalah",
-                            "category": "maintenance",
-                        }
-                    )
-                    continue
-                label = d.get("customer") or d.get("ont_sn")
-                loc = " / ".join(
-                    [x for x in (d.get("olt_name"), d.get("odp_name")) if x]
-                )
-                rx_txt = f"{rx} dBm" if rx is not None else "—"
-                tx_txt = f"{tx} dBm" if tx is not None else "—"
-                alarms.append(
-                    {
-                        "host": f"{d.get('ont_sn')} ({label})",
-                        "severity": severity,
-                        "message": f"Fiber {status.upper()}: Rx {rx_txt} Tx {tx_txt} {('[' + loc + ']') if loc else ''} — {advice}",
-                        "category": "fiber",
-                    }
-                )
-                continue
-            if _parent:
-                continue
-            dg = fiber_degrade_memory.get(d["id"]) or {}
-            if dg.get("degrading") and rx is not None:
-                try:
-                    _dth, _dd = _fiber_degrade_settings()
-                except Exception:
-                    _dth, _dd = FIBER_DEGRADE_DB, FIBER_DEGRADE_DAYS
-                label = d.get("customer") or d.get("ont_sn")
-                alarms.append(
-                    {
-                        "host": f"{d.get('ont_sn')} ({label})",
-                        "severity": "warning",
-                        "message": f"Fiber DEGRADASI: Rx turun {dg.get('drop_db')} dB dalam {_dd} hari "
-                        f"(kini {rx} dBm, ambang {_dth} dB) — cek bending/konektor/splicing sebelum kritis.",
-                        "category": "fiber",
-                    }
-                )
-                continue
-            fl = fiber_flap_memory.get(d["id"]) or {}
-            if fl.get("flapping"):
-                try:
-                    _fth, _fh = _fiber_flap_settings()
-                except Exception:
-                    _fth, _fh = FIBER_FLAP_FLIPS, FIBER_FLAP_HOURS
-                label = d.get("customer") or d.get("ont_sn")
-                alarms.append(
-                    {
-                        "host": f"{d.get('ont_sn')} ({label})",
-                        "severity": "warning",
-                        "message": f"Fiber FLAPPING: {fl.get('flips')}x berubah normal↔terganggu dalam {_fh} jam "
-                        f"(ambang {_fth}x) — cek konektor longgar, splicing, ODP basah/rusak.",
-                        "category": "fiber",
-                    }
-                )
-        try:
-            _members = {}
-            for _ok, _sn, _st in sev_rows:
-                if _ok:
-                    _members.setdefault(_ok, []).append((_sn, _st))
-            for _key, _ent in fiber_parent_down.items():
-                _mlist = _members.get(_key, [])
-                if not _mlist:
-                    continue
-                _name = (_ent or {}).get("name") or _key
-                _crit = sum(1 for _, _st in _mlist if _st in ("critical", "overload"))
-                _warn = len(_mlist) - _crit
-                if (_ent or {}).get("synthetic"):
-                    _msg = (
-                        f"Insiden massal OLT '{_name}' — {len(_mlist)} ONT "
-                        f"({_crit} kritis/overload, {_warn} warning), "
-                        f"alarm individual disuppress"
-                    )
-                else:
-                    _ip = (_ent or {}).get("ip") or "?"
-                    _msg = (
-                        f"Induk OLT '{_name}' DOWN (mgmt {_ip}) — {len(_mlist)} ONT "
-                        f"({_crit} kritis/overload, {_warn} warning), "
-                        f"alarm individual disuppress"
-                    )
-                alarms.append(
-                    {
-                        "host": f"OLT {_name}",
-                        "severity": "disaster",
-                        "message": _msg,
-                        "category": "fiber",
-                    }
-                )
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"[TRIGGERS] fiber gagal: {e}")
-
-    try:
-        conn, c = get_db()
-        try:
-            c.execute(
-                "SELECT ip, alias FROM hosts WHERE snmp_community IS NOT NULL"
-                " AND snmp_community != '' AND (snmp_profile IS NULL OR snmp_profile != 'generic')"
-                " ORDER BY id ASC"
-            )
-            for h in c.fetchall():
-                ip = h["ip"]
-                label = (h["alias"] or "").strip() or ip
-                c2 = conn.execute(
-                    "SELECT cpu, mem_used, storage_used, temp_c, timestamp FROM device_health"
-                    " WHERE host=? ORDER BY id DESC LIMIT 1",
-                    (ip,),
-                )
-                r = c2.fetchone()
-                stale_host = False
-                if r:
-                    stale_host, stale_age = _mt_stale_info(r["timestamp"])
-                    if stale_host:
-                        alarms.append(
-                            {
-                                "host": f"{label} ({ip})",
-                                "severity": "warning",
-                                "message": f"MikroTik STALE: tanpa data SNMP baru sejak {stale_age} — "
-                                f"port/reboot tak terpantau. Cek host/community/UDP 161.",
-                                "category": "mikrotik",
-                            }
-                        )
-                        continue
-                    status, severity, advice = _mt_evaluate(
-                        ip, r["cpu"], r["mem_used"], r["storage_used"], r["temp_c"]
-                    )
-                    if severity:
-                        alarms.append(
-                            {
-                                "host": f"{label} ({ip})",
-                                "severity": severity,
-                                "message": f"MikroTik {status.upper()}: {advice}",
-                                "category": "mikrotik",
-                            }
-                        )
-                try:
-                    c.execute(
-                        "SELECT if_index, name FROM snmp_interfaces"
-                        " WHERE host=? AND monitor=1 AND oper=2",
-                        (ip,),
-                    )
-                    for prow in c.fetchall():
-                        alarms.append(
-                            {
-                                "host": f"{label} ({ip})",
-                                "severity": "high",
-                                "message": f"MikroTik PORT DOWN: {prow['name'] or ('if' + str(prow['if_index']))}",
-                                "category": "mikrotik",
-                            }
-                        )
-                except sqlite3.OperationalError:
-                    pass
-                try:
-                    c.execute(
-                        "SELECT uptime_s FROM device_health WHERE host=? ORDER BY id DESC LIMIT 1",
-                        (ip,),
-                    )
-                    urow = c.fetchone()
-                    if (
-                        urow
-                        and urow["uptime_s"] is not None
-                        and urow["uptime_s"] < REBOOT_ALARM_WINDOW_S
-                    ):
-                        alarms.append(
-                            {
-                                "host": f"{label} ({ip})",
-                                "severity": "warning",
-                                "message": f"MikroTik baru reboot {_fmt_duration(int(urow['uptime_s']))} lalu",
-                                "category": "mikrotik",
-                            }
-                        )
-                except sqlite3.OperationalError:
-                    pass
-        finally:
-            conn.close()
-    except Exception as e:
-        print(f"[TRIGGERS] mikrotik gagal: {e}")
-
-    try:
-        conn, c = get_db()
-        try:
-            c.execute(
-                "SELECT ip, alias, backup_last, backup_ok FROM hosts"
-                " WHERE backup_enable=1 ORDER BY ip ASC"
-            )
-            now = datetime.now()
-            for r in c.fetchall():
-                last = (r["backup_last"] or "").strip()
-                try:
-                    age_h = (
-                        (
-                            (
-                                now - datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
-                            ).total_seconds()
-                            / 3600
-                        )
-                        if last
-                        else None
-                    )
-                except (ValueError, TypeError):
-                    age_h = None
-                if age_h is not None and r["backup_ok"] and age_h <= 48:
-                    continue
-                label = (r["alias"] or "").strip() or r["ip"]
-                if age_h is None:
-                    reason = "belum pernah"
-                elif not r["backup_ok"]:
-                    reason = "gagal"
-                else:
-                    reason = f"basi {int(age_h)} jam"
-                alarms.append(
-                    {
-                        "host": f"{label} ({r['ip']})",
-                        "severity": "warning",
-                        "message": f"Backup konfigurasi {reason} (terakhir {last or '—'}) — "
-                        f"cek kredensial SSH / jadwal backup.",
-                        "category": "mikrotik",
-                    }
-                )
-        finally:
-            conn.close()
-    except Exception as e:
-        print(f"[TRIGGERS] mt-backup gagal: {e}")
-
-    severity_order = {"disaster": 1, "high": 2, "warning": 3}
-    alarms.sort(key=lambda x: severity_order.get(x["severity"], 4))
-
-    raw_sev = (request.args.get("severity") or "").lower()
-    if raw_sev:
-        wanted = {s.strip() for s in raw_sev.split(",") if s.strip()} & set(
-            severity_order
-        )
-        if wanted:
-            alarms = [a for a in alarms if a["severity"] in wanted]
-
-    try:
-        active_alerts = get_active_alerts()
-        workflow_map = {(a["host"], a["message"]): a for a in active_alerts}
-        for alarm in alarms:
-            workflow = workflow_map.get((alarm.get("host"), alarm.get("message")))
-            if workflow:
-                alarm.update(
-                    {
-                        "id": workflow["id"],
-                        "acknowledged_at": workflow.get("acknowledged_at"),
-                        "acknowledged_by": workflow.get("acknowledged_by"),
-                        "assigned_to": workflow.get("assigned_to"),
-                        "note": workflow.get("note"),
-                    }
-                )
-            else:
-                alert_id = get_or_create_alert(
-                    alarm.get("host") or "-",
-                    str(alarm.get("category") or "alarm"),
-                    str(alarm.get("severity") or "warning"),
-                    str(alarm.get("message") or ""),
-                )
-                if alert_id is not None:
-                    alarm["id"] = alert_id
-                    alarm["acknowledged_at"] = None
-                    alarm["acknowledged_by"] = None
-                    alarm["assigned_to"] = None
-                    alarm["note"] = None
-    except Exception as e:
-        logger.warning(f"Alert workflow enrichment gagal: {e}")
-    return jsonify(alarms)
 
 
 def _like_escape(s):
@@ -6203,12 +5392,6 @@ def api_problems():
         conn.close()
 
 
-@app.route("/logs")
-@login_required
-def logs_page():
-    return render_template("logs.html")
-
-
 @app.route("/audit_logs")
 @login_required
 def audit_logs_page():
@@ -6278,116 +5461,6 @@ def api_list_traps():
         conn.close()
 
 
-@app.route("/api/system_logs")
-@api_login_required
-def get_system_logs():
-    try:
-        page = int(request.args.get("page", 1))
-    except (ValueError, TypeError):
-        page = 1
-    try:
-        limit = int(request.args.get("limit", 50))
-    except (ValueError, TypeError):
-        limit = 50
-    page = max(page, 1)
-    limit = min(max(limit, 1), 200)
-    offset = (page - 1) * limit
-    host_filter = (request.args.get("host") or "").strip()
-    type_filter = (request.args.get("type") or "").strip()
-    q = (request.args.get("q") or "").strip()
-
-    conn, c = get_db()
-
-    query = "SELECT * FROM system_logs WHERE 1=1"
-    params = []
-    if host_filter:
-        query += " AND host=?"
-        params.append(host_filter)
-    if type_filter:
-        query += " AND event_type=?"
-        params.append(type_filter)
-    if q:
-        query += " AND (message LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR event_type LIKE ? ESCAPE '\\')"
-        like = f"%{_like_escape(q)}%"
-        params.extend([like, like, like])
-
-    c.execute(f"SELECT COUNT(*) as total FROM ({query})", params)
-    total_logs = c.fetchone()["total"]
-
-    query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
-
-    c.execute(query, params)
-    rows = c.fetchall()
-
-    logs_data = []
-    for r in rows:
-        logs_data.append(
-            {
-                "id": r["id"],
-                "timestamp": r["timestamp"],
-                "event_type": r["event_type"],
-                "host": r["host"],
-                "message": r["message"],
-            }
-        )
-    conn.close()
-
-    return jsonify(
-        {"logs": logs_data, "total": total_logs, "page": page, "limit": limit}
-    )
-
-
-@app.route("/api/system_logs/export")
-@api_login_required
-def export_system_logs():
-    host_filter = (request.args.get("host") or "").strip()
-    type_filter = (request.args.get("type") or "").strip()
-    q = (request.args.get("q") or "").strip()
-    conn, c = get_db()
-    query = "SELECT timestamp, host, event_type, message FROM system_logs WHERE 1=1"
-    params = []
-    if host_filter:
-        query += " AND host=?"
-        params.append(host_filter)
-    if type_filter:
-        query += " AND event_type=?"
-        params.append(type_filter)
-    if q:
-        query += " AND (message LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' OR event_type LIKE ? ESCAPE '\\')"
-        like = f"%{_like_escape(q)}%"
-        params.extend([like, like, like])
-    query += " ORDER BY id DESC LIMIT 5000"
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["timestamp", "host", "event_type", "message"])
-    for r in rows:
-        w.writerow(
-            [
-                _csv_safe(r["timestamp"]),
-                _csv_safe(r["host"]),
-                _csv_safe(r["event_type"]),
-                _csv_safe(r["message"]),
-            ]
-        )
-    try:
-        audit(
-            current_user.username,
-            "logs.export",
-            f"host={host_filter or 'all'} type={type_filter or 'all'} q={q or '-'} rows={len(rows)}",
-        )
-    except Exception:
-        pass
-    return Response(
-        buf.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=nms_system_logs.csv"},
-    )
-
-
 @app.route("/api/export")
 @api_login_required
 def export_csv():
@@ -6428,372 +5501,6 @@ def export_csv():
 
 
 REPORT_DAYS_CHOICES = (1, 3, 7)
-
-
-def _report_days():
-    try:
-        d = int(request.args.get("days", 7))
-    except (ValueError, TypeError):
-        d = 7
-    if d not in REPORT_DAYS_CHOICES:
-        d = 7
-    return d
-
-
-@app.route("/reports")
-@login_required
-def reports_page():
-    return render_template("reports.html")
-
-
-@app.route("/api/reports/summary")
-@api_login_required
-def api_reports_summary():
-    days = _report_days()
-    conn, c = get_db()
-    c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
-    hosts = [
-        {
-            "ip": r["ip"],
-            "alias": (r["alias"] or "").strip() or r["ip"],
-            "category": (r["category"] or "").strip() or "Uncategorized",
-        }
-        for r in c.fetchall()
-    ]
-    host_rows = []
-    outages = []
-    total_downtime = 0
-    total_outages = 0
-    total_maint_downtime = 0
-    total_maint_outages = 0
-    sum_uptime = 0.0
-    counted_uptime = 0
-    for h in hosts:
-        ip = h["ip"]
-        c.execute(
-            """
-            SELECT COUNT(*) AS total,
-                   SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
-                   AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms,
-                   MIN(CASE WHEN latency != -1 THEN latency END) AS min_ms,
-                   MAX(CASE WHEN latency != -1 THEN latency END) AS max_ms,
-                   AVG(CASE WHEN latency != -1 THEN packet_loss END) AS avg_loss
-            FROM ping_logs
-            WHERE host=? AND timestamp > datetime('now','localtime',?)
-        """,
-            (ip, f"-{days} days"),
-        )
-        r = c.fetchone()
-        total = r["total"] or 0
-        up_count = r["up_count"] or 0
-
-        try:
-            c.execute(
-                """
-                SELECT id, started_at, resolved_at, duration_s, is_maintenance FROM down_events
-                WHERE host=? AND started_at > datetime('now','localtime',?)
-                ORDER BY id DESC
-            """,
-                (ip, f"-{days} days"),
-            )
-        except sqlite3.OperationalError:
-            c.execute(
-                """
-                SELECT id, started_at, resolved_at, duration_s FROM down_events
-                WHERE host=? AND started_at > datetime('now','localtime',?)
-                ORDER BY id DESC
-            """,
-                (ip, f"-{days} days"),
-            )
-        evs = c.fetchall()
-
-        def _is_maint(e):
-            try:
-                return bool(e["is_maintenance"])
-            except (KeyError, IndexError, TypeError):
-                return False
-
-        real_evs = [e for e in evs if not _is_maint(e)]
-        maint_evs = [e for e in evs if _is_maint(e)]
-        down_count = len(real_evs)
-        maint_count = len(maint_evs)
-        total_outages += down_count
-        total_maint_outages += maint_count
-        durs = [e["duration_s"] for e in real_evs if e["duration_s"] is not None]
-        mttr = round(sum(durs) / len(durs)) if durs else None
-        h_downtime = sum(durs)
-        total_downtime += h_downtime
-        maint_durs = [e["duration_s"] for e in maint_evs if e["duration_s"] is not None]
-        h_maint_downtime = sum(maint_durs)
-        total_maint_downtime += h_maint_downtime
-        if total == 0:
-            host_rows.append(
-                {
-                    **h,
-                    "uptime_pct": None,
-                    "total_checks": 0,
-                    "up_count": 0,
-                    "down_count": down_count,
-                    "maintenance_count": maint_count,
-                    "avg_ms": None,
-                    "min_ms": None,
-                    "max_ms": None,
-                    "avg_loss": None,
-                    "mttr_s": mttr,
-                    "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                    "downtime_s": h_downtime,
-                    "maintenance_downtime_s": h_maint_downtime,
-                }
-            )
-        else:
-            uptime = round(up_count / total * 100, 1)
-            sum_uptime += uptime
-            counted_uptime += 1
-            host_rows.append(
-                {
-                    **h,
-                    "uptime_pct": uptime,
-                    "total_checks": total,
-                    "up_count": up_count,
-                    "down_count": down_count,
-                    "maintenance_count": maint_count,
-                    "avg_ms": (
-                        round(r["avg_ms"], 2) if r["avg_ms"] is not None else None
-                    ),
-                    "min_ms": (
-                        round(r["min_ms"], 2) if r["min_ms"] is not None else None
-                    ),
-                    "max_ms": (
-                        round(r["max_ms"], 2) if r["max_ms"] is not None else None
-                    ),
-                    "avg_loss": (
-                        round(r["avg_loss"], 1) if r["avg_loss"] is not None else None
-                    ),
-                    "mttr_s": mttr,
-                    "mttr_str": _fmt_duration(mttr) if mttr is not None else "—",
-                    "downtime_s": h_downtime,
-                    "maintenance_downtime_s": h_maint_downtime,
-                }
-            )
-        for e in evs[:200]:
-            outages.append(
-                {
-                    "id": e["id"],
-                    "host": ip,
-                    "alias": h["alias"],
-                    "started_at": e["started_at"],
-                    "resolved_at": e["resolved_at"] or "Ongoing",
-                    "duration_s": e["duration_s"],
-                    "duration_str": _fmt_duration(e["duration_s"]),
-                    "status": "resolved" if e["resolved_at"] else "ongoing",
-                    "is_maintenance": _is_maint(e),
-                }
-            )
-    conn.close()
-    outages.sort(key=lambda x: x["started_at"], reverse=True)
-    outages = outages[:200]
-    return jsonify(
-        {
-            "period_days": days,
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "note": "ping_logs retensi 7 hari; outage maintenance tidak dihitung ke SLA",
-            "hosts": host_rows,
-            "outages": outages,
-            "totals": {
-                "hosts": len(hosts),
-                "avg_uptime": (
-                    round(sum_uptime / counted_uptime, 1) if counted_uptime else None
-                ),
-                "total_outages": total_outages,
-                "total_downtime_s": total_downtime,
-                "total_downtime_str": _fmt_duration(total_downtime),
-                "maintenance_outages": total_maint_outages,
-                "maintenance_downtime_s": total_maint_downtime,
-                "maintenance_downtime_str": _fmt_duration(total_maint_downtime),
-            },
-        }
-    )
-
-
-@app.route("/api/reports/export")
-@api_login_required
-def api_reports_export():
-    days = _report_days()
-    table = (request.args.get("table") or "summary").lower()
-
-    conn, c = get_db()
-    c.execute("SELECT ip, alias, category FROM hosts ORDER BY id ASC")
-    hosts = [
-        {
-            "ip": r["ip"],
-            "alias": (r["alias"] or "").strip() or r["ip"],
-            "category": (r["category"] or "").strip() or "Uncategorized",
-        }
-        for r in c.fetchall()
-    ]
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    if table == "outages":
-        w.writerow(
-            [
-                "id",
-                "host",
-                "alias",
-                "started_at",
-                "resolved_at",
-                "duration_s",
-                "duration",
-                "status",
-            ]
-        )
-        c.execute(
-            """
-            SELECT id, host, started_at, resolved_at, duration_s FROM down_events
-            WHERE started_at > datetime('now','localtime',?) ORDER BY id DESC LIMIT 1000
-        """,
-            (f"-{days} days",),
-        )
-        amap = {h["ip"]: h["alias"] for h in hosts}
-        for r in c.fetchall():
-            w.writerow(
-                [
-                    r["id"],
-                    _csv_safe(r["host"]),
-                    _csv_safe(amap.get(r["host"], r["host"])),
-                    _csv_safe(r["started_at"]),
-                    _csv_safe(r["resolved_at"] or "Ongoing"),
-                    r["duration_s"] if r["duration_s"] is not None else "",
-                    _fmt_duration(r["duration_s"]),
-                    "resolved" if r["resolved_at"] else "ongoing",
-                ]
-            )
-        fname = f"nms_outages_{days}d.csv"
-    else:
-        w.writerow(
-            [
-                "ip",
-                "alias",
-                "category",
-                "uptime_pct",
-                "checks",
-                "up",
-                "down_events",
-                "avg_ms",
-                "min_ms",
-                "max_ms",
-                "avg_loss_pct",
-                "mttr_s",
-                "downtime_s",
-            ]
-        )
-        for h in hosts:
-            ip = h["ip"]
-            c.execute(
-                """
-                SELECT COUNT(*) AS total,
-                       SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
-                       AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms,
-                       MIN(CASE WHEN latency != -1 THEN latency END) AS min_ms,
-                       MAX(CASE WHEN latency != -1 THEN latency END) AS max_ms,
-                       AVG(CASE WHEN latency != -1 THEN packet_loss END) AS avg_loss
-                FROM ping_logs WHERE host=? AND timestamp > datetime('now','localtime',?)
-            """,
-                (ip, f"-{days} days"),
-            )
-            r = c.fetchone()
-            total = r["total"] or 0
-            up_count = r["up_count"] or 0
-            c.execute(
-                "SELECT COUNT(*) AS cnt, AVG(duration_s) AS mttr, SUM(duration_s) AS dt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
-                (ip, f"-{days} days"),
-            )
-            e = c.fetchone()
-            w.writerow(
-                [
-                    _csv_safe(ip),
-                    _csv_safe(h["alias"]),
-                    _csv_safe(h["category"]),
-                    round(up_count / total * 100, 1) if total else "",
-                    total,
-                    up_count,
-                    e["cnt"] or 0,
-                    round(r["avg_ms"], 2) if r["avg_ms"] is not None else "",
-                    round(r["min_ms"], 2) if r["min_ms"] is not None else "",
-                    round(r["max_ms"], 2) if r["max_ms"] is not None else "",
-                    round(r["avg_loss"], 1) if r["avg_loss"] is not None else "",
-                    round(e["mttr"]) if e["mttr"] is not None else "",
-                    int(e["dt"] or 0),
-                ]
-            )
-        fname = f"nms_summary_{days}d.csv"
-    conn.close()
-    try:
-        audit(current_user.username, "reports.export", f"{table} {days}d")
-    except Exception:
-        pass
-    return Response(
-        buf.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={fname}"},
-    )
-
-
-@app.route("/api/reports/send", methods=["POST"])
-@api_login_required
-def api_reports_send():
-    data = request.get_json(silent=True) or {}
-    try:
-        days = int(data.get("days", request.args.get("days", 7)))
-    except (ValueError, TypeError):
-        days = 7
-    if days not in REPORT_DAYS_CHOICES:
-        days = 7
-    conn, c = get_db()
-    c.execute("SELECT ip FROM hosts ORDER BY id ASC")
-    hosts = [r["ip"] for r in c.fetchall()]
-    lines = []
-    worst = []
-    for ip in hosts:
-        c.execute(
-            """
-            SELECT COUNT(*) AS total, SUM(CASE WHEN latency != -1 THEN 1 ELSE 0 END) AS up_count,
-                   AVG(CASE WHEN latency != -1 THEN latency END) AS avg_ms
-            FROM ping_logs WHERE host=? AND timestamp > datetime('now','localtime',?)
-        """,
-            (ip, f"-{days} days"),
-        )
-        r = c.fetchone()
-        total = r["total"] or 0
-        up_count = r["up_count"] or 0
-        uptime = round(up_count / total * 100, 1) if total else None
-        c.execute(
-            "SELECT COUNT(*) AS cnt FROM down_events WHERE host=? AND started_at > datetime('now','localtime',?)",
-            (ip, f"-{days} days"),
-        )
-        cnt = c.fetchone()["cnt"] or 0
-        if uptime is None:
-            icon, txt = "⚪", "no data"
-        elif uptime >= 99:
-            icon, txt = "✅", f"{uptime}%"
-        elif uptime >= 95:
-            icon, txt = "⚠️", f"{uptime}%"
-        else:
-            icon, txt = "❌", f"{uptime}%"
-        lines.append(f"{icon} `{ip}` — *{txt}* · DOWN {cnt}x")
-        worst.append((uptime if uptime is not None else 101, cnt, ip))
-    conn.close()
-    worst.sort(key=lambda x: (x[0], -x[1]))
-    top = ", ".join([f"`{ip}`" for _, _, ip in worst[:3]]) if worst else "-"
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    body = "\n".join(lines) if lines else "Belum ada host."
-    send_telegram_alert(
-        f"📊 *Laporan NMS ({days} Hari)*\nWaktu: {now}\n\n{body}\n\nTop perhatian: {top}"
-    )
-    try:
-        audit(current_user.username, "reports.send", f"{days}d to telegram")
-    except Exception:
-        pass
-    return jsonify({"status": "success", "hosts": len(hosts)})
 
 
 def _public_node_name(alias, ip, hid):

@@ -21,9 +21,6 @@ try:
 except Exception:
     pass
 
-m.trigger_manual_service_check = lambda: None
-m.trigger_async_ssl_check = lambda: None
-
 JSON_HDR = {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
 XRW_HDR = {"X-Requested-With": "XMLHttpRequest"}
 
@@ -158,32 +155,6 @@ class MaintenanceTest(unittest.TestCase):
             conn.close()
         self.assertIsNotNone(row)
         self.assertEqual(row["is_maintenance"], 1)
-
-    def test_triggers_kategori_maintenance(self):
-        start, end = _window()
-        self.client.post(
-            "/api/maintenance",
-            json={
-                "host": MAINT_HOST,
-                "start_at": start,
-                "end_at": end,
-                "reason": "uji",
-            },
-            headers=JSON_HDR,
-        )
-        m.status_memory[MAINT_HOST] = True
-        r = self.client.get("/api/triggers", headers=XRW_HDR)
-        self.assertEqual(r.status_code, 200)
-        alarms = [a for a in r.get_json() if a["host"] == MAINT_HOST]
-        self.assertTrue(
-            any(
-                a["category"] == "maintenance" and a["severity"] == "warning"
-                for a in alarms
-            ),
-            alarms,
-        )
-        self.assertFalse(any(a["severity"] == "disaster" for a in alarms), alarms)
-
 
 class SlaAndInterfaceTest(unittest.TestCase):
     @classmethod
@@ -431,106 +402,6 @@ class AlertWorkflowTest(unittest.TestCase):
             c.execute("DELETE FROM alert_history WHERE id=?", (alert_id,))
             conn.commit()
             conn.close()
-
-
-class SslServiceTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.client = m.app.test_client()
-        r = cls.client.post(
-            "/login", data={"username": "admin", "password": "PantauNms2026"}
-        )
-        assert r.status_code == 302, f"login gagal, status={r.status_code}"
-
-    def test_ssl_level(self):
-        self.assertIsNone(m._ssl_level(None))
-        self.assertIsNone(m._ssl_level(45))
-        self.assertEqual(m._ssl_level(30), "warning")
-        self.assertEqual(m._ssl_level(8), "warning")
-        self.assertEqual(m._ssl_level(7), "high")
-        self.assertEqual(m._ssl_level(0), "high")
-        self.assertEqual(m._ssl_level(-1), "expired")
-
-    def test_ssl_guard_non_https(self):
-        self.assertEqual(m.get_ssl_expiry("http://example.com"), (None, None))
-        self.assertEqual(m.get_ssl_expiry("https://"), (None, None))
-
-    def test_history_api(self):
-        r = self.client.post(
-            "/api/services",
-            json={
-                "ip": "127.0.0.1",
-                "name": "svc-hist-uji",
-                "type": "tcp",
-                "port": 22222,
-            },
-            headers=JSON_HDR,
-        )
-        self.assertEqual(r.status_code, 201)
-        sid = r.get_json()["id"]
-        try:
-            r = self.client.get(
-                f"/api/services/{sid}/history?hours=abc", headers=XRW_HDR
-            )
-            self.assertEqual(r.status_code, 400)
-            r = self.client.get("/api/services/999999/history?hours=1", headers=XRW_HDR)
-            self.assertEqual(r.status_code, 404)
-
-            conn, c = m.get_db()
-            c.execute("DELETE FROM service_history WHERE service_id=?", (sid,))
-            c.execute(
-                "INSERT INTO service_history (service_id,status,latency,timestamp)"
-                " VALUES (?,?,?,datetime('now','localtime'))",
-                (sid, "ONLINE", 12.5),
-            )
-            c.execute(
-                "INSERT INTO service_history (service_id,status,latency,timestamp)"
-                " VALUES (?,?,?,datetime('now','localtime'))",
-                (sid, "OFFLINE", 0),
-            )
-            conn.commit()
-            conn.close()
-            r = self.client.get(f"/api/services/{sid}/history?hours=1", headers=XRW_HDR)
-            self.assertEqual(r.status_code, 200)
-            self.assertEqual(r.get_json()["values"], [12.5, None])
-
-            conn, c = m.get_db()
-            c.execute("UPDATE services SET status='OFFLINE' WHERE id=?", (sid,))
-            conn.commit()
-            conn.close()
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            cats = {a["category"] for a in r.get_json()}
-            self.assertIn("service", cats)
-        finally:
-            self.client.delete(f"/api/services/{sid}", headers=XRW_HDR)
-
-    def test_ssl_alarm_di_triggers(self):
-        r = self.client.post(
-            "/api/services",
-            json={
-                "ip": "ex-uji",
-                "name": "web-ssl-uji",
-                "type": "http",
-                "url": "https://contoh-uji.invalid",
-            },
-            headers=JSON_HDR,
-        )
-        self.assertEqual(r.status_code, 201)
-        sid = r.get_json()["id"]
-        try:
-            conn, c = m.get_db()
-            c.execute(
-                "UPDATE services SET ssl_days_left=5, "
-                "ssl_expires_at='2026-09-21 00:00:00' WHERE id=?",
-                (sid,),
-            )
-            conn.commit()
-            conn.close()
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            msgs = [a["message"] for a in r.get_json() if "SSL" in a["message"]]
-            self.assertTrue(any("H-5" in x for x in msgs), msgs)
-        finally:
-            self.client.delete(f"/api/services/{sid}", headers=XRW_HDR)
 
 
 class PublicStatusTest(unittest.TestCase):

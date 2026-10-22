@@ -229,14 +229,12 @@ class MikrotikApiTest(unittest.TestCase):
                 "temp_raw": 400.0,
             }
             m.poll_mikrotik_health()
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            cats = {(a["category"], a["host"]) for a in r.get_json()}
-            self.assertTrue(any(c == "mikrotik" and MT_HOST in h for c, h in cats))
             r = self.client.get("/api/mikrotik", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["host"] == MT_HOST)
             self.assertEqual(item["cpu"], 95.0)
             self.assertAlmostEqual(item["temp_c"], 40.0)
             self.assertEqual(item["status"], "warning")
+            self.assertEqual(item["severity"], "warning")
             r = self.client.get(
                 f"/api/mikrotik/{MT_HOST}/history?hours=1&metric=cpu", headers=XRW_HDR
             )
@@ -524,11 +522,13 @@ class MikrotikIfaceTest(unittest.TestCase):
             state["oper"] = 2
             m.poll_mikrotik_ifaces()
             self.assertTrue(any("PORT DOWN" in s for s in sent))
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            r = self.client.get(
+                "/api/problems?show=history&type=interface_down", headers=XRW_HDR
+            )
             self.assertTrue(
                 any(
-                    a["category"] == "mikrotik" and "PORT DOWN" in a["message"]
-                    for a in r.get_json()
+                    MT_IF_HOST in a["host"] and "down" in a["message"].lower()
+                    for a in r.get_json()["problems"]
                 )
             )
             state["oper"] = 1
@@ -607,16 +607,10 @@ class MikrotikIfaceTest(unittest.TestCase):
             ).fetchone()
             conn.close()
             self.assertAlmostEqual(row[0], 50.0)
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            self.assertTrue(
-                any(
-                    a["category"] == "mikrotik" and "reboot" in a["message"]
-                    for a in r.get_json()
-                )
-            )
             r = self.client.get("/api/mikrotik", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["host"] == MT_RB_HOST)
             self.assertIn("m", item["uptime"])
+            self.assertLess(item["uptime_s"], _mkmod.REBOOT_ALARM_WINDOW_S)
         finally:
             _mtmod.get_mikrotik_health = orig_health
             _mtmod._snmp_get = orig_get
@@ -714,16 +708,7 @@ class MikrotikStaleWrapTest(unittest.TestCase):
             self.assertEqual(item["status"], "stale")
             self.assertTrue(item["stale"])
             self.assertIn("SNMP", item["advice"])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            stale = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "mikrotik"
-                and MT_ST_HOST in a.get("host", "")
-                and "STALE" in a.get("message", "")
-            ]
-            self.assertTrue(stale)
-            self.assertEqual(stale[0]["severity"], "warning")
+            self.assertEqual(item["severity"], "warning")
         finally:
             self.client.delete(f"/api/hosts/{MT_ST_HOST}", headers=XRW_HDR)
 
@@ -996,15 +981,6 @@ class MikrotikBackupTest(unittest.TestCase):
             r = self.client.get("/api/hosts", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ip"] == MT_BK_HOST)
             self.assertFalse(item["backup_ok"])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            bad = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "mikrotik"
-                and MT_BK_HOST in a.get("host", "")
-                and "Backup" in a.get("message", "")
-            ]
-            self.assertTrue(bad)
         finally:
             _mtmod.fetch_mikrotik_config, _mtmod.send_telegram_alert = (
                 orig_fetch,

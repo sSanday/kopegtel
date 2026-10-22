@@ -218,21 +218,22 @@ class FiberApiTest(unittest.TestCase):
         )
         self.assertEqual(r.status_code, 400)
 
-    def test_overload_critical_masuk_triggers(self):
+    def test_overload_critical_klasifikasi(self):
         f1 = self._create(SN_OVERLOAD, -5.0, 2.0)
         f2 = self._create(SN_CRIT, -29.0, 2.0)
         f3 = self._create(SN_TXBAD, -19.0, 9.0)
         try:
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
             self.assertEqual(r.status_code, 200)
-            fib = [a for a in r.get_json() if a.get("category") == "fiber"]
-            by_host = {a["host"].split(" ")[0]: a for a in fib}
-            self.assertIn(SN_OVERLOAD, by_host)
+            by_host = {
+                a["ont_sn"]: a
+                for a in r.get_json()
+                if a.get("ont_sn") in (SN_OVERLOAD, SN_CRIT, SN_TXBAD)
+            }
             self.assertEqual(by_host[SN_OVERLOAD]["severity"], "high")
-            self.assertIn(SN_CRIT, by_host)
             self.assertEqual(by_host[SN_CRIT]["severity"], "disaster")
-            self.assertIn(SN_TXBAD, by_host)
-            self.assertIn("Tx", by_host[SN_TXBAD]["message"])
+            self.assertEqual(by_host[SN_TXBAD]["severity"], "warning")
+            self.assertIn("Tx", by_host[SN_TXBAD]["advice"])
         finally:
             for fid in (f1, f2, f3):
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
@@ -630,7 +631,7 @@ class FiberMuteOverrideTest(unittest.TestCase):
     def tearDownClass(cls):
         _cleanup_extra(cls.client)
 
-    def test_mute_disembunyikan_dari_triggers(self):
+    def test_mute_ditandai_mute_active(self):
         r = self.client.post(
             "/api/fiber",
             json={
@@ -644,13 +645,9 @@ class FiberMuteOverrideTest(unittest.TestCase):
         self.assertEqual(r.status_code, 201)
         fid = r.get_json()["id"]
         try:
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")
-            ]
-            self.assertEqual(fib, [])
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTE)
+            self.assertTrue(item["mute_active"])
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -662,14 +659,10 @@ class FiberMuteOverrideTest(unittest.TestCase):
                 headers=JSON_HDR,
             )
             self.assertEqual(r.status_code, 200)
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_MUTE in a.get("host", "")
-            ]
-            self.assertTrue(fib)
-            self.assertEqual(fib[0]["severity"], "disaster")
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTE)
+            self.assertFalse(item["mute_active"])
+            self.assertEqual(item["severity"], "disaster")
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
@@ -758,24 +751,22 @@ class FiberMaintenanceTest(unittest.TestCase):
                 headers=JSON_HDR,
             )
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            alarms = r.get_json()
-            fib = [
-                a
-                for a in alarms
-                if a.get("category") == "fiber" and SN_MAINT in a.get("host", "")
-            ]
-            self.assertEqual(fib, [])
-            maint = [
-                a
-                for a in alarms
-                if a.get("category") == "maintenance" and SN_MAINT in a.get("host", "")
-            ]
-            self.assertTrue(maint)
             before = dict(m.fiber_alarm_memory)
+            conn, c = m.get_db()
+            row = dict(
+                c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,)).fetchone()
+            )
+            conn.close()
+            in_maint, reason, scope = _fmod._fiber_maintenance_info(
+                row, _fmod.get_active_maintenance_map()
+            )
+            self.assertTrue(in_maint)
+            self.assertEqual(scope, "ont")
+            self.assertIn("perbaikan jalur", reason or "")
+            before_mem = dict(m.fiber_alarm_memory)
             m.poll_fiber_monitor()
             self.assertEqual(m.fiber_alarm_memory.get(fid), "critical")
-            self.assertIn(fid, before)
+            self.assertIn(fid, before_mem)
         finally:
             conn, c = m.get_db()
             c.execute("DELETE FROM maintenance_windows WHERE host=?", (SN_MAINT,))
@@ -997,7 +988,7 @@ class FiberMuteExpiryTest(unittest.TestCase):
         self.assertTrue(m._is_mute_active({"mute_alarm": 1, "mute_until": fut}))
         self.assertFalse(m._is_mute_active({"mute_alarm": 1, "mute_until": past}))
 
-    def test_mute_kedaluawarsa_muncul_lagi_di_triggers(self):
+    def test_mute_kedaluawarsa_muncul_lagi(self):
         from datetime import datetime, timedelta
 
         fut = (datetime.now() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
@@ -1020,13 +1011,6 @@ class FiberMuteExpiryTest(unittest.TestCase):
             r = self.client.get("/api/fiber", headers=XRW_HDR)
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
             self.assertTrue(item["mute_active"])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")
-            ]
-            self.assertEqual(fib, [])
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -1043,14 +1027,7 @@ class FiberMuteExpiryTest(unittest.TestCase):
             item = next(o for o in r.get_json() if o["ont_sn"] == SN_MUTEEXP)
             self.assertFalse(item["mute_active"])
             self.assertEqual(item["mute_alarm"], 1)
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            fib = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_MUTEEXP in a.get("host", "")
-            ]
-            self.assertTrue(fib)
-            self.assertEqual(fib[0]["severity"], "disaster")
+            self.assertEqual(item["severity"], "disaster")
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
 
@@ -1130,22 +1107,16 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             mid = r.get_json()["id"]
             try:
-                r = self.client.get("/api/triggers", headers=XRW_HDR)
-                alarms = r.get_json()
-                fib = [
-                    a
-                    for a in alarms
-                    if a.get("category") == "fiber" and SN_HIER in a.get("host", "")
-                ]
-                self.assertEqual(fib, [])
-                maint = [
-                    a
-                    for a in alarms
-                    if a.get("category") == "maintenance"
-                    and SN_HIER in a.get("host", "")
-                ]
-                self.assertTrue(maint)
-                self.assertIn("ODP", maint[0]["message"])
+                conn, c = m.get_db()
+                row = dict(
+                    c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,)).fetchone()
+                )
+                conn.close()
+                in_maint, _reason, scope = _fmod._fiber_maintenance_info(
+                    row, _fmod.get_active_maintenance_map()
+                )
+                self.assertTrue(in_maint)
+                self.assertEqual(scope, "odp")
             finally:
                 self.client.delete(f"/api/maintenance/{mid}", headers=XRW_HDR)
         finally:
@@ -1174,14 +1145,16 @@ class FiberHierarchyMaintenanceTest(unittest.TestCase):
             self.assertEqual(r.status_code, 201, r.get_data(as_text=True))
             mid = r.get_json()["id"]
             try:
-                r = self.client.get("/api/triggers", headers=XRW_HDR)
-                alarms = r.get_json()
-                fib = [
-                    a
-                    for a in alarms
-                    if a.get("category") == "fiber" and SN_HIER in a.get("host", "")
-                ]
-                self.assertEqual(fib, [])
+                conn, c = m.get_db()
+                row = dict(
+                    c.execute("SELECT * FROM fiber_onts WHERE id=?", (fid,)).fetchone()
+                )
+                conn.close()
+                in_maint, _reason, scope = _fmod._fiber_maintenance_info(
+                    row, _fmod.get_active_maintenance_map()
+                )
+                self.assertTrue(in_maint)
+                self.assertEqual(scope, "olt")
             finally:
                 self.client.delete(f"/api/maintenance/{mid}", headers=XRW_HDR)
         finally:
@@ -1359,15 +1332,8 @@ class FiberStaleTest(unittest.TestCase):
             self.assertEqual(item["calc_status"], "stale")
             self.assertTrue(item["stale"])
             self.assertIn("LOS", item["advice"])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            stale = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_STALE in a.get("host", "")
-            ]
-            self.assertTrue(stale)
-            self.assertEqual(stale[0]["severity"], "warning")
-            self.assertIn("STALE", stale[0]["message"])
+            self.assertEqual(item["severity"], "warning")
+            self.assertIn("tidak segar", item["advice"])
             r = self.client.put(
                 f"/api/fiber/{fid}",
                 json={
@@ -1507,16 +1473,8 @@ class FiberDegradationTest(unittest.TestCase):
                 self.assertEqual(item["calc_status"], "normal")
                 self.assertTrue(item["degrading"])
                 self.assertAlmostEqual(item["degrade_drop_db"], 4.0)
-                r = self.client.get("/api/triggers", headers=XRW_HDR)
-                deg = [
-                    a
-                    for a in r.get_json()
-                    if a.get("category") == "fiber"
-                    and SN_DEG in a.get("host", "")
-                    and "DEGRADASI" in a.get("message", "")
-                ]
-                self.assertTrue(deg)
-                self.assertEqual(deg[0]["severity"], "warning")
+                r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
+                self.assertGreaterEqual(r.get_json()["counts"]["degrading"], 1)
             finally:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
                 m.fiber_degrade_memory.pop(fid, None)
@@ -2309,16 +2267,6 @@ class FiberFlapTest(unittest.TestCase):
                 self.assertEqual(item["flap_count"], 4)
                 r = self.client.get("/api/fiber/summary", headers=XRW_HDR)
                 self.assertGreaterEqual(r.get_json()["counts"]["flapping"], 1)
-                r = self.client.get("/api/triggers", headers=XRW_HDR)
-                flap = [
-                    a
-                    for a in r.get_json()
-                    if a.get("category") == "fiber"
-                    and SN_FLAP in a.get("host", "")
-                    and "FLAPPING" in a.get("message", "")
-                ]
-                self.assertTrue(flap)
-                self.assertEqual(flap[0]["severity"], "warning")
             finally:
                 self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
                 m.fiber_flap_memory.pop(fid, None)
@@ -2466,13 +2414,9 @@ class FiberDegradeNotifyTest(unittest.TestCase):
         try:
             sent = self._poll_capturing()
             self.assertEqual([s for s in sent if "DEGRADASI" in s], [])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            warn = [
-                a
-                for a in r.get_json()
-                if a.get("category") == "fiber" and SN_DGW in a.get("host", "")
-            ]
-            self.assertTrue(warn)
+            r = self.client.get("/api/fiber", headers=XRW_HDR)
+            item = next(o for o in r.get_json() if o["ont_sn"] == SN_DGW)
+            self.assertEqual(item["severity"], "warning")
         finally:
             self.client.delete(f"/api/fiber/{fid}", headers=XRW_HDR)
             m.fiber_degrade_memory.pop(fid, None)
@@ -2752,29 +2696,7 @@ class FiberParentTest(unittest.TestCase):
             ).fetchone()[0]
             conn.close()
             self.assertEqual(n, 2)
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            alarms = r.get_json()
-            par = [
-                a
-                for a in alarms
-                if a.get("category") == "fiber" and OLT_PAR in a.get("host", "")
-            ]
-            self.assertTrue(par)
-            self.assertEqual(par[0]["severity"], "disaster")
-            sup = [
-                a
-                for a in alarms
-                if SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", "")
-            ]
-            self.assertTrue(sup)
-            self.assertTrue(all(a["category"] == "maintenance" for a in sup))
-            indiv = [
-                a
-                for a in alarms
-                if a.get("category") == "fiber"
-                and (SN_PP1 in a.get("host", "") or SN_PP2 in a.get("host", ""))
-            ]
-            self.assertEqual(indiv, [])
+            self.assertIn(OLT_PAR.lower(), m.fiber_parent_down)
             down.clear()
             sent.clear()
             m.check_network()
@@ -2824,14 +2746,6 @@ class FiberParentTest(unittest.TestCase):
             sent.clear()
             m.poll_fiber_monitor()
             self.assertEqual(sent, [])
-            r = self.client.get("/api/triggers", headers=XRW_HDR)
-            alarms = r.get_json()
-            self.assertTrue(
-                any(
-                    a.get("category") == "fiber" and OLT_SYN in a.get("host", "")
-                    for a in alarms
-                )
-            )
             for fid, sn in zip(fids, (SN_SY1, SN_SY2, SN_SY3)):
                 self._put_rx(fid, sn, -19.0, OLT_SYN)
             sent.clear()

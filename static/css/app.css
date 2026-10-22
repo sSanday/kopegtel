@@ -240,7 +240,7 @@ body.nav-collapsed .nav-link.active::before { left: -10px; }
 .search svg { width: 17px; height: 17px; color: var(--text-3); flex-shrink: 0; }
 .search input { background: none; border: none; outline: none; color: var(--text); font: inherit; width: 100%; }
 .search input::placeholder { color: var(--text-3); }
-.header-actions { display: flex; align-items: center; gap: 10px; margin-left: 4px; }
+.header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .header-meta { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
 .live-badge {

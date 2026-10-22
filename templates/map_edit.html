@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Editor peta topologi: elemen host/teks, tautan, properti peta">
+<title>Edit peta · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<style>
+/* ============ Editor peta (struktur kanvas, tema aplikasi) ============ */
+.zbx { padding: 18px 22px 40px; max-width: 1500px; }
+
+.zbx-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2);
+  text-decoration: none; font-size: 13px; font-weight: 600; }
+.back-link:hover { color: var(--text); }
+.zbx-head h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin: 0;
+  max-width: 48ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dirty-dot { width: 9px; height: 9px; border-radius: 50%; background: #d9a13c; display: none;
+  align-self: center; }
+.dirty-dot.on { display: block; }
+.zbx-head .spacer { flex: 1; }
+.zbx-btn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: 8px; font-weight: 600; font-size: 13px; padding: 8px 16px; cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+}
+.zbx-btn:hover { background: var(--accent-soft); }
+.zbx-btn.primary { background: var(--accent-btn); color: var(--on-primary); border-color: transparent; }
+.zbx-btn.primary:hover { filter: brightness(1.08); }
+.zbx-btn.on { background: var(--accent-soft); color: var(--text); border-color: var(--accent); font-weight: 700; }
+.zbx-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.zbx-btn[disabled]:hover { background: var(--surface-2); }
+
+.zbx-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.zbx-toolbar .hint { color: var(--text-3); font-size: 12px; margin-left: auto; }
+
+/* ---- Kanvas ---- */
+.canvas-wrap {
+  margin-top: 12px; max-height: 72vh; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+#canvas {
+  position: relative; margin: 0 auto;
+  background:
+    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) -1px -1px / 22px 22px,
+    var(--bg);
+  outline-offset: -1px;
+}
+#linkLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#linkLayer line { stroke-width: 2; }
+#linkLayer line.lk-up { stroke: #3fb27f; }
+#linkLayer line.lk-down { stroke: #e5484d; }
+#linkLayer line.lk-unk { stroke: var(--border); }
+
+.map-el {
+  position: absolute; display: inline-flex; align-items: center; gap: 7px;
+  max-width: 170px; padding: 6px 10px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 12.5px; font-weight: 600;
+  cursor: grab; user-select: none; box-shadow: 0 2px 6px rgba(0,0,0,.28);
+  white-space: nowrap;
+}
+.map-el.dragging { cursor: grabbing; z-index: 30; box-shadow: 0 8px 18px rgba(0,0,0,.4); }
+.map-el.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.map-el.pending { border-style: dashed; border-color: var(--accent); }
+.map-el.host .lbl { overflow: hidden; text-overflow: ellipsis; }
+.map-el .ips { color: var(--text-3); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.map-el.txt { font-weight: 500; color: var(--text-2); background: transparent; border-style: dashed; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot.st-up { background: #3fb27f; }
+.dot.st-down { background: #e5484d; }
+.dot.st-unknown { background: var(--text-3); }
+.dot.st-maint { background: #d9a13c; }
+.mbg { display: none; font-size: 9.5px; font-weight: 800; color: #d9a13c;
+  border: 1px solid #d9a13c; border-radius: 5px; padding: 0 4px; line-height: 14px; }
+.map-el.is-maint .mbg { display: inline-block; }
+.canvas-empty { position: absolute; left: 0; right: 0; top: 84px; text-align: center;
+  color: var(--text-3); font-size: 13px; pointer-events: none; }
+
+.zbx-foot { display: flex; align-items: center; gap: 18px; padding: 10px 12px 2px;
+  color: var(--text-3); font-size: 12px; }
+.zbx-foot .grow { flex: 1; }
+
+/* ---- Modal ---- */
+.modal-back {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 400;
+  display: none; align-items: flex-start; justify-content: center; padding: 10vh 16px 16px;
+}
+.modal-back.on { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  width: min(430px, 100%); box-shadow: 0 18px 48px rgba(0,0,0,.35);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 15px; }
+.modal-x { background: none; border: none; color: var(--text-3); font-size: 18px; cursor: pointer; line-height: 1; }
+.modal-x:hover { color: var(--text); }
+.modal-body { padding: 16px 18px; display: grid; gap: 12px; }
+.frow { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 10px; }
+.frow > label.f { font-size: 12.5px; color: var(--text-2); font-weight: 500; text-align: right; }
+.finput {
+  width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.finput:focus { outline: none; border-color: var(--accent); }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+.modal-err { color: #e5484d; font-size: 12.5px; min-height: 16px; }
+
+/* toast */
+.toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 500; }
+.toast {
+  display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); transition: opacity .25s;
+}
+.toast svg { width: 16px; height: 16px; }
+.toast.success svg { color: #3fb27f; }
+.toast.error svg { color: #e5484d; }
+
+@media (max-width: 720px) {
+  .zbx { padding: 14px 12px 30px; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
+          <span>Monitoring</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
+          <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+          <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
+          <a href="/maps" class="nav-link nav-sub-link active" data-nav="maps" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+        </div>
+      </details>
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title" style="font-size:16px;">Maps</h1>
+        <p class="page-sub">Editor peta topologi jaringan</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">A</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">Admin</span>
+              <span class="user-btn-role">Kopegtel</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page zbx" id="konten">
+      <!-- ======== JUDUL & AKSI ======== -->
+      <div class="zbx-head">
+        <a class="back-link" href="/maps">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          Maps
+        </a>
+        <h1 id="mapTitle" title="Memuat peta…">—</h1>
+        <span class="dirty-dot" id="dirtyDot" title="Ada perubahan yang belum disimpan"></span>
+        <div class="spacer"></div>
+        <button class="zbx-btn" id="btnProps">Properti</button>
+        <button class="zbx-btn primary" id="btnSave">Simpan perubahan</button>
+      </div>
+
+      <!-- ======== TOOLBAR ======== -->
+      <div class="zbx-toolbar">
+        <button class="zbx-btn" id="btnAddHost">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M12 8h0M12 16h0"/></svg>
+          Host
+        </button>
+        <button class="zbx-btn" id="btnAddText">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>
+          Teks
+        </button>
+        <button class="zbx-btn" id="btnLink">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6M8.5 5.5l1.5-1.5a5 5 0 017 7l-1.5 1.5M15.5 18.5L14 20a5 5 0 01-7-7l1.5-1.5"/></svg>
+          Tautkan
+        </button>
+        <button class="zbx-btn" id="btnDelElem" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>
+          Hapus terpilih
+        </button>
+        <span class="hint" id="linkHint"></span>
+      </div>
+
+      <!-- ======== KANVAS ======== -->
+      <div class="canvas-wrap">
+        <div id="canvas">
+          <svg id="linkLayer"></svg>
+          <div id="chipLayer"></div>
+          <div class="canvas-empty" id="canvasEmpty">Klik <strong>Host</strong> atau <strong>Teks</strong> di atas untuk menambah elemen peta pertama.</div>
+        </div>
+      </div>
+      <div class="zbx-foot">
+        <span id="statElems"></span>
+        <div class="grow"></div>
+        <span>Status host diperbarui otomatis setiap 30 detik</span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ======== MODAL tambah host ======== -->
+<div class="modal-back" id="hostBack" role="dialog" aria-modal="true" aria-labelledby="hostTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="hostTitle">Tambah host</h3>
+      <button class="modal-x" id="hostClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="frow">
+        <label class="f" for="hostPick">Host</label>
+        <input class="finput" id="hostPick" list="hostList" placeholder="nama alias atau IP host" autocomplete="off">
+        <datalist id="hostList"></datalist>
+      </div>
+      <div class="modal-err" id="hostErr"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="zbx-btn" id="hostCancel">Batal</button>
+      <button class="zbx-btn primary" id="hostOk">Tambah</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== MODAL tambah teks ======== -->
+<div class="modal-back" id="textBack" role="dialog" aria-modal="true" aria-labelledby="textTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="textTitle">Tambah teks</h3>
+      <button class="modal-x" id="textClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="frow">
+        <label class="f" for="textLabel">Teks</label>
+        <input class="finput" id="textLabel" placeholder="mis. Jaringan Kantor Pusat" autocomplete="off">
+      </div>
+      <div class="modal-err" id="textErr"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="zbx-btn" id="textCancel">Batal</button>
+      <button class="zbx-btn primary" id="textOk">Tambah</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== MODAL properti peta ======== -->
+<div class="modal-back" id="propsBack" role="dialog" aria-modal="true" aria-labelledby="propsTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="propsTitle">Properti peta</h3>
+      <button class="modal-x" id="propsClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="frow">
+        <label class="f" for="pName">Name</label>
+        <input class="finput" id="pName">
+      </div>
+      <div class="frow">
+        <label class="f" for="pWidth">Width</label>
+        <input class="finput" id="pWidth" type="number" min="100" max="65535">
+      </div>
+      <div class="frow">
+        <label class="f" for="pHeight">Height</label>
+        <input class="finput" id="pHeight" type="number" min="100" max="65535">
+      </div>
+      <div class="modal-err" id="propsErr"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="zbx-btn" id="propsCancel">Batal</button>
+      <button class="zbx-btn primary" id="propsOk">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+/* ================= Shell: tema, sidebar, menu ================= */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';
+  var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:19px;height:19px"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('nms_theme', t); } catch (_) {}
+    var b = $('themeBtn');
+    if (b) { b.innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON; b.title = t === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'; }
+  }
+  try {
+    var t = localStorage.getItem('nms_theme');
+    if (t !== 'light' && t !== 'dark') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    setTheme(t);
+  } catch (_) {}
+  var tb = $('themeBtn'); if (tb) tb.addEventListener('click', function () { setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'); });
+  try { if (localStorage.getItem('nms_nav') === 'collapsed' && window.innerWidth > 1100) document.body.classList.add('nav-collapsed'); } catch (_) {}
+  var st = $('sidebarToggle'); if (st) st.addEventListener('click', function () { document.body.classList.toggle('nav-open'); });
+  var sc = $('scrim'); if (sc) sc.addEventListener('click', function () { document.body.classList.remove('nav-open'); });
+  var cb = $('collapseBtn'); if (cb) cb.addEventListener('click', function () {
+    document.body.classList.toggle('nav-collapsed');
+    try { localStorage.setItem('nms_nav', document.body.classList.contains('nav-collapsed') ? 'collapsed' : 'open'); } catch (_) {}
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.body.classList.remove('nav-open'); });
+  var ub = $('userBtn'), um = $('userMenu');
+  if (ub && um) {
+    ub.addEventListener('click', function (e) { e.stopPropagation(); var open = um.style.display === 'none'; um.style.display = open ? 'block' : 'none'; ub.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+    document.addEventListener('click', function () { um.style.display = 'none'; ub.setAttribute('aria-expanded', 'false'); });
+    um.addEventListener('click', function (e) { e.stopPropagation(); });
+  }
+  window.toast = function (msg, type) {
+    var w = $('toasts'); if (!w) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (type === 'error' ? 'error' : 'success');
+    el.setAttribute('role', 'status');
+    el.innerHTML = (type === 'error'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 17H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>') + '<span></span>';
+    el.lastChild.textContent = msg;
+    w.appendChild(el);
+    setTimeout(function () { el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 250); }, 3500);
+  };
+})();
+
+/* ================= Editor peta ================= */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  var MAP_ID = {{ map_id }};
+  var REFRESH_S = 30;
+
+  var map = { id: MAP_ID, name: '', width: 960, height: 540 };
+  var elems = [];            /* {uid,etype,label,ip,x,y,status,maintenance} */
+  var links = [];            /* {from,to} pasangan uid */
+  var hostCatalog = [];      /* {ip,alias,name} utk picker */
+  var selUid = null;         /* uid terpilih */
+  var linkMode = false, pendingUid = null;
+  var dirty = false;
+  var drag = null;           /* {uid, dx, dy} */
+  var posSeq = 0;            /* posisi otomatis kaskad */
+
+  function byUid(uid) {
+    for (var i = 0; i < elems.length; i++) if (elems[i].uid === uid) return elems[i];
+    return null;
+  }
+  function setDirty(v) {
+    dirty = v;
+    $('dirtyDot').classList.toggle('on', v);
+    $('btnSave').disabled = !v;
+  }
+  function newUid() { return 'n' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36); }
+  function nextPos() {
+    posSeq = (posSeq + 1) % 20;
+    return { x: 40 + posSeq * 24, y: 40 + posSeq * 20 };
+  }
+
+  /* ---------- render kanvas ---------- */
+  function chipHtml(e) {
+    var cls = 'map-el ' + e.etype + (e.uid === selUid ? ' sel' : '') + (pendingUid === e.uid ? ' pending' : '') + (e.maintenance ? ' is-maint' : '');
+    if (e.etype === 'host') {
+      var st = e.status || 'unknown';
+      return '<div class="' + cls + '" data-uid="' + esc(e.uid) + '" title="' + esc(e.label + ' — ping: ' + st + (e.maintenance ? ' (maintenance)' : '')) + '">' +
+        '<span class="dot st-' + esc(st) + '"></span><span class="lbl">' + esc(e.label) + '</span>' +
+        (e.ip ? '<span class="ips">' + esc(e.ip) + '</span>' : '') +
+        '<span class="mbg" title="Sedang maintenance">M</span></div>';
+    }
+    return '<div class="' + cls + '" data-uid="' + esc(e.uid) + '" title="Teks peta (klik dua kali untuk edit)">' + esc(e.label) + '</div>';
+  }
+  function renderChips() {
+    var html = '';
+    for (var i = 0; i < elems.length; i++) html += chipHtml(elems[i]);
+    $('chipLayer').innerHTML = html;
+    for (var j = 0; j < elems.length; j++) {
+      var chip = $('chipLayer').querySelector('[data-uid="' + CSS.escape(elems[j].uid) + '"]');
+      if (chip) { chip.style.left = elems[j].x + 'px'; chip.style.top = elems[j].y + 'px'; }
+    }
+    $('canvasEmpty').style.display = elems.length ? 'none' : 'block';
+    $('statElems').textContent = elems.length + ' elemen, ' + links.length + ' tautan';
+    $('btnDelElem').disabled = !selUid;
+  }
+  function centerOf(e) {
+    var chip = $('chipLayer').querySelector('[data-uid="' + CSS.escape(e.uid) + '"]');
+    if (!chip) return null;
+    var w = chip.offsetWidth, h = chip.offsetHeight;
+    return { x: e.x + w / 2, y: e.y + h / 2 };
+  }
+  function linkClass(uids) {
+    var n = 0, down = false, up = 0;
+    for (var i = 0; i < uids.length; i++) {
+      var e = byUid(uids[i]);
+      if (!e || e.etype !== 'host') continue;
+      n++;
+      if (e.status === 'down') down = true;
+      if (e.status === 'up') up++;
+    }
+    if (down) return 'lk-down';
+    if (n > 0 && up === n) return 'lk-up';
+    return 'lk-unk';
+  }
+  function renderLinks() {
+    var svg = $('linkLayer');
+    svg.setAttribute('viewBox', '0 0 ' + map.width + ' ' + map.height);
+    var html = '';
+    for (var i = 0; i < links.length; i++) {
+      var a = centerOf(byUid(links[i].from));
+      var b = centerOf(byUid(links[i].to));
+      if (!a || !b) continue;
+      html += '<line class="' + linkClass([links[i].from, links[i].to]) + '" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+    }
+    svg.innerHTML = html;
+  }
+
+  /* ---------- interaksi chip ---------- */
+  function findChipEl(uid) {
+    return $('chipLayer').querySelector('[data-uid="' + CSS.escape(uid) + '"]');
+  }
+  function select(uid) {
+    if (linkMode) {
+      if (pendingUid === null) {
+        pendingUid = uid;
+        selUid = uid;
+        renderChips();
+        return;
+      }
+      var a = pendingUid;
+      var b = uid;
+      if (a === b) {
+        /* klik elemen yang sama dua kali = batal */
+        pendingUid = null;
+        selUid = uid;
+        syncLinkMode();
+        renderChips();
+        return;
+      }
+      var pair = [a, b].sort().join('|');
+      var exists = links.some(function (l) { return [l.from, l.to].sort().join('|') === pair; });
+      if (!exists) {
+        links.push({ from: a, to: b });
+        setDirty(true);
+      } else {
+        toast('Tautan itu sudah ada', 'error');
+      }
+      pendingUid = null;
+      selUid = null;
+      linkMode = false;
+      syncLinkMode();
+      renderChips();
+      renderLinks();
+      return;
+    }
+    selUid = uid;
+    renderChips();
+  }
+  $('chipLayer').addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.map-el');
+    if (!chip) return;
+    e.preventDefault();
+    var uid = chip.getAttribute('data-uid');
+    if (linkMode) { select(uid); return; }
+    var el = byUid(uid);
+    if (!el) return;
+    select(uid);
+    var cx = $('canvas').getBoundingClientRect();
+    drag = {
+      uid: uid,
+      dx: (e.clientX - cx.left) - el.x,
+      dy: (e.clientY - cx.top) - el.y,
+      moved: false
+    };
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!drag) return;
+    var cx = $('canvas').getBoundingClientRect();
+    var el = byUid(drag.uid);
+    if (!el) return;
+    var nx = Math.max(0, Math.min(map.width - 40, e.clientX - cx.left - drag.dx));
+    var ny = Math.max(0, Math.min(map.height - 30, e.clientY - cx.top - drag.dy));
+    el.x = Math.round(nx); el.y = Math.round(ny);
+    drag.moved = true;
+    var chip = findChipEl(drag.uid);
+    if (chip) { chip.style.left = el.x + 'px'; chip.style.top = el.y + 'px'; chip.classList.add('dragging'); }
+    renderLinks();
+  });
+  document.addEventListener('mouseup', function () {
+    if (drag && drag.moved) setDirty(true);
+    document.querySelectorAll('.map-el.dragging').forEach(function (c) { c.classList.remove('dragging'); });
+    drag = null;
+  });
+  $('chipLayer').addEventListener('dblclick', function (e) {
+    var chip = e.target.closest('.map-el.txt');
+    if (!chip) return;
+    var uid = chip.getAttribute('data-uid');
+    var el = byUid(uid);
+    if (!el) return;
+    var t = prompt('Ubah teks:', el.label);
+    if (t === null) return;
+    t = t.trim();
+    if (t && t !== el.label) { el.label = t; setDirty(true); renderChips(); }
+  });
+  $('canvas').addEventListener('mousedown', function (e) {
+    if (e.target.closest('.map-el')) return;
+    selUid = null;
+    if (linkMode && pendingUid) { pendingUid = null; linkMode = false; syncLinkMode(); }
+    renderChips();
+  });
+
+  /* ---------- mode tautan ---------- */
+  function syncLinkMode() {
+    $('btnLink').classList.toggle('on', linkMode);
+    $('linkHint').textContent = linkMode
+      ? (pendingUid ? 'Klik elemen kedua untuk menghubungkan.' : 'Klik dua elemen untuk membuat tautan; klik area kosong untuk batal.')
+      : '';
+  }
+  $('btnLink').addEventListener('click', function () {
+    linkMode = !linkMode;
+    if (linkMode) { selUid = null; pendingUid = null; }
+    syncLinkMode();
+    renderChips();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && linkMode) {
+      linkMode = false; pendingUid = null;
+      syncLinkMode(); renderChips();
+    }
+  });
+  $('btnDelElem').addEventListener('click', function () {
+    if (!selUid) return;
+    elems = elems.filter(function (e) { return e.uid !== selUid; });
+    var gone = selUid;
+    links = links.filter(function (l) { return l.from !== gone && l.to !== gone; });
+    selUid = null;
+    setDirty(true);
+    renderChips();
+    renderLinks();
+  });
+
+  /* ---------- tambah elemen ---------- */
+  function modalOpen(id) { $(id).classList.add('on'); }
+  function modalHide(id) { $(id).classList.remove('on'); }
+  document.querySelectorAll('.modal-back').forEach(function (b) {
+    b.addEventListener('click', function (e) { if (e.target === b) modalHide(b.id); });
+    var x = b.querySelector('.modal-x');
+    if (x) x.addEventListener('click', function () { modalHide(b.id); });
+    var cbtn = b.querySelector('.modal-foot .zbx-btn');
+    if (cbtn) cbtn.addEventListener('click', function () { modalHide(b.id); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    ['hostBack', 'textBack', 'propsBack'].forEach(function (id) { modalHide(id); });
+  });
+
+  $('btnAddHost').addEventListener('click', function () {
+    $('hostErr').textContent = ''; $('hostPick').value = '';
+    var dl = $('hostList');
+    dl.innerHTML = hostCatalog.map(function (h) {
+      return '<option value="' + esc(h.name) + '">';
+    }).join('');
+    modalOpen('hostBack');
+    $('hostPick').focus();
+  });
+  function addAtFreePos(built) {
+    var p = nextPos();
+    built.x = p.x; built.y = p.y;
+    elems.push(built);
+    selUid = built.uid;
+    setDirty(true);
+    renderChips();
+    renderLinks();
+  }
+  $('hostOk').addEventListener('click', function () {
+    var val = $('hostPick').value.trim();
+    if (!val) { $('hostErr').textContent = 'Pilih host dari daftar.'; return; }
+    var hit = null;
+    for (var i = 0; i < hostCatalog.length; i++) {
+      var h = hostCatalog[i];
+      if (h.name === val || h.ip === val) { hit = h; break; }
+    }
+    if (!hit) { $('hostErr').textContent = 'Host tidak ada di daftar host terpantau.'; return; }
+    modalHide('hostBack');
+    addAtFreePos({ uid: newUid(), etype: 'host', label: hit.name, ip: hit.ip, status: 'unknown', maintenance: false });
+  });
+  $('hostPick').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('hostOk').click(); });
+
+  $('btnAddText').addEventListener('click', function () {
+    $('textErr').textContent = ''; $('textLabel').value = '';
+    modalOpen('textBack');
+    $('textLabel').focus();
+  });
+  $('textOk').addEventListener('click', function () {
+    var t = $('textLabel').value.trim();
+    if (!t) { $('textErr').textContent = 'Teks wajib diisi.'; return; }
+    modalHide('textBack');
+    addAtFreePos({ uid: newUid(), etype: 'text', label: t, status: null, maintenance: false });
+  });
+  $('textLabel').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('textOk').click(); });
+
+  /* ---------- properti & simpan ---------- */
+  $('btnProps').addEventListener('click', function () {
+    $('propsErr').textContent = '';
+    $('pName').value = map.name;
+    $('pWidth').value = map.width;
+    $('pHeight').value = map.height;
+    modalOpen('propsBack');
+    $('pName').focus();
+  });
+  $('propsOk').addEventListener('click', function () {
+    var name = $('pName').value.trim();
+    var width = Number($('pWidth').value);
+    var height = Number($('pHeight').value);
+    if (!name) { $('propsErr').textContent = 'Nama wajib diisi.'; return; }
+    if (!(width >= 100 && width <= 65535) || !(height >= 100 && height <= 65535)) {
+      $('propsErr').textContent = 'Dimensi harus 100 sampai 65535 piksel.'; return;
+    }
+    fetch('/api/maps/' + MAP_ID, {
+      method: 'PATCH', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name, width: width, height: height })
+    }).then(function (r) { return r.json().then(function (b) { return { ok: r.status < 300, b: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { $('propsErr').textContent = res.b.error || 'Gagal menyimpan.'; return; }
+        modalHide('propsBack');
+        map.name = name; map.width = width; map.height = height;
+        applyCanvasSize();
+        document.title = name + ' · Maps · NMS Kopegtel';
+        toast('Properti peta tersimpan');
+      })
+      .catch(function (e) { $('propsErr').textContent = 'Gagal: ' + e.message; });
+  });
+
+  function applyCanvasSize() {
+    var c = $('canvas');
+    c.style.width = map.width + 'px';
+    c.style.height = map.height + 'px';
+    $('mapTitle').textContent = map.name;
+  }
+
+  function payload() {
+    return {
+      elements: elems.map(function (e) {
+        return { uid: e.uid, etype: e.etype, label: e.label, ip: e.ip, x: e.x, y: e.y };
+      }),
+      links: links.map(function (l) { return { from: l.from, to: l.to }; })
+    };
+  }
+  $('btnSave').addEventListener('click', function () {
+    fetch('/api/maps/' + MAP_ID + '/content', {
+      method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload())
+    }).then(function (r) { return r.json().then(function (b) { return { ok: r.status < 300, b: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { toast(res.b.error || 'Gagal menyimpan isi peta', 'error'); return; }
+        setDirty(false);
+        toast('Isi peta tersimpan: ' + res.b.elements + ' elemen, ' + res.b.links + ' tautan');
+      })
+      .catch(function (e) { toast('Gagal menyimpan: ' + e.message, 'error'); });
+  });
+
+  /* ---------- muat & refresh status ---------- */
+  function mergeStatuses(data) {
+    var fresh = {};
+    (data.elements || []).forEach(function (e) { fresh[e.uid] = e; });
+    var changed = false;
+    for (var i = 0; i < elems.length; i++) {
+      var f = fresh[elems[i].uid];
+      if (!f || f.etype !== 'host') continue;
+      if (elems[i].status !== f.status || elems[i].maintenance !== f.maintenance) {
+        elems[i].status = f.status; elems[i].maintenance = f.maintenance;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+  function loadData() {
+    return fetch('/api/maps/' + MAP_ID, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (r.status === 404) throw new Error('peta tidak ditemukan'); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        map = { id: data.map.id, name: data.map.name, width: data.map.width, height: data.map.height };
+        hostCatalog = data.hosts || [];
+        if (!dirty) {
+          elems = data.elements || [];
+          links = data.links || [];
+          selUid = null; pendingUid = null; linkMode = false;
+          syncLinkMode();
+        }
+        applyCanvasSize();
+        renderChips();
+        renderLinks();
+      })
+      .catch(function (e) { toast('Gagal memuat peta: ' + e.message, 'error'); });
+  }
+
+  // Status host diperbarui otomatis; posisi/label tidak disentuh.
+  setInterval(function () {
+    fetch('/api/maps/' + MAP_ID, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        if (mergeStatuses(data)) { renderChips(); renderLinks(); }
+      })
+      .catch(function () {});
+  }, REFRESH_S * 1000);
+
+  // Muat peta saat halaman siap.
+  setDirty(false);
+  loadData();
+})();
+</script>
+</body>
+</html>

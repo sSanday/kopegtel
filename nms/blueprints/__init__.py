@@ -12,7 +12,6 @@ from nms.db import (
 from nms.query_helpers import (
     get_all_host_stats,
     get_all_agent_metrics,
-    get_service_uptime_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,19 +89,4 @@ def get_all_metrics():
             conn.close()
     except Exception as e:
         logger.error(f"Error getting all metrics: {e}")
-        return jsonify({"success": False, "error": "Internal server error"}), 500
-
-
-@api_bp.route("/services/uptime", methods=["GET"])
-@login_required
-def get_services_uptime():
-    try:
-        conn, c = get_db()
-        try:
-            uptime_map = get_service_uptime_map(c, time_range_hours=24)
-            return jsonify({"success": True, "data": uptime_map})
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.error(f"Error getting service uptime: {e}")
         return jsonify({"success": False, "error": "Internal server error"}), 500
