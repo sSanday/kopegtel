@@ -71,12 +71,16 @@ def ping_host(host):
             command = ["ping", "-n", "3", "-w", "2000", host]
         else:
             command = ["ping", "-c", "3", "-W", "2", "-i", "0.5", host]
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=12,
-        )
+        run_kwargs = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 12,
+        }
+        if os.name == "nt":
+            # pythonw.exe tidak punya console; tanpa flag ini ping.exe memunculkan
+            # jendela CMD sekilas pada setiap polling (tiap 30 detik).
+            run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        result = subprocess.run(command, **run_kwargs)
         out = result.stdout or ""
         loss_match = re.search(
             r"(\d+(?:\.\d+)?)%\s*(?:packet\s+)?loss", out, re.IGNORECASE

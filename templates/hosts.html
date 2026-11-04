@@ -28,6 +28,7 @@
   --hz-link: #2e77ce;
   --hz-link-hover: #235fa8;
   --hz-input: #ffffff;
+  --hz-disabled: #e9edf2;
   --hz-thead: #f5f6f7;
   --hz-bar-fill: #f0f1f2;
   --hz-chip-bg: #5f6b7a;
@@ -42,6 +43,7 @@
   --hz-link: #6aa9ff;
   --hz-link-hover: #9cc7ff;
   --hz-input: var(--bg);
+  --hz-disabled: #141b25;
   --hz-thead: var(--surface-2);
   --hz-bar-fill: var(--surface-2);
   --hz-chip-bg: #3b4a5e;
@@ -155,7 +157,7 @@
 .tagrows { margin-top: 5px; }
 .tagrow { display: flex; align-items: center; gap: 6px; min-width: 0; margin-bottom: 5px; }
 .tagrow .tagname { width: 118px; flex: 0 0 118px; }
-.tagrow .tagop { width: 90px; flex: 0 0 90px; }
+.tagrow .tagop { width: 136px; flex: 0 1 136px; min-width: 90px; }
 .tagrow .tagvalue { flex: 1 1 auto; width: auto; }
 .addline { margin-top: 0; }
 .linkbtn {
@@ -262,6 +264,82 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
 }
 .grouplist { max-height: 280px; overflow: auto; border: 1px solid var(--border); border-radius: 2px; padding: 6px 8px; margin-top: 8px; }
 .grouplist label { display: flex; align-items: center; gap: 7px; padding: 4px 2px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+
+/* ---- Dialog pilih Host groups (filter halaman Hosts) ---- */
+.host-groups-dialog {
+  width: min(748px, calc(100vw - 40px)); max-width: 748px;
+  margin: auto;
+  min-height: 199px; box-sizing: border-box;
+  padding: 16px 16px 15px;
+  border-radius: 3px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+}
+.host-groups-dialog[open] { display: flex; flex-direction: column; }
+.host-groups-dialog h2 {
+  margin: 0 26px 8px 0; font-size: 17px; font-weight: 600; line-height: 24px;
+  color: var(--text);
+}
+.host-groups-dialog .hgd-close {
+  position: absolute; top: 9px; right: 9px; width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 2px; background: none; color: var(--text-3);
+  font-size: 26px; line-height: 1; font-family: inherit; cursor: pointer; padding: 0;
+}
+.host-groups-dialog .hgd-close:hover { background: var(--surface-2); color: var(--text); }
+.host-groups-dialog .hgd-table { display: flex; flex-direction: column; min-width: 0; }
+.host-groups-dialog .hgd-head {
+  display: flex; align-items: center; gap: 11px; height: 42px; padding: 0 1px;
+  border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px;
+}
+.host-groups-dialog .hgd-head input,
+.host-groups-dialog .grouplist input {
+  width: 16px; height: 16px; flex: 0 0 auto; margin: 0;
+  accent-color: var(--hz-link); cursor: pointer;
+}
+.host-groups-dialog .grouplist {
+  flex: 1; max-height: 300px; margin: 0; padding: 0;
+  border: none; border-radius: 0;
+}
+.host-groups-dialog .grouplist label {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 50px; padding: 14px 1px;
+  border-bottom: 1px solid var(--border);
+  color: var(--hz-link); font-size: 13px;
+}
+.host-groups-dialog .grouplist label:hover { background: var(--surface-2); }
+.host-groups-dialog .grouplist label:last-child { border-bottom: 1px solid var(--border); }
+.host-groups-dialog .hint { padding: 15px 1px; margin: 0; }
+.host-groups-dialog form {
+  margin: auto 0 0; padding: 11px 0 0;
+  display: flex; justify-content: flex-end; gap: 9px;
+}
+.host-groups-dialog .zbtn {
+  height: 33px; min-width: 83px; padding: 0 20px;
+  border: 1px solid var(--hz-link); border-radius: 2px;
+  background: var(--surface); color: var(--hz-link);
+  font-size: 13px; font-weight: 600;
+}
+.host-groups-dialog .zbtn:hover { background: var(--surface-2); }
+.host-groups-dialog .zbtn.primary {
+  background: var(--hz-link); border-color: var(--hz-link); color: #fff;
+}
+.host-groups-dialog .zbtn.primary:hover { background: var(--hz-link-hover); border-color: var(--hz-link-hover); }
+[data-theme="light"] .host-groups-dialog {
+  background: #fff; border-color: #c7d0d6; color: #1f2c33;
+}
+[data-theme="light"] .host-groups-dialog .hgd-close { color: #a7b0b6; }
+[data-theme="light"] .host-groups-dialog .hgd-close:hover { background: #eef1f3; color: #4b5a63; }
+[data-theme="light"] .host-groups-dialog .hgd-head { border-color: #d9e0e4; color: #333; }
+[data-theme="light"] .host-groups-dialog .grouplist label { border-color: #d9e0e4; color: #0275b8; }
+[data-theme="light"] .host-groups-dialog .grouplist label:hover { background: #f2f7fb; }
+[data-theme="light"] .host-groups-dialog .zbtn {
+  border-color: #0275b8; background: #fff; color: #0275b8;
+}
+[data-theme="light"] .host-groups-dialog .zbtn:hover { background: #eef6fc; }
+[data-theme="light"] .host-groups-dialog .zbtn.primary {
+  background: #0275b8; border-color: #0275b8; color: #fff;
+}
+[data-theme="light"] .host-groups-dialog .zbtn.primary:hover { background: #02679f; border-color: #02679f; }
 .savedlist { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
 .saved-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); }
 .saved-row .nm { flex: 1; color: var(--text); font-size: 12.5px; }
@@ -272,27 +350,325 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
 .tagtable td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-2); }
 .tagtable tr:last-child td { border-bottom: none; }
 
-/* ---- Modal Create host ---- */
+/* ---- Modal New host (layout Zabbix) ---- */
 .overlay {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 400;
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 400;
   display: none; align-items: center; justify-content: center; padding: 20px;
 }
 .overlay.open { display: flex; }
-.modal {
-  width: 440px; max-width: 100%; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 4px; padding: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+body.modal-open { overflow: hidden; }
+
+.host-modal {
+  width: 1040px; max-width: 100%; max-height: min(92vh, 700px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
 }
-.modal h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
-.modal .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--text-3); }
-.modal label.form-lb { display: block; font-size: 12px; color: var(--text-2); font-weight: 500; margin: 12px 0 5px; }
-.modal input {
-  width: 100%; height: 30px; padding: 0 9px; background: var(--hz-input); color: var(--text);
-  border: 1px solid var(--border); border-radius: 2px; font-size: 13px; font-family: inherit;
+.host-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px 7px; flex: 0 0 auto;
 }
-.modal input:focus { outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce; }
-.modal .err { color: var(--hz-red); font-size: 12.5px; margin-top: 10px; min-height: 16px; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 14px; }
+.host-modal-head h2 { margin: 0; font-size: 17px; font-weight: 600; color: var(--text); }
+.host-modal-tools { display: flex; align-items: center; gap: 2px; }
+.host-tool {
+  width: 25px; height: 25px; border: none; border-radius: 2px; background: none;
+  color: var(--text-3); font-size: 17px; line-height: 1; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.host-tool:hover { background: var(--surface-2); color: var(--text); }
+
+.host-tabs {
+  display: flex; align-items: flex-end; gap: 22px; padding: 0 20px;
+  border-bottom: 1px solid var(--border); flex: 0 0 auto; overflow-x: auto;
+}
+.host-tab {
+  border: none; border-bottom: 2px solid transparent; background: none;
+  padding: 5px 0 8px; color: var(--text-2); font-size: 12.5px; font-weight: 500;
+  font-family: inherit; white-space: nowrap; cursor: pointer;
+}
+.host-tab:hover { color: var(--text); }
+.host-tab.on { color: var(--hz-link); border-bottom-color: var(--hz-link); font-weight: 600; }
+
+.host-modal-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 14px 20px 8px; scrollbar-width: thin;
+}
+.host-pane { display: none; }
+.host-pane.on { display: block; }
+.host-form { max-width: 760px; padding-left: 30px; }
+.ipmi-form { max-width: 360px; padding-left: 0; }
+.ipmi-form .host-row { grid-template-columns: 145px 145px; }
+.ipmi-form select.host-input { padding-right: 24px; cursor: pointer; }
+.host-tags-form { max-width: none; padding-left: 0; }
+.host-tags-form .host-row { grid-template-columns: 87px minmax(0, 663px); gap: 11px; align-items: start; }
+.host-tags-box { border: 1px solid var(--border); border-radius: 2px; }
+.host-tags-head, .host-tagrow {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.42fr) 52px;
+  gap: 6px; align-items: center; padding: 4px 7px;
+}
+.host-tags-head {
+  border-bottom: 1px solid var(--border); color: var(--text-2);
+  font-size: 11.5px; line-height: 18px;
+}
+.host-tagrow .host-input { height: 27px; }
+.host-tag-remove { justify-self: start; font-size: 11.5px; }
+.host-tag-add { margin: 3px 7px 6px; display: inline-block; }
+.host-macros { padding: 2px 8px 0; }
+.host-macro-tabs { margin: 6px 0 17px; }
+.host-macros-head, .host-macrow {
+  display: grid; grid-template-columns: 260px 300px minmax(160px, 1fr) 56px;
+  gap: 6px; align-items: center;
+}
+.host-macros-head {
+  color: var(--text-2); font-size: 11.5px; line-height: 18px; margin-bottom: 4px;
+}
+.host-macrow { margin-bottom: 6px; }
+.host-macrow .host-input { height: 27px; }
+.host-macro-value { display: flex; min-width: 0; }
+.host-macro-value .host-input {
+  flex: 1 1 auto; min-width: 0; border-radius: 2px 0 0 2px;
+}
+.host-macro-type { position: relative; flex: 0 0 31px; }
+.host-macro-typebtn {
+  width: 31px; height: 27px; margin-left: -1px; padding: 0; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 1px;
+  border: 1px solid var(--hz-link); border-radius: 0 2px 2px 0;
+  background: var(--surface); color: var(--hz-link); font-family: inherit;
+  font-size: 12px; cursor: pointer;
+}
+.host-macro-typebtn:hover { background: var(--surface-2); }
+.host-macro-typebtn:disabled,
+.host-macro-typebtn:disabled:hover {
+  background: var(--hz-disabled); border-color: var(--border); color: var(--text-2);
+  cursor: default;
+}
+.host-macro-typebtn[aria-expanded="true"],
+.host-macro-typebtn[aria-expanded="true"]:hover {
+  background: #0d5c8a; border-color: #0d5c8a; color: #fff;
+}
+.host-macro-typebtn svg { width: 8px; height: 8px; }
+.host-macro-type-letter { font-size: 13px; font-weight: 600; }
+.host-macro-menu {
+  position: absolute; left: 0; top: calc(100% + 1px); z-index: 10;
+  min-width: 160px; padding: 4px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 0 2px 3px 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+}
+.host-macro-menu button {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 5px 8px; border: none; border-radius: 2px;
+  background: none; color: var(--text); font: inherit; font-size: 12px;
+  text-align: left; cursor: pointer; white-space: nowrap;
+}
+.host-macro-menu button:hover { background: var(--surface-2); }
+.host-macro-opt-icon {
+  width: 20px; height: 20px; flex: 0 0 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-2);
+}
+.host-macro-opt-icon svg { width: 18px; height: 18px; }
+.host-macro-opt-t {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px; font-weight: 600; line-height: 1;
+}
+.host-macro-remove { justify-self: start; font-size: 11.5px; }
+.host-macro-add { margin-top: 1px; display: inline-block; }
+.host-macro-inherited-head, .host-macro-inherited-item {
+  display: grid;
+  grid-template-columns: 233px minmax(220px, 250px) 220px minmax(160px, 1fr);
+  column-gap: 22px; row-gap: 6px; align-items: center;
+}
+.host-macro-inherited-head {
+  color: var(--text-2); font-size: 11.5px; line-height: 18px; margin-bottom: 7px;
+}
+.host-macro-inherited-item { margin-bottom: 16px; }
+.host-macro-inherited-row { display: contents; }
+.host-macro-inherited-item .host-input { height: 27px; }
+.host-macro-inherited-item input:disabled {
+  background: var(--hz-disabled); color: var(--text);
+  -webkit-text-fill-color: var(--text); opacity: 1; cursor: default;
+}
+.host-macro-inherited-item input:disabled::placeholder {
+  color: var(--text-3); -webkit-text-fill-color: var(--text-3); opacity: 1;
+}
+.host-macro-inherited-desc { grid-column: 1 / 3; }
+.host-macro-change {
+  justify-self: start; font-size: 12px; line-height: 18px;
+  color: var(--hz-link); text-decoration: underline; text-underline-offset: 2px;
+}
+.host-macro-change:hover { color: var(--hz-link-hover); }
+.host-macro-inherited-head > span:nth-child(3),
+.host-macro-change,
+.host-macro-inherited-remove { padding-left: 32px; }
+.host-macro-global-value {
+  min-width: 0; display: flex; align-items: center; gap: 5px;
+  color: var(--text); font-size: 12.5px; line-height: 27px;
+  white-space: nowrap; overflow: hidden;
+}
+.host-macro-global-arrow { color: var(--text-3); font-size: 15px; line-height: 1; }
+.host-macro-global-quote { overflow: hidden; text-overflow: ellipsis; }
+.host-macro-inherited-remove {
+  justify-self: start; font-size: 11.5px; color: var(--hz-red);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.host-macro-inherited-remove:hover { color: var(--hz-red); opacity: .8; }
+.host-macro-inherited-add {
+  display: inline-block; margin-top: 2px;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.host-macro-empty {
+  margin: 8px 0 4px; padding: 14px 16px; border: 1px dashed var(--border);
+  border-radius: 3px; color: var(--text-2); font-size: 12.5px;
+}
+/* ---- Inventory (New host) ---- */
+.host-inventory { max-width: 714px; }
+.host-inventory-mode-row {
+  display: grid; grid-template-columns: 158px minmax(0, 540px);
+  column-gap: 16px; margin: 0 0 15px;
+}
+.host-inventory-modes {
+  grid-column: 2; justify-self: start;
+  background: transparent; border: 0; border-radius: 0; padding: 0; gap: 0;
+}
+.host-inventory-modes button { height: 24px; padding: 0 11px; }
+.host-inventory-row {
+  display: grid; grid-template-columns: 158px minmax(0, 540px);
+  column-gap: 16px; align-items: start; margin-bottom: 8px;
+}
+.host-inventory-label {
+  text-align: right; color: var(--text); font-size: 12px;
+  line-height: 24px; white-space: nowrap;
+}
+.host-inventory .host-inventory-input {
+  height: 24px; padding: 0 6px; font-size: 12px;
+}
+.host-inventory .host-inventory-textarea {
+  height: 82px; min-height: 82px; padding: 4px 6px;
+  font-size: 12px; line-height: 1.35; resize: vertical;
+}
+.host-inventory-textarea.inv-ta-lg { height: 108px; min-height: 108px; }
+.host-inventory-textarea.inv-ta-sm { height: 56px; min-height: 56px; }
+.host-inventory input:disabled,
+.host-inventory textarea:disabled {
+  background: var(--hz-disabled); color: var(--text);
+  -webkit-text-fill-color: var(--text); opacity: 1; cursor: default;
+}
+.host-inventory textarea:disabled { resize: none; }
+/* ---- Encryption (New host) ---- */
+.host-encryption { min-height: 128px; }
+.host-encryption-row {
+  display: grid; grid-template-columns: 136px minmax(0, 540px);
+  column-gap: 14px; align-items: start; margin-bottom: 10px;
+}
+.host-encryption-row:last-child { margin-bottom: 0; }
+.host-encryption-label {
+  text-align: right; color: var(--text); font-size: 12.5px;
+  line-height: 22px; white-space: nowrap;
+}
+.host-encryption-label.req::before {
+  content: "* "; color: var(--hz-red); font-weight: 700;
+}
+.host-encryption-modes {
+  grid-column: 2; justify-self: start;
+  background: transparent; border: 0; border-radius: 0; padding: 0; gap: 0;
+}
+.host-encryption-modes button {
+  height: 22px; padding: 0 10px; border-radius: 0;
+}
+.host-encryption-modes button:first-child,
+.host-encryption-modes button:last-child { border-radius: 0; }
+.host-encryption-checks { grid-column: 2; display: flex; flex-direction: column; }
+.host-encryption-check {
+  display: flex; align-items: center; gap: 6px; height: 22px;
+  color: var(--text); font-size: 12.5px; white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+.host-encryption-check input {
+  width: 13px; height: 13px; margin: 0; flex: 0 0 auto; accent-color: #2e77ce;
+}
+.host-encryption-psk-fields { padding-bottom: 24px; }
+.host-encryption-psk-fields[hidden] { display: none; }
+.host-encryption-psk-fields .host-encryption-row { margin-bottom: 6px; }
+.host-encryption-psk-fields .host-encryption-row:last-child { margin-bottom: 0; }
+.host-encryption .host-encryption-input {
+  height: 24px; padding: 0 6px; font-size: 12px;
+}
+.host-row {
+  display: grid; grid-template-columns: 145px minmax(0, 470px);
+  gap: 10px; align-items: center; margin-bottom: 6px;
+}
+.host-row.top { align-items: start; }
+.host-label {
+  text-align: right; color: var(--text-2); font-size: 12px;
+  line-height: 27px; white-space: nowrap;
+}
+.host-label.req::before { content: "* "; color: var(--hz-red); font-weight: 700; }
+.host-ctl { min-width: 0; }
+.host-input {
+  width: 100%; height: 27px; padding: 0 8px; box-sizing: border-box;
+  background: var(--hz-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 2px; font-size: 12.5px; font-family: inherit;
+}
+.host-input:focus { outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce; }
+.host-textarea {
+  height: 100px; min-height: 100px; padding: 7px 8px; resize: vertical;
+  line-height: 1.45; font-size: 12.5px;
+}
+.host-pickrow { display: flex; align-items: center; gap: 6px; }
+.host-pickrow .host-input { flex: 1 1 auto; min-width: 0; }
+.host-select { flex: 0 0 auto; height: 27px; padding: 0 13px; }
+.host-ifaces { min-height: 20px; }
+.host-noiface { color: var(--text-2); font-size: 12.5px; line-height: 20px; }
+.iface-line {
+  display: flex; align-items: center; gap: 9px; min-height: 27px;
+  padding: 3px 7px; margin-bottom: 3px; border: 1px solid var(--border);
+  border-radius: 2px; background: var(--surface-2); font-size: 12px;
+}
+.iface-main { flex: 1 1 auto; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iface-type {
+  display: inline-block; margin-left: 5px; color: var(--text-3);
+  font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+}
+.iface-line .linkbtn { font-size: 11.5px; }
+.host-mon button { height: 27px; }
+.host-mon button:disabled { opacity: .5; cursor: not-allowed; }
+.host-check {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  color: var(--text-2); cursor: pointer;
+}
+.host-check input { width: 13px; height: 13px; margin: 0; accent-color: #2e77ce; }
+.host-tabempty {
+  max-width: 570px; margin: 10px 0 18px 185px; padding: 18px 20px;
+  border: 1px dashed var(--border); border-radius: 3px;
+  color: var(--text-2); font-size: 12.5px;
+}
+.host-tabempty strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 5px; }
+.host-tabempty p { margin: 0; line-height: 1.55; }
+.host-tabempty code { color: var(--hz-link); }
+.host-modal-foot {
+  display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
+  padding: 10px 20px 13px; border-top: 1px solid var(--border);
+}
+.host-error { flex: 1 1 auto; color: var(--hz-red); font-size: 12px; min-height: 16px; line-height: 1.4; }
+.host-foot-btns { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.host-modal-foot .zbtn { min-width: 72px; }
+
+/* ---- Picker tambahan untuk modal New host ---- */
+.host-picker { max-width: 520px; }
+.host-picker > input[type="text"] { margin-top: 4px; }
+.host-picker .grouplist { margin-top: 6px; }
+.host-picker .grouplist label { align-items: flex-start; }
+.host-picker .grouplist input { margin-top: 2px; flex: 0 0 auto; }
+.picker-desc { display: block; color: var(--text-3); font-size: 11px; line-height: 1.4; }
+.iface-form select, .iface-form input[type="number"] {
+  width: 100%; height: 28px; padding: 0 8px; box-sizing: border-box;
+  background: var(--hz-input); color: var(--text); border: 1px solid var(--border);
+  border-radius: 2px; font-size: 12.5px; font-family: inherit;
+}
+.iface-form select:focus, .iface-form input[type="number"]:focus {
+  outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce;
+}
+.iface-form .host-error { margin-top: 8px; min-height: 14px; }
 
 /* toast */
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 500; }
@@ -311,6 +687,37 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   .tags-stack { padding-bottom: 0; }
   .maint-gap { width: 20px; }
 }
+@media (max-width: 1000px) {
+  .host-macro-inherited-head { display: none; }
+  .host-macro-inherited-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .host-macro-inherited-desc { grid-column: 1 / -1; }
+  .host-macro-change { grid-column: 1; grid-row: 2; padding-left: 0; }
+  .host-macro-global-value { grid-column: 2; grid-row: 2; }
+  .host-macro-inherited-remove { grid-column: 2; grid-row: 2; justify-self: end; padding-left: 0; }
+  .host-macro-global-empty { display: none; }
+}
+@media (max-width: 900px) {
+  .host-macros-head { display: none; }
+  .host-macrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; margin-bottom: 10px; }
+  .host-macro-menu { left: auto; right: 0; }
+  .host-macro-desc { grid-column: 1 / -1; }
+  .host-macro-remove { grid-column: 1 / -1; justify-self: end; }
+}
+@media (max-width: 800px) {
+  .host-inventory { max-width: none; }
+  .host-inventory-mode-row,
+  .host-inventory-row { grid-template-columns: 1fr; }
+  .host-inventory-modes { grid-column: 1; }
+  .host-inventory-label {
+    text-align: left; line-height: 1.4; white-space: normal;
+  }
+  .host-encryption-row { grid-template-columns: 1fr; }
+  .host-encryption-modes,
+  .host-encryption-checks { grid-column: 1; }
+  .host-encryption-label {
+    text-align: left; line-height: 1.4; white-space: normal; margin-bottom: 2px;
+  }
+}
 @media (max-width: 720px) {
   .zbx { padding: 12px 10px 30px; }
   .zbx-fcol.left .frow, .zbx-fcol.right .frow { grid-template-columns: 1fr; }
@@ -318,8 +725,29 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   .sev6 { grid-template-columns: repeat(2, max-content); }
   .tagrow { flex-wrap: wrap; }
   .tagrow .tagname, .tagrow .tagop { flex: 0 0 auto; width: auto; }
+  .host-modal-head, .host-modal-body, .host-modal-foot { padding-left: 14px; padding-right: 14px; }
+  .host-tabs { gap: 16px; padding-left: 14px; padding-right: 14px; }
+  .host-form { padding-left: 0; }
+  .host-row { grid-template-columns: 1fr; gap: 3px; margin-bottom: 8px; }
+  .ipmi-form { max-width: none; }
+  .ipmi-form .host-row { grid-template-columns: 1fr; }
+  .host-tags-form { max-width: none; }
+  .host-tags-form .host-row { grid-template-columns: 1fr; }
+  .host-tags-head, .host-tagrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 46px; }
+  .host-macro-inherited-item { grid-template-columns: 1fr; }
+  .host-macro-inherited-desc { grid-column: 1 / -1; grid-row: auto; justify-self: stretch; }
+  .host-macro-change,
+  .host-macro-global-value,
+  .host-macro-inherited-remove { grid-column: 1; grid-row: auto; justify-self: start; }
+  .host-label { text-align: left; line-height: 1.4; }
+  .host-tabempty { margin-left: 0; }
+  .host-modal-foot { flex-wrap: wrap; }
+  .host-error { flex-basis: 100%; }
 }
 </style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -351,6 +779,31 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
           <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
         </div>
       </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
       <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
       <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
     </nav>
@@ -549,27 +1002,379 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   </div>
 </div>
 
-<!-- ======== MODAL CREATE HOST ======== -->
+<!-- ======== MODAL NEW HOST (struktur Zabbix) ======== -->
 <div class="overlay" id="createOverlay" role="dialog" aria-modal="true" aria-labelledby="createTitle">
-  <div class="modal">
-    <h2 id="createTitle">Create host</h2>
-    <p class="sub">Host langsung dipantau: ping berjalan otomatis; SNMP/agent menyusul bila dikonfigurasi.</p>
-    <label class="form-lb" for="mIp">IP / hostname *</label>
-    <input id="mIp" placeholder="mis. 192.168.1.10" autocomplete="off">
-    <label class="form-lb" for="mAlias">Visible name</label>
-    <input id="mAlias" placeholder="mis. Router Kantor" autocomplete="off">
-    <label class="form-lb" for="mCategory">Host group</label>
-    <input id="mCategory" list="createGroupOptions" placeholder="mis. Core" autocomplete="off">
-    <datalist id="createGroupOptions"></datalist>
-    <label class="form-lb" for="mSnmp">SNMP community (opsional)</label>
-    <input id="mSnmp" placeholder="mis. public" autocomplete="off">
-    <div class="err" id="createErr" role="alert"></div>
-    <div class="modal-actions">
-      <button class="zbtn" id="btnCancelCreate" type="button">Cancel</button>
-      <button class="zbtn primary" id="btnSubmitCreate" type="button">Create host</button>
+  <div class="host-modal">
+    <div class="host-modal-head">
+      <h2 id="createTitle">New host</h2>
+      <div class="host-modal-tools">
+        <button class="host-tool" id="createHelp" type="button" title="Bantuan formulir" aria-label="Bantuan">?</button>
+        <button class="host-tool" id="createClose" type="button" title="Tutup" aria-label="Tutup">&times;</button>
+      </div>
+    </div>
+
+    <div class="host-tabs" role="tablist" aria-label="Konfigurasi host">
+      <button class="host-tab on" id="tabHost" type="button" role="tab" aria-selected="true" aria-controls="paneHost" data-tab="host">Host</button>
+      <button class="host-tab" id="tabIpmi" type="button" role="tab" aria-selected="false" aria-controls="paneIpmi" data-tab="ipmi" tabindex="-1">IPMI</button>
+      <button class="host-tab" id="tabTags" type="button" role="tab" aria-selected="false" aria-controls="paneTags" data-tab="tags" tabindex="-1">Tags</button>
+      <button class="host-tab" id="tabMacros" type="button" role="tab" aria-selected="false" aria-controls="paneMacros" data-tab="macros" tabindex="-1">Macros</button>
+      <button class="host-tab" id="tabInventory" type="button" role="tab" aria-selected="false" aria-controls="paneInventory" data-tab="inventory" tabindex="-1">Inventory</button>
+      <button class="host-tab" id="tabEncryption" type="button" role="tab" aria-selected="false" aria-controls="paneEncryption" data-tab="encryption" tabindex="-1">Encryption</button>
+      <button class="host-tab" id="tabValue" type="button" role="tab" aria-selected="false" aria-controls="paneValue" data-tab="value" tabindex="-1">Value mapping</button>
+    </div>
+
+    <div class="host-modal-body" id="hostModalBody">
+      <section class="host-pane on" id="paneHost" role="tabpanel" aria-labelledby="tabHost">
+        <div class="host-form">
+          <div class="host-row">
+            <label class="host-label req" for="mHostName">Host name</label>
+            <div class="host-ctl">
+              <input class="host-input" id="mHostName" type="text" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label" for="mVisibleName">Visible name</label>
+            <div class="host-ctl">
+              <input class="host-input" id="mVisibleName" type="text" autocomplete="off">
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label" for="mTemplates">Templates</label>
+            <div class="host-ctl">
+              <div class="host-pickrow">
+                <input class="host-input" id="mTemplates" type="text" placeholder="type here to search" readonly>
+                <button class="btnselect host-select" id="btnTemplates" type="button">Select</button>
+              </div>
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label req" for="mGroups">Host groups</label>
+            <div class="host-ctl">
+              <div class="host-pickrow">
+                <input class="host-input" id="mGroups" type="text" placeholder="type here to search" readonly>
+                <button class="btnselect host-select" id="btnCreateGroups" type="button">Select</button>
+              </div>
+            </div>
+          </div>
+          <div class="host-row top">
+            <span class="host-label">Interfaces</span>
+            <div class="host-ctl">
+              <div class="host-ifaces" id="createIfaces">
+                <div class="host-noiface">No interfaces are defined.</div>
+              </div>
+              <button class="linkbtn" id="btnAddIface" type="button">Add</button>
+            </div>
+          </div>
+          <div class="host-row top">
+            <label class="host-label" for="mDescription">Description</label>
+            <div class="host-ctl">
+              <textarea class="host-input host-textarea" id="mDescription" rows="5"></textarea>
+            </div>
+          </div>
+          <div class="host-row">
+            <span class="host-label">Monitored by</span>
+            <div class="host-ctl">
+              <div class="seg host-mon" id="segMonitored" role="group" aria-label="Monitored by">
+                <button class="on" type="button" data-mon="server" aria-pressed="true">Server</button>
+                <button type="button" data-mon="proxy" disabled title="Proxy belum didukung di NMS Kopegtel">Proxy</button>
+                <button type="button" data-mon="proxygroup" disabled title="Proxy group belum didukung di NMS Kopegtel">Proxy group</button>
+              </div>
+            </div>
+          </div>
+          <div class="host-row">
+            <span class="host-label">Enabled</span>
+            <div class="host-ctl">
+              <label class="host-check"><input type="checkbox" id="mEnabled" checked><span>Enabled</span></label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneIpmi" role="tabpanel" aria-labelledby="tabIpmi" aria-hidden="true">
+        <div class="host-form ipmi-form">
+          <div class="host-row">
+            <label class="host-label" for="mIpmiAuth">Authentication algorithm</label>
+            <div class="host-ctl">
+              <select class="host-input" id="mIpmiAuth">
+                <option value="default" selected>Default</option>
+                <option value="none">None</option>
+                <option value="md2">MD2</option>
+                <option value="md5">MD5</option>
+                <option value="straight">Straight</option>
+                <option value="oem">OEM</option>
+                <option value="rmcp+">RMCP+</option>
+              </select>
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label" for="mIpmiPrivilege">Privilege level</label>
+            <div class="host-ctl">
+              <select class="host-input" id="mIpmiPrivilege">
+                <option value="callback">Callback</option>
+                <option value="user" selected>User</option>
+                <option value="operator">Operator</option>
+                <option value="administrator">Admin</option>
+                <option value="oem">OEM</option>
+              </select>
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label" for="mIpmiUsername">Username</label>
+            <div class="host-ctl">
+              <input class="host-input" id="mIpmiUsername" type="text" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="host-row">
+            <label class="host-label" for="mIpmiPassword">Password</label>
+            <div class="host-ctl">
+              <input class="host-input" id="mIpmiPassword" type="password" autocomplete="new-password">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneTags" role="tabpanel" aria-labelledby="tabTags" aria-hidden="true">
+        <div class="host-form host-tags-form">
+          <div class="host-row">
+            <span class="host-label">Tags</span>
+            <div class="host-ctl">
+              <div class="host-tags-box">
+                <div class="host-tags-head">
+                  <span>Name</span>
+                  <span>Value</span>
+                  <span></span>
+                </div>
+                <div id="hostTagRows"></div>
+                <button type="button" class="linkbtn host-tag-add" id="hostTagAdd">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneMacros" role="tabpanel" aria-labelledby="tabMacros" aria-hidden="true">
+        <div class="host-macros">
+          <div class="seg host-macro-tabs" id="hostMacroTabs" role="tablist" aria-label="Cakupan macro">
+            <button type="button" class="on" id="macroTabHost" data-macro-tab="host" role="tab" aria-selected="true" aria-controls="hostMacroPanel">Host macros</button>
+            <button type="button" id="macroTabInherited" data-macro-tab="inherited" role="tab" aria-selected="false" aria-controls="hostMacroInherited" tabindex="-1">Inherited and host macros</button>
+          </div>
+
+          <div id="hostMacroPanel" role="tabpanel" aria-labelledby="macroTabHost">
+            <div class="host-macros-head">
+              <span>Macro</span>
+              <span>Value</span>
+              <span>Description</span>
+              <span></span>
+            </div>
+            <div id="hostMacroRows"></div>
+            <button type="button" class="linkbtn host-macro-add" id="hostMacroAdd">Add</button>
+          </div>
+
+          <div id="hostMacroInherited" role="tabpanel" aria-labelledby="macroTabInherited" hidden>
+            <div class="host-macro-inherited-head">
+              <span>Macro</span>
+              <span>Effective value</span>
+              <span>Template value</span>
+              <span>Global value (configure)</span>
+            </div>
+            <div id="hostMacroInheritedRows"></div>
+            <button type="button" class="linkbtn host-macro-inherited-add" id="hostMacroInheritedAdd">Add</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneInventory" role="tabpanel" aria-labelledby="tabInventory" aria-hidden="true">
+        {% set inventory_fields = [
+          ("type", "Type", "input", ""),
+          ("type_full", "Type (Full details)", "input", ""),
+          ("name", "Name", "input", ""),
+          ("alias", "Alias", "input", ""),
+          ("os", "OS", "input", ""),
+          ("os_full", "OS (Full details)", "input", ""),
+          ("os_short", "OS (Short)", "input", ""),
+          ("serialno_a", "Serial number A", "input", ""),
+          ("serialno_b", "Serial number B", "input", ""),
+          ("tag", "Tag", "input", ""),
+          ("asset_tag", "Asset tag", "input", ""),
+          ("macaddress_a", "MAC address A", "input", ""),
+          ("macaddress_b", "MAC address B", "input", ""),
+          ("hardware", "Hardware", "input", ""),
+          ("hardware_full", "Hardware (Full details)", "textarea", "inv-ta-lg"),
+          ("software", "Software", "input", ""),
+          ("software_full", "Software (Full details)", "textarea", "inv-ta-lg"),
+          ("software_app_a", "Software application A", "input", ""),
+          ("software_app_b", "Software application B", "input", ""),
+          ("software_app_c", "Software application C", "input", ""),
+          ("software_app_d", "Software application D", "input", ""),
+          ("software_app_e", "Software application E", "input", ""),
+          ("contact", "Contact", "textarea", ""),
+          ("location", "Location", "textarea", ""),
+          ("location_lat", "Location latitude", "input", ""),
+          ("location_lon", "Location longitude", "input", ""),
+          ("notes", "Notes", "textarea", "inv-ta-lg"),
+          ("chassis", "Chassis", "input", ""),
+          ("model", "Model", "input", ""),
+          ("hw_arch", "HW architecture", "input", ""),
+          ("vendor", "Vendor", "input", ""),
+          ("contract_number", "Contract number", "input", ""),
+          ("installer_name", "Installer name", "input", ""),
+          ("deployment_status", "Deployment status", "input", ""),
+          ("url_a", "URL A", "input", ""),
+          ("url_b", "URL B", "input", ""),
+          ("url_c", "URL C", "input", ""),
+          ("host_networks", "Host networks", "textarea", ""),
+          ("host_netmask", "Host subnet mask", "input", ""),
+          ("host_router", "Host router", "input", ""),
+          ("oob_ip", "OOB IP address", "input", ""),
+          ("oob_netmask", "OOB subnet mask", "input", ""),
+          ("oob_router", "OOB router", "input", ""),
+          ("date_hw_purchase", "Date HW purchased", "input", ""),
+          ("date_hw_install", "Date HW installed", "input", ""),
+          ("date_hw_expiry", "Date HW maintenance expires", "input", ""),
+          ("date_hw_decomm", "Date HW decommissioned", "input", ""),
+          ("site_address_a", "Site address A", "input", ""),
+          ("site_address_b", "Site address B", "input", ""),
+          ("site_address_c", "Site address C", "input", ""),
+          ("site_city", "Site city", "input", ""),
+          ("site_state", "Site state / province", "input", ""),
+          ("site_country", "Site country", "input", ""),
+          ("site_zip", "Site ZIP / postal", "input", ""),
+          ("site_rack", "Site rack location", "input", ""),
+          ("site_notes", "Site notes", "textarea", "inv-ta-sm"),
+          ("poc_1_name", "Primary POC name", "input", ""),
+          ("poc_1_email", "Primary POC email", "input", ""),
+          ("poc_1_phone_a", "Primary POC phone A", "input", ""),
+          ("poc_1_phone_b", "Primary POC phone B", "input", ""),
+          ("poc_1_cell", "Primary POC cell", "input", ""),
+          ("poc_1_screen", "Primary POC screen name", "input", ""),
+          ("poc_1_notes", "Primary POC notes", "textarea", ""),
+          ("poc_2_name", "Secondary POC name", "input", ""),
+          ("poc_2_email", "Secondary POC email", "input", ""),
+          ("poc_2_phone_a", "Secondary POC phone A", "input", ""),
+          ("poc_2_phone_b", "Secondary POC phone B", "input", ""),
+          ("poc_2_cell", "Secondary POC cell", "input", ""),
+          ("poc_2_screen", "Secondary POC screen name", "input", ""),
+          ("poc_2_notes", "Secondary POC notes", "textarea", "")
+        ] %}
+        <div class="host-inventory" id="hostInventory" data-mode="disabled">
+          <div class="host-inventory-mode-row">
+            <div class="seg host-inventory-modes" id="inventoryModes" role="group" aria-label="Inventory mode">
+              <button type="button" class="on" data-inv-mode="disabled" aria-pressed="true">Disabled</button>
+              <button type="button" data-inv-mode="manual" aria-pressed="false">Manual</button>
+              <button type="button" data-inv-mode="automatic" aria-pressed="false">Automatic</button>
+            </div>
+          </div>
+          {% for key, label, kind, size in inventory_fields %}
+          <div class="host-inventory-row">
+            <label class="host-inventory-label" for="inv_{{ key }}">{{ label }}</label>
+            {% if kind == "textarea" %}
+            <textarea class="host-input host-inventory-textarea {{ size }}" id="inv_{{ key }}" data-inv-key="{{ key }}" rows="4" maxlength="4000" disabled></textarea>
+            {% else %}
+            <input class="host-input host-inventory-input" id="inv_{{ key }}" data-inv-key="{{ key }}" type="text" maxlength="255" autocomplete="off" disabled>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneEncryption" role="tabpanel" aria-labelledby="tabEncryption" aria-hidden="true">
+        <div class="host-encryption">
+          <div class="host-encryption-row">
+            <div class="host-encryption-label" id="encToHostLabel">Connections to host</div>
+            <div class="seg host-encryption-modes" id="encryptionToHost" role="group" aria-labelledby="encToHostLabel">
+              <button type="button" class="on" data-enc-to="none" aria-pressed="true">No encryption</button>
+              <button type="button" data-enc-to="psk" aria-pressed="false">PSK</button>
+              <button type="button" data-enc-to="certificate" aria-pressed="false">Certificate</button>
+            </div>
+          </div>
+          <div class="host-encryption-row">
+            <div class="host-encryption-label" id="encFromHostLabel">Connections from host</div>
+            <div class="host-encryption-checks" id="encryptionFromHost" role="group" aria-labelledby="encFromHostLabel">
+              <label class="host-encryption-check"><input type="checkbox" name="encFromHost" value="none" data-enc-from="none" checked> No encryption</label>
+              <label class="host-encryption-check"><input type="checkbox" name="encFromHost" value="psk" data-enc-from="psk"> PSK</label>
+              <label class="host-encryption-check"><input type="checkbox" name="encFromHost" value="certificate" data-enc-from="certificate"> Certificate</label>
+            </div>
+          </div>
+          <div class="host-encryption-psk-fields" id="encryptionPskFields" hidden>
+            <div class="host-encryption-row">
+              <label class="host-encryption-label req" for="encPskIdentity">PSK identity</label>
+              <input class="host-input host-encryption-input" id="encPskIdentity" type="text" maxlength="128" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="host-encryption-row">
+              <label class="host-encryption-label req" for="encPsk">PSK</label>
+              <input class="host-input host-encryption-input" id="encPsk" type="password" maxlength="512" autocomplete="new-password">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="host-pane" id="paneValue" role="tabpanel" aria-labelledby="tabValue" aria-hidden="true">
+        <div class="host-tabempty">
+          <strong>No value mappings are defined.</strong>
+          <p>Value mapping belum didukung. Nilai metrik ditampilkan apa adanya sesuai data polling.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="host-modal-foot">
+      <div class="host-error" id="createErr" role="alert"></div>
+      <div class="host-foot-btns">
+        <button class="zbtn primary" id="btnSubmitCreate" type="button">Add</button>
+        <button class="zbtn" id="btnCancelCreate" type="button">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
+
+<!-- ======== PILIH HOST GROUP UNTUK HOST BARU ======== -->
+<dialog class="zbx-dialog host-picker" id="createGroupDlg">
+  <h2>Host groups</h2>
+  <p>Pilih satu grup utama untuk host baru.</p>
+  <input type="text" id="createGroupSearch" placeholder="type here to search" autocomplete="off">
+  <div class="grouplist" id="createGroupList"></div>
+  <form method="dialog">
+    <button class="zbtn" type="button" id="createGroupCancel">Cancel</button>
+    <button class="zbtn primary" type="button" id="createGroupApply">Select</button>
+  </form>
+</dialog>
+
+<!-- ======== PILIH TEMPLATE / PROFIL SNMP ======== -->
+<dialog class="zbx-dialog host-picker" id="tplDlg">
+  <h2>Templates</h2>
+  <p>Pilih profil SNMP yang dipakai NMS. NMS belum memakai template Zabbix penuh.</p>
+  <input type="text" id="tplSearch" placeholder="type here to search" autocomplete="off">
+  <div class="grouplist" id="tplList"></div>
+  <form method="dialog">
+    <button class="zbtn" type="button" id="tplCancel">Cancel</button>
+    <button class="zbtn primary" type="button" id="tplApply">Select</button>
+  </form>
+</dialog>
+
+<!-- ======== TAMBAH / EDIT INTERFACE ======== -->
+<dialog class="zbx-dialog host-picker" id="ifaceDlg">
+  <h2 id="ifaceTitle">Add interface</h2>
+  <p>Tambahkan interface utama. NMS memakai satu interface per host.</p>
+  <div class="iface-form">
+    <label class="zlabel" for="ifaceType">Type</label>
+    <select id="ifaceType">
+      <option value="agent">Agent</option>
+      <option value="snmp">SNMP</option>
+    </select>
+    <label class="zlabel" for="ifaceIp">IP address</label>
+    <input type="text" id="ifaceIp" placeholder="mis. 192.168.1.10" autocomplete="off">
+    <label class="zlabel" for="ifacePort">Port</label>
+    <input type="number" id="ifacePort" min="1" max="65535" placeholder="10050">
+    <div id="ifaceSnmpWrap">
+      <label class="zlabel" for="ifaceCommunity">SNMP community</label>
+      <input type="text" id="ifaceCommunity" placeholder="public" autocomplete="off">
+    </div>
+    <div class="host-error" id="ifaceErr" role="alert"></div>
+  </div>
+  <form method="dialog">
+    <button class="zbtn" type="button" id="ifaceCancel">Cancel</button>
+    <button class="zbtn primary" id="ifaceSave">Add</button>
+  </form>
+</dialog>
 
 <!-- ======== DIALOG BANTUAN ======== -->
 <dialog class="zbx-dialog" id="helpDlg">
@@ -579,7 +1384,8 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
     <li><b>Name / Host groups / IP / DNS / Port</b> — saring host berdasarkan nama (atau IP), grup/kategori, alamat IP, nama DNS/alias, dan port interface (agent 10050 / SNMP 161).</li>
     <li><b>Severity</b> — centang level masalah yang harus dimiliki host. Host tanpa masalah aktif tidak ikut saat filter severity dipakai.</li>
     <li><b>Status</b> — Any / Enabled / Disabled. Semua host NMS saat ini berstatus enabled; opsi Disabled tidak menghasilkan baris sampai ada host yang dinonaktifkan.</li>
-    <li><b>Tags</b> — tag host berasal dari data nyata: <code>class</code> (kategori), <code>monitoring</code> (agent/SNMP/ping), status agent/SNMP, dan <code>maintenance</code>. Beberapa baris digabung dengan And/Or.</li>
+    <li><b>Tags</b> — tag manual dari tab Tags (New host), ditambah tag otomatis dari data nyata: <code>class</code> (kategori), <code>monitoring</code> (agent/SNMP/ping), status agent/SNMP, dan <code>maintenance</code>. Beberapa baris digabung dengan And/Or.</li>
+    <li><b>Macros</b> — macro host pada tab Macros (New host) disimpan sebagai pasangan nama/nilai. Tipe <code>Text</code>, <code>Secret text</code>, dan <code>Vault secret</code> tersedia; nilai secret tidak dikembalikan lewat API.</li>
     <li><b>Show hosts in maintenance</b> — bila tidak dicentang, host yang sedang maintenance disembunyikan. <b>Show suppressed problems</b> — bila dicentang, jumlah masalah host maintenance tetap ditampilkan.</li>
     <li><b>Save as</b> — simpan kombinasi filter sebagai tampilan bernama. <b>Apply</b> menerapkan filter; <b>Reset</b> mengembalikan default.</li>
     <li>Kolom <b>Latest data</b>, <b>Problems</b>, <b>Graphs</b>, <b>Dashboards</b>, dan <b>Web</b> membuka halaman terkait untuk host tersebut.</li>
@@ -602,13 +1408,19 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
 </dialog>
 
 <!-- ======== DIALOG PILIH HOST GROUP ======== -->
-<dialog class="zbx-dialog" id="groupDlg">
-  <h2>Host groups</h2>
-  <p>Pilih satu atau lebih grup host.</p>
-  <div class="grouplist" id="groupList"></div>
+<dialog class="zbx-dialog host-groups-dialog" id="groupDlg" aria-labelledby="groupDlgTitle">
+  <button class="hgd-close" id="groupClose" type="button" aria-label="Tutup">&times;</button>
+  <h2 id="groupDlgTitle">Host groups</h2>
+  <div class="hgd-table">
+    <div class="hgd-head">
+      <input type="checkbox" id="groupAll" aria-label="Pilih semua host group">
+      <span>Name</span>
+    </div>
+    <div class="grouplist" id="groupList"></div>
+  </div>
   <form method="dialog">
-    <button class="zbtn" type="button" id="groupCancel">Cancel</button>
     <button class="zbtn primary" type="button" id="groupApply">Select</button>
+    <button class="zbtn" type="button" id="groupCancel">Cancel</button>
   </form>
 </dialog>
 
@@ -678,6 +1490,21 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   }
   function norm(s) { return String(s == null ? '' : s).toLowerCase(); }
 
+  var TAG_OPS = [
+    ['exists', 'Exists'],
+    ['equals', 'Equals'],
+    ['contains', 'Contains'],
+    ['does_not_exist', 'Does not exist'],
+    ['does_not_equal', 'Does not equal'],
+    ['does_not_contain', 'Does not contain']
+  ];
+  function tagOpValue(op) {
+    for (var i = 0; i < TAG_OPS.length; i++) {
+      if (TAG_OPS[i][0] === op) return op;
+    }
+    return 'contains';
+  }
+
   var REFRESH_S = 30;
   var STORE_KEY = 'nms_hosts_views';
   var state = defaults();
@@ -731,11 +1558,13 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   /* ---------------- baris tag dinamis ---------------- */
   function tagRowHtml(c) {
     c = c || { tag: '', op: 'contains', value: '' };
+    var op = tagOpValue(c.op);
     return '<div class="tagrow">' +
       '<input type="text" class="tagname" placeholder="tag" value="' + esc(c.tag || '') + '">' +
-      '<select class="tagop">' +
-        '<option value="contains"' + (c.op !== 'equals' ? ' selected' : '') + '>Contains</option>' +
-        '<option value="equals"' + (c.op === 'equals' ? ' selected' : '') + '>Equals</option>' +
+      '<select class="tagop" aria-label="Operator tag">' +
+        TAG_OPS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (op === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') +
       '</select>' +
       '<input type="text" class="tagvalue" placeholder="value" value="' + esc(c.value || '') + '">' +
       '<button type="button" class="linkbtn rm-row" aria-label="Hapus baris tag">Remove</button>' +
@@ -792,6 +1621,7 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
 
   /* ---------------- data turunan host ---------------- */
   function ifacePort(h) {
+    if (h.iface_port) return String(h.iface_port);
     if (h.agent && h.agent !== 'none') return '10050';
     if (h.snmp_monitored) return '161';
     if (h.ssh_port) return String(h.ssh_port);
@@ -802,7 +1632,10 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
     return h.ip + (p ? ':' + p : '');
   }
   function hostTags(h) {
-    var tags = [{ n: 'class', v: h.category || 'Uncategorized' }];
+    var tags = (h.tags || []).map(function (t) {
+      return { n: t.name || '', v: t.value || '' };
+    });
+    tags.push({ n: 'class', v: h.category || 'Uncategorized' });
     var hasAgent = h.agent && h.agent !== 'none';
     if (hasAgent) tags.push({ n: 'monitoring', v: 'agent' });
     if (h.snmp_monitored) tags.push({ n: 'monitoring', v: 'snmp' });
@@ -820,18 +1653,38 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   }
 
   /* ---------------- filter ---------------- */
-  function matchTags(tags) {
-    var conds = tagConds.filter(function (c) { return c.tag || c.value; });
-    if (!conds.length) return true;
-    var tests = conds.map(function (c) {
-      var tn = norm(c.tag), tv = norm(c.value);
-      return tags.some(function (tag) {
-        var n = norm(tag.n), v = norm(tag.v);
-        if (tn && (c.op === 'equals' ? n !== tn : n.indexOf(tn) === -1)) return false;
-        if (tv && (c.op === 'equals' ? v !== tv : v.indexOf(tv) === -1)) return false;
-        return true;
-      });
+  function tagNameMatches(op, name, q) {
+    if (!q) return true;
+    return (op === 'equals' || op === 'does_not_equal')
+      ? name === q
+      : name.indexOf(q) !== -1;
+  }
+  function tagValueMatches(op, value, q) {
+    if (!q) return true;
+    return (op === 'equals' || op === 'does_not_equal')
+      ? value === q
+      : value.indexOf(q) !== -1;
+  }
+  function matchTagCondition(c, tags) {
+    var op = tagOpValue(c.op);
+    var tn = norm(c.tag), tv = norm(c.value);
+    var named = tags.filter(function (tag) {
+      return tagNameMatches(op, norm(tag.n), tn);
     });
+    if (op === 'exists') return named.length > 0;
+    if (op === 'does_not_exist') return named.length === 0;
+    var hit = named.some(function (tag) {
+      return tagValueMatches(op, norm(tag.v), tv);
+    });
+    return (op === 'equals' || op === 'contains') ? hit : !hit;
+  }
+  function matchTags(tags) {
+    var conds = tagConds.filter(function (c) {
+      var op = tagOpValue(c.op);
+      return c.tag || c.value || op === 'exists' || op === 'does_not_exist';
+    });
+    if (!conds.length) return true;
+    var tests = conds.map(function (c) { return matchTagCondition(c, tags); });
     return state.tagOp === 'and' ? tests.every(Boolean) : tests.some(Boolean);
   }
   function matchSeverity(h) {
@@ -1070,6 +1923,13 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   });
 
   /* ---------------- pilih host group ---------------- */
+  function syncGroupAll() {
+    var boxes = qsa('#groupList input[type="checkbox"]');
+    var checked = boxes.filter(function (i) { return i.checked; }).length;
+    var all = $('groupAll');
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
   $('btnGroups').addEventListener('click', function () {
     var cats = categories.slice();
     allHosts.forEach(function (h) {
@@ -1086,9 +1946,18 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
         return '<label><input type="checkbox" value="' + esc(c) + '"' + (on ? ' checked' : '') + '> ' + esc(c) + '</label>';
       }).join('');
     }
+    syncGroupAll();
+    $('groupList').scrollTop = 0;
     $('groupDlg').showModal();
   });
+  $('groupClose').addEventListener('click', function () { $('groupDlg').close(); });
   $('groupCancel').addEventListener('click', function () { $('groupDlg').close(); });
+  $('groupAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#groupList input[type="checkbox"]').forEach(function (i) { i.checked = on; });
+    syncGroupAll();
+  });
+  $('groupList').addEventListener('change', syncGroupAll);
   $('groupApply').addEventListener('click', function () {
     var vals = qsa('#groupList input:checked').map(function (i) { return i.value; });
     $('fGroups').value = vals.join(', ');
@@ -1116,34 +1985,870 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
   /* ---------------- bantuan ---------------- */
   $('btnHelp').addEventListener('click', function () { $('helpDlg').showModal(); });
 
-  /* ---------------- modal tambah host ---------------- */
+  /* ---------------- modal New host ---------------- */
   var ov = $('createOverlay');
-  function openModal() {
-    categories.forEach(function (c) {
-      if (!$('createGroupOptions').querySelector('option[value="' + c.replace(/"/g, '&quot;') + '"]')) {
-        var o = document.createElement('option'); o.value = c;
-        $('createGroupOptions').appendChild(o);
+  var createIface = null;
+  var inventoryMode = 'disabled';
+  var encryptionToHost = 'none';
+  var templateValue = 'auto';
+  var lastFocus = null;
+  var TEMPLATE_OPTS = [
+    { v: 'auto', label: 'Auto-detect', desc: 'Deteksi profil SNMP otomatis (CPU, memori, storage, suhu).' },
+    { v: 'mikrotik', label: 'MikroTik', desc: 'Profil OID health MikroTik RouterOS.' },
+    { v: 'generic', label: 'Generic', desc: 'Interface SNMP tanpa health SNMP; untuk perangkat generik.' }
+  ];
+  var TAB_PANES = {
+    host: 'paneHost', ipmi: 'paneIpmi', tags: 'paneTags', macros: 'paneMacros',
+    inventory: 'paneInventory', encryption: 'paneEncryption', value: 'paneValue'
+  };
+
+  function setCreateTab(name) {
+    qsa('.host-tab').forEach(function (b) {
+      var on = b.getAttribute('data-tab') === name;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    qsa('.host-pane').forEach(function (p) {
+      var on = p.id === TAB_PANES[name];
+      p.classList.toggle('on', on);
+      p.setAttribute('aria-hidden', on ? 'false' : 'true');
+    });
+    $('hostModalBody').scrollTop = 0;
+  }
+
+  function inventoryFieldEls() {
+    return qsa('#hostInventory [data-inv-key]');
+  }
+
+  function setInventoryMode(mode) {
+    if (['disabled', 'manual', 'automatic'].indexOf(mode) === -1) mode = 'disabled';
+    inventoryMode = mode;
+    var box = $('hostInventory');
+    if (box) box.setAttribute('data-mode', mode);
+    qsa('#inventoryModes button').forEach(function (b) {
+      var on = b.getAttribute('data-inv-mode') === mode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    inventoryFieldEls().forEach(function (el) {
+      el.disabled = mode !== 'manual';
+    });
+  }
+
+  function resetInventory() {
+    inventoryFieldEls().forEach(function (el) { el.value = ''; });
+    setInventoryMode('disabled');
+  }
+
+  function inventoryPayload() {
+    var fields = {};
+    inventoryFieldEls().forEach(function (el) {
+      var key = el.getAttribute('data-inv-key');
+      var value = String(el.value || '').trim();
+      if (key && value) fields[key] = value;
+    });
+    return { mode: inventoryMode, fields: fields };
+  }
+
+  function encryptionFromEls() {
+    return qsa('#encryptionFromHost [data-enc-from]');
+  }
+
+  function encryptionPskActive() {
+    if (encryptionToHost === 'psk') return true;
+    return encryptionFromEls().some(function (el) {
+      return el.checked && el.getAttribute('data-enc-from') === 'psk';
+    });
+  }
+
+  function syncEncryptionPsk() {
+    var on = encryptionPskActive();
+    var box = $('encryptionPskFields');
+    if (box) box.hidden = !on;
+    var identity = $('encPskIdentity');
+    var key = $('encPsk');
+    if (identity) identity.required = on;
+    if (key) key.required = on;
+  }
+
+  function setEncryptionToHost(method) {
+    if (['none', 'psk', 'certificate'].indexOf(method) === -1) method = 'none';
+    encryptionToHost = method;
+    qsa('#encryptionToHost button').forEach(function (b) {
+      var on = b.getAttribute('data-enc-to') === method;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    syncEncryptionPsk();
+  }
+
+  function setEncryptionFromHost(methods) {
+    var chosen = methods || ['none'];
+    encryptionFromEls().forEach(function (el) {
+      el.checked = chosen.indexOf(el.getAttribute('data-enc-from')) !== -1;
+    });
+    syncEncryptionPsk();
+  }
+
+  function resetEncryption() {
+    setEncryptionToHost('none');
+    setEncryptionFromHost(['none']);
+    $('encPskIdentity').value = '';
+    $('encPsk').value = '';
+    syncEncryptionPsk();
+  }
+
+  function encryptionPayload() {
+    var from = encryptionFromEls().filter(function (el) {
+      return el.checked;
+    }).map(function (el) {
+      return el.getAttribute('data-enc-from');
+    });
+    var payload = { to_host: encryptionToHost, from_host: from.length ? from : ['none'] };
+    if (encryptionPskActive()) {
+      payload.psk_identity = $('encPskIdentity').value.trim();
+      payload.psk = $('encPsk').value.trim();
+    }
+    return payload;
+  }
+
+  function renderCreateIfaces() {
+    var box = $('createIfaces');
+    if (!createIface) {
+      box.innerHTML = '<div class="host-noiface">No interfaces are defined.</div>';
+      $('btnAddIface').textContent = 'Add';
+      return;
+    }
+    var type = createIface.type === 'snmp' ? 'SNMP' : 'Agent';
+    box.innerHTML =
+      '<div class="iface-line">' +
+        '<span class="iface-main">' + esc(createIface.ip) + ':' + esc(createIface.port) +
+          '<span class="iface-type">' + type + '</span></span>' +
+        '<button class="linkbtn iface-edit" type="button">Edit</button>' +
+        '<button class="linkbtn iface-del" type="button">Remove</button>' +
+      '</div>';
+    $('btnAddIface').textContent = 'Edit';
+  }
+
+  function hostTagRowHtml() {
+    return '<div class="host-tagrow">' +
+      '<input class="host-input host-tag-name" type="text" placeholder="tag" maxlength="255" autocomplete="off">' +
+      '<input class="host-input host-tag-value" type="text" placeholder="value" maxlength="255" autocomplete="off">' +
+      '<button class="linkbtn host-tag-remove" type="button">Remove</button>' +
+      '</div>';
+  }
+
+  function renderHostTags() {
+    $('hostTagRows').innerHTML = hostTagRowHtml();
+  }
+
+  function macroTypeLetter(type) {
+    return type === 'secret' ? 'S' : (type === 'vault' ? 'V' : 'T');
+  }
+
+  function macroTypeTitle(type) {
+    return type === 'secret' ? 'Secret text' : (type === 'vault' ? 'Vault secret' : 'Text');
+  }
+
+  function macroTypeIcon(type) {
+    if (type === 'secret') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M3 3l18 18"/>' +
+        '<path d="M10.6 10.7a2 2 0 002.7 2.7"/>' +
+        '<path d="M9.9 5.1A10.8 10.8 0 0112 5c5.5 0 9 7 9 7a16.4 16.4 0 01-2.1 3.2"/>' +
+        '<path d="M6.6 6.6C4.1 8.2 3 12 3 12s3.5 7 9 7a10.6 10.6 0 004.4-1"/>' +
+      '</svg>';
+    }
+    if (type === 'vault') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<rect x="4.5" y="10" width="15" height="10.5" rx="1.5" fill="currentColor" stroke="none"/>' +
+        '<path d="M8 10V7a4 4 0 018 0v3"/>' +
+        '<circle cx="12" cy="15" r="1.3" fill="var(--surface)" stroke="none"/>' +
+      '</svg>';
+    }
+    return '<span class="host-macro-opt-t" aria-hidden="true">T</span>';
+  }
+
+  function macroTypeButtonHtml(type, disabled) {
+    var title = 'Tipe nilai: ' + macroTypeTitle(type);
+    return '<button type="button" class="host-macro-typebtn"' +
+      (disabled ? ' disabled aria-disabled="true"' : ' aria-haspopup="menu" aria-expanded="false"') +
+      ' aria-label="' + title + '" title="' + title + '">' +
+        '<span class="host-macro-type-letter">' + macroTypeLetter(type) + '</span>' +
+        '<svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '</button>';
+  }
+
+  function macroTypeMenuHtml(type) {
+    return '<div class="host-macro-menu" role="menu" hidden>' +
+      ['text', 'secret', 'vault'].map(function (t) {
+        var on = t === type;
+        var label = macroTypeTitle(t);
+        return '<button type="button" role="menuitemradio" data-type="' + t + '"' +
+          (on ? ' class="on"' : '') + ' aria-checked="' + (on ? 'true' : 'false') + '" aria-label="' + label + '">' +
+          '<span class="host-macro-opt-icon" aria-hidden="true">' + macroTypeIcon(t) + '</span><span>' + label + '</span>' +
+        '</button>';
+      }).join('') +
+    '</div>';
+  }
+
+  function hostMacroRowHtml() {
+    return '<div class="host-macrow" data-macro-type="text">' +
+      '<input class="host-input host-macro-name" type="text" placeholder="{$MACRO}" maxlength="255" autocomplete="off" spellcheck="false">' +
+      '<div class="host-macro-value">' +
+        '<input class="host-input host-macro-value-input" type="text" placeholder="value" maxlength="2048" autocomplete="off">' +
+        '<div class="host-macro-type">' +
+          macroTypeButtonHtml('text') +
+          macroTypeMenuHtml('text') +
+        '</div>' +
+      '</div>' +
+      '<input class="host-input host-macro-desc" type="text" placeholder="description" maxlength="255" autocomplete="off">' +
+      '<button type="button" class="linkbtn host-macro-remove">Remove</button>' +
+    '</div>';
+  }
+
+  function renderHostMacros() {
+    $('hostMacroRows').innerHTML = hostMacroRowHtml();
+  }
+
+  function closeMacroMenus() {
+    qsa('#hostMacroRows .host-macro-menu, #hostMacroInheritedRows .host-macro-menu').forEach(function (menu) {
+      menu.hidden = true;
+      var btn = menu.parentElement.querySelector('.host-macro-typebtn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function applyMacroType(row, type) {
+    if (['text', 'secret', 'vault'].indexOf(type) === -1) type = 'text';
+    row.setAttribute('data-macro-type', type);
+    var input = row.querySelector('.host-macro-value-input');
+    if (input) {
+      input.type = type === 'secret' ? 'password' : 'text';
+      input.autocomplete = type === 'secret' ? 'new-password' : 'off';
+      input.placeholder = type === 'vault' ? 'vault path' : 'value';
+    }
+    var btn = row.querySelector('.host-macro-typebtn');
+    if (btn) {
+      var letter = btn.querySelector('.host-macro-type-letter');
+      if (letter) letter.textContent = macroTypeLetter(type);
+      btn.title = 'Tipe nilai: ' + macroTypeTitle(type);
+      btn.setAttribute('aria-label', 'Tipe nilai: ' + macroTypeTitle(type));
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    qsa('.host-macro-menu button[data-type]', row).forEach(function (b) {
+      var on = b.getAttribute('data-type') === type;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    var menu = row.querySelector('.host-macro-menu');
+    if (menu) menu.hidden = true;
+  }
+
+  function setMacroRowType(row, type) {
+    applyMacroType(row, type);
+  }
+
+  function sourceHostMacroRows() {
+    return qsa('#hostMacroRows .host-macrow');
+  }
+
+  function currentSnmpCommunity() {
+    var value = createIface && createIface.type === 'snmp' ? String(createIface.community || '').trim() : '';
+    return value || 'public';
+  }
+
+  function inheritedTemplateRowHtml() {
+    var effective = currentSnmpCommunity();
+    return '<div class="host-macro-inherited-item is-inherited" data-inherited-macro="snmp">' +
+      '<div class="host-macro-inherited-row">' +
+        '<input class="host-input" type="text" value="{$SNMP_COMMUNITY}" aria-label="Macro" disabled>' +
+        '<div class="host-macro-value">' +
+          '<input class="host-input" type="text" value="' + esc(effective) + '" aria-label="Effective value" disabled>' +
+          '<div class="host-macro-type">' + macroTypeButtonHtml('text', true) + '</div>' +
+        '</div>' +
+        '<button type="button" class="linkbtn host-macro-change">Change</button>' +
+        '<span class="host-macro-global-value"><span class="host-macro-global-arrow" aria-hidden="true">\u21d0</span><span class="host-macro-global-quote">&quot;public&quot;</span></span>' +
+      '</div>' +
+      '<div class="host-macro-inherited-desc">' +
+        '<input class="host-input" type="text" placeholder="description" aria-label="Description" disabled>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function inheritedHostMacroHtml(row, index) {
+    var name = row.querySelector('.host-macro-name').value.trim();
+    var value = row.querySelector('.host-macro-value-input').value;
+    var desc = row.querySelector('.host-macro-desc').value.trim();
+    var type = row.getAttribute('data-macro-type') || 'text';
+    var inputType = type === 'secret' ? 'password' : 'text';
+    var autocomplete = type === 'secret' ? 'new-password' : 'off';
+    var placeholder = type === 'vault' ? 'vault path' : 'value';
+    return '<div class="host-macro-inherited-item is-host" data-source-index="' + index + '" data-macro-type="' + type + '">' +
+      '<div class="host-macro-inherited-row">' +
+        '<input class="host-input host-macro-name host-inherited-name" type="text" value="' + esc(name) + '" placeholder="{$MACRO}" aria-label="Macro" maxlength="255" autocomplete="off" spellcheck="false">' +
+        '<div class="host-macro-value">' +
+          '<input class="host-input host-macro-value-input host-inherited-value" type="' + inputType + '" value="' + esc(value) + '" placeholder="' + placeholder + '" aria-label="Effective value" maxlength="2048" autocomplete="' + autocomplete + '">' +
+          '<div class="host-macro-type">' +
+            macroTypeButtonHtml(type) +
+            macroTypeMenuHtml(type) +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="linkbtn host-macro-remove host-macro-inherited-remove">Remove</button>' +
+        '<span class="host-macro-global-value host-macro-global-empty"></span>' +
+      '</div>' +
+      '<div class="host-macro-inherited-desc">' +
+        '<input class="host-input host-macro-desc host-inherited-desc" type="text" value="' + esc(desc) + '" placeholder="description" aria-label="Description" maxlength="255" autocomplete="off">' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderInheritedMacros() {
+    var rows = sourceHostMacroRows();
+    var hasSnmpOverride = rows.some(function (row) {
+      return row.querySelector('.host-macro-name').value.trim().toLowerCase() === '{$snmp_community}';
+    });
+    var html = hasSnmpOverride ? '' : inheritedTemplateRowHtml();
+    rows.forEach(function (row, index) {
+      var name = row.querySelector('.host-macro-name').value.trim();
+      var value = row.querySelector('.host-macro-value-input').value;
+      var desc = row.querySelector('.host-macro-desc').value.trim();
+      var visible = name !== '' || value !== '' || desc !== '' ||
+        row.getAttribute('data-inherited-visible') === '1';
+      if (visible) html += inheritedHostMacroHtml(row, index);
+    });
+    if (!html) {
+      html = '<div class="host-macro-empty">No inherited or host macros are defined.</div>';
+    }
+    $('hostMacroInheritedRows').innerHTML = html;
+  }
+
+  function inheritedSourceRow(item) {
+    if (!item) return null;
+    var index = parseInt(item.getAttribute('data-source-index'), 10);
+    if (isNaN(index)) return null;
+    return sourceHostMacroRows()[index] || null;
+  }
+
+  function emptyHostMacroRow() {
+    var rows = sourceHostMacroRows();
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i];
+      if (row.getAttribute('data-inherited-visible') === '1') continue;
+      if (row.querySelector('.host-macro-name').value.trim() === '' &&
+          row.querySelector('.host-macro-value-input').value === '' &&
+          row.querySelector('.host-macro-desc').value.trim() === '') return row;
+    }
+    return null;
+  }
+
+  function newHostMacroRow() {
+    $('hostMacroRows').insertAdjacentHTML('beforeend', hostMacroRowHtml());
+    var rows = sourceHostMacroRows();
+    return rows[rows.length - 1];
+  }
+
+  function inheritedHostMacroRow() {
+    var row = emptyHostMacroRow();
+    if (!row) row = newHostMacroRow();
+    row.setAttribute('data-inherited-visible', '1');
+    return row;
+  }
+
+  function focusInheritedHostMacro(index, field) {
+    var item = $('hostMacroInheritedRows').querySelector('.host-macro-inherited-item[data-source-index="' + index + '"]');
+    if (!item) return;
+    var input = item.querySelector(field === 'value' ? '.host-inherited-value' : '.host-inherited-name');
+    if (!input) return;
+    input.focus();
+    input.select();
+    if (item.scrollIntoView) item.scrollIntoView({ block: 'nearest' });
+  }
+
+  function addInheritedHostMacro() {
+    closeMacroMenus();
+    var row = inheritedHostMacroRow();
+    var index = sourceHostMacroRows().indexOf(row);
+    renderInheritedMacros();
+    focusInheritedHostMacro(index, 'name');
+  }
+
+  function changeInheritedSnmpMacro() {
+    var rows = sourceHostMacroRows();
+    var existing = null;
+    rows.forEach(function (row) {
+      if (!existing && row.querySelector('.host-macro-name').value.trim().toLowerCase() === '{$snmp_community}') {
+        existing = row;
       }
     });
-    $('createErr').textContent = '';
-    ov.classList.add('open');
-    $('mIp').focus();
+    if (!existing) {
+      existing = inheritedHostMacroRow();
+      existing.querySelector('.host-macro-name').value = '{$SNMP_COMMUNITY}';
+      existing.querySelector('.host-macro-value-input').value = currentSnmpCommunity();
+      applyMacroType(existing, 'text');
+    }
+    var index = sourceHostMacroRows().indexOf(existing);
+    renderInheritedMacros();
+    focusInheritedHostMacro(index, 'value');
   }
-  function closeModal() { ov.classList.remove('open'); }
+
+  function setInheritedMacroType(item, type) {
+    var source = inheritedSourceRow(item);
+    if (source) applyMacroType(source, type);
+    applyMacroType(item, type);
+    closeMacroMenus();
+  }
+
+  function syncInheritedMacroInput(e) {
+    var target = e.target;
+    if (!target || !target.classList) return;
+    var item = target.closest('.host-macro-inherited-item.is-host');
+    if (!item) return;
+    var source = inheritedSourceRow(item);
+    if (!source) return;
+    if (target.classList.contains('host-inherited-name')) {
+      source.querySelector('.host-macro-name').value = target.value;
+    } else if (target.classList.contains('host-inherited-value')) {
+      source.querySelector('.host-macro-value-input').value = target.value;
+    } else if (target.classList.contains('host-inherited-desc')) {
+      source.querySelector('.host-macro-desc').value = target.value;
+    }
+  }
+
+  function setMacroTab(name) {
+    if (name !== 'inherited') name = 'host';
+    qsa('#hostMacroTabs button').forEach(function (b) {
+      var on = b.getAttribute('data-macro-tab') === name;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    $('hostMacroPanel').hidden = name !== 'host';
+    $('hostMacroInherited').hidden = name !== 'inherited';
+    closeMacroMenus();
+    if (name === 'inherited') renderInheritedMacros();
+  }
+
+  function resetCreate() {
+    $('mHostName').value = '';
+    $('mVisibleName').value = '';
+    $('mTemplates').value = '';
+    templateValue = 'auto';
+    $('mGroups').value = '';
+    $('mDescription').value = '';
+    $('mIpmiAuth').value = 'default';
+    $('mIpmiPrivilege').value = 'user';
+    $('mIpmiUsername').value = '';
+    $('mIpmiPassword').value = '';
+    $('mEnabled').checked = true;
+    createIface = null;
+    $('createErr').textContent = '';
+    renderCreateIfaces();
+    renderHostTags();
+    renderHostMacros();
+    $('hostMacroInheritedRows').innerHTML = '';
+    resetInventory();
+    resetEncryption();
+    setMacroTab('host');
+    setCreateTab('host');
+    $('hostModalBody').scrollTop = 0;
+  }
+
+  function openModal() {
+    lastFocus = document.activeElement;
+    resetCreate();
+    ov.classList.add('open');
+    document.body.classList.add('modal-open');
+    setTimeout(function () { $('mHostName').focus(); }, 0);
+  }
+  function closeModal() {
+    ov.classList.remove('open');
+    document.body.classList.remove('modal-open');
+    ['createGroupDlg', 'tplDlg', 'ifaceDlg'].forEach(function (id) {
+      var d = $(id); if (d && d.open) d.close();
+    });
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
   $('btnCreate').addEventListener('click', openModal);
   $('btnCancelCreate').addEventListener('click', closeModal);
+  $('createClose').addEventListener('click', closeModal);
+
+  $('hostTagAdd').addEventListener('click', function () {
+    $('hostTagRows').insertAdjacentHTML('beforeend', hostTagRowHtml());
+    var rows = qsa('#hostTagRows .host-tagrow');
+    if (rows.length) rows[rows.length - 1].querySelector('.host-tag-name').focus();
+  });
+  $('hostTagRows').addEventListener('click', function (e) {
+    var btn = e.target.closest('.host-tag-remove');
+    if (!btn) return;
+    var row = btn.closest('.host-tagrow');
+    if (row) row.remove();
+  });
+
+  $('hostMacroAdd').addEventListener('click', function () {
+    closeMacroMenus();
+    var row = newHostMacroRow();
+    if (row) row.querySelector('.host-macro-name').focus();
+  });
+  $('hostMacroRows').addEventListener('click', function (e) {
+    var typeBtn = e.target.closest('.host-macro-typebtn');
+    if (typeBtn) {
+      e.stopPropagation();
+      var menu = typeBtn.parentElement.querySelector('.host-macro-menu');
+      if (!menu) return;
+      var willOpen = menu.hidden;
+      closeMacroMenus();
+      menu.hidden = !willOpen;
+      typeBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      return;
+    }
+    var opt = e.target.closest('.host-macro-menu button[data-type]');
+    if (opt) {
+      e.stopPropagation();
+      setMacroRowType(opt.closest('.host-macrow'), opt.getAttribute('data-type'));
+      return;
+    }
+    var rm = e.target.closest('.host-macro-remove');
+    if (rm) {
+      var row = rm.closest('.host-macrow');
+      if (row) row.remove();
+    }
+  });
+  $('hostMacroInheritedRows').addEventListener('click', function (e) {
+    var typeBtn = e.target.closest('.host-macro-typebtn');
+    if (typeBtn) {
+      e.stopPropagation();
+      if (typeBtn.disabled) return;
+      var item = typeBtn.closest('.host-macro-inherited-item.is-host');
+      if (!item) return;
+      var menu = typeBtn.parentElement.querySelector('.host-macro-menu');
+      if (!menu) return;
+      var willOpen = menu.hidden;
+      closeMacroMenus();
+      menu.hidden = !willOpen;
+      typeBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      return;
+    }
+    var opt = e.target.closest('.host-macro-menu button[data-type]');
+    if (opt) {
+      e.stopPropagation();
+      var optItem = opt.closest('.host-macro-inherited-item.is-host');
+      if (optItem) setInheritedMacroType(optItem, opt.getAttribute('data-type'));
+      return;
+    }
+    var rm = e.target.closest('.host-macro-inherited-remove');
+    if (rm) {
+      var rmItem = rm.closest('.host-macro-inherited-item.is-host');
+      var source = inheritedSourceRow(rmItem);
+      if (source) source.remove();
+      renderInheritedMacros();
+      return;
+    }
+    var change = e.target.closest('.host-macro-change');
+    if (change) changeInheritedSnmpMacro();
+  });
+  $('hostMacroInheritedRows').addEventListener('input', syncInheritedMacroInput);
+  $('hostMacroInheritedAdd').addEventListener('click', addInheritedHostMacro);
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.host-macro-type')) closeMacroMenus();
+  });
+  qsa('#hostMacroTabs button').forEach(function (b) {
+    b.addEventListener('click', function () { setMacroTab(b.getAttribute('data-macro-tab')); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      var tabs = qsa('#hostMacroTabs button');
+      var i = tabs.indexOf(b);
+      var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      setMacroTab(next.getAttribute('data-macro-tab'));
+      next.focus();
+    });
+  });
+  qsa('#inventoryModes button').forEach(function (b) {
+    b.addEventListener('click', function () { setInventoryMode(b.getAttribute('data-inv-mode')); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      var tabs = qsa('#inventoryModes button');
+      var i = tabs.indexOf(b);
+      var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      setInventoryMode(next.getAttribute('data-inv-mode'));
+      next.focus();
+    });
+  });
+  qsa('#encryptionToHost button').forEach(function (b) {
+    b.addEventListener('click', function () { setEncryptionToHost(b.getAttribute('data-enc-to')); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      var tabs = qsa('#encryptionToHost button');
+      var i = tabs.indexOf(b);
+      var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      setEncryptionToHost(next.getAttribute('data-enc-to'));
+      next.focus();
+    });
+  });
+  encryptionFromEls().forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var method = cb.getAttribute('data-enc-from');
+      if (cb.checked) {
+        if (method === 'none') {
+          encryptionFromEls().forEach(function (other) {
+            if (other !== cb) other.checked = false;
+          });
+        } else {
+          var none = qsa('#encryptionFromHost [data-enc-from="none"]')[0];
+          if (none) none.checked = false;
+        }
+      } else if (!encryptionFromEls().some(function (other) { return other.checked; })) {
+        cb.checked = true;
+      }
+      syncEncryptionPsk();
+    });
+  });
+  $('createHelp').addEventListener('click', function () {
+    toast('Isi Host name dan Host groups; tambahkan interface untuk alamat IP. Templates memilih profil SNMP.');
+  });
   ov.addEventListener('click', function (e) { if (e.target === ov) closeModal(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (['createGroupDlg', 'tplDlg', 'ifaceDlg'].some(function (id) {
+      var d = $(id); return d && d.open;
+    })) return;
+    if (ov.classList.contains('open')) closeModal();
+  });
+
+  qsa('.host-tab').forEach(function (b) {
+    b.addEventListener('click', function () { setCreateTab(b.getAttribute('data-tab')); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      var tabs = qsa('.host-tab');
+      var i = tabs.indexOf(b);
+      var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      setCreateTab(next.getAttribute('data-tab'));
+      next.focus();
+    });
+  });
+
+  /* ---- host group picker (satu grup utama) ---- */
+  function allCreateGroups() {
+    var cats = categories.slice();
+    allHosts.forEach(function (h) {
+      var c = h.category || 'Uncategorized';
+      if (cats.indexOf(c) === -1) cats.push(c);
+    });
+    if (cats.indexOf('Uncategorized') === -1) cats.push('Uncategorized');
+    cats.sort(function (a, b) { return norm(a) < norm(b) ? -1 : (norm(a) > norm(b) ? 1 : 0); });
+    return cats;
+  }
+  function openCreateGroups() {
+    var cats = allCreateGroups();
+    var selected = ($('mGroups').value || '').trim();
+    var fallback = cats.indexOf('Uncategorized') !== -1 ? 'Uncategorized' : cats[0];
+    $('createGroupSearch').value = '';
+    $('createGroupList').innerHTML = cats.map(function (c) {
+      var on = selected ? c === selected : c === fallback;
+      return '<label data-name="' + esc(norm(c)) + '"><input type="radio" name="createGroupPick" value="' +
+        esc(c) + '"' + (on ? ' checked' : '') + '> ' + esc(c) + '</label>';
+    }).join('');
+    $('createGroupDlg').showModal();
+    $('createGroupSearch').focus();
+  }
+  $('btnCreateGroups').addEventListener('click', openCreateGroups);
+  $('mGroups').addEventListener('click', openCreateGroups);
+  $('mGroups').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCreateGroups(); }
+  });
+  $('createGroupSearch').addEventListener('input', function () {
+    var q = norm(this.value).trim();
+    qsa('#createGroupList label').forEach(function (l) {
+      l.style.display = norm(l.getAttribute('data-name')).indexOf(q) === -1 ? 'none' : '';
+    });
+  });
+  $('createGroupCancel').addEventListener('click', function () { $('createGroupDlg').close(); });
+  $('createGroupApply').addEventListener('click', function () {
+    var sel = $('createGroupList').querySelector('input:checked');
+    if (!sel) return;
+    $('mGroups').value = sel.value;
+    $('createGroupDlg').close();
+  });
+
+  /* ---- template picker (profil SNMP) ---- */
+  function openTemplates() {
+    $('tplSearch').value = '';
+    $('tplList').innerHTML = TEMPLATE_OPTS.map(function (t, i) {
+      var on = templateValue ? t.v === templateValue : i === 0;
+      return '<label data-name="' + esc(norm(t.label + ' ' + t.desc)) + '">' +
+        '<input type="radio" name="tplPick" value="' + t.v + '"' + (on ? ' checked' : '') + '>' +
+        '<span><b>' + esc(t.label) + '</b><span class="picker-desc">' + esc(t.desc) + '</span></span>' +
+      '</label>';
+    }).join('');
+    $('tplDlg').showModal();
+    $('tplSearch').focus();
+  }
+  $('btnTemplates').addEventListener('click', openTemplates);
+  $('mTemplates').addEventListener('click', openTemplates);
+  $('mTemplates').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTemplates(); }
+  });
+  $('tplSearch').addEventListener('input', function () {
+    var q = norm(this.value).trim();
+    qsa('#tplList label').forEach(function (l) {
+      l.style.display = norm(l.getAttribute('data-name')).indexOf(q) === -1 ? 'none' : '';
+    });
+  });
+  $('tplCancel').addEventListener('click', function () { $('tplDlg').close(); });
+  $('tplApply').addEventListener('click', function () {
+    var sel = $('tplList').querySelector('input:checked');
+    if (!sel) return;
+    templateValue = sel.value;
+    var opt = TEMPLATE_OPTS.filter(function (t) { return t.v === sel.value; })[0];
+    $('mTemplates').value = opt ? opt.label : sel.value;
+    $('tplDlg').close();
+  });
+
+  /* ---- interface picker (satu interface utama) ---- */
+  function syncIfaceType() {
+    var isSnmp = $('ifaceType').value === 'snmp';
+    $('ifaceSnmpWrap').style.display = isSnmp ? '' : 'none';
+    var p = $('ifacePort').value;
+    if (!p || p === '10050' || p === '161') $('ifacePort').value = isSnmp ? 161 : 10050;
+  }
+  function openIface() {
+    $('ifaceErr').textContent = '';
+    var it = createIface || { type: 'agent', ip: $('mHostName').value.trim(), port: 10050, community: '' };
+    $('ifaceType').value = it.type || 'agent';
+    $('ifaceIp').value = it.ip || '';
+    $('ifacePort').value = it.port || (it.type === 'snmp' ? 161 : 10050);
+    $('ifaceCommunity').value = it.community || '';
+    $('ifaceTitle').textContent = createIface ? 'Edit interface' : 'Add interface';
+    $('ifaceSave').textContent = createIface ? 'Save' : 'Add';
+    syncIfaceType();
+    $('ifaceDlg').showModal();
+    setTimeout(function () { $('ifaceIp').focus(); $('ifaceIp').select(); }, 0);
+  }
+  $('btnAddIface').addEventListener('click', openIface);
+  $('createIfaces').addEventListener('click', function (e) {
+    if (e.target.closest('.iface-edit')) openIface();
+    if (e.target.closest('.iface-del')) { createIface = null; renderCreateIfaces(); }
+  });
+  $('ifaceType').addEventListener('change', syncIfaceType);
+  $('ifaceCancel').addEventListener('click', function () { $('ifaceDlg').close(); });
+  $('ifaceSave').addEventListener('click', function () {
+    var type = $('ifaceType').value;
+    var ip = $('ifaceIp').value.trim();
+    var port = parseInt($('ifacePort').value, 10);
+    var community = $('ifaceCommunity').value.trim();
+    var err = $('ifaceErr');
+    err.textContent = '';
+    if (!ip) { err.textContent = 'IP address wajib diisi.'; return; }
+    var ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+    var hostname = /^[a-zA-Z0-9]([a-zA-Z0-9.\-]{0,253}[a-zA-Z0-9])?$/;
+    if (ipv4.test(ip)) {
+      var bad = ip.split('.').some(function (p) { return parseInt(p, 10) > 255; });
+      if (bad) { err.textContent = 'Format IP tidak valid.'; return; }
+    } else if (!hostname.test(ip)) {
+      err.textContent = 'IP address / hostname tidak valid.'; return;
+    }
+    if (!port || port < 1 || port > 65535) { err.textContent = 'Port harus 1-65535.'; return; }
+    createIface = { type: type, ip: ip, port: port, community: type === 'snmp' ? community : '' };
+    renderCreateIfaces();
+    $('ifaceDlg').close();
+  });
+
+  /* ---- submit New host ---- */
   $('btnSubmitCreate').addEventListener('click', function () {
     var err = $('createErr');
     err.textContent = '';
-    var ip = $('mIp').value.trim();
-    if (!ip) { err.textContent = 'IP / hostname wajib diisi.'; return; }
+    var hostName = $('mHostName').value.trim();
+    var visible = $('mVisibleName').value.trim();
+    var group = $('mGroups').value.trim();
+    var description = $('mDescription').value.trim();
+    if (!hostName) { err.textContent = 'Host name wajib diisi.'; setCreateTab('host'); $('mHostName').focus(); return; }
+    if (!group) { err.textContent = 'Host groups wajib dipilih.'; setCreateTab('host'); $('btnCreateGroups').focus(); return; }
+    if (!$('mEnabled').checked) { err.textContent = 'Host nonaktif belum didukung. Centang Enabled untuk melanjutkan.'; setCreateTab('host'); $('mEnabled').focus(); return; }
+    var hostTags = [];
+    var badTagRow = null;
+    qsa('#hostTagRows .host-tagrow').forEach(function (row) {
+      var name = row.querySelector('.host-tag-name').value.trim();
+      var value = row.querySelector('.host-tag-value').value.trim();
+      if (!name && !value) return;
+      if (!name && !badTagRow) badTagRow = row;
+      hostTags.push({ name: name, value: value });
+    });
+    if (badTagRow) {
+      err.textContent = 'Nama tag wajib diisi.';
+      setCreateTab('tags');
+      badTagRow.querySelector('.host-tag-name').focus();
+      return;
+    }
+    var hostMacros = [];
+    var badMacroRow = null;
+    var badMacroMsg = '';
+    var seenMacros = {};
+    qsa('#hostMacroRows .host-macrow').forEach(function (row) {
+      var name = row.querySelector('.host-macro-name').value.trim();
+      var value = row.querySelector('.host-macro-value-input').value;
+      var desc = row.querySelector('.host-macro-desc').value.trim();
+      var macroType = row.getAttribute('data-macro-type') || 'text';
+      if (!name && !value && !desc) return;
+      var problem = '';
+      if (!name) problem = 'Nama macro wajib diisi.';
+      else if (!/^\{\$[^{}]+\}$/.test(name)) problem = 'Format macro harus {$MACRO}.';
+      else if (seenMacros[name.toLowerCase()]) problem = 'Macro ' + name + ' duplikat.';
+      if (problem) {
+        if (!badMacroRow) { badMacroRow = row; badMacroMsg = problem; }
+        return;
+      }
+      seenMacros[name.toLowerCase()] = true;
+      hostMacros.push({ name: name, value: value, description: desc, type: macroType });
+    });
+    if (badMacroRow) {
+      err.textContent = badMacroMsg;
+      setCreateTab('macros');
+      setMacroTab('host');
+      badMacroRow.querySelector('.host-macro-name').focus();
+      return;
+    }
+    if (encryptionPskActive()) {
+      var pskIdentity = $('encPskIdentity').value.trim();
+      var psk = $('encPsk').value.trim();
+      if (!pskIdentity) {
+        err.textContent = 'PSK identity wajib diisi.';
+        setCreateTab('encryption');
+        $('encPskIdentity').focus();
+        return;
+      }
+      if (!psk) {
+        err.textContent = 'PSK wajib diisi.';
+        setCreateTab('encryption');
+        $('encPsk').focus();
+        return;
+      }
+    }
+    var address = createIface && createIface.ip ? createIface.ip : hostName;
+    var alias = visible;
+    if (!alias && createIface && norm(createIface.ip) !== norm(hostName)) alias = hostName;
     var payload = {
-      ip: ip,
-      alias: $('mAlias').value.trim(),
-      category: $('mCategory').value.trim() || 'Uncategorized',
-      snmp_community: $('mSnmp').value.trim()
+      ip: address,
+      alias: alias,
+      category: group,
+      description: description,
+      snmp_profile: templateValue || 'auto',
+      snmp_community: createIface && createIface.type === 'snmp' ? createIface.community : '',
+      iface_type: createIface ? createIface.type : '',
+      iface_port: createIface ? createIface.port : 0,
+      ipmi_auth: $('mIpmiAuth').value,
+      ipmi_privilege: $('mIpmiPrivilege').value,
+      ipmi_username: $('mIpmiUsername').value.trim(),
+      ipmi_password: $('mIpmiPassword').value,
+      tags: hostTags,
+      macros: hostMacros,
+      inventory: inventoryPayload(),
+      encryption: encryptionPayload()
     };
     $('btnSubmitCreate').disabled = true;
     fetch('/api/hosts', {
@@ -1156,14 +2861,17 @@ td.latestc, td.probc, td.graphc, td.dashc, td.webc { white-space: nowrap; }
     }).then(function (res) {
       $('btnSubmitCreate').disabled = false;
       if (!res.ok) { err.textContent = res.body.error || 'Gagal membuat host.'; return; }
-      toast('Host ' + ip + ' dibuat');
+      toast('Host ' + address + ' dibuat');
       closeModal();
-      $('mIp').value = ''; $('mAlias').value = ''; $('mCategory').value = ''; $('mSnmp').value = '';
       load();
     }).catch(function (e) {
       $('btnSubmitCreate').disabled = false;
       err.textContent = 'Gagal: ' + e.message;
     });
+  });
+
+  $('mHostName').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); $('btnSubmitCreate').click(); }
   });
 
   /* ---------------- auto refresh ---------------- */

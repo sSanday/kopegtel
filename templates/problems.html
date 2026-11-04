@@ -56,6 +56,9 @@
   background: var(--surface-2); border-bottom: 1px solid var(--border);
 }
 .zbx-bar .grow { flex: 1; }
+.zbx-bar #barExpand { display: none; }
+.zbx-card.collapsed #barExpand { display: inline-flex; }
+.zbx-card.collapsed #barCollapse { display: none; }
 .zbx-iconbtn {
   width: 26px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; border-radius: 2px; color: var(--text-2);
@@ -89,6 +92,7 @@
   display: grid; grid-template-columns: 152px minmax(0, 1fr); gap: 6px 10px;
   align-items: center; min-height: 30px; margin-bottom: 5px;
 }
+.frow > div { min-width: 0; }
 .frow > .flabel { text-align: right; font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .frow.stack { align-items: start; }
 .frow.stack > .flabel { padding-top: 6px; }
@@ -103,6 +107,9 @@
 .zbx-filter input:focus, .zbx-filter select:focus { outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce; }
 .inline { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .inline > input[type="text"], .inline > .growin { flex: 1; }
+.invrow, .tagrow { flex-wrap: wrap; row-gap: 6px; }
+.invrow .invfield { flex: 0 0 clamp(150px, 15vw, 220px); width: clamp(150px, 15vw, 220px); }
+.tagrow .tagop { flex: 0 1 167px; width: 167px; min-width: 91px; }
 .btnselect {
   height: 28px; padding: 0 12px; background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: 2px; font-size: 12.5px;
@@ -120,7 +127,9 @@
 .seg button:hover:not(.on) { background: var(--surface-2); color: var(--text); }
 .seg button.on { background: #5d6d7e; border-color: #5d6d7e; color: #fff; }
 .seg.tight button { padding: 0 7px; }
-.showtags-line { flex-wrap: nowrap; }
+.showtags-line { flex-wrap: wrap; row-gap: 6px; }
+.showtags-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.showtags-name-label { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .cb {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2);
   cursor: pointer; white-space: nowrap; user-select: none;
@@ -172,6 +181,7 @@ table.zbx thead th .th-sort {
 }
 table.zbx thead th .th-sort:hover { color: var(--text); }
 .chev-mini { width: 10px; height: 10px; transition: transform .15s; }
+.chev-mini[hidden] { display: none; }
 .chev-mini.asc { transform: rotate(180deg); }
 th.th-cb, td.td-cb { width: 34px; padding-right: 0; }
 table.zbx tbody td {
@@ -183,12 +193,14 @@ table.zbx tbody tr:last-child td { border-bottom: none; }
 body.compact table.zbx tbody td { padding: 3px 10px; }
 body.hlrow table.zbx tbody tr[data-sev="info"] td { background: rgba(46, 119, 206, .06); }
 body.hlrow table.zbx tbody tr[data-sev="warning"] td { background: rgba(217, 161, 60, .07); }
+body.hlrow table.zbx tbody tr[data-sev="average"] td { background: rgba(142, 91, 196, .07); }
 body.hlrow table.zbx tbody tr[data-sev="high"] td { background: rgba(226, 116, 63, .08); }
 body.hlrow table.zbx tbody tr[data-sev="disaster"] td { background: rgba(229, 72, 77, .08); }
 td.sevc { white-space: nowrap; }
 .sev-badge { font-weight: 700; font-size: 11.5px; }
 .sev-info { color: #2e77ce; }
 .sev-warning { color: #b47d12; }
+.sev-average { color: #8e5bc4; }
 .sev-high { color: #d06122; }
 .sev-disaster { color: #d02f35; }
 td.statusc { white-space: nowrap; font-weight: 700; font-size: 11.5px; }
@@ -228,11 +240,55 @@ tr.detrow .pair .v.dim { color: var(--text-3); }
 tr.detrow .idchip { color: var(--text-3); font-weight: 700; font-size: 11px; }
 tr.detrow .symptoms { display: block; width: 100%; }
 
+/* ---- Status tabel, pilihan baris, dan footer ---- */
+tr.zbx-statusrow td {
+  padding: 42px 20px 44px; text-align: center; color: var(--text-3);
+  background: transparent;
+}
+tr.zbx-statusrow:hover td { background: transparent; }
+.zbx-status-title { color: var(--text-2); font-size: 14px; font-weight: 600; }
+.zbx-status-detail { margin-top: 5px; font-size: 12px; color: var(--text-3); }
+.zbx-status-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.zbx-status-actions .zbtn { height: 27px; padding: 0 13px; font-size: 12px; }
+.zbx-status-spinner {
+  display: inline-block; width: 18px; height: 18px; margin-bottom: 10px;
+  border: 2px solid var(--border); border-top-color: #2e77ce; border-radius: 50%;
+  animation: zbx-spin .8s linear infinite;
+}
+@keyframes zbx-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .zbx-status-spinner { animation: none; border-top-color: var(--text-3); }
+}
+.zbx-selection {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 10px; padding: 8px 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 4px; font-size: 12.5px; color: var(--text-2);
+}
+.zbx-selection[hidden] { display: none; }
+.zbx-selection .sel-count { color: var(--text); font-weight: 600; }
+.zbx-selection .sel-spacer { flex: 1; }
+.zbx-selection .zbtn { height: 27px; padding: 0 12px; font-size: 12px; }
+.zbx-selection .zbtn[disabled] { opacity: .55; cursor: default; }
+.zbx-selection .linkbtn { font-size: 12px; }
+.zbx-tfoot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 12px; border-top: 1px solid var(--border);
+  color: var(--text-3); font-size: 11.5px;
+}
+.zbx-tfoot .grow { flex: 1; }
+.zbx-tfoot #resultSummary { color: var(--text-2); }
+
 /* ---- Timeline ---- */
 .zbx-timeline { border-top: 1px solid var(--border); padding: 9px 12px 10px; }
 .zbx-timeline .tl-axis { position: relative; height: 16px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
 .tl-bar { position: absolute; top: 4px; height: 8px; border-radius: 1px; opacity: .9; }
-.tl-labels { display: flex; justify-content: space-between; color: var(--text-3); font-size: 10.5px; margin-top: 4px; }
+.tl-labels {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 3px 12px; color: var(--text-3); font-size: 10.5px; margin-top: 4px;
+}
+.tl-legend { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; }
+.tl-legend .lg { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tl-legend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
 /* ---- Popover (Select / Save as) ---- */
 .zbx-pop {
@@ -246,6 +302,94 @@ tr.detrow .symptoms { display: block; width: 100%; }
 }
 .zbx-pop .pop-item:hover { background: var(--surface-2); color: var(--text); }
 .zbx-pop .pop-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+/* ---- Dialog pilih Host groups (gaya Zabbix) ---- */
+.zbx-picker-backdrop {
+  position: fixed; inset: 0; z-index: 160;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 24px; background: rgba(0, 0, 0, .45);
+}
+.zbx-picker-backdrop[hidden] { display: none; }
+.zbx-picker {
+  display: flex; flex-direction: column; width: min(640px, 100%); max-height: 72vh;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 3px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .42);
+}
+.zbx-picker-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 4px; }
+.zbx-picker-head h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 700; line-height: 22px; }
+.zbx-picker-close {
+  width: 24px; height: 24px; margin: -2px -4px 0 0; padding: 0; border: none; background: none;
+  color: var(--text-3); font-size: 21px; line-height: 1; cursor: pointer;
+  font-family: inherit; border-radius: 2px;
+}
+.zbx-picker-close:hover { color: var(--text); background: var(--surface-2); }
+.zbx-picker-body { overflow: auto; padding: 8px 18px 0; }
+.zbx-picker-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.zbx-picker-table th {
+  padding: 6px 8px 7px; border-bottom: 1px solid var(--border-strong);
+  color: var(--text-3); text-align: left; font-weight: 700; font-size: 12px;
+}
+.zbx-picker-table th:first-child,
+.zbx-picker-table td:first-child { width: 32px; padding-left: 0; }
+.zbx-picker-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+.zbx-picker-table tbody tr:last-child td { border-bottom: none; }
+.zbx-picker-table tbody tr:hover { background: var(--surface-2); }
+.zbx-picker-table input[type="checkbox"] {
+  width: 15px; height: 15px; margin: 0; vertical-align: middle;
+  accent-color: #2e77ce; cursor: pointer;
+}
+.zbx-picker-name { color: #2e77ce; text-decoration: none; cursor: pointer; }
+.zbx-picker-name:hover, .zbx-picker-name:focus-visible { text-decoration: underline; }
+.zbx-picker-empty { padding: 16px 0 18px; color: var(--text-3); font-size: 12.5px; }
+.zbx-picker-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px 16px; }
+.zbx-picker-foot button {
+  height: 29px; padding: 0 15px; border-radius: 2px;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.zbx-picker-foot .ok { background: #2e77ce; border: 1px solid #2e77ce; color: #fff; }
+.zbx-picker-foot .ok:hover { background: #2b6cbb; border-color: #2b6cbb; }
+.zbx-picker-foot .cancel { background: transparent; border: 1px solid #2e77ce; color: #2e77ce; }
+.zbx-picker-foot .cancel:hover { background: rgba(46, 119, 206, .1); }
+
+/* ---- Dialog Triggers / Hosts (alur pilih trigger gaya Zabbix) ---- */
+.zbx-picker--wide { width: min(668px, 100%); }
+.zbx-picker--tall .zbx-picker-body { display: flex; flex-direction: column; min-height: 300px; }
+.zbx-picker-filter {
+  display: grid; grid-template-columns: 100px minmax(0, 292px) auto;
+  justify-content: start; gap: 10px; align-items: center; margin: 4px 0 14px;
+}
+.zbx-picker-filter > label {
+  text-align: right; font-size: 12.5px; color: var(--text-2); white-space: nowrap;
+}
+.zbx-picker-filter input[type="text"] {
+  height: 28px; padding: 0 8px; font-size: 12.5px; font-family: inherit;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 2px; box-sizing: border-box; min-width: 0;
+}
+.zbx-picker-filter input[type="text"]::placeholder { color: var(--text-3); }
+.zbx-picker-filter input[type="text"]:focus {
+  outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce;
+}
+.zbx-picker-filter .pickbtn {
+  height: 28px; padding: 0 12px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 2px; font-size: 12.5px;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+}
+.zbx-picker-filter .pickbtn:hover { border-color: var(--text-3); }
+.zbx-picker-table th.col-cb,
+.zbx-picker-table td.col-cb { width: 32px; }
+.zbx-picker-table th.col-sev { width: 238px; }
+.zbx-picker-table th.col-status { width: 164px; }
+.zbx-picker-blank {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 36px 0 24px; text-align: center; color: var(--text-3);
+}
+.zbx-picker-blank[hidden] { display: none; }
+.zbx-picker-blank svg { width: 42px; height: 42px; color: var(--text-3); }
+.zbx-picker-blank .t { font-size: 14px; color: var(--text-2); }
+.zbx-picker-blank .s { font-size: 13px; }
+.zbx-picker-blank p { margin: 0; }
 
 /* ---- Dialog bantuan ---- */
 .zbx-dialog {
@@ -262,6 +406,16 @@ tr.detrow .symptoms { display: block; width: 100%; }
 body.kiosk .app { grid-template-columns: minmax(0, 1fr); }
 body.kiosk .sidebar { display: none; }
 body.kiosk .header { display: none; }
+.kiosk-exit {
+  display: none; position: fixed; top: 14px; right: 16px; z-index: 400;
+  align-items: center; gap: 7px; height: 32px; padding: 0 13px;
+  background: #2e77ce; color: #fff; border: none; border-radius: 3px;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .28);
+}
+.kiosk-exit:hover { background: #2b6cbb; }
+.kiosk-exit svg { width: 14px; height: 14px; }
+body.kiosk .kiosk-exit { display: inline-flex; }
 
 /* toast */
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 300; }
@@ -274,9 +428,8 @@ body.kiosk .header { display: none; }
 .toast.success svg { color: #3fb27f; }
 .toast.error svg { color: #e5484d; }
 
-@media (max-width: 980px) {
+@media (max-width: 1280px) {
   .zbx-fgrid { grid-template-columns: 1fr; }
-  .showtags-line { flex-wrap: wrap; }
   .viewgrid { padding-left: 0; }
 }
 @media (max-width: 720px) {
@@ -285,8 +438,275 @@ body.kiosk .header { display: none; }
   .frow > .flabel { text-align: left; }
   .sev6 { grid-template-columns: repeat(2, max-content); }
   .viewgrid { grid-template-columns: 1fr; }
+  .zbx-picker-backdrop { padding-top: 24px; }
+  .zbx-picker { max-height: 84vh; }
+  .zbx-picker-filter { grid-template-columns: minmax(0, 1fr) auto; }
+  .zbx-picker-filter > label { grid-column: 1 / -1; text-align: left; }
+  .tagrow .tagop { flex: 1 1 auto; width: auto; min-width: 110px; }
+}
+
+/* ---- Dialog pilih Hosts (gaya Zabbix) ---- */
+.zbx-hostpicker { width: min(668px, 100%); min-height: 460px; max-height: 78vh; }
+.zbx-hostpicker-body {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+  overflow: auto; padding: 6px 18px 0;
+}
+.zbx-hostpicker-filter {
+  display: grid; grid-template-columns: 84px minmax(0, 302px) auto; gap: 6px;
+  align-items: center; justify-content: start; padding: 2px 0 16px;
+}
+.zbx-hostpicker-flabel { color: var(--text-2); font-size: 12.5px; text-align: right; white-space: nowrap; }
+.zbx-hostpicker-input {
+  height: 24px; padding: 0 7px; box-sizing: border-box; min-width: 0;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 2px; font-family: inherit; font-size: 12.5px;
+}
+.zbx-hostpicker-input::placeholder { color: var(--text-3); }
+.zbx-hostpicker-input:focus { outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce; }
+.zbx-hostpicker-select {
+  height: 24px; padding: 0 12px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 2px; font-family: inherit;
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.zbx-hostpicker-select:hover { border-color: var(--text-3); }
+.zbx-hostpicker .zbx-picker-table th:first-child,
+.zbx-hostpicker .zbx-picker-table td:first-child { width: 26px; }
+.zbx-hostpicker .zbx-picker-table th:nth-child(2),
+.zbx-hostpicker .zbx-picker-table td:nth-child(2) { padding-left: 2px; }
+.zbx-hostpicker-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; min-height: 200px; padding: 24px 0;
+  text-align: center; color: var(--text-3);
+}
+.zbx-hostpicker-empty[hidden] { display: none; }
+.zbx-hostpicker-empty svg { width: 38px; height: 38px; margin-bottom: 10px; stroke-width: 1.6; }
+.zbx-hostpicker-empty .t1 { margin: 0; color: var(--text-2); font-size: 15px; }
+.zbx-hostpicker-empty .t2 { margin: 0; font-size: 12.5px; color: var(--text-3); }
+
+/* ---- Dialog pilih Host groups dari dialog Hosts ---- */
+.zbx-hgpick-backdrop { z-index: 170; background: rgba(0, 0, 0, .35); }
+.zbx-hostgrouppicker { width: min(668px, 100%); min-height: 184px; max-height: 60vh; }
+.zbx-hostgrouppicker-body { flex: 1; overflow: auto; padding: 14px 18px 0; }
+.zbx-hostgrouppicker .zbx-picker-table th:first-child,
+.zbx-hostgrouppicker .zbx-picker-table td:first-child { width: auto; padding-left: 0; }
+.zbx-hostgrouppicker .zbx-picker-table td { border-bottom: none; padding-top: 9px; padding-bottom: 2px; }
+
+@media (max-width: 720px) {
+  .zbx-hostpicker { min-height: 0; }
+  .zbx-hostpicker-filter { grid-template-columns: 84px minmax(0, 1fr) auto; }
+}
+
+/* ============ Tampilan History (khusus Show = History) ============ */
+/* Semua aturan di bawah hanya aktif saat History dipilih. Recent problems
+   dan Problems tetap memakai tampilan aslinya. */
+.zbx.history-mode {
+  --zbx-card-border: var(--border);
+  --zbx-input-border: var(--border);
+  --zbx-header-border: var(--border);
+  --zbx-bar-bg: var(--surface-2);
+  --zbx-input-bg: var(--bg);
+  --zbx-label: var(--text-2);
+  --zbx-muted: var(--text-3);
+  --zbx-blue: #2e77ce;
+  --zbx-blue-hover: #2b6cbb;
+  --zbx-active: #5d6d7e;
+  padding: 16px 10px 40px;
+}
+[data-theme="light"] .zbx.history-mode {
+  --zbx-card-border: #dfe4e7;
+  --zbx-input-border: #acbdc2;
+  --zbx-header-border: #dce2e5;
+  --zbx-bar-bg: #ebeeef;
+  --zbx-input-bg: #fff;
+  --zbx-label: #1f2c33;
+  --zbx-muted: #6b777d;
+  --zbx-blue: #0275b8;
+  --zbx-blue-hover: #02679f;
+  --zbx-active: #768d99;
+}
+[data-theme="light"] body.problems-history-mode { background: #ebeeef; }
+
+.zbx.history-mode .zbx-card {
+  border: 1px solid var(--zbx-card-border); border-radius: 2px;
+}
+.zbx.history-mode .zbx-bar {
+  background: var(--zbx-bar-bg); border-bottom: 1px solid var(--zbx-card-border);
+}
+.zbx.history-mode .zbx-iconbtn.on { color: var(--zbx-blue); }
+.zbx.history-mode .zbx-nav .nbtn {
+  border: 1px solid var(--zbx-card-border); color: var(--zbx-muted);
+}
+.zbx.history-mode .zbx-nav .nbtn:hover:not([disabled]) { border-color: var(--zbx-muted); }
+.zbx.history-mode .zbx-fbody { padding: 15px 9px 8px; }
+.zbx.history-mode .zbx-fgrid {
+  grid-template-columns: minmax(0, .84fr) minmax(0, 1fr); gap: 0 14px;
+}
+.zbx.history-mode .frow {
+  grid-template-columns: 147px minmax(0, 1fr); gap: 6px 12px; margin-bottom: 4px;
+}
+.zbx.history-mode .frow[hidden] { display: none; }
+.zbx.history-mode .zbx-fcol > .frow:last-child { margin-bottom: 0; }
+.zbx.history-mode .frow > .flabel { color: var(--zbx-label); }
+.zbx.history-mode .frow.stack { align-items: start; margin-bottom: 6px; }
+.zbx.history-mode .frow.stack > .flabel { padding-top: 6px; }
+.zbx.history-mode .frow.inv-frow { align-items: start; margin-bottom: 10px; }
+.zbx.history-mode .frow.inv-frow > .flabel { padding-top: 3px; }
+.zbx.history-mode .frow.ctrlrow { align-items: start; }
+.zbx.history-mode .frow.ctrlrow > .flabel { line-height: 24px; }
+.zbx.history-mode .frow.sevrow { min-height: 50px; align-items: start; }
+.zbx.history-mode #ageRow { display: none; }
+.zbx.history-mode .zbx-filter input[type="text"],
+.zbx.history-mode .zbx-filter input[type="number"],
+.zbx.history-mode .zbx-filter select {
+  background: var(--zbx-input-bg); color: var(--zbx-label);
+  border: 1px solid var(--zbx-input-border); border-radius: 2px;
+  height: 24px; padding: 0 7px; font-size: 12px;
+}
+.zbx.history-mode .zbx-filter input[type="text"]::placeholder { color: var(--zbx-muted); }
+.zbx.history-mode .zbx-filter input:focus,
+.zbx.history-mode .zbx-filter select:focus {
+  outline: 1px solid var(--zbx-blue); outline-offset: -1px; border-color: var(--zbx-blue);
+}
+.zbx.history-mode .inline { gap: 5px; }
+.zbx.history-mode .btnselect {
+  height: 24px; padding: 0 8px; background: var(--surface); color: var(--zbx-label);
+  border: 1px solid var(--zbx-input-border); border-radius: 2px; font-size: 12px;
+}
+.zbx.history-mode .btnselect:hover { border-color: var(--zbx-muted); }
+.zbx.history-mode .seg {
+  background: none; border: 0; border-radius: 0; padding: 0; gap: 0;
+}
+.zbx.history-mode .frow > .seg { justify-self: start; }
+.zbx.history-mode #tagPriority { width: 300px; max-width: 100%; }
+.zbx.history-mode #fProblem { width: 300px; max-width: 100%; }
+.zbx.history-mode .invrow .invfield { flex: 0 0 206px; width: 206px; }
+.zbx.history-mode .invrow .invvalue { flex: 0 0 149px; width: 149px; }
+.zbx.history-mode .tagrow .tagname {
+  flex: 0 0 149px; width: 149px; max-width: none !important;
+}
+.zbx.history-mode .tagrow .tagop { flex: 0 1 167px; width: 167px; min-width: 91px; }
+.zbx.history-mode .tagrow .tagvalue { flex: 0 0 149px; width: 149px; }
+.zbx.history-mode .seg button {
+  height: 24px; padding: 0 10px; background: var(--surface);
+  border: 1px solid var(--zbx-input-border); border-right: none;
+  color: var(--zbx-label); font-size: 12px;
+}
+.zbx.history-mode .seg button:last-child {
+  border-right: 1px solid var(--zbx-input-border);
+}
+.zbx.history-mode .seg button:hover:not(.on) { background: var(--surface-2); color: var(--text); }
+.zbx.history-mode .seg button.on {
+  background: var(--zbx-active); border-color: var(--zbx-active); color: #fff;
+}
+.zbx.history-mode .seg.tight button { padding: 0 7px; }
+.zbx.history-mode #segShowTags { width: 141px; margin-right: 10px; }
+.zbx.history-mode #segShowTags button { padding: 0; }
+.zbx.history-mode #segShowTags button:first-child { width: 48px; }
+.zbx.history-mode #segShowTags button:not(:first-child) { flex: 1; min-width: 0; }
+.zbx.history-mode #segTagName button { padding: 0 10px; }
+.zbx.history-mode #segTagOp button,
+.zbx.history-mode #segOpData button,
+.zbx.history-mode #segAck button { padding: 0 9px; }
+.zbx.history-mode .showtags-line { flex-wrap: wrap; row-gap: 6px; }
+.zbx.history-mode .cb {
+  font-size: 12px; color: var(--zbx-label);
+}
+.zbx.history-mode .cb.cb-right { flex-direction: row-reverse; }
+.zbx.history-mode .cb input[type="checkbox"],
+.zbx.history-mode .sev6 input,
+.zbx.history-mode .zbx-cbcell input { accent-color: var(--zbx-blue); }
+.zbx.history-mode .sev6 {
+  grid-template-columns: 1.24fr 1fr .9fr; gap: 10px 0; align-items: center;
+}
+.zbx.history-mode .age-row .unit { font-size: 12px; color: var(--zbx-label); }
+.zbx.history-mode .age-row input[type="number"]:disabled { color: var(--zbx-muted); }
+.zbx.history-mode .cb-after { min-height: 24px; }
+.zbx.history-mode .linkbtn { color: var(--zbx-blue); font-size: 12px; }
+.zbx.history-mode .viewgrid {
+  grid-template-columns: 99px 1fr; width: 346px;
+  max-width: calc(100% - 73px); margin-left: 73px; padding: 4px 0 0; gap: 16px 0;
+}
+.zbx.history-mode .viewgrid .cb { gap: 12px; font-size: 11px; line-height: 18px; }
+.zbx.history-mode .viewgrid .cb:nth-child(odd) { width: 99px; justify-self: start; }
+.zbx.history-mode .viewgrid .cb:nth-child(even) { justify-self: end; }
+.zbx.history-mode .zbx-factions {
+  margin-top: 0; padding: 10px 0; border-top: 1px solid var(--zbx-card-border);
+}
+.zbx.history-mode .zbtn {
+  height: 24px; padding: 0 16px; border: 1px solid var(--zbx-blue);
+  color: var(--zbx-blue); font-size: 12px;
+}
+.zbx.history-mode .zbtn:hover { background: rgba(2, 117, 184, .08); }
+.zbx.history-mode .zbtn.primary { background: var(--zbx-blue); color: #fff; }
+.zbx.history-mode .zbtn.primary:hover { background: var(--zbx-blue-hover); }
+.zbx.history-mode .zbx-table-wrap {
+  margin-top: 9px; border: 1px solid var(--zbx-card-border); border-radius: 2px;
+}
+.zbx.history-mode .zbx-scroll { min-height: 150px; }
+.zbx.history-mode table.zbx {
+  table-layout: fixed; font-size: 12px; min-width: 1164px;
+}
+.zbx.history-mode table.zbx thead th {
+  color: var(--zbx-muted); padding: 6px 5px; line-height: 17px;
+  border-bottom: 1px solid var(--zbx-header-border);
+}
+.zbx.history-mode table.zbx thead th.th-link { color: var(--zbx-blue); }
+.zbx.history-mode table.zbx thead th .th-sort { color: var(--zbx-blue); }
+.zbx.history-mode table.zbx thead th .th-sort:hover { color: var(--zbx-blue-hover); }
+.zbx.history-mode table.zbx thead th:nth-child(1) { width: 26px; }
+.zbx.history-mode table.zbx thead th:nth-child(2) { width: 60px; }
+.zbx.history-mode table.zbx thead th:nth-child(3) { width: 135px; }
+.zbx.history-mode table.zbx thead th:nth-child(4) { width: 87px; }
+.zbx.history-mode table.zbx thead th:nth-child(5) { width: 111px; }
+.zbx.history-mode table.zbx thead th:nth-child(6) { width: 76px; }
+.zbx.history-mode table.zbx thead th:nth-child(7) { width: 88px; }
+.zbx.history-mode table.zbx thead th:nth-child(8) { width: 138px; }
+.zbx.history-mode table.zbx thead th:nth-child(9) { width: 141px; }
+.zbx.history-mode table.zbx thead th:nth-child(10) { width: 122px; }
+.zbx.history-mode table.zbx thead th:nth-child(11) { width: 125px; }
+.zbx.history-mode table.zbx thead th:nth-child(12) { width: 55px; }
+.zbx.history-mode th.th-cb,
+.zbx.history-mode td.td-cb { padding-right: 5px; }
+.zbx.history-mode th.th-cb input,
+.zbx.history-mode td.td-cb input {
+  width: 16px; height: 16px; margin: 0; accent-color: var(--zbx-blue);
+}
+.zbx.history-mode th.th-cb input { display: block; }
+.zbx.history-mode table.zbx tbody td {
+  padding: 8px 5px; border-bottom: 1px solid var(--zbx-header-border);
+  color: var(--zbx-label);
+}
+.zbx.history-mode table.zbx tbody tr:last-child td { border-bottom: none; }
+body.compact .zbx.history-mode table.zbx tbody td { padding: 3px 5px; }
+.zbx.history-mode td.probc { min-width: 0; }
+.zbx.history-mode .zbx-timeline { border-top: 1px solid var(--zbx-header-border); }
+@media (max-width: 1280px) {
+  .zbx.history-mode .zbx-fgrid { grid-template-columns: 1fr; }
+  .zbx.history-mode .viewgrid {
+    width: auto; max-width: none; margin-left: 0; gap: 9px 24px;
+  }
+}
+@media (max-width: 720px) {
+  .zbx.history-mode .frow { grid-template-columns: 1fr; }
+  .zbx.history-mode .frow > .flabel { text-align: left; }
+  .zbx.history-mode .frow.sevrow { min-height: 0; }
+  .zbx.history-mode .invrow .invfield,
+  .zbx.history-mode .invrow .invvalue,
+  .zbx.history-mode .tagrow .tagname,
+  .zbx.history-mode .tagrow .tagop,
+  .zbx.history-mode .tagrow .tagvalue {
+    flex: 1 1 auto; width: auto; min-width: 0;
+  }
+  .zbx.history-mode .viewgrid {
+    grid-template-columns: 1fr; width: auto; max-width: none; margin-left: 0; gap: 9px;
+  }
+  .zbx.history-mode .viewgrid .cb:nth-child(odd),
+  .zbx.history-mode .viewgrid .cb:nth-child(even) { width: auto; justify-self: start; }
 }
 </style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -318,6 +738,31 @@ body.kiosk .header { display: none; }
           <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
         </div>
       </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
       <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
       <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
     </nav>
@@ -405,7 +850,7 @@ body.kiosk .header { display: none; }
           <div class="zbx-fgrid">
             <!-- kolom kiri -->
             <div class="zbx-fcol">
-              <div class="frow">
+              <div class="frow ctrlrow">
                 <span class="flabel">Show</span>
                 <div class="seg" id="segShow">
                   <button type="button" data-show="recent" class="on">Recent problems</button>
@@ -413,14 +858,14 @@ body.kiosk .header { display: none; }
                   <button type="button" data-show="history">History</button>
                 </div>
               </div>
-              <div class="frow">
+              <div class="frow ctrlrow">
                 <label class="flabel" for="fGroup">Host groups</label>
                 <div class="inline">
                   <input type="text" id="fGroup" placeholder="type here to search" autocomplete="off">
                   <button type="button" class="btnselect" id="btnGroupSelect">Select</button>
                 </div>
               </div>
-              <div class="frow">
+              <div class="frow ctrlrow">
                 <label class="flabel" for="fHost">Hosts</label>
                 <div class="inline">
                   <input type="text" id="fHost" placeholder="type here to search" autocomplete="off" list="hostOptions">
@@ -428,29 +873,29 @@ body.kiosk .header { display: none; }
                   <button type="button" class="btnselect" id="btnHostSelect">Select</button>
                 </div>
               </div>
-              <div class="frow">
+              <div class="frow ctrlrow">
                 <label class="flabel" for="fTriggers">Triggers</label>
                 <div class="inline">
                   <input type="text" id="fTriggers" placeholder="type here to search" autocomplete="off">
                   <button type="button" class="btnselect" id="btnTriggerSelect">Select</button>
                 </div>
               </div>
-              <div class="frow">
+              <div class="frow ctrlrow">
                 <label class="flabel" for="fProblem">Problem</label>
                 <input type="text" id="fProblem" autocomplete="off">
               </div>
-              <div class="frow">
+              <div class="frow sevrow">
                 <span class="flabel">Severity</span>
                 <div class="sev6">
                   <label class="cb"><input type="checkbox" class="sev" value="not_classified">Not classified</label>
-                  <label class="cb"><input type="checkbox" class="sev" value="warning">Warning</label>
-                  <label class="cb"><input type="checkbox" class="sev" value="high">High</label>
                   <label class="cb"><input type="checkbox" class="sev" value="information">Information</label>
+                  <label class="cb"><input type="checkbox" class="sev" value="warning">Warning</label>
                   <label class="cb"><input type="checkbox" class="sev" value="average">Average</label>
+                  <label class="cb"><input type="checkbox" class="sev" value="high">High</label>
                   <label class="cb"><input type="checkbox" class="sev" value="disaster">Disaster</label>
                 </div>
               </div>
-              <div class="frow">
+              <div class="frow" id="ageRow">
                 <span class="flabel">Age less than</span>
                 <div class="age-row">
                   <label class="cb"><input type="checkbox" id="ageOn"></label>
@@ -474,14 +919,14 @@ body.kiosk .header { display: none; }
                     <button type="button" data-ack="unack">Unacknowledged</button>
                     <button type="button" data-ack="ack">Acknowledged</button>
                   </div>
-                  <label class="cb"><input type="checkbox" id="byMe">By me</label>
+                  <label class="cb cb-right"><input type="checkbox" id="byMe">By me</label>
                 </div>
               </div>
             </div>
 
             <!-- kolom kanan -->
             <div class="zbx-fcol">
-              <div class="frow">
+              <div class="frow inv-frow">
                 <span class="flabel">Host inventory</span>
                 <div>
                   <div id="invRows"></div>
@@ -514,12 +959,14 @@ body.kiosk .header { display: none; }
                     <button type="button" data-n="2">2</button>
                     <button type="button" data-n="3" class="on">3</button>
                   </div>
-                  <span style="font-size:12px;color:var(--text-2);white-space:nowrap;">Tag name</span>
-                  <div class="seg tight" id="segTagName">
-                    <button type="button" data-nm="full" class="on">Full</button>
-                    <button type="button" data-nm="shortened">Shortened</button>
-                    <button type="button" data-nm="none">None</button>
-                  </div>
+                  <span class="showtags-name">
+                    <span class="showtags-name-label">Tag name</span>
+                    <div class="seg tight" id="segTagName">
+                      <button type="button" data-nm="full" class="on">Full</button>
+                      <button type="button" data-nm="shortened">Shortened</button>
+                      <button type="button" data-nm="none">None</button>
+                    </div>
+                  </span>
                 </div>
               </div>
 
@@ -538,10 +985,10 @@ body.kiosk .header { display: none; }
               </div>
 
               <div class="viewgrid">
-                <label class="cb"><input type="checkbox" id="optCompact">Compact view</label>
-                <label class="cb"><input type="checkbox" id="optTimeline" checked>Show timeline</label>
-                <label class="cb"><input type="checkbox" id="optDetails">Show details</label>
-                <label class="cb"><input type="checkbox" id="optHighlight">Highlight whole row</label>
+                <label class="cb cb-right"><input type="checkbox" id="optCompact">Compact view</label>
+                <label class="cb cb-right"><input type="checkbox" id="optTimeline" checked>Show timeline</label>
+                <label class="cb cb-right"><input type="checkbox" id="optDetails">Show details</label>
+                <label class="cb cb-right"><input type="checkbox" id="optHighlight">Highlight whole row</label>
               </div>
             </div>
           </div>
@@ -554,6 +1001,14 @@ body.kiosk .header { display: none; }
         </div>
       </div>
 
+      <div class="zbx-selection" id="selectionBar" hidden>
+        <span><span class="sel-count" id="selCount">0</span> selected</span>
+        <span class="sel-spacer"></span>
+        <button type="button" class="zbtn" id="selAck">Ack selected</button>
+        <button type="button" class="zbtn" id="selUnack">Unack selected</button>
+        <button type="button" class="linkbtn" id="selClear">Clear</button>
+      </div>
+
       <!-- ======== TABEL ======== -->
       <div class="zbx-table-wrap">
         <div class="zbx-scroll">
@@ -561,17 +1016,29 @@ body.kiosk .header { display: none; }
             <thead>
               <tr>
                 <th class="th-cb"><input type="checkbox" id="cbAll" aria-label="Pilih semua masalah"></th>
-                <th>
+                <th data-sort-field="time" aria-sort="descending">
                   <button class="th-sort" id="sortTime" type="button" aria-label="Urutkan berdasarkan waktu">Time
                     <svg class="chev-mini" id="chevTime" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                   </button>
                 </th>
-                <th>Severity</th>
+                <th data-sort-field="severity" aria-sort="none">
+                  <button class="th-sort" id="sortSeverity" type="button" aria-label="Urutkan berdasarkan severity">Severity
+                    <svg class="chev-mini" id="chevSeverity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </th>
                 <th>Recovery time</th>
                 <th>Status</th>
                 <th>Info</th>
-                <th>Host</th>
-                <th>Problem</th>
+                <th data-sort-field="host" aria-sort="none">
+                  <button class="th-sort" id="sortHost" type="button" aria-label="Urutkan berdasarkan host">Host
+                    <svg class="chev-mini" id="chevHost" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </th>
+                <th data-sort-field="problem" aria-sort="none">
+                  <button class="th-sort" id="sortProblem" type="button" aria-label="Urutkan berdasarkan problem">Problem
+                    <svg class="chev-mini" id="chevProblem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                </th>
                 <th>Duration</th>
                 <th>Update</th>
                 <th>Actions</th>
@@ -583,10 +1050,139 @@ body.kiosk .header { display: none; }
         </div>
         <div class="zbx-timeline" id="timeline" hidden>
           <div class="tl-axis" id="tlAxis"></div>
-          <div class="tl-labels"><span id="tlFrom"></span><span id="tlTo"></span></div>
+          <div class="tl-labels">
+            <span id="tlFrom"></span>
+            <span class="tl-legend" id="tlLegend"></span>
+            <span id="tlTo"></span>
+          </div>
+        </div>
+        <div class="zbx-tfoot">
+          <span id="resultSummary" aria-live="polite">—</span>
+          <span class="grow"></span>
+          <span id="refreshInfo">Auto-refresh in 30s</span>
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- dialog pilih Host groups (gaya Zabbix) -->
+<div class="zbx-picker-backdrop" id="groupPicker" hidden>
+  <div class="zbx-picker" role="dialog" aria-modal="true" aria-labelledby="groupPickerTitle">
+    <div class="zbx-picker-head">
+      <h2 id="groupPickerTitle">Host groups</h2>
+      <button type="button" class="zbx-picker-close" id="groupPickerClose" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="zbx-picker-body">
+      <table class="zbx-picker-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="groupPickerAll" aria-label="Pilih semua host group"></th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody id="groupPickerRows"></tbody>
+      </table>
+      <div class="zbx-picker-empty" id="groupPickerEmpty" hidden>Tidak ada host group yang cocok.</div>
+    </div>
+    <div class="zbx-picker-foot">
+      <button type="button" class="ok" id="groupPickerOk">Select</button>
+      <button type="button" class="cancel" id="groupPickerCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- dialog pilih Hosts (gaya Zabbix) -->
+<div class="zbx-picker-backdrop" id="hostPicker" hidden>
+  <div class="zbx-picker zbx-hostpicker" role="dialog" aria-modal="true" aria-labelledby="hostPickerTitle">
+    <div class="zbx-picker-head">
+      <h2 id="hostPickerTitle">Hosts</h2>
+      <button type="button" class="zbx-picker-close" id="hostPickerClose" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="zbx-hostpicker-body">
+      <div class="zbx-hostpicker-filter">
+        <label class="zbx-hostpicker-flabel" for="hostPickGroup">Host group</label>
+        <input type="text" class="zbx-hostpicker-input" id="hostPickGroup" placeholder="type here to search" autocomplete="off">
+        <button type="button" class="zbx-hostpicker-select" id="hostPickGroupSelect">Select</button>
+      </div>
+      <table class="zbx-picker-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="hostPickAll" aria-label="Pilih semua host"></th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody id="hostPickRows"></tbody>
+      </table>
+      <div class="zbx-hostpicker-empty" id="hostPickEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5z"/></svg>
+        <p class="t1">Filter is not set</p>
+        <p class="t2">Use the filter to display results</p>
+      </div>
+    </div>
+    <div class="zbx-picker-foot">
+      <button type="button" class="ok" id="hostPickOk">Select</button>
+      <button type="button" class="cancel" id="hostPickCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- dialog pilih Host groups dari dialog Hosts -->
+<div class="zbx-picker-backdrop zbx-hgpick-backdrop" id="hostGroupPicker" hidden>
+  <div class="zbx-picker zbx-hostgrouppicker" role="dialog" aria-modal="true" aria-labelledby="hostGroupPickerTitle">
+    <div class="zbx-picker-head">
+      <h2 id="hostGroupPickerTitle">Host groups</h2>
+      <button type="button" class="zbx-picker-close" id="hostGroupPickerClose" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="zbx-hostgrouppicker-body">
+      <table class="zbx-picker-table">
+        <thead>
+          <tr><th>Name</th></tr>
+        </thead>
+        <tbody id="hostGroupPickerRows"></tbody>
+      </table>
+      <div class="zbx-picker-empty" id="hostGroupPickerEmpty" hidden>Tidak ada host group yang cocok.</div>
+    </div>
+    <div class="zbx-picker-foot">
+      <button type="button" class="cancel" id="hostGroupPickerCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- dialog pilih Triggers (gaya Zabbix) -->
+<div class="zbx-picker-backdrop" id="triggerPicker" hidden>
+  <div class="zbx-picker zbx-picker--wide zbx-picker--tall" role="dialog" aria-modal="true" aria-labelledby="triggerPickerTitle">
+    <div class="zbx-picker-head">
+      <h2 id="triggerPickerTitle">Triggers</h2>
+      <button type="button" class="zbx-picker-close" id="triggerPickerClose" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="zbx-picker-body">
+      <div class="zbx-picker-filter">
+        <label for="triggerPickerHost">Host</label>
+        <input type="text" id="triggerPickerHost" placeholder="type here to search" autocomplete="off">
+        <button type="button" class="pickbtn" id="triggerPickerHostSelect">Select</button>
+      </div>
+      <table class="zbx-picker-table">
+        <thead>
+          <tr>
+            <th class="col-cb"><input type="checkbox" id="triggerPickerAll" aria-label="Pilih semua trigger"></th>
+            <th>Name</th>
+            <th class="col-sev">Severity</th>
+            <th class="col-status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="triggerPickerRows"></tbody>
+      </table>
+      <div class="zbx-picker-blank" id="triggerPickerEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8L3 5z"/></svg>
+        <p class="t">Filter is not set</p>
+        <p class="s">Use the filter to display results</p>
+      </div>
+    </div>
+    <div class="zbx-picker-foot">
+      <button type="button" class="ok" id="triggerPickerOk">Select</button>
+      <button type="button" class="cancel" id="triggerPickerCancel">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -595,20 +1191,28 @@ body.kiosk .header { display: none; }
   <h2>Bantuan — Problems</h2>
   <p>Halaman ini menampilkan masalah (alert) gaya Zabbix dari riwayat alert NMS Kopegtel.</p>
   <ul>
-    <li><b>Show</b> — Recent problems: masalah aktif + yang pulih dalam rentang; Problems: hanya aktif; History: semua status.</li>
+    <li><b>Show</b> — Recent problems: masalah aktif + yang pulih dalam rentang; Problems: hanya aktif; History: semua status. Tombol <b>Older / Newer / Zoom out</b> di bar atas memperlebar atau mempersempit rentang Recent/History, atau mengubah batas Age.</li>
     <li><b>Host groups / Hosts / Triggers / Problem</b> — batasi daftar berdasarkan grup (kategori host), host, nama trigger (isi pesan), atau teks masalah.</li>
     <li><b>Severity</b> — centang level yang ingin ditampilkan. <b>Age less than</b> membatasi umur masalah (hari).</li>
+    <li><b>Show symptoms</b> — tampilkan catatan/eskalasi alert sebagai gejala pada baris detail (aproksimasi dari data NMS).</li>
     <li><b>Show suppressed problems</b> — ikut menampilkan masalah pada host yang sedang dalam maintenance.</li>
     <li><b>Host inventory</b> — saring berdasarkan atribut host (Type = kategori, Name = nama host), bisa lebih dari satu baris (AND).</li>
-    <li><b>Tags</b> — saring tag masalah (tag saat ini: <code>type</code> = jenis alert) dengan operator Contains/Equals, digabung And/Or.</li>
+    <li><b>Tags</b> — saring tag masalah (tag saat ini: <code>type</code> = jenis alert) dengan operator Exists, Equals, Contains, Does not exist, Does not equal, Does not contain, digabung And/Or.</li>
     <li><b>Show tags / Tag name / Tag display priority</b> — atur jumlah dan format tag pada kolom Tags.</li>
     <li><b>Show operational data</b> — tampilkan catatan operasional pada kolom Problem (terpisah atau menyatu dengan nama masalah).</li>
     <li><b>Compact view / Show timeline / Show details / Highlight whole row</b> — pengaturan tampilan tabel dan garis waktu.</li>
+    <li><b>Urutkan</b> — klik header Time, Severity, Host, atau Problem. Centang baris lalu gunakan <b>Ack selected / Unack selected</b> untuk acknowledging massal.</li>
     <li><b>Save as</b> — simpan kombinasi filter sebagai tampilan; <b>Apply</b> menerapkan; <b>Reset</b> mengembalikan default.</li>
-    <li><b>Export to CSV</b> mengunduh baris yang lolos filter. Tombol kiosk menyembunyikan sidebar/header dan masuk layar penuh.</li>
+    <li><b>Export to CSV</b> mengunduh baris yang lolos filter. Tabel diperbarui otomatis tiap 30 detik; hitungan mundurnya ada di footer.</li>
+    <li><b>Kiosk</b> menyembunyikan sidebar/header dan masuk layar penuh. Keluar lewat tombol <b>Keluar kiosk</b> atau tombol <b>Escape</b>.</li>
   </ul>
   <form method="dialog"><button class="zbtn primary" type="submit">Tutup</button></form>
 </dialog>
+
+<button type="button" class="kiosk-exit" id="kioskExit" title="Keluar mode kiosk" aria-label="Keluar mode kiosk">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9H3V3"/><path d="M15 9h6V3"/><path d="M9 15H3v6"/><path d="M15 15h6v6"/></svg>
+  Keluar kiosk
+</button>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -673,13 +1277,14 @@ body.kiosk .header { display: none; }
 
   var REFRESH_S = 30;
   var STORE_KEY = 'nms_problems_views';
-  var SEV_LABEL = { info: 'Information', warning: 'Warning', high: 'High', disaster: 'Disaster' };
-  var SEV_CLASS = { info: 'sev-info', warning: 'sev-warning', high: 'sev-high', disaster: 'sev-disaster' };
-  var SEV_COLOR = { info: '#2e77ce', warning: '#b47d12', high: '#d06122', disaster: '#d02f35' };
+  var SEV_LABEL = { info: 'Information', warning: 'Warning', average: 'Average', high: 'High', disaster: 'Disaster' };
+  var SEV_CLASS = { info: 'sev-info', warning: 'sev-warning', average: 'sev-average', high: 'sev-high', disaster: 'sev-disaster' };
+  var SEV_COLOR = { info: '#2e77ce', warning: '#b47d12', average: '#8e5bc4', high: '#d06122', disaster: '#d02f35' };
+  var SEV_RANK = { info: 1, warning: 2, average: 3, high: 4, disaster: 5 };
 
   var DEFAULTS = {
     show: 'recent', sort: 'time_desc', group: '', host: '', triggers: '', problem: '',
-    severities: [], ageOn: false, ageDays: 14, ack: 'all', byMe: false,
+    severities: [], ageOn: false, ageDays: 14, recentDays: 7, historyHours: 1, ack: 'all', byMe: false,
     compact: false, timeline: true, details: false, highlight: false, symptoms: false,
     suppressed: false, showTags: '3', tagName: 'full', opData: 'none', tagOp: 'and', tagPriority: ''
   };
@@ -697,7 +1302,11 @@ body.kiosk .header { display: none; }
   var hostsCache = [];
   var lastRows = [];
   var visibleRows = [];
+  var loadSeq = 0;
   var timerLeft = REFRESH_S;
+  var loading = false;
+  var loadError = null;
+  var lastLoadedAt = null;
   var popEl = null;
 
   // ---------------- util waktu
@@ -734,6 +1343,29 @@ body.kiosk .header { display: none; }
     var t = parseDbTime(p.triggered_at);
     return t ? Math.max(0, (Date.now() - t.getTime()) / 1000) : 0;
   }
+  function rowTime(p) {
+    var t = parseDbTime(p && p.triggered_at);
+    return t ? t.getTime() : 0;
+  }
+  function rowSeverityRank(p) {
+    return SEV_RANK[String((p && p.severity) || '').toLowerCase()] || 0;
+  }
+  function sortRows(rows) {
+    var m = /^(time|severity|host|problem)_(asc|desc)$/.exec(String(state.sort || ''));
+    if (!m) return rows.slice();
+    var field = m[1], dir = m[2] === 'asc' ? 1 : -1;
+    return rows.slice().sort(function (a, b) {
+      var d = 0;
+      if (field === 'time') d = rowTime(a) - rowTime(b);
+      else if (field === 'severity') d = rowSeverityRank(a) - rowSeverityRank(b);
+      else if (field === 'host') d = String(a.host || '').localeCompare(String(b.host || ''), 'id', { sensitivity: 'base' });
+      else if (field === 'problem') d = String(a.message || '').localeCompare(String(b.message || ''), 'id', { sensitivity: 'base' });
+      if (d) return d * dir;
+      var tie = rowTime(b) - rowTime(a);
+      if (tie) return tie;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
+  }
 
   // ---------------- host lookup (grup, inventory, maintenance)
   function hostFor(label) {
@@ -763,6 +1395,28 @@ body.kiosk .header { display: none; }
   }
 
   // ---------------- filter baris (kliens)
+  var TAG_OPS = [
+    ['exists', 'Exists'],
+    ['equals', 'Equals'],
+    ['contains', 'Contains'],
+    ['does_not_exist', 'Does not exist'],
+    ['does_not_equal', 'Does not equal'],
+    ['does_not_contain', 'Does not contain']
+  ];
+  function tagNameMatches(x, t) {
+    if (!x.tag) return true;
+    var name = String(t.n == null ? '' : t.n).toLowerCase();
+    var q = String(x.tag).toLowerCase();
+    return (x.op === 'equals' || x.op === 'does_not_equal') ? name === q : name.indexOf(q) !== -1;
+  }
+  function tagValueMatches(x, t) {
+    var val = String(t.v == null ? '' : t.v).toLowerCase();
+    var q = String(x.value == null ? '' : x.value).toLowerCase();
+    if (x.op === 'equals') return val === q;
+    if (x.op === 'does_not_equal') return val !== q;
+    if (x.op === 'does_not_contain') return val.indexOf(q) === -1;
+    return val.indexOf(q) !== -1;
+  }
   function tagList(p) {
     var tags = [];
     if (p.alert_type) tags.push({ n: 'type', v: String(p.alert_type) });
@@ -778,16 +1432,31 @@ body.kiosk .header { display: none; }
   }
 
   function rowPasses(p) {
-    // host groups (kategori host)
-    var g = state.group.trim().toLowerCase();
-    if (g) {
+    // host groups (kategori host) — pisahkan koma untuk beberapa grup (OR)
+    var gvals = state.group.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    if (gvals.length) {
       var hg = hostFor(p.host);
       var cat = hg ? String(hg.category || '').toLowerCase() : '';
-      if (cat.indexOf(g) === -1) return false;
+      var groupOk = gvals.some(function (v) { return cat.indexOf(v) !== -1; });
+      if (!groupOk) return false;
     }
-    // triggers (teks pesan)
-    var tr = state.triggers.trim().toLowerCase();
-    if (tr && String(p.message || '').toLowerCase().indexOf(tr) === -1) return false;
+    // hosts — beberapa host dipilih (OR); satu nilai tetap difilter di server
+    var hvals = state.host.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    if (hvals.length > 1) {
+      var hp = hostFor(p.host);
+      var hlabel = String(p.host || '').toLowerCase();
+      var hostOk = hvals.some(function (v) {
+        return hlabel.indexOf(v) !== -1 ||
+          (!!hp && (String(hp.ip || '').toLowerCase() === v || String(hp.name || '').toLowerCase() === v));
+      });
+      if (!hostOk) return false;
+    }
+    // triggers (teks pesan) — pisahkan koma untuk beberapa trigger (OR)
+    var tvals = state.triggers.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    if (tvals.length) {
+      var msg = String(p.message || '').toLowerCase();
+      if (!tvals.some(function (v) { return msg.indexOf(v) !== -1; })) return false;
+    }
     // severity
     if (state.severities.length) {
       var ok = state.severities.some(function (v) { return sevMatches(v, p.severity); });
@@ -799,23 +1468,25 @@ body.kiosk .header { display: none; }
       c = invConds[i];
       if (!c.value) continue;
       var hh = hostFor(p.host);
-      var attr = hh ? (c.field === 'type' ? hh.category : hh.name) : '';
+      var attr = '';
+      if (hh) {
+        if (c.field === 'type') attr = hh.category;
+        else if (c.field === 'name') attr = hh.name;
+        else if (hh.inventory && hh.inventory.fields) attr = hh.inventory.fields[c.field];
+      }
       if (String(attr || '').toLowerCase().indexOf(c.value.toLowerCase()) === -1) return false;
     }
     // tags (And/Or)
-    var active = tagConds.filter(function (x) { return x.tag || x.value; });
+    var active = tagConds.filter(function (x) {
+      return x.tag || x.value || x.op === 'exists' || x.op === 'does_not_exist';
+    });
     if (active.length) {
       var tags = tagList(p);
       var results = active.map(function (x) {
-        var nameOk = !x.tag || tags.some(function (t) {
-          return x.op === 'equals' ? t.n.toLowerCase() === x.tag.toLowerCase()
-                                   : t.n.toLowerCase().indexOf(x.tag.toLowerCase()) !== -1;
-        });
-        var valOk = !x.value || tags.some(function (t) {
-          return x.op === 'equals' ? t.v.toLowerCase() === x.value.toLowerCase()
-                                   : t.v.toLowerCase().indexOf(x.value.toLowerCase()) !== -1;
-        });
-        return nameOk && valOk;
+        var named = tags.filter(function (t) { return tagNameMatches(x, t); });
+        if (x.op === 'exists') return named.length > 0;
+        if (x.op === 'does_not_exist') return named.length === 0;
+        return named.some(function (t) { return tagValueMatches(x, t); });
       });
       var pass = state.tagOp === 'or' ? results.some(Boolean) : results.every(Boolean);
       if (!pass) return false;
@@ -919,19 +1590,21 @@ body.kiosk .header { display: none; }
   }
 
   // ---------------- timeline
-  function windowDays() {
-    if (state.ageOn) return state.ageDays;
-    return state.show === 'recent' ? 7 : null;
+  function windowMs() {
+    if (state.show === 'history') return (state.historyHours || 1) * 3600000;
+    if (state.ageOn) return state.ageDays * 86400000;
+    if (state.show === 'recent') return (state.recentDays || 7) * 86400000;
+    return null;
   }
   function renderTimeline(rows) {
     var wrap = $('timeline');
     if (!state.timeline || !rows.length) { wrap.hidden = true; return; }
     wrap.hidden = false;
     var now = Date.now();
-    var days = windowDays();
+    var spanMs = windowMs();
     var start, end = now;
-    if (days) {
-      start = now - days * 86400000;
+    if (spanMs) {
+      start = now - spanMs;
     } else {
       start = now;
       rows.forEach(function (p) {
@@ -941,9 +1614,12 @@ body.kiosk .header { display: none; }
     }
     var span = Math.max(1000, end - start);
     var html = '';
+    var seen = {};
     rows.forEach(function (p) {
       var t0 = parseDbTime(p.triggered_at);
       if (!t0) return;
+      var sevKey = String(p.severity || 'info').toLowerCase();
+      seen[sevKey] = true;
       var a = t0.getTime();
       var b = p.resolved_at ? (parseDbTime(p.resolved_at) || t0).getTime() : now;
       var left = (a - start) / span * 100;
@@ -953,21 +1629,119 @@ body.kiosk .header { display: none; }
       if (left > 100) return;
       html += '<span class="tl-bar" style="left:' + Math.max(0, left).toFixed(3) + '%;width:' +
         Math.min(100 - left, Math.max(0.25, width)).toFixed(3) + '%;background:' +
-        (SEV_COLOR[p.severity] || '#888') + '" title="' + esc(p.message) + '"></span>';
+        (SEV_COLOR[sevKey] || '#888') + '" title="' +
+        esc((SEV_LABEL[sevKey] || sevKey) + (p.host ? ' · ' + p.host : '') + ' — ' + (p.message || '')) +
+        '"></span>';
     });
     $('tlAxis').innerHTML = html;
+    $('tlLegend').innerHTML = Object.keys(seen)
+      .sort(function (a, b) { return (SEV_RANK[a] || 0) - (SEV_RANK[b] || 0); })
+      .map(function (sev) {
+        return '<span class="lg"><span class="dot" style="background:' + (SEV_COLOR[sev] || '#888') +
+          '"></span>' + esc(SEV_LABEL[sev] || sev) + '</span>';
+      }).join('');
     $('tlFrom').textContent = fmtAxis(start);
     $('tlTo').textContent = fmtAxis(end);
   }
 
-  // ---------------- render tabel
+  // ---------------- status tabel, pilihan baris, dan render
+  function hasActiveFilters() {
+    if (state.group || state.host || state.triggers || state.problem) return true;
+    if (state.severities.length || state.byMe) return true;
+    if (state.ack !== 'all') return true;
+    if (state.show !== 'history' && state.ageOn) return true;
+    if (invConds.some(function (c) { return c.value; })) return true;
+    if (tagConds.some(function (c) { return c.tag || c.value || c.op === 'exists' || c.op === 'does_not_exist'; })) return true;
+    return false;
+  }
+  function statusRowHtml(kind, title, detail, actions) {
+    var html = '<tr class="zbx-statusrow"><td colspan="12">';
+    if (kind === 'loading') html += '<span class="zbx-status-spinner" aria-hidden="true"></span>';
+    html += '<div class="zbx-status-title">' + esc(title) + '</div>';
+    if (detail) html += '<div class="zbx-status-detail">' + esc(detail) + '</div>';
+    if (actions && actions.length) {
+      html += '<div class="zbx-status-actions">' + actions.map(function (a) {
+        return '<button type="button" class="zbtn' + (a.primary ? ' primary' : '') +
+          '" data-empty-action="' + esc(a.act) + '">' + esc(a.label) + '</button>';
+      }).join('') + '</div>';
+    }
+    return html + '</td></tr>';
+  }
+  function emptyRowHtml() {
+    var hist = state.show === 'history';
+    var title, detail, actions = [];
+    if (hist) {
+      title = 'Tidak ada masalah pada ' + fmtHistoryWindow(state.historyHours);
+      detail = 'Coba rentang waktu yang lebih luas untuk melihat histori.';
+      actions.push({ act: 'history30', label: 'Tampilkan 30 hari' });
+    } else if (hasActiveFilters()) {
+      title = 'Tidak ada masalah yang cocok';
+      detail = 'Ubah atau reset filter untuk menampilkan masalah lain.';
+    } else {
+      title = 'Tidak ada masalah';
+      detail = 'Belum ada masalah untuk ditampilkan saat ini.';
+    }
+    if (hasActiveFilters()) actions.push({ act: 'reset', label: 'Reset filter' });
+    actions.push({ act: 'reload', label: 'Muat ulang' });
+    return statusRowHtml('empty', title, detail, actions);
+  }
+  function selectedIds() {
+    return qsa('#tbody .rowcb:checked').map(function (c) { return c.value; });
+  }
+  function syncSelection() {
+    var boxes = qsa('#tbody .rowcb');
+    var chosen = selectedIds();
+    var all = $('cbAll');
+    all.disabled = !boxes.length;
+    all.checked = boxes.length > 0 && chosen.length === boxes.length;
+    all.indeterminate = chosen.length > 0 && chosen.length < boxes.length;
+    $('selectionBar').hidden = !chosen.length;
+    $('selCount').textContent = chosen.length;
+  }
+  function updateResultSummary() {
+    var n = visibleRows.length;
+    var active = visibleRows.filter(function (p) { return String(p.status || '').toUpperCase() !== 'RESOLVED'; }).length;
+    var text = n ? n + ' problem' + (n === 1 ? '' : 's') : 'No problems';
+    if (n && active) text += ' · ' + active + ' active';
+    $('resultSummary').textContent = text;
+    $('resultSummary').title = lastLoadedAt ? 'Diperbarui ' + lastLoadedAt : '';
+  }
+  function updateRefreshInfo() {
+    var el = $('refreshInfo');
+    if (!el) return;
+    if (loading) el.textContent = 'Memuat…';
+    else if (loadError) el.textContent = 'Gagal memperbarui';
+    else el.textContent = 'Auto-refresh in ' + Math.max(0, timerLeft) + 's';
+  }
   function render() {
-    visibleRows = lastRows.filter(rowPasses);
     var tb = $('tbody');
-    if (!visibleRows.length) tb.innerHTML = '';
+    if (loading && !lastRows.length) {
+      visibleRows = [];
+      tb.innerHTML = statusRowHtml('loading', 'Memuat problems…', 'Mengambil data terbaru dari server.');
+      $('resultSummary').textContent = 'Memuat…';
+      syncSelection();
+      renderTimeline([]);
+      updateRefreshInfo();
+      return;
+    }
+    if (loadError && !lastRows.length) {
+      visibleRows = [];
+      tb.innerHTML = statusRowHtml('error', 'Gagal memuat problems', loadError, [
+        { act: 'reload', label: 'Coba lagi', primary: true }
+      ]);
+      $('resultSummary').textContent = 'Gagal memuat';
+      syncSelection();
+      renderTimeline([]);
+      updateRefreshInfo();
+      return;
+    }
+    visibleRows = sortRows(lastRows.filter(rowPasses));
+    if (!visibleRows.length) tb.innerHTML = emptyRowHtml();
     else tb.innerHTML = visibleRows.map(rowHtml).join('');
-    $('cbAll').checked = false;
+    syncSelection();
     renderTimeline(visibleRows);
+    updateResultSummary();
+    updateRefreshInfo();
   }
 
   // ---------------- popover helper
@@ -1008,6 +1782,492 @@ body.kiosk .header { display: none; }
     setTimeout(function () { document.addEventListener('click', onDocClick); }, 0);
   }
 
+  // ---------------- dialog pilih Host groups (gaya Zabbix)
+  function groupCategoryList() {
+    var seen = {}, out = [];
+    hostsCache.forEach(function (h) {
+      var c = String(h.category == null ? '' : h.category).trim();
+      var k = c.toLowerCase();
+      if (!c || seen[k]) return;
+      seen[k] = 1;
+      out.push(c);
+    });
+    out.sort(function (a, b) { return a.localeCompare(b, 'id', { sensitivity: 'base' }); });
+    return out;
+  }
+  function groupPickedValues() {
+    return $('fGroup').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  function syncGroupAll() {
+    var boxes = qsa('#groupPickerRows .group-pick');
+    var on = boxes.filter(function (c) { return c.checked; }).length;
+    var all = $('groupPickerAll');
+    all.checked = boxes.length > 0 && on === boxes.length;
+    all.indeterminate = on > 0 && on < boxes.length;
+  }
+  function closeGroupPicker() {
+    var el = $('groupPicker');
+    if (el.hidden) return;
+    el.hidden = true;
+    $('groupPickerAll').indeterminate = false;
+    $('btnGroupSelect').focus();
+  }
+  function openGroupPicker() {
+    var cats = groupCategoryList();
+    var picked = groupPickedValues();
+    var lower = picked.map(function (v) { return v.toLowerCase(); });
+    var hasExact = cats.some(function (c) { return lower.indexOf(c.toLowerCase()) !== -1; });
+    var q = hasExact ? '' : String($('fGroup').value || '').trim().toLowerCase();
+    var list = cats.filter(function (c) { return !q || c.toLowerCase().indexOf(q) !== -1; });
+    $('groupPickerRows').innerHTML = list.map(function (c) {
+      var on = lower.indexOf(c.toLowerCase()) !== -1;
+      return '<tr>' +
+        '<td><input type="checkbox" class="group-pick" value="' + esc(c) + '"' + (on ? ' checked' : '') +
+          ' aria-label="Pilih ' + esc(c) + '"></td>' +
+        '<td><a href="#" class="zbx-picker-name">' + esc(c) + '</a></td>' +
+      '</tr>';
+    }).join('');
+    var empty = $('groupPickerEmpty');
+    empty.hidden = !!list.length;
+    empty.textContent = cats.length
+      ? 'Tidak ada host group yang cocok dengan pencarian.'
+      : 'Belum ada host group (kategori host).';
+    syncGroupAll();
+    $('groupPicker').hidden = false;
+    var first = $('groupPickerRows').querySelector('.group-pick');
+    if (first) first.focus();
+    else $('groupPickerOk').focus();
+  }
+  $('groupPickerClose').addEventListener('click', closeGroupPicker);
+  $('groupPickerCancel').addEventListener('click', closeGroupPicker);
+  $('groupPickerOk').addEventListener('click', function () {
+    var chosen = qsa('#groupPickerRows .group-pick:checked').map(function (c) { return c.value; });
+    $('fGroup').value = chosen.join(', ');
+    closeGroupPicker();
+    load();
+  });
+  $('groupPickerAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#groupPickerRows .group-pick').forEach(function (c) { c.checked = on; });
+    syncGroupAll();
+  });
+  $('groupPickerRows').addEventListener('change', function (e) {
+    if (e.target.classList.contains('group-pick')) syncGroupAll();
+  });
+  $('groupPickerRows').addEventListener('click', function (e) {
+    var a = e.target.closest('.zbx-picker-name');
+    if (!a) return;
+    e.preventDefault();
+    var cb = a.closest('tr').querySelector('.group-pick');
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    syncGroupAll();
+  });
+  $('groupPicker').addEventListener('click', function (e) {
+    if (e.target === this) closeGroupPicker();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('groupPicker').hidden) {
+      e.preventDefault();
+      closeGroupPicker();
+    }
+  });
+
+  // ---------------- dialog pilih Hosts (gaya Zabbix)
+  var hostPickGroup = '';
+  var hostPickSel = [];
+  var hostPickContext = null;
+
+  function hostPickRowsForGroup() {
+    if (!hostPickGroup) return [];
+    var g = hostPickGroup.toLowerCase();
+    return hostsCache.filter(function (h) {
+      return String(h.category == null ? '' : h.category).trim().toLowerCase() === g;
+    }).sort(function (a, b) {
+      return String(a.name || a.ip || '').localeCompare(
+        String(b.name || b.ip || ''), 'id', { sensitivity: 'base' });
+    });
+  }
+  function syncHostPickAll() {
+    var boxes = qsa('#hostPickRows .host-pick');
+    var on = boxes.filter(function (c) { return c.checked; }).length;
+    var all = $('hostPickAll');
+    all.checked = boxes.length > 0 && on === boxes.length;
+    all.indeterminate = on > 0 && on < boxes.length;
+  }
+  function renderHostPicker() {
+    var rows = hostPickRowsForGroup();
+    $('hostPickRows').innerHTML = rows.map(function (h) {
+      var ip = String(h.ip == null ? '' : h.ip);
+      var name = String(h.name || ip || '');
+      var on = hostPickSel.indexOf(ip) !== -1;
+      return '<tr>' +
+        '<td><input type="checkbox" class="host-pick" value="' + esc(ip) + '"' + (on ? ' checked' : '') +
+          ' aria-label="Pilih ' + esc(name) + '"></td>' +
+        '<td><a href="#" class="zbx-picker-name">' + esc(name) + '</a></td>' +
+      '</tr>';
+    }).join('');
+    var empty = $('hostPickEmpty');
+    var t1 = empty.querySelector('.t1');
+    var t2 = empty.querySelector('.t2');
+    if (!hostPickGroup) {
+      empty.hidden = false;
+      t1.textContent = 'Filter is not set';
+      t2.textContent = 'Use the filter to display results';
+    } else if (!rows.length) {
+      empty.hidden = false;
+      t1.textContent = 'No hosts found';
+      t2.textContent = 'There are no hosts in this host group.';
+    } else {
+      empty.hidden = true;
+    }
+    syncHostPickAll();
+  }
+  function setHostPickGroup(name) {
+    hostPickGroup = String(name || '');
+    $('hostPickGroup').value = hostPickGroup;
+    renderHostPicker();
+  }
+  function closeHostPicker() {
+    var el = $('hostPicker');
+    if (el.hidden) return;
+    el.hidden = true;
+    var ctx = hostPickContext;
+    hostPickContext = null;
+    if (ctx && ctx.onClose) ctx.onClose();
+    else $('btnHostSelect').focus();
+  }
+  function openHostPicker(opts) {
+    hostPickContext = opts || null;
+    closePop();
+    var wanted = ((opts && opts.selected) || $('fHost').value.split(','))
+      .map(function (s) { return String(s || '').trim().toLowerCase(); })
+      .filter(Boolean);
+    hostPickSel = hostsCache.filter(function (h) {
+      var ip = String(h.ip || '').toLowerCase();
+      var nm = String(h.name || '').toLowerCase();
+      return wanted.indexOf(ip) !== -1 || (nm && wanted.indexOf(nm) !== -1);
+    }).map(function (h) { return String(h.ip || ''); });
+    hostPickGroup = '';
+    $('hostPickGroup').value = '';
+    renderHostPicker();
+    $('hostPicker').hidden = false;
+    $('hostPickGroup').focus();
+  }
+  function closeHostGroupPicker() {
+    var el = $('hostGroupPicker');
+    if (el.hidden) return;
+    el.hidden = true;
+    $('hostPickGroupSelect').focus();
+  }
+  function openHostGroupPicker() {
+    var q = String($('hostPickGroup').value || '').trim().toLowerCase();
+    var cats = groupCategoryList().filter(function (c) {
+      return !q || c.toLowerCase().indexOf(q) !== -1;
+    });
+    $('hostGroupPickerRows').innerHTML = cats.map(function (c) {
+      return '<tr><td><a href="#" class="zbx-picker-name" data-group="' + esc(c) + '">' + esc(c) + '</a></td></tr>';
+    }).join('');
+    var empty = $('hostGroupPickerEmpty');
+    empty.hidden = !!cats.length;
+    empty.textContent = groupCategoryList().length
+      ? 'Tidak ada host group yang cocok dengan pencarian.'
+      : 'Belum ada host group (kategori host).';
+    $('hostGroupPicker').hidden = false;
+    var first = $('hostGroupPickerRows').querySelector('.zbx-picker-name');
+    if (first) first.focus();
+    else $('hostGroupPickerCancel').focus();
+  }
+
+  $('btnHostSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    openHostPicker();
+  });
+  $('hostPickerClose').addEventListener('click', closeHostPicker);
+  $('hostPickCancel').addEventListener('click', closeHostPicker);
+  $('hostPickGroupSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    openHostGroupPicker();
+  });
+  $('hostPickGroup').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      openHostGroupPicker();
+    }
+  });
+  $('hostPickGroup').addEventListener('input', function () {
+    var val = this.value.trim().toLowerCase();
+    var exact = groupCategoryList().filter(function (c) { return c.toLowerCase() === val; })[0] || '';
+    hostPickGroup = exact;
+    renderHostPicker();
+  });
+  $('hostPickRows').addEventListener('change', function (e) {
+    if (!e.target.classList.contains('host-pick')) return;
+    var ip = e.target.value;
+    var i = hostPickSel.indexOf(ip);
+    if (e.target.checked) {
+      if (i === -1) hostPickSel.push(ip);
+    } else if (i !== -1) {
+      hostPickSel.splice(i, 1);
+    }
+    syncHostPickAll();
+  });
+  $('hostPickRows').addEventListener('click', function (e) {
+    var a = e.target.closest('.zbx-picker-name');
+    if (!a) return;
+    e.preventDefault();
+    var cb = a.closest('tr').querySelector('.host-pick');
+    if (!cb) return;
+    if (hostPickContext && hostPickContext.onPick) {
+      var ctx = hostPickContext;
+      hostPickContext = null;
+      $('hostPicker').hidden = true;
+      ctx.onPick(cb.value);
+      return;
+    }
+    cb.checked = !cb.checked;
+    var ip = cb.value;
+    var i = hostPickSel.indexOf(ip);
+    if (cb.checked) {
+      if (i === -1) hostPickSel.push(ip);
+    } else if (i !== -1) {
+      hostPickSel.splice(i, 1);
+    }
+    syncHostPickAll();
+  });
+  $('hostPickAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#hostPickRows .host-pick').forEach(function (c) {
+      c.checked = on;
+      var i = hostPickSel.indexOf(c.value);
+      if (on && i === -1) hostPickSel.push(c.value);
+      if (!on && i !== -1) hostPickSel.splice(i, 1);
+    });
+    syncHostPickAll();
+  });
+  $('hostPickOk').addEventListener('click', function () {
+    var chosen = hostPickSel.slice();
+    var ctx = hostPickContext;
+    if (ctx && ctx.onApply) {
+      hostPickContext = null;
+      $('hostPicker').hidden = true;
+      ctx.onApply(chosen);
+      return;
+    }
+    $('fHost').value = chosen.join(', ');
+    closeHostPicker();
+    load();
+  });
+  $('hostPicker').addEventListener('click', function (e) {
+    if (e.target === this) closeHostPicker();
+  });
+  $('hostGroupPickerClose').addEventListener('click', closeHostGroupPicker);
+  $('hostGroupPickerCancel').addEventListener('click', closeHostGroupPicker);
+  $('hostGroupPicker').addEventListener('click', function (e) {
+    if (e.target === this) closeHostGroupPicker();
+  });
+  $('hostGroupPickerRows').addEventListener('click', function (e) {
+    var a = e.target.closest('.zbx-picker-name');
+    if (!a) return;
+    e.preventDefault();
+    setHostPickGroup(a.getAttribute('data-group') || a.textContent);
+    closeHostGroupPicker();
+    $('hostPickGroup').focus();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('hostGroupPicker').hidden) {
+      e.preventDefault();
+      closeHostGroupPicker();
+      return;
+    }
+    if (!$('hostPicker').hidden) {
+      e.preventDefault();
+      closeHostPicker();
+      return;
+    }
+    if (!$('triggerPicker').hidden) {
+      e.preventDefault();
+      closeTriggerPicker();
+    }
+  });
+
+  // Trap Tab di dalam picker yang terbuka (termasuk picker bertumpuk).
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    var open = qsa('.zbx-picker-backdrop:not([hidden])');
+    if (!open.length) return;
+    var box = open[open.length - 1];
+    var items = qsa('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', box)
+      .filter(function (el) { return el.getClientRects().length > 0; });
+    if (!items.length) return;
+    var first = items[0], last = items[items.length - 1];
+    var inside = box.contains(document.activeElement);
+    if (e.shiftKey && (!inside || document.activeElement === first)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
+  // ---------------- dialog pilih Triggers (gaya Zabbix)
+  var triggerPickSel = {};
+  var TRIGGER_SEV_RANK = { not_classified: 0, info: 1, warning: 2, average: 3, high: 4, disaster: 5 };
+  var TRIGGER_SEV_LABEL = {
+    not_classified: 'Not classified', info: 'Information', warning: 'Warning',
+    average: 'Average', high: 'High', disaster: 'Disaster'
+  };
+
+  function triggerRowsForHost() {
+    var terms = String($('triggerPickerHost').value || '').trim().toLowerCase()
+      .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!terms.length) return [];
+    var seen = {}, out = [];
+    lastRows.forEach(function (p) {
+      var h = hostFor(p.host);
+      var hay = [p.host, h && h.ip, h && h.name, h && h.category]
+        .filter(Boolean).join(' ').toLowerCase();
+      var hit = terms.some(function (t) { return hay.indexOf(t) !== -1; });
+      if (!hit) return;
+      var name = String(p.message || '(tanpa nama)');
+      var key = String(p.host || '') + '|' + name;
+      var it = seen[key];
+      if (!it) {
+        it = {
+          name: name, host: p.host,
+          severity: String(p.severity || '').toLowerCase(),
+          resolved: !!p.resolved_at
+        };
+        seen[key] = it;
+        out.push(it);
+      }
+      var sev = String(p.severity || '').toLowerCase();
+      if (!p.resolved_at) it.resolved = false;
+      if ((TRIGGER_SEV_RANK[sev] || 0) > (TRIGGER_SEV_RANK[it.severity] || 0)) it.severity = sev;
+    });
+    out.sort(function (a, b) {
+      return (TRIGGER_SEV_RANK[b.severity] || 0) - (TRIGGER_SEV_RANK[a.severity] || 0) ||
+        a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
+    });
+    return out;
+  }
+  function syncTriggerPickAll() {
+    var boxes = qsa('#triggerPickerRows .trigger-pick');
+    var on = boxes.filter(function (c) { return c.checked; }).length;
+    var all = $('triggerPickerAll');
+    all.checked = boxes.length > 0 && on === boxes.length;
+    all.indeterminate = on > 0 && on < boxes.length;
+  }
+  function renderTriggerPicker() {
+    var rows = triggerRowsForHost();
+    var hasFilter = !!String($('triggerPickerHost').value || '').trim();
+    $('triggerPickerRows').innerHTML = rows.map(function (t) {
+      var on = !!triggerPickSel[t.name];
+      return '<tr>' +
+        '<td class="col-cb"><input type="checkbox" class="trigger-pick" value="' + esc(t.name) + '"' +
+          (on ? ' checked' : '') + ' aria-label="Pilih ' + esc(t.name) + '"></td>' +
+        '<td><a href="#" class="zbx-picker-name">' + esc(t.name) + '</a></td>' +
+        '<td class="' + (SEV_CLASS[t.severity] || '') + '">' +
+          esc(TRIGGER_SEV_LABEL[t.severity] || 'Not classified') + '</td>' +
+        '<td class="' + (t.resolved ? 'st-resolved' : 'st-problem') + '">' +
+          (t.resolved ? 'RESOLVED' : 'PROBLEM') + '</td>' +
+      '</tr>';
+    }).join('');
+    var empty = $('triggerPickerEmpty');
+    if (!hasFilter) {
+      empty.hidden = false;
+      empty.querySelector('.t').textContent = 'Filter is not set';
+      empty.querySelector('.s').textContent = 'Use the filter to display results';
+    } else if (!rows.length) {
+      empty.hidden = false;
+      empty.querySelector('.t').textContent = 'No triggers found';
+      empty.querySelector('.s').textContent = 'There are no triggers for this host.';
+    } else {
+      empty.hidden = true;
+    }
+    syncTriggerPickAll();
+  }
+  function closeTriggerPicker() {
+    var el = $('triggerPicker');
+    if (el.hidden) return;
+    el.hidden = true;
+    $('btnTriggerSelect').focus();
+  }
+  function openTriggerPicker() {
+    closePop();
+    triggerPickSel = {};
+    String($('fTriggers').value || '').split(',').map(function (s) { return s.trim(); })
+      .filter(Boolean).forEach(function (n) { triggerPickSel[n] = 1; });
+    if (!$('triggerPickerHost').value) $('triggerPickerHost').value = $('fHost').value;
+    renderTriggerPicker();
+    $('triggerPicker').hidden = false;
+    $('triggerPickerHost').focus();
+  }
+
+  $('btnTriggerSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    openTriggerPicker();
+  });
+  $('triggerPickerClose').addEventListener('click', closeTriggerPicker);
+  $('triggerPickerCancel').addEventListener('click', closeTriggerPicker);
+  $('triggerPickerHost').addEventListener('input', renderTriggerPicker);
+  $('triggerPickerHostSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    $('triggerPicker').hidden = true;
+    openHostPicker({
+      selected: String($('triggerPickerHost').value || '').split(','),
+      onPick: function (ip) {
+        $('triggerPickerHost').value = ip;
+        $('triggerPicker').hidden = false;
+        renderTriggerPicker();
+        $('triggerPickerHost').focus();
+      },
+      onApply: function (ips) {
+        $('triggerPickerHost').value = ips.join(', ');
+        $('triggerPicker').hidden = false;
+        renderTriggerPicker();
+        $('triggerPickerHost').focus();
+      },
+      onClose: function () {
+        $('triggerPicker').hidden = false;
+        $('triggerPickerHost').focus();
+      }
+    });
+  });
+  $('triggerPickerRows').addEventListener('change', function (e) {
+    if (!e.target.classList.contains('trigger-pick')) return;
+    if (e.target.checked) triggerPickSel[e.target.value] = 1;
+    else delete triggerPickSel[e.target.value];
+    syncTriggerPickAll();
+  });
+  $('triggerPickerRows').addEventListener('click', function (e) {
+    var a = e.target.closest('.zbx-picker-name');
+    if (!a) return;
+    e.preventDefault();
+    var cb = a.closest('tr').querySelector('.trigger-pick');
+    if (cb) cb.click();
+  });
+  $('triggerPickerAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#triggerPickerRows .trigger-pick').forEach(function (c) {
+      c.checked = on;
+      if (on) triggerPickSel[c.value] = 1;
+      else delete triggerPickSel[c.value];
+    });
+    syncTriggerPickAll();
+  });
+  $('triggerPickerOk').addEventListener('click', function () {
+    var chosen = Object.keys(triggerPickSel).filter(function (n) { return triggerPickSel[n]; });
+    $('fTriggers').value = chosen.join(', ');
+    closeTriggerPicker();
+    load();
+  });
+  $('triggerPicker').addEventListener('click', function (e) {
+    if (e.target === this) closeTriggerPicker();
+  });
+
   // ---------------- saved views
   function readViews() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; }
@@ -1026,24 +2286,98 @@ body.kiosk .header { display: none; }
   }
 
   // ---------------- baris dinamis: inventory & tags
+  var INV_FIELDS = [
+    ['type', 'Type'],
+    ['type_full', 'Type (Full details)'],
+    ['name', 'Name'],
+    ['alias', 'Alias'],
+    ['os', 'OS'],
+    ['os_full', 'OS (Full details)'],
+    ['os_short', 'OS (Short)'],
+    ['serialno_a', 'Serial number A'],
+    ['serialno_b', 'Serial number B'],
+    ['tag', 'Tag'],
+    ['asset_tag', 'Asset tag'],
+    ['macaddress_a', 'MAC address A'],
+    ['macaddress_b', 'MAC address B'],
+    ['hardware', 'Hardware'],
+    ['hardware_full', 'Hardware (Full details)'],
+    ['software', 'Software'],
+    ['software_full', 'Software (Full details)'],
+    ['software_app_a', 'Software application A'],
+    ['software_app_b', 'Software application B'],
+    ['software_app_c', 'Software application C'],
+    ['software_app_d', 'Software application D'],
+    ['software_app_e', 'Software application E'],
+    ['contact', 'Contact'],
+    ['location', 'Location'],
+    ['location_lat', 'Location latitude'],
+    ['location_lon', 'Location longitude'],
+    ['notes', 'Notes'],
+    ['chassis', 'Chassis'],
+    ['model', 'Model'],
+    ['hw_arch', 'HW architecture'],
+    ['vendor', 'Vendor'],
+    ['contract_number', 'Contract number'],
+    ['installer_name', 'Installer name'],
+    ['deployment_status', 'Deployment status'],
+    ['url_a', 'URL A'],
+    ['url_b', 'URL B'],
+    ['url_c', 'URL C'],
+    ['host_networks', 'Host networks'],
+    ['host_netmask', 'Host subnet mask'],
+    ['host_router', 'Host router'],
+    ['oob_ip', 'OOB IP address'],
+    ['oob_netmask', 'OOB subnet mask'],
+    ['oob_router', 'OOB router'],
+    ['date_hw_purchase', 'Date HW purchased'],
+    ['date_hw_install', 'Date HW installed'],
+    ['date_hw_expiry', 'Date HW maintenance expires'],
+    ['date_hw_decomm', 'Date HW decommissioned'],
+    ['site_address_a', 'Site address A'],
+    ['site_address_b', 'Site address B'],
+    ['site_address_c', 'Site address C'],
+    ['site_city', 'Site city'],
+    ['site_state', 'Site state / province'],
+    ['site_country', 'Site country'],
+    ['site_zip', 'Site ZIP / postal'],
+    ['site_rack', 'Site rack location'],
+    ['site_notes', 'Site notes'],
+    ['poc_1_name', 'Primary POC name'],
+    ['poc_1_email', 'Primary POC email'],
+    ['poc_1_phone_a', 'Primary POC phone A'],
+    ['poc_1_phone_b', 'Primary POC phone B'],
+    ['poc_1_cell', 'Primary POC cell'],
+    ['poc_1_screen', 'Primary POC screen name'],
+    ['poc_1_notes', 'Primary POC notes'],
+    ['poc_2_name', 'Secondary POC name'],
+    ['poc_2_email', 'Secondary POC email'],
+    ['poc_2_phone_a', 'Secondary POC phone A'],
+    ['poc_2_phone_b', 'Secondary POC phone B'],
+    ['poc_2_cell', 'Secondary POC cell'],
+    ['poc_2_screen', 'Secondary POC screen name'],
+    ['poc_2_notes', 'Secondary POC notes']
+  ];
   function invRowHtml(c) {
     c = c || { field: 'type', value: '' };
+    var options = INV_FIELDS.map(function (f) {
+      return '<option value="' + f[0] + '"' + (c.field === f[0] ? ' selected' : '') + '>' + f[1] + '</option>';
+    }).join('');
     return '<div class="inline invrow">' +
-      '<select class="invfield">' +
-        '<option value="type"' + (c.field === 'type' ? ' selected' : '') + '>Type</option>' +
-        '<option value="name"' + (c.field === 'name' ? ' selected' : '') + '>Name</option>' +
-      '</select>' +
+      '<select class="invfield" aria-label="Host inventory field">' + options + '</select>' +
       '<input type="text" class="growin invvalue" placeholder="value" value="' + esc(c.value || '') + '">' +
       '<button type="button" class="linkbtn rm-row" aria-label="Hapus baris">Remove</button>' +
     '</div>';
   }
   function tagRowHtml(c) {
     c = c || { tag: '', op: 'contains', value: '' };
+    var op = c.op || 'contains';
     return '<div class="inline tagrow">' +
       '<input type="text" class="tagname" placeholder="tag" style="max-width:132px;" value="' + esc(c.tag || '') + '">' +
-      '<select class="tagop">' +
-        '<option value="contains"' + (c.op !== 'equals' ? ' selected' : '') + '>Contains</option>' +
-        '<option value="equals"' + (c.op === 'equals' ? ' selected' : '') + '>Equals</option>' +
+      '<select class="tagop" aria-label="Operator tag">' +
+        TAG_OPS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (op === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') +
       '</select>' +
       '<input type="text" class="growin tagvalue" placeholder="value" value="' + esc(c.value || '') + '">' +
       '<button type="button" class="linkbtn rm-row" aria-label="Hapus baris">Remove</button>' +
@@ -1100,7 +2434,30 @@ body.kiosk .header { display: none; }
     var seg = $(id);
     if (!seg) return;
     qsa('button', seg).forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute(attr) === String(val));
+      var on = b.getAttribute(attr) === String(val);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function updateSortUI() {
+    var fields = ['time', 'severity', 'host', 'problem'];
+    var labels = { time: 'waktu', severity: 'severity', host: 'host', problem: 'problem' };
+    fields.forEach(function (field) {
+      var chev = $('chev' + field.charAt(0).toUpperCase() + field.slice(1));
+      var th = document.querySelector('th[data-sort-field="' + field + '"]');
+      var active = String(state.sort || '').indexOf(field + '_') === 0;
+      if (chev) {
+        if (active) chev.removeAttribute('hidden');
+        else chev.setAttribute('hidden', '');
+        chev.classList.toggle('asc', active && /_asc$/.test(state.sort));
+      }
+      if (th) {
+        th.setAttribute('aria-sort', active
+          ? (/_asc$/.test(state.sort) ? 'ascending' : 'descending')
+          : 'none');
+      }
+      var btn = $('sort' + field.charAt(0).toUpperCase() + field.slice(1));
+      if (btn) btn.setAttribute('aria-label', 'Urutkan berdasarkan ' + labels[field]);
     });
   }
   function syncUI() {
@@ -1112,6 +2469,7 @@ body.kiosk .header { display: none; }
     $('ageOn').checked = !!state.ageOn;
     $('ageDays').disabled = !state.ageOn;
     $('ageDays').value = state.ageDays;
+    if (state.byMe && state.ack === 'unack') state.ack = 'ack';
     $('byMe').checked = !!state.byMe;
     $('optCompact').checked = !!state.compact;
     $('optTimeline').checked = !!state.timeline;
@@ -1129,23 +2487,56 @@ body.kiosk .header { display: none; }
     renderInvRows();
     renderTagRows();
     applyBodyClasses();
+    updateSortUI();
     updateClock();
   }
 
   // ---------------- jam / rentang
-  function updateClock() {
-    var d = windowDays();
-    $('clockLabel').textContent = d ? ('Last ' + d + ' d')
-      : (state.show === 'history' ? 'All time' : 'Now');
-    $('barNewer').disabled = !(state.ageOn && state.ageDays > 1);
+  function syncHistoryMode() {
+    var root = $('konten');
+    var on = state.show === 'history';
+    if (root) root.classList.toggle('history-mode', on);
+    document.body.classList.toggle('problems-history-mode', on);
   }
-  function setWindow(days) {
-    days = Math.min(3650, Math.max(1, Math.round(days)));
+  function fmtHistoryWindow(hours) {
+    hours = Math.max(1, Math.round(hours || 1));
+    if (hours < 24) return 'Last ' + hours + ' hour' + (hours === 1 ? '' : 's');
+    var days = hours / 24;
+    return 'Last ' + (days % 1 ? days.toFixed(1) : days) + ' d';
+  }
+  function updateClock() {
+    syncHistoryMode();
+    var hist = state.show === 'history';
+    var label = 'Now';
+    if (hist) label = fmtHistoryWindow(state.historyHours);
+    else if (state.ageOn) label = 'Age < ' + state.ageDays + ' d';
+    else if (state.show === 'recent') label = 'Last ' + state.recentDays + ' d';
+    $('clockLabel').textContent = label;
+    var canRange = hist || state.ageOn || state.show === 'recent';
+    $('barOlder').disabled = !canRange;
+    $('barZoomOut').disabled = !canRange;
+    if (hist) $('barNewer').disabled = (state.historyHours || 1) <= 1;
+    else if (state.ageOn) $('barNewer').disabled = state.ageDays <= 1;
+    else if (state.show === 'recent') $('barNewer').disabled = state.recentDays <= 1;
+    else $('barNewer').disabled = true;
+    $('barFwd').disabled = true;
+  }
+  function setRecentDays(days) {
+    state.recentDays = Math.min(3650, Math.max(1, Math.round(days)));
+    updateClock();
+    load();
+  }
+  function setAgeDays(days) {
     state.ageOn = true;
-    state.ageDays = days;
+    state.ageDays = Math.min(3650, Math.max(1, Math.round(days)));
     $('ageOn').checked = true;
     $('ageDays').disabled = false;
-    $('ageDays').value = days;
+    $('ageDays').value = state.ageDays;
+    updateClock();
+    load();
+  }
+  function setHistoryHours(hours) {
+    state.historyHours = Math.min(24 * 3650, Math.max(1, Math.round(hours || 1)));
     updateClock();
     load();
   }
@@ -1156,12 +2547,30 @@ body.kiosk .header { display: none; }
     seg.addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
-      qsa('button', seg).forEach(function (x) { x.classList.toggle('on', x === b); });
+      qsa('button', seg).forEach(function (x) {
+        x.classList.toggle('on', x === b);
+        x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+      });
       cb(b);
     });
   }
-  bindSeg('segShow', function (b) { state.show = b.getAttribute('data-show'); updateClock(); });
-  bindSeg('segAck', function (b) { state.ack = b.getAttribute('data-ack'); });
+  bindSeg('segShow', function (b) {
+    var prev = state.show;
+    state.show = b.getAttribute('data-show');
+    updateClock();
+    if (state.show !== prev) {
+      // Recent, Problems, dan History memakai query API yang berbeda.
+      lastRows = [];
+      load();
+    }
+  });
+  bindSeg('segAck', function (b) {
+    state.ack = b.getAttribute('data-ack');
+    if (state.ack === 'unack' && $('byMe').checked) {
+      $('byMe').checked = false;
+      state.byMe = false;
+    }
+  });
   bindSeg('segTagOp', function (b) { state.tagOp = b.getAttribute('data-op'); });
   bindSeg('segShowTags', function (b) { state.showTags = b.getAttribute('data-n'); render(); });
   bindSeg('segTagName', function (b) { state.tagName = b.getAttribute('data-nm'); render(); });
@@ -1180,14 +2589,48 @@ body.kiosk .header { display: none; }
   $('barExpand').addEventListener('click', function () { setCollapsed(false); });
 
   // ---------------- kontrol waktu di bar
-  $('barOlder').addEventListener('click', function () { setWindow((windowDays() || 7) + 1); });
-  $('barNewer').addEventListener('click', function () { setWindow((windowDays() || 7) - 1); });
-  $('barZoomOut').addEventListener('click', function () { setWindow((windowDays() || 7) * 2); });
+  $('barOlder').addEventListener('click', function () {
+    if (state.show === 'history') return setHistoryHours((state.historyHours || 1) * 2);
+    if (state.ageOn) return setAgeDays(state.ageDays + 1);
+    if (state.show === 'recent') return setRecentDays((state.recentDays || 7) + 1);
+  });
+  $('barNewer').addEventListener('click', function () {
+    if (state.show === 'history') return setHistoryHours((state.historyHours || 1) / 2);
+    if (state.ageOn) return setAgeDays(state.ageDays - 1);
+    if (state.show === 'recent') return setRecentDays((state.recentDays || 7) - 1);
+  });
+  $('barZoomOut').addEventListener('click', function () {
+    if (state.show === 'history') return setHistoryHours((state.historyHours || 1) * 2);
+    if (state.ageOn) return setAgeDays(state.ageDays * 2);
+    if (state.show === 'recent') return setRecentDays((state.recentDays || 7) * 2);
+  });
 
   // ---------------- checkbox tampilan
   $('ageOn').addEventListener('change', function () {
+    state.ageOn = this.checked;
     $('ageDays').disabled = !this.checked;
     if (this.checked) $('ageDays').focus();
+    updateClock();
+  });
+  $('ageDays').addEventListener('input', function () {
+    var n = parseInt(this.value || '14', 10);
+    state.ageDays = Math.max(1, isNaN(n) ? 14 : n);
+    updateClock();
+  });
+  $('byMe').addEventListener('change', function () {
+    state.byMe = this.checked;
+    if (this.checked) {
+      state.ack = 'ack';
+      setSeg('segAck', 'data-ack', 'ack');
+    }
+  });
+  ['fGroup', 'fHost', 'fTriggers', 'fProblem', 'ageDays', 'tagPriority'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        load();
+      }
+    });
   });
   ['optCompact', 'optHighlight'].forEach(function (id) {
     $(id).addEventListener('change', function () {
@@ -1239,37 +2682,7 @@ body.kiosk .header { display: none; }
   }
   $('btnGroupSelect').addEventListener('click', function (e) {
     e.stopPropagation();
-    var q = $('fGroup').value.trim().toLowerCase();
-    var cats = unique(hostsCache.map(function (h) { return h.category; }))
-      .filter(function (c) { return !q || String(c).toLowerCase().indexOf(q) !== -1; });
-    if (!cats.length) { toast('Belum ada grup host (kategori) yang cocok', 'error'); return; }
-    openPop(this, cats.map(function (c) {
-      return { label: c, onPick: function () { $('fGroup').value = c; load(); } };
-    }));
-  });
-  $('btnHostSelect').addEventListener('click', function (e) {
-    e.stopPropagation();
-    var q = $('fHost').value.trim().toLowerCase();
-    var hosts = hostsCache.filter(function (h) {
-      var txt = (String(h.ip || '') + ' ' + String(h.name || '')).toLowerCase();
-      return !q || txt.indexOf(q) !== -1;
-    }).slice(0, 200);
-    if (!hosts.length) { toast('Tidak ada host yang cocok', 'error'); return; }
-    openPop(this, hosts.map(function (h) {
-      var label = String(h.ip || '') + (h.name ? '  ·  ' + h.name : '');
-      return { label: label, onPick: function () { $('fHost').value = h.ip; load(); } };
-    }));
-  });
-  $('btnTriggerSelect').addEventListener('click', function (e) {
-    e.stopPropagation();
-    var q = $('fTriggers').value.trim().toLowerCase();
-    var msgs = unique(lastRows.map(function (p) { return p.message; }))
-      .filter(function (m) { return !q || String(m).toLowerCase().indexOf(q) !== -1; })
-      .slice(0, 200);
-    if (!msgs.length) { toast('Tidak ada trigger yang cocok', 'error'); return; }
-    openPop(this, msgs.map(function (m) {
-      return { label: m, onPick: function () { $('fTriggers').value = m; render(); } };
-    }));
+    openGroupPicker();
   });
 
   // ---------------- Save as / Apply / Reset
@@ -1309,18 +2722,42 @@ body.kiosk .header { display: none; }
   });
 
   // ---------------- sort & pilih semua
-  $('sortTime').addEventListener('click', function () {
-    state.sort = state.sort === 'time_desc' ? 'time_asc' : 'time_desc';
-    $('chevTime').classList.toggle('asc', state.sort === 'time_asc');
-    load();
-  });
+  function toggleSort(field) {
+    var cur = String(state.sort || '');
+    if (field === 'time') {
+      state.sort = cur === 'time_desc' ? 'time_asc' : 'time_desc';
+      updateSortUI();
+      load();
+      return;
+    }
+    if (cur === field + '_asc' || cur === field + '_desc') {
+      state.sort = cur === field + '_asc' ? field + '_desc' : field + '_asc';
+    } else {
+      state.sort = field + (field === 'severity' ? '_desc' : '_asc');
+    }
+    updateSortUI();
+    render();
+  }
+  $('sortTime').addEventListener('click', function () { toggleSort('time'); });
+  $('sortSeverity').addEventListener('click', function () { toggleSort('severity'); });
+  $('sortHost').addEventListener('click', function () { toggleSort('host'); });
+  $('sortProblem').addEventListener('click', function () { toggleSort('problem'); });
   $('cbAll').addEventListener('change', function () {
     var on = this.checked;
-    qsa('.rowcb').forEach(function (c) { c.checked = on; });
+    qsa('#tbody .rowcb').forEach(function (c) { c.checked = on; });
+    syncSelection();
   });
 
-  // ---------------- ack
+  // ---------------- aksi baris: status kosong, pilihan, dan ack
   $('tbody').addEventListener('click', function (e) {
+    var empty = e.target.closest('[data-empty-action]');
+    if (empty) {
+      var action = empty.getAttribute('data-empty-action');
+      if (action === 'reset') $('btnReset').click();
+      else if (action === 'history30') setHistoryHours(24 * 30);
+      else if (action === 'reload') load();
+      return;
+    }
     var b = e.target.closest('.zbx-ackbtn');
     if (!b) return;
     var id = b.getAttribute('data-id'), act = b.getAttribute('data-act');
@@ -1339,6 +2776,38 @@ body.kiosk .header { display: none; }
       b.disabled = false;
     });
   });
+  $('tbody').addEventListener('change', function (e) {
+    if (e.target.classList.contains('rowcb')) syncSelection();
+  });
+  $('selClear').addEventListener('click', function () {
+    qsa('#tbody .rowcb').forEach(function (c) { c.checked = false; });
+    syncSelection();
+  });
+  function bulkAck(ack) {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var buttons = [$('selAck'), $('selUnack')];
+    buttons.forEach(function (b) { b.disabled = true; });
+    var ok = 0, fail = 0;
+    Promise.all(ids.map(function (id) {
+      return fetch('/api/alerts/' + id + '/workflow', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ acknowledged: !!ack })
+      }).then(function (r) {
+        if (r.ok) ok += 1;
+        else fail += 1;
+      }).catch(function () { fail += 1; });
+    })).then(function () {
+      buttons.forEach(function (b) { b.disabled = false; });
+      if (fail) toast(ok + ' berhasil, ' + fail + ' gagal', 'error');
+      else toast(ok + ' masalah di-' + (ack ? 'Ack' : 'Unack'));
+      load();
+    });
+  }
+  $('selAck').addEventListener('click', function () { bulkAck(true); });
+  $('selUnack').addEventListener('click', function () { bulkAck(false); });
 
   // ---------------- export CSV (mengikuti filter kliens)
   function csvCell(v) {
@@ -1348,7 +2817,7 @@ body.kiosk .header { display: none; }
   }
   $('btnExport').addEventListener('click', function () {
     collect();
-    var rows = lastRows.filter(rowPasses);
+    var rows = sortRows(lastRows.filter(rowPasses));
     var head = ['Time', 'Severity', 'Recovery time', 'Status', 'Info', 'Host',
                 'Problem', 'Duration', 'Update', 'Actions', 'Tags'];
     var lines = [head.map(csvCell).join(',')];
@@ -1374,21 +2843,39 @@ body.kiosk .header { display: none; }
   });
 
   // ---------------- kiosk & bantuan
-  $('btnKiosk').addEventListener('click', function () {
-    var on = document.body.classList.toggle('kiosk');
-    if (on) {
-      var el = document.documentElement;
-      if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
-    } else if (document.fullscreenElement && document.exitFullscreen) {
+  function exitKiosk() {
+    document.body.classList.remove('kiosk');
+    if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(function () {});
     }
+  }
+  $('btnKiosk').addEventListener('click', function () {
+    if (document.body.classList.contains('kiosk')) return exitKiosk();
+    document.body.classList.add('kiosk');
+    var el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
+  });
+  $('kioskExit').addEventListener('click', exitKiosk);
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !document.body.classList.contains('kiosk')) return;
+    if (document.querySelector('.zbx-picker-backdrop:not([hidden]), dialog[open]')) return;
+    e.preventDefault();
+    exitKiosk();
   });
   document.addEventListener('fullscreenchange', function () {
     if (!document.fullscreenElement) document.body.classList.remove('kiosk');
   });
   $('btnHelp').addEventListener('click', function () {
     var d = $('helpDlg');
-    if (d && d.showModal) d.showModal();
+    if (!d || !d.showModal) return;
+    d.showModal();
+    // Fokus ke judul supaya dialog tidak auto-scroll ke tombol Tutup di bawah.
+    var h = d.querySelector('h2');
+    if (h) {
+      h.setAttribute('tabindex', '-1');
+      try { h.focus({ preventScroll: true }); } catch (_) { h.focus(); }
+    }
+    d.scrollTop = 0;
   });
   $('helpDlg').addEventListener('click', function (e) {
     // klik backdrop menutup dialog
@@ -1409,19 +2896,28 @@ body.kiosk .header { display: none; }
             return '<option value="' + esc(h.ip) + '">' + esc(h.name || '') + '</option>';
           }).join('');
         }
+        if (!$('hostPicker').hidden) renderHostPicker();
       }
     }).catch(function () {});
   }
 
-  function load() {
-    collect();
+  function load(skipCollect) {
+    var seq = ++loadSeq;
+    if (!skipCollect) collect();
     updateClock();
+    loading = true;
+    loadError = null;
+    timerLeft = REFRESH_S;
+    if (!lastRows.length) render();
+    else updateRefreshInfo();
     var q = new URLSearchParams();
     q.set('show', state.show);
-    q.set('sort', state.sort);
-    if (state.host) q.set('host', state.host.trim());
+    q.set('sort', /^time_/.test(state.sort) ? state.sort : 'time_desc');
+    var hostVals = state.host.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (hostVals.length === 1) q.set('host', hostVals[0]);
     if (state.problem) q.set('problem', state.problem.trim());
-    if (state.ageOn) q.set('age_less_days', state.ageDays);
+    if (state.show === 'recent') q.set('recent_days', state.recentDays || 7);
+    if (state.ageOn && state.show !== 'history') q.set('age_less_days', state.ageDays);
     if (state.ack !== 'all') q.set('ack', state.ack);
     if (state.byMe) q.set('by_me', '1');
     return Promise.all([
@@ -1434,11 +2930,28 @@ body.kiosk .header { display: none; }
         return r.json();
       })
     ]).then(function (res) {
+      if (seq !== loadSeq) return;
+      loading = false;
+      loadError = null;
       lastRows = (res[1] && res[1].problems) || [];
+      if (state.show === 'history') {
+        var cutoff = Date.now() - (state.historyHours || 1) * 3600000;
+        lastRows = lastRows.filter(function (p) {
+          var t = parseDbTime(p.triggered_at);
+          return t && t.getTime() >= cutoff;
+        });
+      }
+      lastLoadedAt = new Date().toLocaleTimeString('id-ID', { hour12: false });
       render();
       timerLeft = REFRESH_S;
+      updateRefreshInfo();
     }).catch(function (err) {
-      toast('Gagal memuat problems: ' + err.message, 'error');
+      if (seq !== loadSeq) return;
+      loading = false;
+      loadError = err.message || 'kesalahan jaringan';
+      render();
+      toast('Gagal memuat problems: ' + loadError, 'error');
+      updateRefreshInfo();
     });
   }
 
@@ -1456,7 +2969,8 @@ body.kiosk .header { display: none; }
   load();
   setInterval(function () {
     timerLeft -= 1;
-    if (timerLeft <= 0) load();
+    updateRefreshInfo();
+    if (timerLeft <= 0) load(true);
   }, 1000);
 })();
 </script>

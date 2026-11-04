@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Reports: {{ report_title }}">
+<title>{{ report_title }} · Reports · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/services.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
+{% if report_page == "availability" %}<link rel="stylesheet" href="{{ url_for('static', filename='css/availability_report.css') }}">{% endif %}
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/services_common.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/reports.js') }}" defer></script>
+{% if report_page == "availability" %}<script src="{{ url_for('static', filename='js/availability_report.js') }}" defer></script>{% endif %}
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+{% macro empty_row(colspan, title, hint) -%}
+<tr>
+  <td colspan="{{ colspan }}" class="rpt-empty">
+    <div class="rpt-empty-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg>
+      <b>{{ title }}</b>
+      <span>{{ hint }}</span>
+    </div>
+  </td>
+</tr>
+{%- endmacro %}
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
+          <span>Monitoring</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
+          <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+          <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
+          <a href="/maps" class="nav-link nav-sub-link" data-nav="maps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title" style="font-size:16px;">Reports</h1>
+        <p class="page-sub">Laporan, audit, dan notifikasi NMS Kopegtel</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">{{ (current_user.username or 'U')[0]|upper }}</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">{{ current_user.username }}</span>
+              <span class="user-btn-role">{{ (current_user.role or 'operator')|capitalize }}</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page rpt-page" id="konten">
+      <nav class="rpt-tabs" aria-label="Reports">
+        {% for key, label, subtitle in report_pages %}
+        <a href="{{ url_for('reports_page', page=key) }}" class="rpt-tab{% if key == report_page %} active{% endif %}"{% if key == report_page %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+
+      {% if report_page == "scheduled" %}
+      <div class="rpt-sched-head">
+        <h1 class="rpt-sched-title">Scheduled reports</h1>
+        <div class="rpt-sched-head-actions">
+          <a href="https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/reports/scheduled" target="_blank" rel="noopener" class="rpt-sched-help" title="Help">?</a>
+          {% if is_admin and scheduled_action != "create" %}
+          <a href="{{ url_for('reports_page', page='scheduled', action='create') }}" class="rpt-sched-btn-create" id="btnCreateReport">Create report</a>
+          {% endif %}
+        </div>
+      </div>
+      {% elif report_page == "availability" %}
+      <div class="rpt-availability-heading">
+        <h1 class="rpt-availability-title">Availability report</h1>
+        <div class="rpt-availability-heading-actions">
+          <a href="https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/reports/availability" target="_blank" rel="noopener" class="rpt-sched-help" title="Help" aria-label="Help">?</a>
+          <label class="rpt-availability-mode-label" for="availabilityMode">Mode</label>
+          <select id="availabilityMode" class="rpt-availability-mode" aria-label="Availability report mode">
+            <option value="host"{% if availability_mode == "host" %} selected{% endif %}>By host</option>
+            <option value="trigger"{% if availability_mode == "trigger" %} selected{% endif %}>By trigger</option>
+          </select>
+        </div>
+      </div>
+      {% else %}
+      <div class="rpt-head">
+        <div>
+          <h2 class="rpt-title">{{ report_title }}</h2>
+          <p class="rpt-sub">{{ report_subtitle }}</p>
+        </div>
+        <div class="rpt-head-actions">
+          {% if report_page == "notifications" and is_admin %}
+          <button class="rpt-btn primary" type="button" id="btnNotifyTest">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Kirim pesan uji
+          </button>
+          {% endif %}
+          {% if report_page == "audit" %}
+          <a class="rpt-btn" href="/api/audit/export?format=csv&days=30">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+            Export CSV
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if report_page == "system" %}
+      <section class="rpt-card rpt-sys-card" aria-label="System information">
+        <div class="rpt-table-wrap">
+          <table class="rpt-sys-table">
+            <thead>
+              <tr>
+                <th scope="col">Parameter</th>
+                <th scope="col">Value</th>
+                <th scope="col">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in system.rows %}
+              <tr>
+                <td class="rpt-sys-param">{{ row.label }}</td>
+                <td class="rpt-sys-value"><span class="rpt-sys-value-text {{ row.value_class }}">{{ row.value }}</span></td>
+                <td class="rpt-sys-details">{% for part in row.details %}<span class="{{ part.class }}">{{ part.text }}</span>{% if not loop.last %}<span class="rpt-sys-sep"> / </span>{% endif %}{% endfor %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="rpt-sys-foot">NMS Kopegtel {{ system.version }} © {{ system.year }}</div>
+      </section>
+
+      {% elif report_page == "scheduled" %}
+      {% if scheduled_action == "create" %}
+      <div class="rpt-sched-form-wrap">
+        <form id="rptSchedCreateForm" class="rpt-sched-form-card" method="post" action="/api/reports/scheduled/create" novalidate>
+          <div class="rpt-sched-form-body">
+            <!-- Owner -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptOwner">
+                <span class="rpt-required">*</span> Owner
+              </label>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-input-btn-group">
+                  <div class="rpt-sched-owner-box" id="rptOwnerBox">
+                    <span class="rpt-sched-owner-chip" id="rptOwnerChip">
+                      <span class="rpt-sched-owner-chip-text" id="rptOwnerChipText">Admin (Zabbix Administrator)</span>
+                      <button type="button" class="rpt-sched-owner-chip-remove" id="btnOwnerChipRemove" aria-label="Remove owner">×</button>
+                    </span>
+                    <span class="rpt-sched-owner-placeholder" id="rptOwnerPlaceholder">type here to search</span>
+                  </div>
+                  <input type="hidden" id="rptOwner" name="owner" value="Admin (Zabbix Administrator)">
+                  <button type="button" class="rpt-sched-btn-secondary" id="btnSelectOwner">Select</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Name -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptName">
+                <span class="rpt-required">*</span> Name
+              </label>
+              <div class="rpt-sched-form-control">
+                <input type="text" id="rptName" name="name" class="rpt-sched-input rpt-sched-input-lg" autocomplete="off" required>
+              </div>
+            </div>
+
+            <!-- Dashboard -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptDashboard">
+                <span class="rpt-required">*</span> Dashboard
+              </label>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-input-btn-group">
+                  <input type="text" id="rptDashboard" name="dashboard" class="rpt-sched-input rpt-sched-input-lg" placeholder="type here to search" autocomplete="off" required>
+                  <button type="button" class="rpt-sched-btn-secondary" id="btnSelectDashboard">Select</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Period -->
+            <div class="rpt-sched-form-row">
+              <span class="rpt-sched-form-label">Period</span>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-seg" role="group" aria-label="Period">
+                  <input type="radio" id="rptPeriodDay" name="period" value="Previous day" checked>
+                  <label for="rptPeriodDay">Previous day</label>
+                  <input type="radio" id="rptPeriodWeek" name="period" value="Previous week">
+                  <label for="rptPeriodWeek">Previous week</label>
+                  <input type="radio" id="rptPeriodMonth" name="period" value="Previous month">
+                  <label for="rptPeriodMonth">Previous month</label>
+                  <input type="radio" id="rptPeriodYear" name="period" value="Previous year">
+                  <label for="rptPeriodYear">Previous year</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cycle -->
+            <div class="rpt-sched-form-row">
+              <span class="rpt-sched-form-label">Cycle</span>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-seg" role="group" aria-label="Cycle">
+                  <input type="radio" id="rptCycleDaily" name="cycle" value="Daily" checked>
+                  <label for="rptCycleDaily">Daily</label>
+                  <input type="radio" id="rptCycleWeekly" name="cycle" value="Weekly">
+                  <label for="rptCycleWeekly">Weekly</label>
+                  <input type="radio" id="rptCycleMonthly" name="cycle" value="Monthly">
+                  <label for="rptCycleMonthly">Monthly</label>
+                  <input type="radio" id="rptCycleYearly" name="cycle" value="Yearly">
+                  <label for="rptCycleYearly">Yearly</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Start time, shown with cycle schedule -->
+            <div class="rpt-sched-form-row rpt-sched-cycle-time-row" id="rptCycleTimeRow">
+              <label class="rpt-sched-form-label" for="rptStartTimeH">Start time</label>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-time-wrap">
+                  <input type="text" id="rptStartTimeH" name="start_time_h" class="rpt-sched-input rpt-sched-time-input" value="00" maxlength="2" pattern="[0-9]{2}">
+                  <span class="rpt-sched-time-sep">:</span>
+                  <input type="text" id="rptStartTimeM" name="start_time_m" class="rpt-sched-input rpt-sched-time-input" value="00" maxlength="2" pattern="[0-9]{2}">
+                </div>
+              </div>
+            </div>
+            <div class="rpt-sched-form-row rpt-sched-repeat-row" id="rptWeeklyOptions" hidden>
+              <span class="rpt-sched-form-label"><span class="rpt-required">*</span> Repeat on</span>
+              <div class="rpt-sched-form-control rpt-sched-weekdays">
+                {% for day in [
+                  ("Monday", "Monday"), ("Tuesday", "Tuesday"), ("Wednesday", "Wednesday"),
+                  ("Thursday", "Thursday"), ("Friday", "Friday"), ("Saturday", "Saturday"),
+                  ("Sunday", "Sunday")
+                ] %}
+                <label class="rpt-sched-day-option" for="rptDay{{ day[0] }}">
+                  <input type="checkbox" id="rptDay{{ day[0] }}" name="repeat_days" value="{{ day[0] }}"{% if day[0] == "Monday" %} checked{% endif %}>
+                  <span>{{ day[1] }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Start date -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptStartDate">Start date</label>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-date-wrap">
+                  <input type="text" id="rptStartDate" name="start_date" class="rpt-sched-input rpt-sched-date-input" placeholder="YYYY-MM-DD" autocomplete="off">
+                  <button type="button" class="rpt-sched-cal-btn" id="btnPickStartDate" aria-label="Select start date">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+                      <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                    </svg>
+                  </button>
+                  <input type="date" id="nativeStartDate" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1">
+                </div>
+              </div>
+            </div>
+
+            <!-- End date -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptEndDate">End date</label>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-date-wrap">
+                  <input type="text" id="rptEndDate" name="end_date" class="rpt-sched-input rpt-sched-date-input" placeholder="YYYY-MM-DD" autocomplete="off">
+                  <button type="button" class="rpt-sched-cal-btn" id="btnPickEndDate" aria-label="Select end date">
+                    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+                      <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                    </svg>
+                  </button>
+                  <input type="date" id="nativeEndDate" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" tabindex="-1">
+                </div>
+              </div>
+            </div>
+
+            <!-- Subject -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptSubject">Subject</label>
+              <div class="rpt-sched-form-control">
+                <input type="text" id="rptSubject" name="subject" class="rpt-sched-input rpt-sched-input-lg" autocomplete="off">
+              </div>
+            </div>
+
+            <!-- Message -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptMessage">Message</label>
+              <div class="rpt-sched-form-control">
+                <textarea id="rptMessage" name="message" class="rpt-sched-textarea" rows="4"></textarea>
+              </div>
+            </div>
+
+            <!-- Subscriptions -->
+            <div class="rpt-sched-form-row">
+              <span class="rpt-sched-form-label">
+                <span class="rpt-required">*</span> Subscriptions
+              </span>
+              <div class="rpt-sched-form-control">
+                <div class="rpt-sched-sub-card">
+                  <table class="rpt-sched-sub-table" id="rptSubscriptionsTable">
+                    <thead>
+                      <tr>
+                        <th scope="col">Recipient</th>
+                        <th scope="col">Generate report by</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="rptSubList">
+                      <tr data-sub-id="sub_admin">
+                        <td><span class="rpt-sub-name">Admin (Zabbix Administrator)</span></td>
+                        <td>Recipient</td>
+                        <td><span class="rpt-sched-status-tag enabled">Include</span></td>
+                        <td><button type="button" class="rpt-sched-btn-link rpt-remove-sub">Remove</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="rpt-sched-sub-actions">
+                    <button type="button" class="rpt-sched-btn-link" id="btnAddUser">Add user</button>
+                    <button type="button" class="rpt-sched-btn-link" id="btnAddUserGroup">Add user group</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptDescription">Description</label>
+              <div class="rpt-sched-form-control">
+                <textarea id="rptDescription" name="description" class="rpt-sched-textarea" rows="4"></textarea>
+              </div>
+            </div>
+
+            <!-- Enabled -->
+            <div class="rpt-sched-form-row">
+              <label class="rpt-sched-form-label" for="rptEnabled">Enabled</label>
+              <div class="rpt-sched-form-control">
+                <input type="checkbox" id="rptEnabled" name="enabled" class="rpt-sched-checkbox" checked>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Actions -->
+          <div class="rpt-sched-form-actions">
+            <button type="submit" class="rpt-sched-btn-add" id="btnReportAdd">Add</button>
+            <button type="button" class="rpt-sched-btn-test" id="btnReportTest">Test</button>
+            <a href="{{ url_for('reports_page', page='scheduled') }}" class="rpt-sched-btn-cancel" id="btnReportCancel">Cancel</a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Modal Select Owner (Users) persis screenshot Zabbix -->
+      <div class="rpt-modal-backdrop" id="rptUsersModal" style="display:none;" aria-hidden="true">
+        <div class="rpt-modal rpt-modal-users" role="dialog" aria-modal="true" aria-labelledby="rptUsersModalTitle">
+          <div class="rpt-modal-head rpt-users-modal-head">
+            <h3 id="rptUsersModalTitle" class="rpt-users-modal-title">Users</h3>
+            <button type="button" class="rpt-modal-close" id="btnUsersModalClose" aria-label="Close">×</button>
+          </div>
+          <div class="rpt-modal-body rpt-users-modal-body">
+            <table class="rpt-users-table" id="rptUsersTable">
+              <thead>
+                <tr>
+                  <th scope="col">Username</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Last name</th>
+                </tr>
+              </thead>
+              <tbody id="rptUsersList">
+                {% for u in users_list or [
+                  {'username': 'Admin', 'name': 'Zabbix', 'last_name': 'Administrator', 'display': 'Admin (Zabbix Administrator)'},
+                  {'username': 'guest', 'name': '', 'last_name': '', 'display': 'guest'}
+                ] %}
+                <tr data-username="{{ u.username }}" data-display="{{ u.display }}">
+                  <td><a href="javascript:void(0)" class="rpt-user-link" data-username="{{ u.username }}" data-display="{{ u.display }}">{{ u.username }}</a></td>
+                  <td>{{ u.name }}</td>
+                  <td>{{ u.last_name }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="rpt-modal-foot rpt-users-modal-foot">
+            <button type="button" class="rpt-sched-btn-cancel-blue" id="btnUsersModalCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Select Dashboard (persis screenshot Zabbix) -->
+      <div class="rpt-modal-backdrop" id="rptDashboardsModal" style="display:none;" aria-hidden="true">
+        <div class="rpt-modal rpt-modal-users" role="dialog" aria-modal="true" aria-labelledby="rptDashboardsModalTitle">
+          <div class="rpt-modal-head rpt-users-modal-head">
+            <h3 id="rptDashboardsModalTitle" class="rpt-users-modal-title">Dashboards</h3>
+            <button type="button" class="rpt-modal-close" id="btnDashboardsModalClose" aria-label="Close">×</button>
+          </div>
+          <div class="rpt-modal-body rpt-users-modal-body">
+            <table class="rpt-users-table rpt-dashboards-table" id="rptDashboardsTable">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                </tr>
+              </thead>
+              <tbody id="rptDashboardsList">
+                {% for dashboard in ["Global view", "Zabbix server", "Zabbix server health"] %}
+                <tr data-dashboard="{{ dashboard }}">
+                  <td><a href="javascript:void(0)" class="rpt-dashboard-link" data-dashboard="{{ dashboard }}">{{ dashboard }}</a></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="rpt-modal-foot rpt-users-modal-foot">
+            <button type="button" class="rpt-sched-btn-cancel-blue" id="btnDashboardsModalCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Subscription modal -->
+      <div class="rpt-modal-backdrop" id="rptSubscriptionModal" style="display:none;" aria-hidden="true">
+        <div class="rpt-modal rpt-subscription-modal" role="dialog" aria-modal="true" aria-labelledby="rptSubscriptionModalTitle">
+          <div class="rpt-modal-head rpt-subscription-modal-head">
+            <h3 id="rptSubscriptionModalTitle">Subscription</h3>
+            <button type="button" class="rpt-modal-close" id="btnSubscriptionModalClose" aria-label="Close">×</button>
+          </div>
+          <div class="rpt-subscription-modal-body">
+            <div class="rpt-subscription-field">
+              <label class="rpt-subscription-label" for="rptSubscriptionRecipient"><span class="rpt-required">*</span> Recipient</label>
+              <div class="rpt-subscription-recipient-control">
+                <input type="text" id="rptSubscriptionRecipient" class="rpt-sched-input" placeholder="type here to search" autocomplete="off">
+                <button type="button" class="rpt-sched-btn-secondary" id="btnSubscriptionRecipientSelect">Select</button>
+              </div>
+            </div>
+            <div class="rpt-subscription-field">
+              <span class="rpt-subscription-label">Generate report by</span>
+              <div class="rpt-subscription-control">
+                <div class="rpt-sched-seg rpt-subscription-seg" role="group" aria-label="Generate report by">
+                  <input type="radio" id="rptGenerateCurrentUser" name="subscription_generate_by" value="Current user" checked>
+                  <label for="rptGenerateCurrentUser">Current user</label>
+                  <input type="radio" id="rptGenerateRecipient" name="subscription_generate_by" value="Recipient">
+                  <label for="rptGenerateRecipient">Recipient</label>
+                </div>
+              </div>
+            </div>
+            <div class="rpt-subscription-field" id="rptSubscriptionStatusField">
+              <span class="rpt-subscription-label">Status</span>
+              <div class="rpt-subscription-control">
+                <div class="rpt-sched-seg rpt-subscription-seg" role="group" aria-label="Status">
+                  <input type="radio" id="rptSubscriptionInclude" name="subscription_status" value="Include" checked>
+                  <label for="rptSubscriptionInclude">Include</label>
+                  <input type="radio" id="rptSubscriptionExclude" name="subscription_status" value="Exclude">
+                  <label for="rptSubscriptionExclude">Exclude</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rpt-modal-foot rpt-subscription-modal-foot">
+            <button type="button" class="rpt-sched-btn-add" id="btnSubscriptionAdd">Add</button>
+            <button type="button" class="rpt-sched-btn-cancel-blue" id="btnSubscriptionCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Select recipient user modal -->
+      <div class="rpt-modal-backdrop" id="rptSubscriptionUsersModal" style="display:none;" aria-hidden="true">
+        <div class="rpt-modal rpt-modal-users" role="dialog" aria-modal="true" aria-labelledby="rptSubscriptionUsersTitle">
+          <div class="rpt-modal-head rpt-users-modal-head">
+            <h3 id="rptSubscriptionUsersTitle" class="rpt-users-modal-title">Users</h3>
+            <button type="button" class="rpt-modal-close" id="btnSubscriptionUsersClose" aria-label="Close">×</button>
+          </div>
+          <div class="rpt-modal-body rpt-users-modal-body">
+            <table class="rpt-users-table">
+              <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Last name</th></tr></thead>
+              <tbody id="rptSubscriptionUsersList">
+                {% for u in users_list or [
+                  {'username': 'Admin', 'name': 'Zabbix', 'last_name': 'Administrator', 'display': 'Admin (Zabbix Administrator)'},
+                  {'username': 'guest', 'name': '', 'last_name': '', 'display': 'guest'}
+                ] %}
+                <tr data-username="{{ u.username }}" data-display="{{ u.display }}">
+                  <td><a href="javascript:void(0)" class="rpt-subscription-user-link" data-username="{{ u.username }}" data-display="{{ u.display }}">{{ u.username }}</a></td>
+                  <td>{{ u.name }}</td><td>{{ u.last_name }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="rpt-modal-foot rpt-users-modal-foot">
+            <button type="button" class="rpt-sched-btn-cancel-blue" id="btnSubscriptionUsersCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Select recipient user group modal -->
+      <div class="rpt-modal-backdrop" id="rptSubscriptionGroupsModal" style="display:none;" aria-hidden="true">
+        <div class="rpt-modal rpt-modal-users" role="dialog" aria-modal="true" aria-labelledby="rptSubscriptionGroupsTitle">
+          <div class="rpt-modal-head rpt-users-modal-head">
+            <h3 id="rptSubscriptionGroupsTitle" class="rpt-users-modal-title">User groups</h3>
+            <button type="button" class="rpt-modal-close" id="btnSubscriptionGroupsClose" aria-label="Close">×</button>
+          </div>
+          <div class="rpt-modal-body rpt-users-modal-body">
+            <table class="rpt-users-table">
+              <thead><tr><th scope="col">Name</th></tr></thead>
+              <tbody id="rptSubscriptionGroupsList">
+                {% for group in ["Zabbix administrators", "Guests", "Network Engineers", "Fiber Maintenance Group"] %}
+                <tr><td><a href="javascript:void(0)" class="rpt-subscription-group-link">{{ group }}</a></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="rpt-modal-foot rpt-users-modal-foot">
+            <button type="button" class="rpt-sched-btn-cancel-blue" id="btnSubscriptionGroupsCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="rpt-sched-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+
+      {% else %}
+      <div class="rpt-sched-filter-wrap">
+        <div class="rpt-sched-filter-tab-bar">
+          <button type="button" class="rpt-sched-filter-tab" id="rptFilterToggle" aria-expanded="true">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" width="13" height="13">
+              <path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/>
+            </svg>
+            <span>Filter</span>
+          </button>
+        </div>
+        <div class="rpt-sched-filter-card" id="rptFilterCard">
+          <form method="get" action="{{ url_for('reports_page', page='scheduled') }}" class="rpt-sched-filter-form">
+            <div class="rpt-sched-filter-row">
+              <div class="rpt-sched-group">
+                <label for="rptFilterName" class="rpt-sched-label">Name</label>
+                <input type="text" id="rptFilterName" name="name" class="rpt-sched-input" value="{{ filter_name }}" autocomplete="off">
+              </div>
+              <div class="rpt-sched-group">
+                <span class="rpt-sched-label">Show</span>
+                <div class="rpt-sched-seg" role="group" aria-label="Show">
+                  <input type="radio" id="rptShowAll" name="show" value="all"{% if filter_show == "all" %} checked{% endif %}>
+                  <label for="rptShowAll">All</label>
+                  <input type="radio" id="rptShowMine" name="show" value="mine"{% if filter_show == "mine" %} checked{% endif %}>
+                  <label for="rptShowMine">Created by me</label>
+                </div>
+              </div>
+              <div class="rpt-sched-group">
+                <span class="rpt-sched-label">Status</span>
+                <div class="rpt-sched-seg" role="group" aria-label="Status">
+                  <input type="radio" id="rptStatusAny" name="status" value="any"{% if filter_status == "any" %} checked{% endif %}>
+                  <label for="rptStatusAny">Any</label>
+                  <input type="radio" id="rptStatusEnabled" name="status" value="enabled"{% if filter_status == "enabled" %} checked{% endif %}>
+                  <label for="rptStatusEnabled">Enabled</label>
+                  <input type="radio" id="rptStatusDisabled" name="status" value="disabled"{% if filter_status == "disabled" %} checked{% endif %}>
+                  <label for="rptStatusDisabled">Disabled</label>
+                  <input type="radio" id="rptStatusExpired" name="status" value="expired"{% if filter_status == "expired" %} checked{% endif %}>
+                  <label for="rptStatusExpired">Expired</label>
+                </div>
+              </div>
+            </div>
+            <div class="rpt-sched-filter-actions">
+              <button type="submit" class="rpt-sched-btn-apply">Apply</button>
+              <a href="{{ url_for('reports_page', page='scheduled') }}" class="rpt-sched-btn-reset">Reset</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="rpt-sched-table-card">
+        <div class="rpt-table-wrap">
+          <table class="rpt-table rpt-sched-table" id="rptJobsTable">
+            <thead>
+              <tr>
+                {% if is_admin %}<th scope="col" class="rpt-sched-th-check"><input type="checkbox" id="rptCheckAll" aria-label="Select all"></th>{% endif %}
+                <th scope="col" class="rpt-sched-th-name">
+                  <a href="{{ url_for('reports_page', page='scheduled', name=filter_name, show=filter_show, status=filter_status, dir=next_sort_dir) }}" class="rpt-sched-sort-link">Name <span class="rpt-sched-arrow" aria-hidden="true">{{ "▲" if sort_dir == "asc" else "▼" }}</span></a>
+                </th>
+                <th scope="col">Owner</th>
+                <th scope="col">Repeats</th>
+                <th scope="col">Period</th>
+                <th scope="col">Last sent</th>
+                <th scope="col">Status</th>
+                <th scope="col">Info</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in report_jobs %}
+              <tr>
+                {% if is_admin %}<td class="rpt-sched-td-check"><input type="checkbox" class="rpt-row-check" value="{{ job.id }}" aria-label="Select {{ job.name }}"></td>{% endif %}
+                <td><span class="rpt-sched-name" title="{{ job.description }}">{{ job.name }}</span></td>
+                <td>{{ job.owner }}</td>
+                <td>{{ job.repeats }}</td>
+                <td class="rpt-nowrap" title="{{ job.schedule }}">{{ job.period }}</td>
+                <td class="rpt-nowrap">{{ job.last_sent }}</td>
+                <td>
+                  {% if is_admin %}
+                  <button type="button" class="rpt-sched-status-link rpt-sched-status-toggle {{ 'enabled' if job.active else 'disabled' }}" data-job-id="{{ job.id }}" data-enable="{{ '0' if job.active else '1' }}" title="{{ 'Click to disable' if job.active else 'Click to enable' }}">{{ job.status_label }}</button>
+                  {% else %}
+                  <span class="rpt-sched-status-tag {{ 'enabled' if job.active else 'disabled' }}">{{ job.status_label }}</span>
+                  {% endif %}
+                </td>
+                <td class="rpt-sched-info-cell">
+                  {% if not scheduler_running %}
+                  <span class="rpt-sched-info-icon warning" title="Scheduler is not running. Reports will not be generated." aria-label="Scheduler is not running">!</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr class="rpt-sched-tr-empty">
+                <td colspan="{{ 8 if is_admin else 7 }}">
+                  <div class="rpt-sched-empty-wrap">
+                    <svg class="rpt-sched-empty-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="14" cy="14" r="8"/>
+                      <line x1="20" y1="20" x2="27" y2="27"/>
+                    </svg>
+                    <span class="rpt-sched-empty-text">No data found</span>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if is_admin %}
+        <div class="rpt-sched-action-bar" id="rptActionsBar" hidden>
+          <span class="rpt-sched-selected-label" id="rptSelectedCount">0 selected</span>
+          <button type="button" class="rpt-sched-action-btn" id="btnJobsEnable" disabled>Enable</button>
+          <button type="button" class="rpt-sched-action-btn" id="btnJobsDisable" disabled>Disable</button>
+          <button type="button" class="rpt-sched-action-btn rpt-sched-action-danger" id="btnJobsDelete" disabled title="System reports cannot be deleted">Delete</button>
+        </div>
+        {% endif %}
+      </div>
+      {% if report_jobs %}
+      <div class="rpt-sched-list-foot">
+        <span>Displaying 1{% if report_jobs|length > 1 %} to {{ report_jobs|length }}{% endif %} of {{ report_jobs|length }} found</span>
+      </div>
+      {% endif %}
+
+      <footer class="rpt-sched-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+      {% endif %}
+
+      {% elif report_page == "availability" %}
+      <section class="rpt-availability-toolbar" aria-label="Time selector">
+        <div class="rpt-availability-toolbar-top">
+          <button type="button" class="rpt-availability-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
+          <button type="button" class="rpt-availability-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
+          <button type="button" class="rpt-availability-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
+          <button type="button" class="rpt-availability-selected-time" id="availabilityTimeToggle" aria-expanded="false" aria-controls="availabilityTimePanel">
+            <span aria-hidden="true">◷</span> {{ availability_time.label }}
+          </button>
+          <button type="button" class="rpt-availability-filter-button" id="availabilityFilterButton" aria-expanded="false" aria-controls="availabilityFilterPanel">
+            <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg>
+            Filter
+          </button>
+        </div>
+        <div class="rpt-availability-time-panel" id="availabilityTimePanel" hidden>
+          <form method="get" action="{{ url_for('reports_page', page='availability') }}" class="rpt-availability-custom-time">
+            <input type="hidden" name="mode" value="{{ availability_mode }}">
+            <label for="availabilityFrom">From</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="availabilityFrom" name="from" value="{{ availability_time.from_value }}" autocomplete="off" aria-label="From date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select From date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <label for="availabilityTo">To</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="availabilityTo" name="to" value="{{ availability_time.to_value }}" autocomplete="off" aria-label="To date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select To date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <button type="submit" class="rpt-availability-apply">Apply</button>
+          </form>
+          <div class="rpt-availability-presets" aria-label="Quick time ranges">
+            {% for col in availability_preset_columns %}
+            <div class="rpt-availability-preset-column">
+              {% for item in col %}
+              <a href="{{ url_for('reports_page', page='availability', time=item.key, mode=availability_mode) }}" class="rpt-availability-preset{% if item.key == availability_time.selected_key %} active{% endif %}">{{ item.label }}</a>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rpt-availability-filter-panel" id="availabilityFilterPanel" hidden>
+          <div class="rpt-availability-filter-fields">
+            <div class="rpt-availability-filter-row">
+              <label for="availabilityCategoryFilter">Host groups</label>
+              <div class="rpt-availability-filter-field">
+                <input type="search" id="availabilityCategoryFilter" placeholder="type here to search" autocomplete="off">
+                <button type="button" class="rpt-availability-select" data-picker="availabilityCategoryFilter" data-picker-attr="data-category" data-picker-title="Host groups" aria-haspopup="dialog" aria-expanded="false">Select</button>
+              </div>
+            </div>
+            <div class="rpt-availability-filter-row">
+              <label for="availabilityHostFilter">Hosts</label>
+              <div class="rpt-availability-filter-field">
+                <input type="search" id="availabilityHostFilter" placeholder="type here to search" autocomplete="off">
+                <button type="button" class="rpt-availability-select" data-picker="availabilityHostFilter" data-picker-attr="data-host-alias" data-picker-title="Hosts" aria-haspopup="dialog" aria-expanded="false">Select</button>
+              </div>
+            </div>
+          </div>
+          <div class="rpt-availability-filter-sep"></div>
+          <div class="rpt-availability-filter-actions">
+            <button type="button" class="rpt-availability-filter-apply" id="availabilityFilterApply">Apply</button>
+            <button type="button" class="rpt-availability-filter-reset" id="availabilityFilterReset">Reset</button>
+          </div>
+        </div>
+      </section>
+
+      {% if availability_range_error %}
+      <div class="rpt-availability-notice" role="alert">{{ availability_range_error }}</div>
+      {% endif %}
+      {% if availability_data_error %}
+      <div class="rpt-availability-notice rpt-availability-notice-error" role="alert">Availability data failed to load, so the table is empty. Details have been logged on the server.</div>
+      {% endif %}
+
+      <div class="rpt-availability-table-wrap">
+        <table class="rpt-table rpt-availability-table{% if availability_mode == 'trigger' %} rpt-availability-table--trigger{% endif %}" id="availabilityTable">
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="none"><button type="button" class="rpt-availability-sort" data-sort-key="host" data-sort-type="text">Host <span class="rpt-availability-sort-arrow" aria-hidden="true">↕</span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="rpt-availability-sort" data-sort-key="name" data-sort-type="text">Name <span class="rpt-availability-sort-arrow" aria-hidden="true">↕</span></button></th>
+              <th scope="col" class="rpt-availability-problems" aria-sort="none"><button type="button" class="rpt-availability-sort" data-sort-key="problems" data-sort-type="number">Problems <span class="rpt-availability-sort-arrow" aria-hidden="true">↕</span></button></th>
+              <th scope="col" class="rpt-availability-ok" aria-sort="none"><button type="button" class="rpt-availability-sort" data-sort-key="availability" data-sort-type="number">Ok <span class="rpt-availability-sort-arrow" aria-hidden="true">↕</span></button></th>
+              <th scope="col" class="rpt-availability-graph">Graph</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in availability_rows %}
+            {% set graph_url = url_for('reports_availability_graph', host=row.host, trigger=row.graph_trigger, from=availability_time.from_value, to=availability_time.to_value) if row.graph_trigger else url_for('reports_availability_graph', host=row.host, from=availability_time.from_value, to=availability_time.to_value) %}
+            <tr data-host="{{ row.host }}" data-host-ip="{{ row.host_ip or row.host }}" data-host-alias="{{ row.name }}" data-name="{{ row.item_name }}" data-trigger="{{ row.trigger_name }}" data-category="{{ row.category }}" data-problems="{{ row.problems or 0 }}" data-availability="{{ row.availability if row.availability is not none else -1 }}">
+              <td>
+                <a href="{{ url_for('host_detail', ip=row.host_ip or row.host) }}" class="rpt-availability-host">{{ row.name }}</a>
+                {% if row.name and row.name != (row.host_ip or row.host) %}<span class="rpt-availability-host-ip">{{ row.host_ip or row.host }}</span>{% endif %}
+              </td>
+              <td class="rpt-availability-name">
+                {% if availability_mode == "trigger" %}
+                <a href="{{ url_for('problems_page', host=row.host_ip or row.host, problem=row.item_name) }}" class="rpt-availability-name-link" title="Latest events for {{ row.item_name }}">{{ row.item_name }}</a>
+                {% else %}
+                <span>{{ row.item_name }}</span>
+                {% endif %}
+              </td>
+              <td class="rpt-availability-problems">{% if row.problems %}<a class="rpt-availability-problem-count" href="{{ url_for('problems_page', host=row.host_ip or row.host) }}" title="View problems for {{ row.host_ip or row.host }}">{{ row.problems }}</a>{% endif %}</td>
+              <td class="rpt-availability-ok">
+                {% if row.availability is not none %}
+                <span class="rpt-availability-ok-value {{ row.status_class }}">{{ "%.2f"|format(row.availability) }}%</span>
+                {% if row.ok_duration %}<span class="rpt-availability-ok-duration">{{ row.ok_duration }} ok{% if row.problem_duration %} · {{ row.problem_duration }} down{% endif %}</span>{% endif %}
+                {% else %}
+                <span class="rpt-availability-ok-empty" title="No ping samples in this period">No data</span>
+                {% endif %}
+              </td>
+              <td class="rpt-availability-graph"><a class="rpt-availability-graph-link" href="{{ graph_url }}" aria-label="Show availability graph for {{ row.name }}{% if availability_mode == 'trigger' %}: {{ row.item_name }}{% endif %}">Show</a></td>
+            </tr>
+            {% else %}
+            {{ empty_row(5, "No data found", "No trigger history matched this time period." if availability_mode == "trigger" else "No availability data matched this time period.") }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="rpt-availability-foot"><span id="availabilityDisplayCount">Displaying {{ availability_rows|length }} of {{ availability_rows|length }} found</span></div>
+      <footer class="rpt-sched-footer rpt-availability-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+
+      {% elif report_page == "triggers" %}
+      <div class="rpt-availability-heading rpt-trigger-heading">
+        <h1 class="rpt-availability-title">Top 100 triggers</h1>
+        <a href="https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/reports/top_triggers" target="_blank" rel="noopener" class="rpt-sched-help" title="Help" aria-label="Help">?</a>
+      </div>
+      <section class="rpt-availability-toolbar rpt-trigger-toolbar" aria-label="Time selector">
+        <div class="rpt-availability-toolbar-top">
+          <button type="button" class="rpt-availability-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
+          <button type="button" class="rpt-availability-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
+          <button type="button" class="rpt-availability-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
+          <button type="button" class="rpt-availability-selected-time" id="availabilityTimeToggle" aria-expanded="false" aria-controls="availabilityTimePanel"><span aria-hidden="true">◷</span> {{ trigger_time.label }}</button>
+          <button type="button" class="rpt-availability-filter-button" id="availabilityFilterButton" aria-expanded="false" aria-controls="availabilityFilterPanel"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg> Filter</button>
+        </div>
+        <div class="rpt-availability-time-panel" id="availabilityTimePanel" hidden>
+          <form method="get" action="{{ url_for('reports_page', page='triggers') }}" class="rpt-availability-custom-time">
+            <label for="availabilityFrom">From</label>
+            <div class="rpt-availability-date-field"><input type="text" id="availabilityFrom" name="from" value="{{ trigger_time.from_value }}" autocomplete="off" aria-label="From date and time"><button type="button" class="rpt-availability-calendar" aria-label="Select From date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button></div>
+            <label for="availabilityTo">To</label>
+            <div class="rpt-availability-date-field"><input type="text" id="availabilityTo" name="to" value="{{ trigger_time.to_value }}" autocomplete="off" aria-label="To date and time"><button type="button" class="rpt-availability-calendar" aria-label="Select To date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button></div>
+            <button type="submit" class="rpt-availability-apply">Apply</button>
+          </form>
+          <div class="rpt-availability-presets" aria-label="Quick time ranges">
+            {% for col in trigger_preset_columns %}<div class="rpt-availability-preset-column">{% for item in col %}<a href="{{ url_for('reports_page', page='triggers', time=item.key) }}" class="rpt-availability-preset{% if item.key == trigger_time.selected_key %} active{% endif %}">{{ item.label }}</a>{% endfor %}</div>{% endfor %}
+          </div>
+        </div>
+        <div class="rpt-availability-filter-panel rpt-trigger-filter-panel" id="availabilityFilterPanel" hidden>
+          <strong>Filter</strong><label for="availabilityHostFilter">Host</label><input type="search" id="availabilityHostFilter" placeholder="type here to search" autocomplete="off">
+          <label for="availabilityNameFilter">Trigger</label><input type="search" id="availabilityNameFilter" placeholder="type here to search" autocomplete="off">
+          <label for="availabilitySeverityFilter">Severity</label><select id="availabilitySeverityFilter"><option value="">All</option><option value="disaster">Disaster</option><option value="high">High</option><option value="warning">Warning</option><option value="info">Info</option><option value="low">Low</option></select>
+          <div class="rpt-availability-filter-actions"><button type="button" class="rpt-availability-filter-reset" id="availabilityFilterReset">Reset</button></div>
+        </div>
+      </section>
+      {% if trigger_range_error %}<div class="rpt-availability-notice" role="alert">{{ trigger_range_error }}</div>{% endif %}
+      {% if trigger_data_error %}<div class="rpt-availability-notice rpt-availability-notice-error" role="alert">Data trigger gagal dimuat.</div>{% endif %}
+      <div class="rpt-availability-table-wrap rpt-trigger-table-wrap">
+        <table class="rpt-table rpt-availability-table rpt-trigger-table" id="availabilityTable">
+          <thead><tr><th scope="col">Host</th><th scope="col">Trigger</th><th scope="col">Severity</th><th scope="col" class="rpt-availability-problems">Number of problems</th></tr></thead>
+          <tbody>
+            {% for row in trigger_rows %}{% set sev = (row.severity or "info")|lower %}
+            <tr data-host="{{ row.host or '' }}" data-name="{{ row.alert_type or '' }}" data-severity="{{ sev }}" data-problems="{{ row.total }}">
+              <td><a href="{{ url_for('host_detail', ip=row.host) }}" class="rpt-availability-host">{{ row.host or "—" }}</a></td>
+              <td><span class="rpt-availability-trigger">{{ row.alert_type or "—" }}</span>{% if row.message %}<div class="rpt-trigger-message" title="{{ row.message }}">{{ row.message }}</div>{% endif %}</td>
+              <td><span class="rpt-badge {% if sev in ('disaster', 'high') %}bad{% elif sev == 'warning' %}warn{% else %}info{% endif %}">{{ sev|upper }}</span></td>
+              <td class="rpt-availability-problems">{{ row.total }}</td>
+            </tr>
+            {% else %}{{ empty_row(4, "No data found", "No trigger problems matched this time period.") }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="rpt-availability-foot"><span id="availabilityDisplayCount">Displaying {{ trigger_rows|length }} of {{ trigger_rows|length }} found</span></div>
+      <footer class="rpt-sched-footer rpt-availability-footer"><a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a></footer>
+
+      {% elif report_page == "audit" %}
+      <section class="rpt-card">
+        <div class="rpt-card-head">
+          <h2>Audit log</h2>
+          <a class="rpt-link" href="/audit_logs">Audit viewer lengkap</a>
+        </div>
+        <form class="rpt-filter" method="get" action="{{ url_for('reports_page', page='audit') }}">
+          <label class="rpt-field rpt-field-grow">
+            <span>Cari</span>
+            <input class="rpt-input" type="search" name="q" value="{{ audit_q }}" placeholder="username, aksi, target, detail…" autocomplete="off">
+          </label>
+          <label class="rpt-field">
+            <span>Aksi</span>
+            <select class="rpt-select" name="action">
+              <option value="">Semua aksi</option>
+              {% for item in audit_actions %}
+              <option value="{{ item }}"{% if item == audit_action %} selected{% endif %}>{{ item }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="rpt-filter-actions">
+            <button class="rpt-btn primary" type="submit">Terapkan</button>
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit') }}">Reset</a>
+          </div>
+        </form>
+        <div class="rpt-table-wrap">
+          <table class="rpt-table">
+            <thead>
+              <tr><th scope="col">Waktu</th><th scope="col">Pengguna</th><th scope="col">Aksi</th><th scope="col">Target</th><th scope="col">Detail</th><th scope="col">IP</th></tr>
+            </thead>
+            <tbody>
+              {% for row in audit_rows %}
+              <tr>
+                <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
+                <td>{{ row.username or "—" }}</td>
+                <td><span class="rpt-badge info">{{ row.action }}</span></td>
+                <td>{{ row.target or "—" }}</td>
+                <td class="rpt-muted">{{ row.detail or "—" }}</td>
+                <td class="rpt-mono rpt-muted">{{ row.ip_address or "—" }}</td>
+              </tr>
+              {% else %}
+              {{ empty_row(6, "Tidak ada hasil", "Coba ubah kata kunci atau filter aksi.") }}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="rpt-pager">
+          <span class="rpt-muted">Menampilkan {{ audit_from }}–{{ audit_to }} dari {{ "{:,}".format(audit_total) }} baris</span>
+          <div class="rpt-pager-btns">
+            {% if audit_page > 1 %}
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit', p=audit_page - 1, q=audit_q, action=audit_action) }}">&larr; Sebelumnya</a>
+            {% else %}
+            <span class="rpt-btn" aria-disabled="true">&larr; Sebelumnya</span>
+            {% endif %}
+            <span class="rpt-pager-pos">{{ audit_page }} / {{ audit_pages }}</span>
+            {% if audit_page < audit_pages %}
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit', p=audit_page + 1, q=audit_q, action=audit_action) }}">Berikutnya &rarr;</a>
+            {% else %}
+            <span class="rpt-btn" aria-disabled="true">Berikutnya &rarr;</span>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+      {% elif report_page == "actions" %}
+      <section class="rpt-card">
+        <div class="rpt-card-head">
+          <h2>Action log</h2>
+          <span class="rpt-muted">event operasional dari system_logs</span>
+        </div>
+        <form class="rpt-filter" method="get" action="{{ url_for('reports_page', page='actions') }}">
+          <label class="rpt-field rpt-field-grow">
+            <span>Cari</span>
+            <input class="rpt-input" type="search" name="q" value="{{ action_q }}" placeholder="event, host, pesan…" autocomplete="off">
+          </label>
+          <label class="rpt-field">
+            <span>Event</span>
+            <select class="rpt-select" name="event">
+              <option value="">Semua event</option>
+              {% for item in action_events %}
+              <option value="{{ item.event_type }}"{% if item.event_type == action_event %} selected{% endif %}>{{ item.event_type }} ({{ item.cnt }})</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="rpt-filter-actions">
+            <button class="rpt-btn primary" type="submit">Terapkan</button>
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions') }}">Reset</a>
+          </div>
+        </form>
+        <div class="rpt-chips">
+          {% for item in action_events %}
+          <a class="rpt-chip{% if item.event_type == action_event %} active{% endif %}" href="{{ url_for('reports_page', page='actions', event=item.event_type) }}">{{ item.event_type }} <b>{{ item.cnt }}</b></a>
+          {% endfor %}
+        </div>
+        <div class="rpt-table-wrap">
+          <table class="rpt-table">
+            <thead><tr><th scope="col">Waktu</th><th scope="col">Event</th><th scope="col">Host</th><th scope="col">Pesan</th></tr></thead>
+            <tbody>
+              {% for row in action_rows %}
+              <tr>
+                <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
+                <td><span class="rpt-badge {% if 'DOWN' in row.event_type %}bad{% elif 'UP' in row.event_type %}ok{% elif 'TRAP' in row.event_type %}warn{% else %}info{% endif %}">{{ row.event_type }}</span></td>
+                <td class="rpt-mono">{{ row.host or "—" }}</td>
+                <td>{{ row.message or "—" }}</td>
+              </tr>
+              {% else %}
+              {{ empty_row(4, "Tidak ada event", "Event operasional akan tampil di sini setelah sistem berjalan.") }}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="rpt-pager">
+          <span class="rpt-muted">Menampilkan {{ action_from }}–{{ action_to }} dari {{ "{:,}".format(action_total) }} baris</span>
+          <div class="rpt-pager-btns">
+            {% if action_page > 1 %}
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions', p=action_page - 1, q=action_q, event=action_event) }}">&larr; Sebelumnya</a>
+            {% else %}
+            <span class="rpt-btn" aria-disabled="true">&larr; Sebelumnya</span>
+            {% endif %}
+            <span class="rpt-pager-pos">{{ action_page }} / {{ action_pages }}</span>
+            {% if action_page < action_pages %}
+            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions', p=action_page + 1, q=action_q, event=action_event) }}">Berikutnya &rarr;</a>
+            {% else %}
+            <span class="rpt-btn" aria-disabled="true">Berikutnya &rarr;</span>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+      {% elif report_page == "notifications" %}
+      <section class="rpt-kpis" aria-label="Ringkasan notifikasi">
+        <div class="rpt-kpi {% if notification_active %}good{% endif %}">
+          <div class="k">Channel aktif</div>
+          <div class="v">{{ notification_active }}<small>/{{ notification_channels|length }}</small></div>
+          <div class="h">Telegram, Email, Webhook</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="k">Alert 24 jam</div>
+          <div class="v">{{ notification_total_24h }}</div>
+          <div class="h">alert yang memicu notifikasi</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="k">Tes terakhir</div>
+          <div class="v rpt-kpi-text">{{ notification_last_test or "—" }}</div>
+          <div class="h">pesan uji manual</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="k">Ambang minimum</div>
+          <div class="v rpt-kpi-text">per channel</div>
+          <div class="h">diatur pada settings</div>
+        </div>
+      </section>
+
+      <section class="rpt-channel-grid" aria-label="Status channel notifikasi">
+        {% for ch in notification_channels %}
+        <div class="rpt-channel">
+          <div class="rpt-channel-top">
+            <span class="rpt-channel-name">{{ ch.label }}</span>
+            <span class="rpt-badge {% if ch.active %}ok{% else %}muted{% endif %}">{{ "Aktif" if ch.active else "Nonaktif" }}</span>
+          </div>
+          <div class="rpt-channel-meta">
+            <div><span class="k">Ambang minimum</span><span class="v">{{ ch.min_sev }}</span></div>
+            <div><span class="k">Konfigurasi</span><span class="v rpt-muted">{{ ch.detail }}</span></div>
+          </div>
+        </div>
+        {% endfor %}
+      </section>
+
+      <div class="rpt-grid-2">
+        <section class="rpt-card">
+          <div class="rpt-card-head">
+            <h2>Riwayat pesan uji</h2>
+            <span class="rpt-muted">10 terakhir</span>
+          </div>
+          <div class="rpt-table-wrap">
+            <table class="rpt-table">
+              <thead><tr><th scope="col">Waktu</th><th scope="col">Pengguna</th><th scope="col">Hasil</th></tr></thead>
+              <tbody>
+                {% for row in notification_tests %}
+                <tr>
+                  <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
+                  <td>{{ row.username or "—" }}</td>
+                  <td class="rpt-muted">{{ row.detail or "—" }}</td>
+                </tr>
+                {% else %}
+                {{ empty_row(3, "Belum ada tes", "Gunakan tombol Kirim pesan uji untuk memverifikasi channel.") }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="rpt-card">
+          <div class="rpt-card-head">
+            <h2>Alert terbaru</h2>
+            <a class="rpt-link" href="/problems">Lihat semua</a>
+          </div>
+          <div class="rpt-table-wrap">
+            <table class="rpt-table">
+              <thead><tr><th scope="col">Waktu</th><th scope="col">Host</th><th scope="col">Severity</th><th scope="col">Status</th></tr></thead>
+              <tbody>
+                {% for row in notification_alerts %}
+                {% set sev = (row.severity or "info")|lower %}
+                <tr>
+                  <td class="rpt-mono rpt-nowrap">{{ row.triggered_at }}</td>
+                  <td><span class="rpt-name">{{ row.host or "—" }}</span><br><span class="rpt-muted">{{ row.alert_type or "—" }}</span></td>
+                  <td><span class="rpt-badge {% if sev in ('disaster', 'high') %}bad{% elif sev == 'warning' %}warn{% else %}info{% endif %}">{{ sev|upper }}</span></td>
+                  <td>{% if row.resolved_at %}<span class="rpt-badge ok">RESOLVED</span>{% else %}<span class="rpt-badge bad">PROBLEM</span>{% endif %}</td>
+                </tr>
+                {% else %}
+                {{ empty_row(4, "Belum ada alert", "Belum ada alert yang tercatat.") }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <section class="rpt-card">
+        <div class="rpt-card-head">
+          <h2>Severity alert 24 jam</h2>
+          <span class="rpt-muted">jumlah alert per severity</span>
+        </div>
+        <div class="rpt-chips rpt-card-body">
+          {% for item in notification_alert_counts %}
+          <span class="rpt-chip">{{ item.severity }} <b>{{ item.cnt }}</b></span>
+          {% else %}
+          <span class="rpt-muted">Belum ada alert dalam 24 jam terakhir.</span>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </main>
+  </div>
+</div>
+
+<div class="svc-toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

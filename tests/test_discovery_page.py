@@ -73,7 +73,23 @@ class DiscoveryPageTest(unittest.TestCase):
         self.assertIn('id="filterToggle"', html)
         self.assertIn('id="btnScanOpen"', html)
         self.assertIn('id="btnRunSched"', html)
+        self.assertNotIn('id="btnScanOpen" hidden', html)
+        self.assertNotIn('id="btnRunSched" hidden', html)
+        self.assertIn('id="scanProg"', html)
+        self.assertIn('id="loadingState"', html)
+        self.assertIn('id="emptyAction"', html)
+        self.assertIn('id="btnHelp"', html)
         self.assertIn("/api/discovery/status", html)
+        # Modal pilih discovery rule.
+        self.assertIn('id="ruleBack"', html)
+        self.assertIn("Discovery rules", html)
+        self.assertIn('id="ruleRows"', html)
+        self.assertIn('id="ruleSelectAll"', html)
+        self.assertIn('id="ruleSelect"', html)
+        self.assertIn('id="ruleCancel"', html)
+        self.assertIn("No data found", html)
+        self.assertIn("function statusQuery", html)
+        self.assertNotIn('id="rulePop"', html)
         self.assertNotIn("/topo", html)
         self.assertNotIn("js/discovery.js", html)  # js lama tidak dipakai lagi
 
@@ -116,7 +132,12 @@ class DiscoveryPageTest(unittest.TestCase):
             m.discover_subnet = original
         d = self.client.get("/api/discovery/status").get_json()
         self.assertEqual(d["count"], 2)
-        self.assertEqual(d["rules"], [{"label": "Manual · 10.79.9.0/24", "count": 2}])
+        self.assertEqual(d["total"], 2)
+        self.assertEqual(d["total_all"], 2)
+        self.assertEqual(len(d["rules"]), 1)
+        self.assertEqual(d["rules"][0]["label"], "Manual · 10.79.9.0/24")
+        self.assertEqual(d["rules"][0]["count"], 2)
+        self.assertEqual(d["rules"][0]["key"], "manual|10.79.9.0/24")
         by_ip = {row["ip"]: row for row in d["rows"]}
         self.assertEqual(by_ip["10.79.9.10"]["name"], "rt-utama")
         self.assertEqual(by_ip["10.79.9.10"]["status"], "discovered")
@@ -232,6 +253,18 @@ class DiscoveryPageTest(unittest.TestCase):
         self.assertEqual([row["ip"] for row in d["rows"]], ["10.79.9.10"])
         d = self.client.get("/api/discovery/status?rule=10.55.0.0").get_json()
         self.assertEqual(d["count"], 0)
+        # Beberapa rule sekaligus → OR (parameter berulang maupun dipisah koma).
+        expected = ["10.79.8.5", "10.79.9.10"]
+        d = self.client.get(
+            "/api/discovery/status?rule=10.79.8&rule=10.79.9"
+        ).get_json()
+        self.assertEqual([row["ip"] for row in d["rows"]], expected)
+        d = self.client.get("/api/discovery/status?rule=10.79.8,10.79.9").get_json()
+        self.assertEqual([row["ip"] for row in d["rows"]], expected)
+        d = self.client.get(
+            "/api/discovery/status?rule=10.55.0.0&rule=10.79.9"
+        ).get_json()
+        self.assertEqual([row["ip"] for row in d["rows"]], ["10.79.9.10"])
 
     def test_sort_name(self):
         original = m.discover_subnet
@@ -290,6 +323,18 @@ class DiscoveryPageTest(unittest.TestCase):
         r = self.client.post("/api/discovery/snmp")
         self.assertEqual(r.status_code, 403)
 
+    def test_scan_rejects_when_another_scan_runs(self):
+        self.assertTrue(m._DISC_SCAN_LOCK.acquire(blocking=False))
+        try:
+            r = self.client.post(
+                "/api/discovery/snmp",
+                json={"network": "10.79.9.0/24", "community": "public"},
+            )
+            self.assertEqual(r.status_code, 409)
+            self.assertIn("sedang berjalan", r.get_json()["error"])
+        finally:
+            m._DISC_SCAN_LOCK.release()
+
     def test_schedule_settings_roundtrip(self):
         r = self.client.post(
             "/api/settings",
@@ -312,6 +357,111 @@ class DiscoveryPageTest(unittest.TestCase):
             m.discover_subnet = original
         d = self.client.get("/api/discovery/status").get_json()
         self.assertRegex(d["rows"][0]["ts"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+    # ---------- normalisasi & filter per sumber ----------
+
+    def test_network_normalized_on_scan_and_settings(self):
+        original = m.discover_subnet
+        try:
+            m.discover_subnet = lambda *a, **k: ([_dev("10.79.9.10")], {})
+            r = self.client.post(
+                "/api/discovery/snmp",
+                json={"network": "10.79.9.5/24", "community": "public"},
+            )
+            self.assertEqual(r.status_code, 200, msg=r.get_data(as_text=True))
+            self.assertEqual(r.get_json()["network"], "10.79.9.0/24")
+        finally:
+            m.discover_subnet = original
+        d = self.client.get("/api/discovery/status").get_json()
+        self.assertEqual(d["rows"][0]["network"], "10.79.9.0/24")
+        self.assertEqual(d["rules"][0]["key"], "manual|10.79.9.0/24")
+        # Filter lama yang menyimpan CIDR ber-host-bit tetap cocok.
+        legacy = self.client.get("/api/discovery/status?rule=10.79.9.5/24").get_json()
+        self.assertEqual(legacy["total"], 1)
+
+        r = self.client.post("/api/settings", json={"discovery_network": "10.79.8.7/24"})
+        self.assertEqual(r.status_code, 200, msg=r.get_data(as_text=True))
+        s = self.client.get("/api/settings").get_json()
+        self.assertEqual(s["discovery_network"], "10.79.8.0/24")
+
+    def test_filter_by_source(self):
+        self.client.post(
+            "/api/settings",
+            json={"discovery_network": "10.79.8.0/24", "discovery_community": "pub"},
+        )
+        original = (m.discover_subnet, m.send_telegram_alert)
+        try:
+            m.send_telegram_alert = lambda *a, **k: None
+            m.discover_subnet = lambda *a, **k: [_dev("10.79.8.5", "rt-backbone")]
+            self.client.post(
+                "/api/discovery/scheduled/run",
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+            m.discover_subnet = lambda *a, **k: ([_dev("10.79.9.10", "rt-utama")], {})
+            self.client.post(
+                "/api/discovery/snmp",
+                json={"network": "10.79.9.0/24", "community": "public"},
+            )
+        finally:
+            m.discover_subnet, m.send_telegram_alert = original
+
+        d = self.client.get("/api/discovery/status?rule=manual|10.79.9.0/24").get_json()
+        self.assertEqual([row["source"] for row in d["rows"]], ["manual"])
+        self.assertEqual(d["total"], 1)
+        self.assertEqual(d["total_all"], 2)
+
+        d = self.client.get(
+            "/api/discovery/status?rule=scheduled|10.79.8.0/24"
+        ).get_json()
+        self.assertEqual([row["source"] for row in d["rows"]], ["scheduled"])
+
+        # Sumber saja (kompatibilitas teks lama) dan kombinasi yang salah.
+        d = self.client.get("/api/discovery/status?rule=Terjadwal").get_json()
+        self.assertEqual([row["source"] for row in d["rows"]], ["scheduled"])
+        d = self.client.get("/api/discovery/status?rule=manual|10.79.8.0/24").get_json()
+        self.assertEqual(d["total"], 0)
+        self.assertEqual(d["total_all"], 2)
+
+    def test_raw_and_normalized_network_merge(self):
+        conn, c = m.get_db()
+        try:
+            for net in ("10.79.9.0/24", "10.79.9.5/24"):
+                c.execute(
+                    "INSERT INTO discovery_events (source, network, ip, sys_name, vendor, status, ts)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    ("manual", net, "10.79.9.10", "rt-utama", "MikroTik", "discovered",
+                     "2026-10-30 10:00:00"),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        d = self.client.get("/api/discovery/status").get_json()
+        self.assertEqual(d["count"], 1)
+        self.assertEqual(d["total_all"], 1)
+        self.assertEqual(d["rows"][0]["network"], "10.79.9.0/24")
+
+    def test_scheduled_run_updates_last_scan(self):
+        self.client.post(
+            "/api/settings",
+            json={"discovery_network": "10.79.8.0/24", "discovery_community": "pub"},
+        )
+        original = (m.discover_subnet, m.send_telegram_alert)
+        try:
+            m.discover_subnet = lambda *a, **k: [_dev("10.79.8.5", "rt-backbone")]
+            m.send_telegram_alert = lambda *a, **k: None
+            r = self.client.post(
+                "/api/discovery/scheduled/run",
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+            self.assertEqual(r.status_code, 200, msg=r.get_data(as_text=True))
+        finally:
+            m.discover_subnet, m.send_telegram_alert = original
+        d = self.client.get("/api/discovery/status").get_json()
+        last = d["schedule"]["last"]
+        self.assertIsNotNone(last)
+        self.assertEqual(last["source"], "scheduled")
+        self.assertEqual(last["network"], "10.79.8.0/24")
+        self.assertEqual(last["count"], 1)
 
 
 if __name__ == "__main__":

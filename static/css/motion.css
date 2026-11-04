@@ -1,0 +1,512 @@
+/* ============================================================
+   NMS Kopegtel - lapisan gerak bersama.
+   Dimuat terakhir agar dapat menghaluskan komponen dari semua
+   halaman tanpa mengubah tata letak. Animasi masuk hanya
+   memakai opacity/transform dan dihormati oleh
+   prefers-reduced-motion.
+   ============================================================ */
+
+:root {
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --motion-slow: 440ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-stagger: 42ms;
+  --motion-border-hover: var(--border-strong, var(--border, var(--border2, var(--line, var(--garis, var(--zbx-border-strong, rgba(148, 163, 184, 0.38)))))));
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes motion-page-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes motion-rise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes motion-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes motion-pop {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes motion-dialog-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes motion-toast-in {
+  from { opacity: 0; transform: translate3d(18px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes motion-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.84); }
+}
+@keyframes motion-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes motion-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+@keyframes motion-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ---------- Dasar ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+body {
+  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
+}
+
+a,
+button,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- Animasi masuk halaman ---------- */
+html.motion-enter .page,
+html.motion-enter .isi,
+html.motion-enter .wrap,
+html.motion-enter .zbx,
+html.motion-enter .status-shell {
+  animation: motion-page-in var(--motion-slow) var(--motion-ease) both;
+}
+
+/* Halaman yang membungkus konten dengan .wrap cukup dianimasikan
+   sekali lewat elemen induknya. */
+html.motion-enter .page .wrap {
+  animation: none;
+}
+
+html.motion-enter .header,
+html.motion-enter .topbar,
+html.motion-enter .site-header,
+html.motion-enter .sidebar {
+  animation: motion-fade var(--motion-base) var(--motion-ease) both;
+}
+
+/* Navigasi sidebar tidak dianimasikan per item. Sidebar sudah
+   memudar sebagai satu kesatuan; animasi bertahap pada item di
+   dalam .nav membuat sebagian menu sempat kosong/bergeser dan
+   mengubah tinggi scrollbar saat halaman dimuat. */
+
+/* ---------- Kartu, panel, dan tile ---------- */
+html.motion-enter .kpi,
+html.motion-enter .svc-kpi,
+html.motion-enter .summary > .card,
+html.motion-enter .tile,
+html.motion-enter .angka > div,
+html.motion-enter .sev-chip,
+html.motion-enter .host-card,
+html.motion-enter .card,
+html.motion-enter .card-x,
+html.motion-enter .chart-panel,
+html.motion-enter .chart-card,
+html.motion-enter .log-card,
+html.motion-enter .lb-card,
+html.motion-enter .ont-card,
+html.motion-enter .gauge-card,
+html.motion-enter .odp-grid > *,
+html.motion-enter .panel,
+html.motion-enter .svc-card,
+html.motion-enter .zbx-card,
+html.motion-enter .zbx-table-card,
+html.motion-enter .zbx-filter,
+html.motion-enter .toolbar-card,
+html.motion-enter .filter-bar,
+html.motion-enter .svc-filter,
+html.motion-enter .data-panel,
+html.motion-enter .summary-cell,
+html.motion-enter .map-form-card,
+html.motion-enter .map-panel,
+html.motion-enter .thp,
+html.motion-enter .kpi-big,
+html.motion-enter .ob-panel,
+html.motion-enter .empty-panel,
+html.motion-enter .info {
+  animation: motion-rise var(--motion-base) var(--motion-ease) both;
+}
+
+html.motion-enter .kpi,
+html.motion-enter .svc-kpi,
+html.motion-enter .summary > .card,
+html.motion-enter .tile,
+html.motion-enter .angka > div,
+html.motion-enter .sev-chip,
+html.motion-enter .host-card,
+html.motion-enter .odp-grid > *,
+html.motion-enter .ont-card,
+html.motion-enter .chart-panel,
+html.motion-enter .summary-cell {
+  animation-delay: calc(var(--motion-i, 0) * var(--motion-stagger));
+}
+
+/* ---------- Transisi permukaan & hover ---------- */
+/* Sidebar tetap mempertahankan transisi transform agar drawer
+   mobile (body.nav-open) meluncur, bukan muncul mendadak. */
+.sidebar {
+  transition:
+    background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease,
+    color var(--motion-base) ease,
+    transform 250ms ease;
+}
+
+.header,
+.topbar,
+.site-header,
+.modal,
+.menu-pop,
+.toast,
+.svc-toast,
+.data-panel,
+.summary-bar,
+.summary-cell {
+  transition: background-color var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
+}
+
+.kpi,
+.svc-kpi,
+.tile,
+.angka > div,
+.sev-chip,
+.host-card,
+.card,
+.card-x,
+.chart-panel,
+.chart-card,
+.log-card,
+.lb-card,
+.ont-card,
+.gauge-card,
+.odp-grid > *,
+.panel,
+.svc-card,
+.zbx-card,
+.zbx-table-card,
+.zbx-filter,
+.toolbar-card,
+.filter-bar,
+.svc-filter,
+.data-panel,
+.summary-cell,
+.map-form-card,
+.map-panel,
+.thp,
+.kpi-big,
+.ob-panel,
+.empty-panel,
+.info,
+.baris,
+.device-row,
+.ont-row,
+.inv-group-row {
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease,
+    color var(--motion-base) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .kpi:hover,
+  .svc-kpi:hover,
+  .tile:hover,
+  .angka > div:hover,
+  .sev-chip:hover,
+  .host-card:hover,
+  .ont-card:hover,
+  .gauge-card:hover,
+  .odp-grid > *:hover,
+  .thp:hover,
+  .kpi-big:hover,
+  .baris:hover {
+    transform: translateY(-2px);
+  }
+
+  .ont-card:hover,
+  .gauge-card:hover,
+  .odp-grid > *:hover,
+  .thp:hover,
+  .kpi-big:hover,
+  .baris:hover {
+    border-color: var(--motion-border-hover);
+  }
+
+  .btn:hover,
+  .svc-btn:hover,
+  .zbx-btn:hover,
+  .zbtn:hover,
+  .act-btn:hover,
+  .icon-btn:hover,
+  .svc-iconbtn:hover,
+  .card-menu-btn:hover,
+  .filter-btn:hover,
+  .back-btn:hover,
+  .export-btn:hover,
+  .collapse-btn:hover,
+  .theme-toggle:hover,
+  .hamburger:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Item navigasi sengaja tidak digeser horizontal saat hover:
+     .nav adalah scroll container, sehingga geseran 2px memunculkan
+     scrollbar horizontal dan mengubah tinggi area menu. */
+}
+
+/* ---------- Navigasi ---------- */
+.nav-link,
+.nav-sub-head,
+.nav > a,
+.collapse-btn {
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease, transform var(--motion-fast) var(--motion-ease);
+}
+
+/* .nav adalah scroll container, jadi indikator aktif yang berada di
+   gutter kiri (left negatif) ikut terpotong. Tempatkan di dalam pill
+   agar selalu terlihat, termasuk di halaman Fiber/MikroTik. */
+.nav-link.active::before,
+.nav .nav-sub .nav-link.active::before,
+body.nav-collapsed .nav-link.active::before {
+  left: 0;
+}
+
+.nav-sub-wrap[open] > .nav-sub {
+  animation: motion-fade var(--motion-fast) ease both;
+}
+
+#themeBtn svg,
+.theme-toggle svg {
+  transition: transform var(--motion-slow) var(--motion-ease);
+}
+#themeBtn:hover svg,
+.theme-toggle:hover svg {
+  transform: rotate(18deg);
+}
+
+/* ---------- Tombol ---------- */
+button,
+.btn,
+.svc-btn,
+.zbx-btn,
+.zbtn,
+.act-btn,
+.icon-btn,
+.seg-btn,
+.preset-btn,
+.pager-btn,
+.copy-btn,
+.mini-btn,
+.row-del,
+.svc-iconbtn,
+.card-menu-btn,
+.filter-btn,
+.range-btn,
+.add-btn,
+.back-btn,
+.export-btn,
+.collapse-btn,
+.hamburger,
+.theme-toggle,
+.modal-close,
+.svc-dialog-head .x,
+.zbx-dialog-x,
+.menu-pop button,
+.menu-pop a,
+.zbx-menu button {
+  transition:
+    scale var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    opacity var(--motion-fast) ease;
+}
+
+button:not(:disabled):active,
+.btn:active,
+.svc-btn:active,
+.zbx-btn:active,
+.zbtn:active,
+.act-btn:active,
+.icon-btn:active,
+.seg-btn:active,
+.preset-btn:active,
+.pager-btn:active,
+.copy-btn:active,
+.mini-btn:active,
+.row-del:active,
+.svc-iconbtn:active,
+.card-menu-btn:active,
+.filter-btn:active,
+.range-btn:active,
+.add-btn:active,
+.back-btn:active,
+.export-btn:active,
+.collapse-btn:active,
+.hamburger:active,
+.theme-toggle:active,
+.modal-close:active,
+.svc-dialog-head .x:active,
+.zbx-dialog-x:active,
+.menu-pop button:active,
+.menu-pop a:active,
+.zbx-menu button:active {
+  scale: 0.96;
+}
+
+/* ---------- Dropdown & menu ---------- */
+.menu-pop.open,
+.zbx-menu:not([hidden]),
+.ld-menu:not([hidden]) {
+  animation: motion-pop var(--motion-fast) var(--motion-ease) both;
+  transform-origin: top right;
+}
+
+/* ---------- Dialog & backdrop ---------- */
+.modal-overlay.open,
+.modal-overlay.active,
+.modal-back.on,
+.overlay.open,
+.mf-modal-back.on {
+  animation: motion-fade var(--motion-fast) ease both;
+}
+
+.modal-overlay.open .modal,
+.modal-overlay.active .modal,
+.modal-back.on .modal,
+.overlay.open .host-modal,
+.mf-modal-back.on .mf-modal,
+dialog[open] {
+  animation: motion-dialog-in var(--motion-base) var(--motion-ease) both;
+}
+
+dialog[open]::backdrop {
+  animation: motion-fade var(--motion-fast) ease both;
+}
+
+/* ---------- Toast ---------- */
+.toast,
+.svc-toast {
+  animation: motion-toast-in var(--motion-base) var(--motion-ease);
+  transition: opacity var(--motion-base) ease, transform var(--motion-base) ease;
+}
+
+/* ---------- Skeleton ---------- */
+.skeleton {
+  background-image: linear-gradient(100deg, transparent 20%, rgba(148, 163, 184, 0.18) 40%, transparent 60%);
+  background-size: 200% 100%;
+  animation: motion-shimmer 1.4s linear infinite;
+}
+
+/* ---------- Indikator status ---------- */
+.live-badge .dot,
+.pill-down::before,
+.pill-pending::before,
+.badge-ongoing::before,
+.st-badge.live::before,
+.svc-badge.offline::before,
+.svc-badge.pending::before,
+.status-pill--down::before,
+.status-pill--pending::before,
+.status-banner.is-degraded .status-dot,
+.status-banner.is-outage .status-dot,
+.titik-turun,
+.titik-peringatan,
+.tl.berlangsung .tl-titik {
+  animation: motion-pulse 2.2s var(--motion-ease-soft) infinite;
+}
+
+.term-badge:not(.off),
+.baris.status-turun .rel {
+  animation: motion-blink 2.4s var(--motion-ease-soft) infinite;
+}
+
+/* ---------- Bar progres ---------- */
+html.motion-enter .meter > i,
+html.motion-enter .uptime-bar > i,
+html.motion-enter .svc-bar > i,
+html.motion-enter .lb-track > i,
+html.motion-enter .pita .blok {
+  transform-origin: left center;
+  animation: motion-grow-x var(--motion-slow) var(--motion-ease) both;
+}
+
+/* ---------- Tabel ---------- */
+html.motion-enter tbody {
+  animation: motion-fade var(--motion-base) ease both;
+}
+
+tbody td,
+tbody th {
+  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.ont-row,
+.device-row,
+.inv-group-row {
+  transition: background-color var(--motion-fast) ease;
+}
+
+/* ---------- Grafik ---------- */
+html.motion-enter .chart-body,
+html.motion-enter .chart-wrap,
+html.motion-enter .svc-chart-wrap,
+html.motion-enter .kanvas-wrap,
+html.motion-enter .pita,
+html.motion-enter #chart {
+  animation: motion-fade var(--motion-slow) var(--motion-ease) both;
+}
+
+/* ---------- Form ---------- */
+input,
+select,
+textarea {
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+/* ---------- Panel tab ---------- */
+.map-panel:not([hidden]) {
+  animation: motion-fade var(--motion-base) ease both;
+}
+
+/* ---------- Aksesibilitas / cetak ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

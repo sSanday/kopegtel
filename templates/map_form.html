@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Create network map: properti peta, label, problem display, URL, dan sharing">
+<title>Network maps · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<style>
+/* ============ Form Network maps (Zabbix 7.4, tema aplikasi) ============ */
+.zbx {
+  --mz-blue: #0275b8;
+  --mz-blue-hover: #02679f;
+  --mz-card: #ffffff;
+  --mz-bar: #ebeef0;
+  --mz-border: #dfe4e7;
+  --mz-border-soft: #ebeef0;
+  --mz-header-border: #dce2e5;
+  --mz-text: #1f2c33;
+  --mz-muted: #778e9b;
+  --mz-input-border: #bcc8d0;
+  --mz-disabled-bg: #ebebeb;
+  --mz-disabled-border: #ccd5d9;
+  --mz-disabled-text: #acbbc2;
+  --mz-hover: #f4f8fa;
+  --mz-seg-on: #7d8e9b;
+  --mz-seg-on-text: #ffffff;
+  padding: 16px 20px 24px;
+  max-width: 1600px;
+}
+[data-theme="dark"] .zbx {
+  --mz-blue: #4da3e8;
+  --mz-blue-hover: #74b9f0;
+  --mz-card: var(--surface);
+  --mz-bar: var(--surface-2);
+  --mz-border: var(--border);
+  --mz-border-soft: var(--border);
+  --mz-header-border: var(--border);
+  --mz-text: var(--text);
+  --mz-muted: var(--text-3);
+  --mz-input-border: #3a495c;
+  --mz-disabled-bg: #1a2331;
+  --mz-disabled-border: #2c3a4d;
+  --mz-disabled-text: #65758a;
+  --mz-hover: var(--surface-2);
+  --mz-seg-on: #3e5d75;
+  --mz-seg-on-text: #ffffff;
+}
+
+[hidden] { display: none !important; }
+
+/* ---- Judul halaman ---- */
+.zbx-head { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 10px; }
+.zbx-head h1 { font-size: 18px; font-weight: 500; letter-spacing: 0; margin: 0; color: var(--mz-text); }
+.zbx-head .spacer { flex: 1; }
+.zbx-help {
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: none; border-radius: 2px; color: var(--mz-muted);
+  font: inherit; font-size: 17px; font-weight: 400; text-decoration: none; cursor: pointer;
+}
+.zbx-help:hover { color: var(--mz-text); background: var(--mz-hover); }
+
+/* ---- Tombol Zabbix ---- */
+.zbtn {
+  height: 24px; padding: 0 12px; border-radius: 2px; border: 1px solid var(--mz-blue);
+  background: var(--mz-card); color: var(--mz-blue); font: inherit; font-size: 11.5px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; white-space: nowrap; text-decoration: none; box-sizing: border-box;
+}
+.zbtn:hover { background: rgba(2, 117, 184, .08); }
+.zbtn.primary { background: var(--mz-blue); border-color: var(--mz-blue); color: #fff; }
+.zbtn.primary:hover { background: var(--mz-blue-hover); border-color: var(--mz-blue-hover); }
+.zbtn[disabled] {
+  background: var(--mz-disabled-bg); border-color: var(--mz-disabled-border);
+  color: var(--mz-disabled-text); cursor: not-allowed;
+}
+.zbtn[disabled]:hover { background: var(--mz-disabled-bg); }
+[data-theme="dark"] .zbtn:hover { background: var(--surface-2); }
+[data-theme="dark"] .zbtn.primary:hover { background: var(--mz-blue-hover); }
+[data-theme="dark"] .zbtn[disabled]:hover { background: var(--mz-disabled-bg); }
+
+/* ---- Kartu form + tab ---- */
+.map-form-card {
+  background: var(--mz-card); border: 1px solid var(--mz-border); border-radius: 2px;
+  overflow: hidden;
+}
+.map-tabs {
+  display: flex; align-items: stretch; gap: 0; padding: 0 12px;
+  border-bottom: 1px solid var(--mz-border); background: var(--mz-card);
+}
+.map-tab {
+  position: relative; height: 38px; padding: 0 14px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--mz-text); font: inherit; font-size: 12.5px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.map-tab:hover { color: var(--mz-blue); }
+.map-tab.active { color: var(--mz-blue); border-bottom-color: var(--mz-blue); }
+.tab-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #2e9e44;
+  display: inline-block; box-shadow: 0 0 0 1px rgba(255,255,255,.55);
+}
+
+.map-panel { padding: 16px 20px 6px; }
+.map-grid { max-width: 900px; margin: 0 auto; }
+.mrow {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr);
+  gap: 10px; align-items: center; margin: 0 0 8px;
+}
+.mlabel {
+  text-align: right; font-size: 12px; line-height: 24px;
+  color: var(--mz-text); font-weight: 400;
+}
+.mlabel.req::before { content: "* "; color: #e5484d; }
+.mfield { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.m-input, .m-select {
+  height: 24px; box-sizing: border-box; border-radius: 2px;
+  border: 1px solid var(--mz-input-border); background: var(--mz-card);
+  color: var(--mz-text); padding: 0 7px; font: inherit; font-size: 12px;
+}
+.m-input:focus, .m-select:focus {
+  outline: 1px solid var(--mz-blue); outline-offset: -1px; border-color: var(--mz-blue);
+}
+.m-input.name { width: min(455px, 100%); }
+.m-input.dim { width: 72px; }
+.m-select.small { width: 120px; }
+.m-select.label-select { width: 120px; }
+.m-select.medium { width: 160px; }
+.m-input::placeholder { color: var(--mz-muted); opacity: .8; }
+[data-theme="dark"] .m-select { color-scheme: dark; }
+
+/* ---- Owner ---- */
+.owner-field { flex-wrap: nowrap; }
+.owner-box {
+  display: flex; align-items: center; gap: 6px; width: min(455px, 100%);
+  min-height: 24px; box-sizing: border-box; padding: 0 4px 0 7px;
+  border: 1px solid var(--mz-input-border); border-radius: 2px;
+  background: var(--mz-card); color: var(--mz-text); font-size: 12px;
+}
+.owner-box.empty .owner-text { color: var(--mz-muted); }
+.owner-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.owner-clear {
+  flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 1px;
+  background: none; color: var(--mz-muted); font-size: 15px; line-height: 16px; cursor: pointer;
+}
+.owner-clear:hover { color: var(--mz-text); background: var(--mz-hover); }
+
+/* ---- Segmented control ---- */
+.seg {
+  display: inline-flex; align-items: stretch; max-width: 100%;
+  border: 1px solid var(--mz-input-border); border-radius: 2px;
+  overflow: hidden; background: var(--mz-card); vertical-align: middle;
+}
+.seg button {
+  min-height: 22px; padding: 0 10px; border: 0; border-right: 1px solid var(--mz-border);
+  background: transparent; color: var(--mz-text); font: inherit; font-size: 11.5px;
+  cursor: pointer; white-space: nowrap;
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--mz-hover); }
+.seg button.on { background: var(--mz-seg-on); color: var(--mz-seg-on-text); }
+.seg button.on:hover { background: var(--mz-seg-on); }
+.seg.wide button { padding: 0 12px; }
+.seg.perm button { padding: 0 8px; font-size: 11px; }
+
+/* ---- Checkbox ---- */
+.mfield input[type="checkbox"] {
+  width: 13px; height: 13px; margin: 0; accent-color: var(--mz-blue); cursor: pointer;
+}
+
+/* ---- Link-style action ---- */
+.linkbtn {
+  display: inline-block; padding: 0; border: 0; background: none;
+  color: var(--mz-blue); font: inherit; font-size: 12px; cursor: pointer;
+  text-decoration: none; line-height: 24px;
+}
+.linkbtn:hover { color: var(--mz-blue-hover); text-decoration: underline; }
+
+/* ---- URLs / shares tables ---- */
+.url-field, .share-field { display: block; min-width: 0; }
+.url-table, .share-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 12px; color: var(--mz-text);
+}
+.url-table th, .share-table th {
+  padding: 0 4px 4px; text-align: left; font-size: 11.5px; font-weight: 400;
+  color: var(--mz-muted); white-space: nowrap;
+}
+.url-table td, .share-table td { padding: 0 4px 4px; vertical-align: middle; }
+.url-table .col-name { width: 34%; }
+.url-table .col-url { width: 48%; }
+.url-table .col-element { width: 18%; }
+.share-table .col-share { width: 48%; }
+.share-table .col-perm { width: 48%; }
+.url-table .url-remove-th, .share-table .url-remove-th { width: 24px; }
+.url-table .m-input, .url-table .m-select,
+.share-table .m-input, .share-table .m-select { width: 100%; }
+.share-table .share-name {
+  display: block; min-height: 22px; padding: 0 6px; line-height: 22px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.url-remove-cell { width: 24px; text-align: center; }
+.url-remove {
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 1px;
+  background: none; color: var(--mz-muted); font-size: 16px; line-height: 18px; cursor: pointer;
+}
+.url-remove:hover { color: #e5484d; background: var(--mz-hover); }
+.url-table + .linkbtn, .share-table + .linkbtn { margin-top: 1px; }
+.mrow.url-row, .mrow.share-row { align-items: start; }
+.mrow.url-row > .mlabel, .mrow.share-row > .mlabel { line-height: 20px; padding-top: 1px; }
+
+/* ---- Footer form ---- */
+.map-foot { border-top: 1px solid var(--mz-border-soft); padding: 10px 20px 14px; margin-top: 6px; }
+.map-foot-inner {
+  max-width: 900px; margin: 0 auto; display: grid;
+  grid-template-columns: 200px minmax(0, 1fr); gap: 10px; align-items: center;
+}
+.map-foot-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.form-err { color: #e5484d; font-size: 12px; line-height: 1.35; margin-left: 6px; }
+
+/* ---- Copyright ---- */
+.zbx-copyright { margin-top: 12px; padding: 0 2px; color: var(--mz-muted); font-size: 10.5px; line-height: 1.4; }
+
+/* ---- Modal pemilih owner / icon mapping ---- */
+.mf-modal-back {
+  position: fixed; inset: 0; z-index: 500; display: none;
+  align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 16px; background: rgba(0,0,0,.45);
+}
+.mf-modal-back.on { display: flex; }
+.mf-modal {
+  width: min(430px, 100%); background: var(--mz-card);
+  border: 1px solid var(--mz-border); border-radius: 2px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.35);
+}
+.mf-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; background: var(--mz-bar); border-bottom: 1px solid var(--mz-border);
+}
+.mf-modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--mz-text); }
+.mf-modal-x {
+  border: 0; background: none; color: var(--mz-muted); font-size: 18px;
+  line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.mf-modal-x:hover { color: var(--mz-text); }
+.mf-modal-body { padding: 12px; color: var(--mz-text); font-size: 12.5px; line-height: 1.5; }
+.mf-modal-body p { margin: 0 0 8px; }
+.mf-modal-body p:last-child { margin-bottom: 0; }
+.mf-modal-body .muted { color: var(--mz-muted); font-size: 12px; }
+.mf-modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 12px; border-top: 1px solid var(--mz-border);
+}
+.owner-option {
+  display: flex; align-items: center; gap: 8px; padding: 8px 7px;
+  border-bottom: 1px solid var(--mz-border-soft); cursor: pointer;
+}
+.owner-option:last-child { border-bottom: 0; }
+.owner-option:hover { background: var(--mz-hover); }
+.owner-option input { accent-color: var(--mz-blue); }
+
+/* ---- Modal pilih user group ---- */
+.group-modal-body { padding: 0 12px 10px; }
+.group-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 12px; color: var(--mz-text);
+}
+.group-table th {
+  padding: 9px 6px 6px; text-align: left; font-size: 11.5px; font-weight: 400;
+  color: var(--mz-muted); border-bottom: 1px solid var(--mz-border-soft);
+}
+.group-table td { padding: 0; }
+.group-table .check-col, .group-table .check-cell { width: 34px; padding-left: 6px; }
+.group-table tbody td { border-bottom: 1px solid var(--mz-border-soft); }
+.group-table tbody tr:last-child td { border-bottom: 0; }
+.group-table tbody tr:hover td { background: var(--mz-hover); }
+.group-list { max-height: 280px; overflow-y: auto; }
+.group-option {
+  display: flex; align-items: center; gap: 8px; padding: 8px 6px;
+  cursor: pointer;
+}
+.group-option input { accent-color: var(--mz-blue); flex: none; }
+.group-option span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Modal pilih user ---- */
+.mf-modal.mf-modal-wide { width: min(830px, 100%); }
+.user-table .check-col, .user-table .check-cell { width: 34px; padding-left: 6px; }
+.user-table .col-username { width: 34%; }
+.user-table .col-name { width: 33%; }
+.user-table .col-last { width: auto; }
+.user-table td {
+  padding: 8px 6px; border-bottom: 1px solid var(--mz-border-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.user-table tbody tr:last-child td { border-bottom: 0; }
+.user-table tbody tr:hover td { background: var(--mz-hover); }
+.user-table input[type="checkbox"] { accent-color: var(--mz-blue); margin: 0; }
+.user-table .user-username { color: var(--mz-blue); }
+
+@media (max-width: 760px) {
+  .zbx { padding: 12px 12px 24px; }
+  .zbx-head { flex-wrap: wrap; }
+  .map-panel { padding: 12px 12px 4px; }
+  .mrow, .map-foot-inner { grid-template-columns: 1fr; gap: 4px; }
+  .mlabel { text-align: left; line-height: 18px; }
+  .mrow.url-row > .mlabel, .mrow.share-row > .mlabel { line-height: 18px; }
+  .m-input.name, .owner-box { width: 100%; }
+  .map-foot { padding: 10px 12px 14px; }
+  .map-foot-actions { flex-wrap: wrap; }
+  .form-err { flex: 1 1 100%; margin-left: 0; }
+  .seg.wide { flex-wrap: wrap; }
+}
+</style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
+          <span>Monitoring</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
+          <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+          <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
+          <a href="/maps" class="nav-link nav-sub-link active" data-nav="maps" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title" style="font-size:16px;">Maps</h1>
+        <p class="page-sub">Peta topologi jaringan berisi host dan tautan</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">A</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">Admin</span>
+              <span class="user-btn-role">Kopegtel</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page zbx" id="konten">
+      <div class="zbx-head">
+        <h1>Network maps</h1>
+        <div class="spacer"></div>
+        <a class="zbx-help" href="#" title="Network maps — map owner, dimensions, background, labels, problem display, URLs, dan sharing" onclick="return false" aria-label="Help">?</a>
+      </div>
+
+      <form class="map-form-card" id="mapForm" novalidate>
+        <div class="map-tabs" role="tablist" aria-label="Network map">
+          <button type="button" class="map-tab active" id="tabMap" role="tab" aria-selected="true" aria-controls="panelMap">Map</button>
+          <button type="button" class="map-tab" id="tabSharing" role="tab" aria-selected="false" aria-controls="panelSharing">Sharing <span class="tab-dot" id="sharingDot" hidden aria-label="Perubahan sharing belum disimpan"></span></button>
+        </div>
+
+        <!-- ================= TAB MAP ================= -->
+        <div class="map-panel" id="panelMap" role="tabpanel" aria-labelledby="tabMap">
+          <div class="map-grid">
+            <div class="mrow">
+              <span class="mlabel req" id="ownerLabel">Owner</span>
+              <div class="mfield owner-field" role="group" aria-labelledby="ownerLabel">
+                <div class="owner-box" id="ownerBox">
+                  <span class="owner-text" id="ownerText">{{ owner_label }}</span>
+                  <button type="button" class="owner-clear" id="ownerClear" aria-label="Hapus owner">×</button>
+                </div>
+                <button type="button" class="zbtn" id="btnOwnerSelect">Select</button>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel req" for="mName">Name</label>
+              <div class="mfield">
+                <input class="m-input name" id="mName" name="name" maxlength="128" autocomplete="off" required>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel req" for="mWidth">Width</label>
+              <div class="mfield">
+                <input class="m-input dim" id="mWidth" name="width" type="number" min="100" max="65535" step="1" value="800" required>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel req" for="mHeight">Height</label>
+              <div class="mfield">
+                <input class="m-input dim" id="mHeight" name="height" type="number" min="100" max="65535" step="1" value="600" required>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mBackgroundImage">Background image</label>
+              <div class="mfield">
+                <select class="m-select small" id="mBackgroundImage" name="background_image">
+                  <option value="none">No image</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="backgroundScaleLabel">Background scale</span>
+              <div class="mfield">
+                <div class="seg" id="backgroundScale" role="group" aria-labelledby="backgroundScaleLabel">
+                  <button type="button" data-value="none" aria-pressed="false">None</button>
+                  <button type="button" data-value="proportional" class="on" aria-pressed="true">Proportionally</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mAutoIcon">Automatic icon mapping</label>
+              <div class="mfield">
+                <select class="m-select small" id="mAutoIcon" name="automatic_icon_mapping">
+                  <option value="manual">&lt;manual&gt;</option>
+                </select>
+                <button type="button" class="linkbtn" id="btnIconMappings">show icon mappings</button>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="iconHighlightLabel">Icon highlight</span>
+              <div class="mfield">
+                <input type="checkbox" id="mIconHighlight" aria-labelledby="iconHighlightLabel">
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="markElementsLabel">Mark elements on trigger status change</span>
+              <div class="mfield">
+                <input type="checkbox" id="mMarkElements" aria-labelledby="markElementsLabel">
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="displayProblemsLabel">Display problems</span>
+              <div class="mfield">
+                <div class="seg wide" id="displayProblems" role="group" aria-labelledby="displayProblemsLabel">
+                  <button type="button" data-value="expand_single" class="on" aria-pressed="true">Expand single problem</button>
+                  <button type="button" data-value="number" aria-pressed="false">Number of problems</button>
+                  <button type="button" data-value="number_most_critical" aria-pressed="false">Number of problems and expand most critical one</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mAdvancedLabels">Advanced labels</label>
+              <div class="mfield">
+                <input type="checkbox" id="mAdvancedLabels" checked>
+              </div>
+            </div>
+
+            <div id="advancedLabelRows">
+              <div class="mrow">
+                <label class="mlabel" for="mHostGroupLabelType">Host group label type</label>
+                <div class="mfield">
+                  <select class="m-select label-select" id="mHostGroupLabelType">
+                    <option value="label" selected>Label</option>
+                    <option value="ip">IP address</option>
+                    <option value="name">Element name</option>
+                    <option value="status">Status only</option>
+                    <option value="nothing">Nothing</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mrow">
+                <label class="mlabel" for="mHostLabelType">Host label type</label>
+                <div class="mfield">
+                  <select class="m-select label-select" id="mHostLabelType">
+                    <option value="label" selected>Label</option>
+                    <option value="ip">IP address</option>
+                    <option value="name">Element name</option>
+                    <option value="status">Status only</option>
+                    <option value="nothing">Nothing</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mrow">
+                <label class="mlabel" for="mTriggerLabelType">Trigger label type</label>
+                <div class="mfield">
+                  <select class="m-select label-select" id="mTriggerLabelType">
+                    <option value="label">Label</option>
+                    <option value="ip">IP address</option>
+                    <option value="name">Element name</option>
+                    <option value="status" selected>Status only</option>
+                    <option value="nothing">Nothing</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mrow">
+                <label class="mlabel" for="mMapLabelType">Map label type</label>
+                <div class="mfield">
+                  <select class="m-select label-select" id="mMapLabelType">
+                    <option value="label" selected>Label</option>
+                    <option value="ip">IP address</option>
+                    <option value="name">Element name</option>
+                    <option value="status">Status only</option>
+                    <option value="nothing">Nothing</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="mrow">
+                <label class="mlabel" for="mImageLabelType">Image label type</label>
+                <div class="mfield">
+                  <select class="m-select label-select" id="mImageLabelType">
+                    <option value="label">Label</option>
+                    <option value="ip">IP address</option>
+                    <option value="name">Element name</option>
+                    <option value="status">Status only</option>
+                    <option value="nothing" selected>Nothing</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mLabelType">Map element label type</label>
+              <div class="mfield">
+                <select class="m-select medium" id="mLabelType">
+                  <option value="label" selected>Label</option>
+                  <option value="ip">IP address</option>
+                  <option value="name">Element name</option>
+                  <option value="status">Status only</option>
+                  <option value="nothing">Nothing</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mLabelLocation">Map element label location</label>
+              <div class="mfield">
+                <select class="m-select small" id="mLabelLocation">
+                  <option value="bottom" selected>Bottom</option>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="top">Top</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="showElementLabelsLabel">Show map element labels</span>
+              <div class="mfield">
+                <div class="seg" id="showElementLabels" role="group" aria-labelledby="showElementLabelsLabel">
+                  <button type="button" data-value="always" class="on" aria-pressed="true">Always</button>
+                  <button type="button" data-value="auto_hide" aria-pressed="false">Auto hide</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="showLinkLabelsLabel">Show link labels</span>
+              <div class="mfield">
+                <div class="seg" id="showLinkLabels" role="group" aria-labelledby="showLinkLabelsLabel">
+                  <button type="button" data-value="always" class="on" aria-pressed="true">Always</button>
+                  <button type="button" data-value="auto_hide" aria-pressed="false">Auto hide</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <label class="mlabel" for="mProblemDisplay">Problem display</label>
+              <div class="mfield">
+                <select class="m-select medium" id="mProblemDisplay">
+                  <option value="all" selected>All</option>
+                  <option value="separated">Separated</option>
+                  <option value="unacknowledged">Unacknowledged only</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="minimumSeverityLabel">Minimum severity</span>
+              <div class="mfield">
+                <div class="seg wide" id="minimumSeverity" role="group" aria-labelledby="minimumSeverityLabel">
+                  <button type="button" data-value="not_classified" class="on" aria-pressed="true">Not classified</button>
+                  <button type="button" data-value="information" aria-pressed="false">Information</button>
+                  <button type="button" data-value="warning" aria-pressed="false">Warning</button>
+                  <button type="button" data-value="average" aria-pressed="false">Average</button>
+                  <button type="button" data-value="high" aria-pressed="false">High</button>
+                  <button type="button" data-value="disaster" aria-pressed="false">Disaster</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow">
+              <span class="mlabel" id="showSuppressedLabel">Show suppressed problems</span>
+              <div class="mfield">
+                <input type="checkbox" id="mShowSuppressed" aria-labelledby="showSuppressedLabel">
+              </div>
+            </div>
+
+            <div class="mrow url-row">
+              <span class="mlabel" id="urlsLabel">URLs</span>
+              <div class="mfield url-field">
+                <table class="url-table" aria-labelledby="urlsLabel">
+                  <colgroup>
+                    <col class="col-name">
+                    <col class="col-url">
+                    <col class="col-element">
+                    <col class="url-remove-th">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">URL</th>
+                      <th scope="col">Element</th>
+                      <th class="url-remove-th" scope="col"><span class="sr-only">Remove</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="urlRows"></tbody>
+                </table>
+                <button type="button" class="linkbtn" id="btnAddUrl">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= TAB SHARING ================= -->
+        <div class="map-panel" id="panelSharing" role="tabpanel" aria-labelledby="tabSharing" hidden>
+          <div class="map-grid">
+            <div class="mrow">
+              <span class="mlabel" id="shareTypeLabel">Type</span>
+              <div class="mfield">
+                <div class="seg" id="shareType" role="group" aria-labelledby="shareTypeLabel">
+                  <button type="button" data-value="private" aria-pressed="false">Private</button>
+                  <button type="button" data-value="public" class="on" aria-pressed="true">Public</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mrow share-row">
+              <span class="mlabel" id="groupSharesLabel">List of user group shares</span>
+              <div class="mfield share-field">
+                <table class="share-table" aria-labelledby="groupSharesLabel">
+                  <colgroup>
+                    <col class="col-share">
+                    <col class="col-perm">
+                    <col class="url-remove-th">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">User groups</th>
+                      <th scope="col">Permissions</th>
+                      <th class="url-remove-th" scope="col"><span class="sr-only">Remove</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="groupShareRows"></tbody>
+                </table>
+                <button type="button" class="linkbtn" id="btnAddGroupShare">Add</button>
+              </div>
+            </div>
+
+            <div class="mrow share-row">
+              <span class="mlabel" id="userSharesLabel">List of user shares</span>
+              <div class="mfield share-field">
+                <table class="share-table" aria-labelledby="userSharesLabel">
+                  <colgroup>
+                    <col class="col-share">
+                    <col class="col-perm">
+                    <col class="url-remove-th">
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th scope="col">Users</th>
+                      <th scope="col">Permissions</th>
+                      <th class="url-remove-th" scope="col"><span class="sr-only">Remove</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="userShareRows"></tbody>
+                </table>
+                <button type="button" class="linkbtn" id="btnAddUserShare">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="map-foot">
+          <div class="map-foot-inner">
+            <div aria-hidden="true"></div>
+            <div class="map-foot-actions">
+              <button type="submit" class="zbtn primary" id="btnAdd">Add</button>
+              <a class="zbtn" href="/maps" id="btnCancel">Cancel</a>
+              <span class="form-err" id="formErr" role="alert"></span>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <div class="zbx-copyright">Zabbix 7.4.15. &copy; 2001&ndash;2026, Zabbix SIA</div>
+
+      <!-- ======== Modal pilih owner ======== -->
+      <div class="mf-modal-back" id="ownerModal" role="dialog" aria-modal="true" aria-labelledby="ownerModalTitle">
+        <div class="mf-modal">
+          <div class="mf-modal-head">
+            <h3 id="ownerModalTitle">Select owner</h3>
+            <button type="button" class="mf-modal-x" id="ownerModalClose" aria-label="Tutup">×</button>
+          </div>
+          <div class="mf-modal-body" id="ownerList"></div>
+          <div class="mf-modal-foot">
+            <button type="button" class="zbtn" id="ownerModalCancel">Cancel</button>
+            <button type="button" class="zbtn primary" id="ownerModalOk">Select</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== Modal pilih user group ======== -->
+      <div class="mf-modal-back" id="groupModal" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
+        <div class="mf-modal">
+          <div class="mf-modal-head">
+            <h3 id="groupModalTitle">User groups</h3>
+            <button type="button" class="mf-modal-x" id="groupModalClose" aria-label="Tutup">×</button>
+          </div>
+          <div class="mf-modal-body group-modal-body">
+            <div class="group-list">
+              <table class="group-table">
+                <colgroup>
+                  <col class="check-col">
+                  <col>
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="check-col"><input type="checkbox" id="groupSelectAll" aria-label="Pilih semua user group"></th>
+                    <th scope="col">Name</th>
+                  </tr>
+                </thead>
+                <tbody id="groupModalList">
+                  {% for group in user_groups %}
+                  <tr>
+                    <td class="check-cell"><input type="checkbox" id="groupPick{{ loop.index }}" value="{{ group }}"></td>
+                    <td><label class="group-option" for="groupPick{{ loop.index }}"><span>{{ group }}</span></label></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="mf-modal-foot">
+            <button type="button" class="zbtn primary" id="groupModalSelect">Select</button>
+            <button type="button" class="zbtn" id="groupModalCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== Modal pilih user ======== -->
+      <div class="mf-modal-back" id="userModal" role="dialog" aria-modal="true" aria-labelledby="userModalTitle">
+        <div class="mf-modal mf-modal-wide">
+          <div class="mf-modal-head">
+            <h3 id="userModalTitle">Users</h3>
+            <button type="button" class="mf-modal-x" id="userModalClose" aria-label="Tutup">×</button>
+          </div>
+          <div class="mf-modal-body group-modal-body">
+            <div class="group-list">
+              <table class="group-table user-table">
+                <colgroup>
+                  <col class="check-col">
+                  <col class="col-username">
+                  <col class="col-name">
+                  <col class="col-last">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="check-col"><input type="checkbox" id="userSelectAll" aria-label="Pilih semua user"></th>
+                    <th scope="col">Username</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Last name</th>
+                  </tr>
+                </thead>
+                <tbody id="userModalList">
+                  {% for u in share_users %}
+                  <tr>
+                    <td class="check-cell"><input type="checkbox" value="{{ u.username }}" data-label="{{ u.label }}" aria-label="{{ u.label }}"></td>
+                    <td class="user-username">{{ u.label }}</td>
+                    <td>{{ u.name }}</td>
+                    <td>{{ u.last_name }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="mf-modal-foot">
+            <button type="button" class="zbtn primary" id="userModalSelect">Select</button>
+            <button type="button" class="zbtn" id="userModalCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======== Modal icon mapping ======== -->
+      <div class="mf-modal-back" id="iconMapModal" role="dialog" aria-modal="true" aria-labelledby="iconMapTitle">
+        <div class="mf-modal">
+          <div class="mf-modal-head">
+            <h3 id="iconMapTitle">Icon mappings</h3>
+            <button type="button" class="mf-modal-x" id="iconMapCloseX" aria-label="Tutup">×</button>
+          </div>
+          <div class="mf-modal-body">
+            <p>No automatic icon mappings configured.</p>
+            <p class="muted">Configure icon mappings in Administration &rarr; General &rarr; Icon mapping.</p>
+          </div>
+          <div class="mf-modal-foot">
+            <button type="button" class="zbtn primary" id="iconMapClose">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <script type="application/json" id="ownerData">{{ {"owner": owner, "owner_label": owner_label, "users": users}|tojson }}</script>
+    </main>
+  </div>
+</div>
+
+<!-- ======== Template baris URL + sharing ======== -->
+<template id="urlRowTpl">
+  <tr>
+    <td><input class="m-input" data-url-name maxlength="128" aria-label="URL name"></td>
+    <td><input class="m-input" data-url-value maxlength="2048" aria-label="URL"></td>
+    <td>
+      <select class="m-select" data-url-element aria-label="URL element">
+        <option value="host">Host</option>
+        <option value="host_group">Host group</option>
+        <option value="trigger">Trigger</option>
+        <option value="map">Map</option>
+        <option value="image">Image</option>
+      </select>
+    </td>
+    <td class="url-remove-cell"><button type="button" class="url-remove" aria-label="Hapus URL">×</button></td>
+  </tr>
+</template>
+
+<template id="groupShareTpl">
+  <tr>
+    <td><span class="share-name" data-share-name></span></td>
+    <td>
+      <div class="seg perm" data-share-perm role="group" aria-label="Permissions">
+        <button type="button" data-value="read-only" class="on" aria-pressed="true">Read-only</button>
+        <button type="button" data-value="read-write" aria-pressed="false">Read-write</button>
+      </div>
+    </td>
+    <td class="url-remove-cell"><button type="button" class="url-remove" aria-label="Hapus user group share">×</button></td>
+  </tr>
+</template>
+
+<template id="userShareTpl">
+  <tr>
+    <td><span class="share-name" data-share-name></span></td>
+    <td>
+      <div class="seg perm" data-share-perm role="group" aria-label="Permissions">
+        <button type="button" data-value="read-only" aria-pressed="false">Read-only</button>
+        <button type="button" data-value="read-write" class="on" aria-pressed="true">Read-write</button>
+      </div>
+    </td>
+    <td class="url-remove-cell"><button type="button" class="url-remove" aria-label="Hapus user share">×</button></td>
+  </tr>
+</template>
+
+<script>
+/* ================= Shell: tema, sidebar, menu ================= */
+(function () {
+  function $(id) { return document.getElementById(id); }
+  var ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg>';
+  var ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:19px;height:19px"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('nms_theme', t); } catch (_) {}
+    var b = $('themeBtn');
+    if (b) { b.innerHTML = t === 'dark' ? ICON_SUN : ICON_MOON; b.title = t === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'; }
+  }
+  try {
+    var t = localStorage.getItem('nms_theme');
+    if (t !== 'light' && t !== 'dark') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    setTheme(t);
+  } catch (_) {}
+  var tb = $('themeBtn'); if (tb) tb.addEventListener('click', function () { setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'); });
+  try { if (localStorage.getItem('nms_nav') === 'collapsed' && window.innerWidth > 1100) document.body.classList.add('nav-collapsed'); } catch (_) {}
+  var st = $('sidebarToggle'); if (st) st.addEventListener('click', function () { document.body.classList.toggle('nav-open'); });
+  var sc = $('scrim'); if (sc) sc.addEventListener('click', function () { document.body.classList.remove('nav-open'); });
+  var cb = $('collapseBtn'); if (cb) cb.addEventListener('click', function () {
+    document.body.classList.toggle('nav-collapsed');
+    try { localStorage.setItem('nms_nav', document.body.classList.contains('nav-collapsed') ? 'collapsed' : 'open'); } catch (_) {}
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') document.body.classList.remove('nav-open'); });
+  var ub = $('userBtn'), um = $('userMenu');
+  if (ub && um) {
+    ub.addEventListener('click', function (e) { e.stopPropagation(); var open = um.style.display === 'none'; um.style.display = open ? 'block' : 'none'; ub.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+    document.addEventListener('click', function () { um.style.display = 'none'; ub.setAttribute('aria-expanded', 'false'); });
+    um.addEventListener('click', function (e) { e.stopPropagation(); });
+  }
+})();
+
+/* ================= Form Network maps ================= */
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function qsa(sel, root) {
+    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  }
+
+  var initial = { owner: '', owner_label: '', users: [] };
+  try {
+    initial = JSON.parse($('ownerData').textContent || '{}') || initial;
+  } catch (_) {}
+  var users = Array.isArray(initial.users) ? initial.users : [];
+  var selectedOwner = String(initial.owner || '');
+  var selectedOwnerLabel = String(initial.owner_label || selectedOwner);
+
+  function renderOwner() {
+    var text = $('ownerText');
+    var box = $('ownerBox');
+    if (selectedOwner) {
+      text.textContent = selectedOwnerLabel || selectedOwner;
+      box.classList.remove('empty');
+    } else {
+      text.textContent = 'Select owner';
+      box.classList.add('empty');
+    }
+  }
+  renderOwner();
+
+  /* ---- Tab Map / Sharing ---- */
+  function showTab(name) {
+    var isMap = name === 'map';
+    $('tabMap').classList.toggle('active', isMap);
+    $('tabSharing').classList.toggle('active', !isMap);
+    $('tabMap').setAttribute('aria-selected', isMap ? 'true' : 'false');
+    $('tabSharing').setAttribute('aria-selected', isMap ? 'false' : 'true');
+    $('panelMap').hidden = !isMap;
+    $('panelSharing').hidden = isMap;
+  }
+  $('tabMap').addEventListener('click', function () { showTab('map'); });
+  $('tabSharing').addEventListener('click', function () { showTab('sharing'); });
+
+  /* ---- Segmented controls (delegasi, termasuk baris dinamis) ---- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.seg button[data-value]') : null;
+    if (!btn) return;
+    var seg = btn.closest('.seg');
+    if (!seg) return;
+    qsa('button[data-value]', seg).forEach(function (b) {
+      var on = b === btn;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    if (seg.closest('#panelSharing')) markSharingDirty();
+  });
+  function segValue(id) {
+    var seg = $(id);
+    if (!seg) return '';
+    var on = seg.querySelector('button.on[data-value]');
+    return on ? on.getAttribute('data-value') : '';
+  }
+
+  /* ---- Advanced labels ---- */
+  function syncAdvancedLabels() {
+    $('advancedLabelRows').hidden = !$('mAdvancedLabels').checked;
+  }
+  $('mAdvancedLabels').addEventListener('change', syncAdvancedLabels);
+  syncAdvancedLabels();
+
+  /* ---- Sharing dirty dot ---- */
+  function markSharingDirty() { $('sharingDot').hidden = false; }
+  $('panelSharing').addEventListener('input', markSharingDirty);
+  $('panelSharing').addEventListener('change', markSharingDirty);
+
+  /* ---- Owner modal ---- */
+  function openOwnerModal() {
+    var list = $('ownerList');
+    list.innerHTML = '';
+    if (!users.length) {
+      var empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'Tidak ada user yang dapat dipilih.';
+      list.appendChild(empty);
+    } else {
+      users.forEach(function (u) {
+        var label = document.createElement('label');
+        label.className = 'owner-option';
+        var radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'ownerPick';
+        radio.value = String(u.username || '');
+        radio.setAttribute('data-label', String(u.label || u.username || ''));
+        if (String(u.username || '') === selectedOwner) radio.checked = true;
+        var span = document.createElement('span');
+        span.textContent = String(u.label || u.username || '');
+        label.appendChild(radio);
+        label.appendChild(span);
+        list.appendChild(label);
+      });
+    }
+    $('ownerModal').classList.add('on');
+    var first = list.querySelector('input[type="radio"]');
+    if (first) first.focus();
+  }
+  function closeOwnerModal() { $('ownerModal').classList.remove('on'); }
+  $('btnOwnerSelect').addEventListener('click', openOwnerModal);
+  $('ownerModalClose').addEventListener('click', closeOwnerModal);
+  $('ownerModalCancel').addEventListener('click', closeOwnerModal);
+  $('ownerModal').addEventListener('click', function (e) { if (e.target === $('ownerModal')) closeOwnerModal(); });
+  $('ownerModalOk').addEventListener('click', function () {
+    var picked = $('ownerList').querySelector('input[name="ownerPick"]:checked');
+    if (!picked) return;
+    selectedOwner = picked.value;
+    selectedOwnerLabel = picked.getAttribute('data-label') || picked.value;
+    renderOwner();
+    closeOwnerModal();
+  });
+  $('ownerClear').addEventListener('click', function () {
+    selectedOwner = '';
+    selectedOwnerLabel = '';
+    renderOwner();
+    $('btnOwnerSelect').focus();
+  });
+
+  /* ---- Icon mapping modal ---- */
+  function openIconModal() { $('iconMapModal').classList.add('on'); }
+  function closeIconModal() { $('iconMapModal').classList.remove('on'); }
+  $('btnIconMappings').addEventListener('click', openIconModal);
+  $('iconMapClose').addEventListener('click', closeIconModal);
+  $('iconMapCloseX').addEventListener('click', closeIconModal);
+  $('iconMapModal').addEventListener('click', function (e) { if (e.target === $('iconMapModal')) closeIconModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if ($('ownerModal').classList.contains('on')) closeOwnerModal();
+      if ($('groupModal').classList.contains('on')) closeGroupModal();
+      if ($('userModal').classList.contains('on')) closeUserModal();
+      if ($('iconMapModal').classList.contains('on')) closeIconModal();
+    }
+  });
+
+  /* ---- URL rows ---- */
+  function addUrlRow() {
+    var row = $('urlRowTpl').content.firstElementChild.cloneNode(true);
+    row.querySelector('.url-remove').addEventListener('click', function () { row.remove(); });
+    $('urlRows').appendChild(row);
+    return row;
+  }
+  $('btnAddUrl').addEventListener('click', function () {
+    var row = addUrlRow();
+    row.querySelector('[data-url-name]').focus();
+  });
+
+  /* ---- Share rows ---- */
+  function addShareRow(tplId, tbodyId) {
+    var row = $(tplId).content.firstElementChild.cloneNode(true);
+    row.querySelector('.url-remove').addEventListener('click', function () {
+      row.remove();
+      markSharingDirty();
+    });
+    $(tbodyId).appendChild(row);
+    markSharingDirty();
+    return row;
+  }
+  function shareNameOf(tr) {
+    var el = tr.querySelector('[data-share-name]');
+    if (!el) return '';
+    var value = el.getAttribute('data-share-value');
+    if (value !== null) return value.trim();
+    return (el.tagName === 'INPUT' ? el.value : el.textContent).trim();
+  }
+
+  /* ---- Select all pada modal ---- */
+  function syncSelectAll(listId, allId) {
+    var boxes = qsa('#' + listId + ' input[type="checkbox"]');
+    var checked = boxes.filter(function (cb) { return cb.checked; }).length;
+    var all = $(allId);
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
+  function wireSelectAll(listId, allId) {
+    $(allId).addEventListener('change', function () {
+      var on = this.checked;
+      qsa('#' + listId + ' input[type="checkbox"]').forEach(function (cb) {
+        cb.checked = on;
+      });
+    });
+    $(listId).addEventListener('change', function (e) {
+      if (e.target.matches && e.target.matches('input[type="checkbox"]')) {
+        syncSelectAll(listId, allId);
+      }
+    });
+  }
+  wireSelectAll('groupModalList', 'groupSelectAll');
+  wireSelectAll('userModalList', 'userSelectAll');
+
+  /* ---- User group modal ---- */
+  function openGroupModal() {
+    var selected = {};
+    qsa('#groupShareRows tr').forEach(function (tr) {
+      selected[shareNameOf(tr)] = true;
+    });
+    qsa('#groupModalList input[type="checkbox"]').forEach(function (cb) {
+      cb.checked = !!selected[cb.value];
+    });
+    syncSelectAll('groupModalList', 'groupSelectAll');
+    $('groupModal').classList.add('on');
+    var focusEl = $('groupModalList').querySelector('input:checked') ||
+      $('groupModalList').querySelector('input');
+    if (focusEl) focusEl.focus();
+  }
+  function closeGroupModal() { $('groupModal').classList.remove('on'); }
+  function applyGroupSelection() {
+    var chosen = qsa('#groupModalList input[type="checkbox"]:checked').map(function (cb) {
+      return cb.value;
+    });
+    var existing = {};
+    qsa('#groupShareRows tr').forEach(function (tr) {
+      existing[shareNameOf(tr)] = tr;
+    });
+    var tbody = $('groupShareRows');
+    tbody.innerHTML = '';
+    chosen.forEach(function (name) {
+      var row = existing[name];
+      if (!row) {
+        row = addShareRow('groupShareTpl', 'groupShareRows');
+        row.querySelector('[data-share-name]').textContent = name;
+      }
+      tbody.appendChild(row);
+    });
+    markSharingDirty();
+    closeGroupModal();
+  }
+  $('btnAddGroupShare').addEventListener('click', openGroupModal);
+  $('groupModalClose').addEventListener('click', closeGroupModal);
+  $('groupModalCancel').addEventListener('click', closeGroupModal);
+  $('groupModal').addEventListener('click', function (e) {
+    if (e.target === $('groupModal')) closeGroupModal();
+  });
+  $('groupModalSelect').addEventListener('click', applyGroupSelection);
+
+  /* ---- User modal ---- */
+  function openUserModal() {
+    var selected = {};
+    qsa('#userShareRows tr').forEach(function (tr) {
+      selected[shareNameOf(tr)] = true;
+    });
+    qsa('#userModalList input[type="checkbox"]').forEach(function (cb) {
+      cb.checked = !!selected[cb.value];
+    });
+    syncSelectAll('userModalList', 'userSelectAll');
+    $('userModal').classList.add('on');
+    var focusEl = $('userModalList').querySelector('input:checked') ||
+      $('userModalList').querySelector('input');
+    if (focusEl) focusEl.focus();
+  }
+  function closeUserModal() { $('userModal').classList.remove('on'); }
+  function applyUserSelection() {
+    var chosen = qsa('#userModalList input[type="checkbox"]:checked').map(function (cb) {
+      return { value: cb.value, label: cb.getAttribute('data-label') || cb.value };
+    });
+    var existing = {};
+    qsa('#userShareRows tr').forEach(function (tr) {
+      existing[shareNameOf(tr)] = tr;
+    });
+    var tbody = $('userShareRows');
+    tbody.innerHTML = '';
+    chosen.forEach(function (user) {
+      var row = existing[user.value];
+      if (!row) {
+        row = addShareRow('userShareTpl', 'userShareRows');
+        var nameEl = row.querySelector('[data-share-name]');
+        nameEl.textContent = user.label;
+        nameEl.setAttribute('data-share-value', user.value);
+      }
+      tbody.appendChild(row);
+    });
+    markSharingDirty();
+    closeUserModal();
+  }
+  $('btnAddUserShare').addEventListener('click', openUserModal);
+  $('userModalClose').addEventListener('click', closeUserModal);
+  $('userModalCancel').addEventListener('click', closeUserModal);
+  $('userModal').addEventListener('click', function (e) {
+    if (e.target === $('userModal')) closeUserModal();
+  });
+  $('userModalSelect').addEventListener('click', applyUserSelection);
+
+  /* ---- Collect form ---- */
+  function collectUrls() {
+    var out = [];
+    qsa('#urlRows tr').forEach(function (tr, idx) {
+      var name = tr.querySelector('[data-url-name]').value.trim();
+      var url = tr.querySelector('[data-url-value]').value.trim();
+      if (!name && !url) return;
+      if (!name || !url) {
+        throw new Error('Name dan URL pada baris ' + (idx + 1) + ' wajib diisi.');
+      }
+      out.push({
+        name: name,
+        url: url,
+        element: tr.querySelector('[data-url-element]').value
+      });
+    });
+    return out;
+  }
+
+  function collectShares(tbodyId) {
+    var out = [];
+    qsa('#' + tbodyId + ' tr').forEach(function (tr) {
+      var name = shareNameOf(tr);
+      if (!name) return;
+      var perm = tr.querySelector('[data-share-perm] button.on');
+      out.push({
+        name: name,
+        permission: perm ? perm.getAttribute('data-value') : 'read-only'
+      });
+    });
+    return out;
+  }
+
+  function readDimension(id, label) {
+    var value = parseInt($(id).value, 10);
+    if (!isFinite(value) || value < 100 || value > 65535) {
+      throw new Error(label + ' harus 100 sampai 65535 piksel.');
+    }
+    return value;
+  }
+
+  function collectSettings() {
+    return {
+      background_image: $('mBackgroundImage').value,
+      background_scale: segValue('backgroundScale'),
+      automatic_icon_mapping: $('mAutoIcon').value,
+      icon_highlight: $('mIconHighlight').checked,
+      mark_elements: $('mMarkElements').checked,
+      display_problems: segValue('displayProblems'),
+      label_type: $('mLabelType').value,
+      advanced_labels: $('mAdvancedLabels').checked,
+      host_group_label_type: $('mHostGroupLabelType').value,
+      host_label_type: $('mHostLabelType').value,
+      trigger_label_type: $('mTriggerLabelType').value,
+      map_label_type: $('mMapLabelType').value,
+      image_label_type: $('mImageLabelType').value,
+      label_location: $('mLabelLocation').value,
+      show_element_labels: segValue('showElementLabels'),
+      show_link_labels: segValue('showLinkLabels'),
+      problem_display: $('mProblemDisplay').value,
+      minimum_severity: segValue('minimumSeverity'),
+      show_suppressed: $('mShowSuppressed').checked,
+      urls: collectUrls(),
+      sharing: {
+        type: segValue('shareType'),
+        user_groups: collectShares('groupShareRows'),
+        users: collectShares('userShareRows')
+      }
+    };
+  }
+
+  $('mapForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('formErr').textContent = '';
+    var btn = $('btnAdd');
+    var oldLabel = btn.textContent;
+    try {
+      if (!selectedOwner) throw new Error('Owner wajib dipilih.');
+      var name = $('mName').value.trim();
+      if (!name) throw new Error('Name wajib diisi.');
+      if (name.length > 128) throw new Error('Name maksimal 128 karakter.');
+      var payload = {
+        name: name,
+        width: readDimension('mWidth', 'Width'),
+        height: readDimension('mHeight', 'Height'),
+        owner: selectedOwner,
+        settings: collectSettings()
+      };
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      fetch('/api/maps', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (!res.ok) throw new Error(data.error || 'Gagal menyimpan peta.');
+          return data;
+        });
+      }).then(function (data) {
+        window.location.href = '/maps/' + encodeURIComponent(data.id) + '/edit';
+      }).catch(function (err) {
+        $('formErr').textContent = err.message || 'Gagal menyimpan peta.';
+        btn.disabled = false;
+        btn.textContent = oldLabel;
+      });
+    } catch (err) {
+      $('formErr').textContent = err.message || 'Data form tidak valid.';
+    }
+  });
+
+  // Satu baris URL kosong agar tabel langsung terlihat seperti form Zabbix.
+  addUrlRow();
+})();
+</script>
+</body>
+</html>

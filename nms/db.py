@@ -11,6 +11,15 @@ from nms.database import backend_name, commit_with_retry, connect
 
 db_lock = threading.Lock()
 
+# Riwayat service dipakai untuk SLI. Default lama 7 hari tidak cukup untuk
+# SLA bulanan/tahunan, jadi simpan 400 hari dan biarkan operator menurunkannya.
+try:
+    SERVICE_HISTORY_RETENTION_DAYS = max(
+        7, int(os.environ.get("SERVICE_HISTORY_RETENTION_DAYS", "400"))
+    )
+except (TypeError, ValueError):
+    SERVICE_HISTORY_RETENTION_DAYS = 400
+
 
 def resolve_db_path():
     """Path DB aktif: env NMS_DB_PATH, default <BASE_DIR>/network.db."""
@@ -330,6 +339,26 @@ def init_db():
         except sqlite3.OperationalError:
             pass
     for _col, _ddl in (
+        ("description", "ALTER TABLE hosts ADD COLUMN description TEXT DEFAULT ''"),
+        ("iface_type", "ALTER TABLE hosts ADD COLUMN iface_type TEXT DEFAULT ''"),
+        ("iface_port", "ALTER TABLE hosts ADD COLUMN iface_port INTEGER DEFAULT 0"),
+        ("ipmi_auth", "ALTER TABLE hosts ADD COLUMN ipmi_auth TEXT DEFAULT 'default'"),
+        (
+            "ipmi_privilege",
+            "ALTER TABLE hosts ADD COLUMN ipmi_privilege TEXT DEFAULT 'user'",
+        ),
+        ("ipmi_username", "ALTER TABLE hosts ADD COLUMN ipmi_username TEXT DEFAULT ''"),
+        ("ipmi_password", "ALTER TABLE hosts ADD COLUMN ipmi_password TEXT DEFAULT ''"),
+        ("host_tags", "ALTER TABLE hosts ADD COLUMN host_tags TEXT DEFAULT '[]'"),
+        ("host_macros", "ALTER TABLE hosts ADD COLUMN host_macros TEXT DEFAULT '[]'"),
+        (
+            "host_inventory",
+            "ALTER TABLE hosts ADD COLUMN host_inventory TEXT DEFAULT '{}'",
+        ),
+        (
+            "host_encryption",
+            "ALTER TABLE hosts ADD COLUMN host_encryption TEXT DEFAULT '{}'",
+        ),
         ("ssh_user", "ALTER TABLE hosts ADD COLUMN ssh_user TEXT DEFAULT ''"),
         ("ssh_pass", "ALTER TABLE hosts ADD COLUMN ssh_pass TEXT DEFAULT ''"),
         ("ssh_port", "ALTER TABLE hosts ADD COLUMN ssh_port INTEGER DEFAULT 22"),
@@ -399,9 +428,19 @@ def init_db():
         url TEXT,
         query TEXT DEFAULT '',
         expected TEXT DEFAULT '',
+        tags TEXT DEFAULT '',
+        created_at TEXT DEFAULT '',
         status TEXT DEFAULT 'PENDING',
         latency REAL,
-        last_checked TEXT
+        last_checked TEXT,
+        parent_id INTEGER,
+        problem_tags TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        status_rule TEXT DEFAULT 'most_critical_child',
+        description TEXT DEFAULT '',
+        propagation_rule TEXT DEFAULT 'as_is',
+        weight INTEGER DEFAULT 0,
+        additional_rules TEXT DEFAULT '[]'
     )""")
 
     try:
@@ -505,6 +544,30 @@ def init_db():
     # Kolom tipe ICMP/DNS + keyword HTTP (aman SQLite dan PostgreSQL).
     _add_column_compat(c, "ALTER TABLE services ADD COLUMN query TEXT DEFAULT ''")
     _add_column_compat(c, "ALTER TABLE services ADD COLUMN expected TEXT DEFAULT ''")
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN tags TEXT DEFAULT ''")
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN created_at TEXT DEFAULT ''")
+
+    # Hierarki dan konfigurasi service gaya Zabbix.
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN parent_id INTEGER")
+    _add_column_compat(
+        c, "ALTER TABLE services ADD COLUMN problem_tags TEXT DEFAULT ''"
+    )
+    _add_column_compat(
+        c, "ALTER TABLE services ADD COLUMN sort_order INTEGER DEFAULT 0"
+    )
+    _add_column_compat(
+        c,
+        "ALTER TABLE services ADD COLUMN status_rule TEXT DEFAULT 'most_critical_child'",
+    )
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN description TEXT DEFAULT ''")
+    _add_column_compat(
+        c, "ALTER TABLE services ADD COLUMN propagation_rule TEXT DEFAULT 'as_is'"
+    )
+    _add_column_compat(c, "ALTER TABLE services ADD COLUMN weight INTEGER DEFAULT 0")
+    _add_column_compat(
+        c, "ALTER TABLE services ADD COLUMN additional_rules TEXT DEFAULT '[]'"
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_services_parent ON services(parent_id)")
 
     c.execute("""CREATE TABLE IF NOT EXISTS service_history(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,6 +579,61 @@ def init_db():
     c.execute(
         "CREATE INDEX IF NOT EXISTS idx_svc_hist ON service_history(service_id, timestamp)"
     )
+
+    # SLA custom (bukan modul SLA Zabbix). Definisi disimpan di tiga tabel:
+    # header, tag pencocok service, dan excluded downtime.
+    c.execute("""CREATE TABLE IF NOT EXISTS slas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        slo REAL NOT NULL,
+        reporting_period TEXT NOT NULL DEFAULT 'monthly',
+        timezone TEXT NOT NULL DEFAULT 'Asia/Jakarta',
+        schedule TEXT NOT NULL DEFAULT '{"mode":"24x7"}',
+        effective_date TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        tag_eval TEXT NOT NULL DEFAULT 'and',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_slas_name ON slas(name)")
+    c.execute("""CREATE TABLE IF NOT EXISTS sla_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sla_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        op TEXT NOT NULL DEFAULT 'equals',
+        value TEXT DEFAULT ''
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sla_tags_sla ON sla_tags(sla_id)"
+    )
+    c.execute("""CREATE TABLE IF NOT EXISTS sla_downtimes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sla_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        start_at TEXT NOT NULL,
+        duration_seconds INTEGER NOT NULL
+    )""")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sla_downtimes_sla ON sla_downtimes(sla_id)"
+    )
+
+    # Isi created_at lama dari riwayat pertama (atau waktu sekarang bila kosong).
+    try:
+        c.execute("SELECT id FROM services WHERE created_at IS NULL OR created_at=''")
+        for row in c.fetchall():
+            sid = row["id"]
+            c.execute(
+                "SELECT MIN(timestamp) AS ts FROM service_history WHERE service_id=?",
+                (sid,),
+            )
+            first = c.fetchone()
+            ts = first["ts"] if first and first["ts"] else None
+            if not ts:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute("UPDATE services SET created_at=? WHERE id=?", (ts, sid))
+    except Exception:
+        pass
 
     # Peta topologi (gaya Zabbix): definisi peta, elemen (host/teks), tautan.
     c.execute("""CREATE TABLE IF NOT EXISTS maps(
@@ -540,6 +658,14 @@ def init_db():
       map_id INTEGER NOT NULL,
       from_id INTEGER NOT NULL,
       to_id INTEGER NOT NULL
+    )""")
+    # Preferensi form peta (owner, label, sharing, URL) disimpan sebagai JSON
+    # agar penambahan opsi baru tidak memerlukan migrasi kolom.
+    c.execute("""CREATE TABLE IF NOT EXISTS map_settings(
+      map_id INTEGER PRIMARY KEY,
+      owner TEXT NOT NULL DEFAULT '',
+      settings TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     )""")
     c.execute("CREATE INDEX IF NOT EXISTS idx_map_elem ON map_elements(map_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_map_link ON map_links(map_id)")
@@ -866,7 +992,8 @@ def cleanup_old_data():
                 deleted_maint = 0
             try:
                 c.execute(
-                    "DELETE FROM service_history WHERE timestamp < datetime('now', 'localtime', '-7 days')"
+                    "DELETE FROM service_history WHERE timestamp < datetime('now', 'localtime', ?)",
+                    (f"-{SERVICE_HISTORY_RETENTION_DAYS} days",),
                 )
                 deleted_svc_hist = c.rowcount
             except Exception as e:

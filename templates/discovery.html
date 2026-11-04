@@ -23,15 +23,309 @@
 })();
 </script>
 <style>
-/* ============ Status of discovery (struktur Zabbix, tema aplikasi) ============ */
-.zbx { padding: 18px 22px 40px; max-width: 1400px; }
+/* ============ Status of discovery (layout Zabbix 7.4, tema aplikasi) ============ */
+.zbx,
+.modal-back,
+.toasts {
+  --mz-blue: #0275b8;
+  --mz-blue-hover: #02679f;
+  --mz-card: #ffffff;
+  --mz-bar: #ebeef0;
+  --mz-border: #dfe4e7;
+  --mz-border-soft: #ebeef0;
+  --mz-header-border: #dce2e5;
+  --mz-text: #1f2c33;
+  --mz-label: #727a7e;
+  --mz-muted: #768d99;
+  --mz-input-border: #acbbc2;
+  --mz-disabled-bg: #ebebeb;
+  --mz-disabled-border: #ccd5d9;
+  --mz-disabled-text: #acbbc2;
+  --mz-hover: #f4f8fa;
+}
+[data-theme="dark"] .zbx,
+[data-theme="dark"] .modal-back,
+[data-theme="dark"] .toasts {
+  --mz-blue: #4da3e8;
+  --mz-blue-hover: #74b9f0;
+  --mz-card: var(--surface);
+  --mz-bar: var(--surface-2);
+  --mz-border: var(--border);
+  --mz-border-soft: var(--border);
+  --mz-header-border: var(--border);
+  --mz-text: var(--text);
+  --mz-label: var(--text-2);
+  --mz-muted: var(--text-3);
+  --mz-input-border: #3a495c;
+  --mz-disabled-bg: #1a2331;
+  --mz-disabled-border: #2c3a4d;
+  --mz-disabled-text: #65758a;
+  --mz-hover: var(--surface-2);
+}
 
-.zbx-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.zbx-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
-.zbx-head .spacer { flex: 1; }
-.zbx-help { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%; color: var(--text-2); text-decoration: none; font-weight: 700; border: 1px solid var(--border); }
-.zbx-help:hover { color: var(--text); background: var(--surface-2); }
+/* Halaman: kolom penuh, latar abu Zabbix, footer menempel bawah. */
+.zbx {
+  width: 100%; max-width: none; margin: 0; padding: 0;
+  flex: 1 1 auto; display: flex; flex-direction: column;
+  background: var(--mz-bar); color: var(--mz-text);
+}
+
+/* ---- Baris judul ---- */
+.zbx-titlebar {
+  flex: none; height: 46px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 10px 0 20px;
+  background: var(--mz-card); border-bottom: 1px solid var(--mz-border);
+}
+.zbx-titlebtn {
+  height: 28px; padding: 0 12px; border-radius: 2px;
+  border: 1px solid var(--mz-border); background: var(--mz-card); color: var(--mz-text);
+  font: inherit; font-size: 12px; font-weight: 500; line-height: 1;
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer; white-space: nowrap;
+}
+.zbx-titlebtn:hover { background: var(--mz-hover); }
+.zbx-titlebtn.primary { background: var(--mz-blue); border-color: var(--mz-blue); color: #fff; }
+.zbx-titlebtn.primary:hover { background: var(--mz-blue-hover); border-color: var(--mz-blue-hover); }
+.zbx-titlebtn[disabled] {
+  background: var(--mz-disabled-bg); border-color: var(--mz-disabled-border);
+  color: var(--mz-disabled-text); cursor: not-allowed;
+}
+.zbx-titlebtn svg { width: 14px; height: 14px; flex: none; }
+.zbx-titlebar h1 {
+  margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0;
+  color: var(--mz-text); line-height: 1.2;
+}
+.zbx-titlebar .spacer { flex: 1; }
+.zbx-help {
+  width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: none; border-radius: 2px; color: var(--mz-muted);
+  font: inherit; font-size: 14px; text-decoration: none; cursor: pointer;
+}
+.zbx-help:hover { color: var(--mz-text); background: var(--mz-hover); }
+
+/* ---- Bar filter + tab kanan ---- */
+.zbx-filterbar {
+  flex: none; height: 39px; box-sizing: border-box;
+  display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 0 20px;
+  background: var(--mz-bar); border-bottom: 1px solid var(--mz-border);
+}
+.zbx-ftoggle {
+  width: 26px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 2px;
+  color: var(--mz-muted); font: inherit; line-height: 1; cursor: pointer;
+}
+.zbx-ftoggle:hover { background: var(--mz-hover); color: var(--mz-text); }
+.zbx-ftoggle.on { color: var(--mz-blue); }
+.zbx-ftoggle svg { width: 15px; height: 15px; flex: none; }
+
+/* ---- Isi ber-gutter 20px (sama dengan Hosts) ---- */
+.zbx-content { flex: 1 1 auto; display: flex; flex-direction: column; padding: 0 20px; }
+
+/* ---- Panel filter ---- */
+.zbx-filter {
+  position: relative; flex: none; box-sizing: border-box;
+  padding: 12px 10px;
+  background: var(--mz-card); border-bottom: 1px solid var(--mz-border);
+}
+.zbx-filter.hidden { display: none; }
+.zbx-frow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0; }
+.zbx-frow > label.f {
+  width: 74px; flex: none; margin-right: 12px; text-align: right;
+  font-size: 12px; font-weight: 400; color: var(--mz-label); white-space: nowrap;
+}
+.zbx-input {
+  width: 302px; max-width: 100%; height: 24px; box-sizing: border-box; margin-right: 4px;
+  background: var(--mz-card); color: var(--mz-text);
+  border: 1px solid var(--mz-input-border); border-radius: 2px;
+  padding: 0 7px; font: inherit; font-size: 12px;
+}
+.zbx-input::placeholder { color: #a0adb4; }
+[data-theme="dark"] .zbx-input::placeholder { color: var(--text-3); }
+.zbx-input:focus { outline: 1px solid var(--mz-blue); outline-offset: -1px; border-color: var(--mz-blue); }
+
+.zbtn {
+  height: 24px; padding: 0 6px; border-radius: 2px;
+  border: 1px solid var(--mz-blue); background: var(--mz-card); color: var(--mz-blue);
+  font: inherit; font-size: 12px; font-weight: 400;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; white-space: nowrap; text-decoration: none;
+}
+.zbtn:hover { background: rgba(2, 117, 184, .08); }
+.zbtn.primary { background: var(--mz-blue); border-color: var(--mz-blue); color: #fff; }
+.zbtn.primary:hover { background: var(--mz-blue-hover); border-color: var(--mz-blue-hover); }
+.zbtn[disabled] {
+  background: var(--mz-disabled-bg); border-color: var(--mz-disabled-border);
+  color: var(--mz-disabled-text); cursor: not-allowed;
+}
+[data-theme="dark"] .zbtn:hover { background: var(--surface-2); }
+[data-theme="dark"] .zbtn.primary:hover { background: var(--mz-blue-hover); }
+[data-theme="dark"] .zbtn[disabled]:hover { background: var(--mz-disabled-bg); }
+
+.zbx-fdivider { width: min(466px, 100%); height: 1px; margin: 13px auto 0; background: var(--mz-border-soft); }
+.zbx-factions { display: flex; justify-content: center; gap: 7px; margin-top: 10px; }
+.zbx-factions .zbtn { height: 22px; padding: 0 10px; font-size: 11.5px; }
+
+/* ---- Modal pilih discovery rule ---- */
+.modal.rule-modal { width: min(646px, 100%); max-width: 646px; border-radius: 2px; }
+.rule-modal .modal-head {
+  padding: 9px 12px; background: var(--mz-card);
+  border-bottom: 1px solid var(--mz-border);
+}
+.rule-modal .modal-head h3 { font-size: 14px; font-weight: 600; color: var(--mz-text); }
+.rule-modal .modal-x { color: var(--mz-muted); font-size: 18px; }
+.rule-modal .modal-x:hover { color: var(--mz-text); }
+.rule-modal .modal-body { padding: 0; display: block; }
+.rule-modal-body { max-height: 60vh; overflow-y: auto; }
+.rule-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 12px; color: var(--mz-text);
+}
+.rule-table th {
+  padding: 9px 10px 6px; text-align: left; font-size: 11.5px; font-weight: 400;
+  color: var(--mz-muted); border-bottom: 1px solid var(--mz-border-soft);
+}
+.rule-table td { padding: 8px 10px; border-bottom: 1px solid var(--mz-border-soft); }
+.rule-table tbody tr:last-child td { border-bottom: 0; }
+.rule-table tbody tr:hover td { background: var(--mz-hover); }
+.rule-table .rule-check-col { width: 40px; }
+.rule-table input[type="checkbox"] { accent-color: var(--mz-blue); margin: 0; cursor: pointer; }
+.rule-table input[type="checkbox"][disabled] { cursor: default; }
+.rule-name { color: var(--mz-blue); cursor: pointer; }
+.rule-name:hover { text-decoration: underline; }
+.rule-empty {
+  min-height: 230px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  color: var(--mz-muted); font-size: 13px;
+}
+.rule-empty[hidden] { display: none; }
+.rule-empty svg { width: 34px; height: 34px; opacity: .85; }
+.rule-modal .modal-foot { padding: 10px 12px; border-top: 1px solid var(--mz-border); }
+.rule-modal .modal-foot .zbtn { height: 24px; padding: 0 10px; }
+
+/* ---- Area hasil ---- */
+.zbx-gap { flex: none; height: 8px; }
+.zbx-results {
+  flex: none; min-height: 278px; display: flex; flex-direction: column;
+  background: var(--mz-card);
+}
+.zbx-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px 12px; text-align: center; color: var(--mz-muted);
+}
+.zbx-empty[hidden] { display: none; }
+.zbx-empty svg { width: 32px; height: 32px; display: block; margin-bottom: 13px; color: #9fb0ba; }
+[data-theme="dark"] .zbx-empty svg { color: var(--text-3); }
+.zbx-empty .big { font-size: 14px; line-height: 1.3; color: var(--mz-muted); }
+.zbx-empty .sub { margin-top: 6px; max-width: 560px; font-size: 12px; line-height: 1.6; color: var(--mz-muted); }
+.zbx-empty .actions { margin-top: 14px; display: flex; gap: 8px; }
+.zbx-empty .actions .zbtn { height: 26px; padding: 0 12px; }
+
+.zbx-loading {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 26px 12px; font-size: 12px; color: var(--mz-muted);
+}
+.zbx-loading[hidden] { display: none; }
+.spinner {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid var(--mz-border); border-top-color: var(--mz-blue);
+  animation: zspin .8s linear infinite;
+}
+@keyframes zspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
+.zbx-error {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 24px 12px; text-align: center; color: var(--mz-muted);
+}
+.zbx-error[hidden] { display: none; }
+.zbx-error .big { font-size: 14px; color: #e5484d; }
+.zbx-error .sub { font-size: 12px; line-height: 1.6; max-width: 560px; }
+.zbx-error .zbtn { margin-top: 10px; height: 26px; padding: 0 12px; }
+.zbx-results[aria-busy="true"] .zbx-table-wrap { opacity: .6; }
+
+.zbx-table-wrap { display: flex; flex-direction: column; flex: 1; }
+.zbx-table-wrap[hidden] { display: none; }
+.zbx-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.zbx-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; }
+.zbx-table thead th {
+  height: 30px; padding: 0 8px; text-align: left; white-space: nowrap;
+  background: var(--mz-card); border-bottom: 1px solid var(--mz-header-border);
+  font-size: 11.5px; font-weight: 500; color: var(--mz-muted);
+}
+.zbx-table thead th .th-sort {
+  background: none; border: none; color: var(--mz-blue); font: inherit; font-size: 11.5px;
+  font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 0;
+}
+.zbx-table thead th .th-sort:hover { color: var(--mz-blue-hover); text-decoration: underline; }
+.chev-mini { width: 8px; height: 8px; color: #41525f; transform: rotate(180deg); }
+.chev-mini.asc { transform: none; }
+[data-theme="dark"] .chev-mini { color: var(--text-2); }
+.zbx-table tbody td {
+  height: 30px; padding: 0 8px; border-bottom: 1px solid var(--mz-border-soft);
+  color: var(--mz-text); vertical-align: middle; font-size: 12px;
+}
+.zbx-table tbody tr:hover td { background: var(--mz-hover); }
+.zbx-table tbody tr:last-child td { border-bottom: none; }
+td.chk, .zbx-table th.chk { width: 34px; padding: 0; text-align: center; }
+td.chk input, .xcheck { width: 13px; height: 13px; margin: 0; accent-color: var(--mz-blue); cursor: pointer; }
+td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
+.dev-link { color: var(--mz-blue); text-decoration: none; }
+.dev-link:hover { color: var(--mz-blue-hover); text-decoration: underline; }
+.dev-muted { color: var(--mz-text); }
+.disc-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 2px; }
+.disc-badge.ok { background: rgba(63,178,127,.14); color: #1c6b47; border: 1px solid rgba(47,143,99,.45); }
+.disc-badge.bad { background: rgba(229,72,77,.12); color: #a82a2f; border: 1px solid rgba(201,58,63,.45); }
+[data-theme="dark"] .disc-badge.ok { color: #4ade80; }
+[data-theme="dark"] .disc-badge.bad { color: #f87171; }
+.reg-chip { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 600;
+  color: var(--mz-muted); border: 1px solid var(--mz-border); border-radius: 2px; padding: 0 5px; vertical-align: 1px; }
+.durc { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rulec, .vendc { white-space: nowrap; }
+.ip-mono { font-variant-numeric: tabular-nums; }
+
+.found-note {
+  display: flex; align-items: center; gap: 18px; padding: 8px 10px 2px;
+  color: var(--mz-muted); font-size: 11.5px;
+}
+.found-note .grow { flex: 1; }
+.zbx-bulk {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: var(--mz-bar); color: var(--mz-muted); font-size: 11.5px;
+}
+.zbx-bulk .lbl { min-width: 60px; }
+.zbx-bulk .zbtn { height: 24px; padding: 0 10px; }
+
+/* ---- Progres pemindaian ---- */
+.zbx-scanprog { display: grid; gap: 8px; }
+.zbx-scanprog[hidden] { display: none; }
+.zbx-scanprog .bar {
+  height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.zbx-scanprog .bar span {
+  display: block; width: 38%; height: 100%; border-radius: 3px; background: var(--accent-btn);
+  animation: zslide 1.2s ease-in-out infinite;
+}
+@keyframes zslide {
+  0% { transform: translateX(-105%); }
+  100% { transform: translateX(275%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zbx-scanprog .bar span { animation-duration: 3s; }
+}
+.zbx-scanprog .txt { font-size: 12px; line-height: 1.5; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ---- Footer ---- */
+.zbx-footer {
+  flex: none; margin-top: auto; padding: 14px 20px;
+  text-align: center; font-size: 11px; line-height: 1.4; color: var(--mz-muted);
+}
+
+/* ---- Tombol modal & toast (tampilan lama dipertahankan) ---- */
 .zbx-btn {
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
   border-radius: 8px; font-weight: 600; font-size: 13px; padding: 8px 16px; cursor: pointer; font-family: inherit;
@@ -42,98 +336,6 @@
 .zbx-btn.primary:hover { filter: brightness(1.08); }
 .zbx-btn[disabled] { opacity: .5; cursor: not-allowed; }
 .zbx-btn[disabled]:hover { background: var(--surface-2); }
-
-/* ---- Bar filter: corong kanan ---- */
-.zbx-bar { display: flex; justify-content: flex-end; position: relative; z-index: 2; }
-.zbx-ftoggle {
-  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
-}
-.zbx-ftoggle .chev { width: 12px; height: 12px; transition: transform .15s; color: var(--text-3); }
-.zbx-ftoggle.open .chev { transform: rotate(180deg); }
-.zbx-ftoggle:hover { background: var(--surface-2); }
-
-/* ---- Panel filter ---- */
-.zbx-filter {
-  margin-top: 6px; padding: 22px 18px 16px; position: relative;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-}
-.zbx-filter.hidden { display: none; }
-.zbx-frow { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
-.zbx-frow > label.f { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
-.zbx-input {
-  width: min(400px, 80%); box-sizing: border-box;
-  background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 11px; font-size: 13px; font-family: inherit;
-}
-.zbx-input::placeholder { color: var(--text-3); }
-.zbx-input:focus { outline: none; border-color: var(--accent); }
-.zbx-factions { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
-.rule-pop {
-  position: absolute; top: calc(100% - 4px); left: 50%; transform: translateX(-50%);
-  z-index: 30; min-width: 300px; max-height: 260px; overflow: auto; padding: 6px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: 0 14px 36px rgba(0,0,0,.4);
-}
-.rule-pop .rp-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  width: 100%; text-align: left; padding: 9px 11px; border-radius: 7px; cursor: pointer;
-  background: none; border: none; color: var(--text); font-size: 13px; font-family: inherit;
-}
-.rule-pop .rp-item:hover { background: var(--surface-2); }
-.rule-pop .rp-item .cnt { color: var(--text-3); font-size: 11.5px; }
-.rule-pop .rp-empty { padding: 14px 11px; color: var(--text-3); font-size: 12.5px; text-align: center; }
-
-/* ---- Tabel hasil ---- */
-.zbx-table-wrap {
-  margin-top: 12px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
-}
-.zbx-scroll { overflow-x: auto; }
-table.zbx { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.zbx thead th {
-  text-align: left; font-weight: 600; color: var(--text-2);
-  padding: 10px 10px; white-space: nowrap; border-bottom: 1px solid var(--border);
-  background: var(--surface); font-size: 12.5px;
-}
-table.zbx thead th .th-sort {
-  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 4px; padding: 0; font-family: inherit;
-}
-table.zbx thead th .th-sort:hover { color: var(--text); }
-.chev-mini { width: 11px; height: 11px; transition: transform .15s; }
-.chev-mini.asc { transform: rotate(180deg); }
-table.zbx tbody td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-2); }
-table.zbx tbody tr:hover td { background: var(--surface-2); }
-table.zbx tbody tr:last-child td { border-bottom: none; }
-td.chk { width: 34px; }
-td.chk input, .xcheck { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
-td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
-.dev-link { color: var(--accent); text-decoration: none; font-weight: 600; }
-.dev-link:hover { text-decoration: underline; }
-.dev-muted { color: var(--text-2); }
-.disc-badge { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
-.disc-badge.ok { background: rgba(63,178,127,.14); color: #3fb27f; border: 1px solid rgba(63,178,127,.35); }
-.disc-badge.bad { background: rgba(229,72,77,.12); color: #e5484d; border: 1px solid rgba(229,72,77,.35); }
-.reg-chip { display: inline-block; margin-left: 8px; font-size: 10.5px; font-weight: 700;
-  color: var(--text-3); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px;
-  vertical-align: 1px; }
-.durc { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rulec { white-space: nowrap; }
-.vendc { white-space: nowrap; }
-.ip-mono { font-variant-numeric: tabular-nums; }
-.zbx-empty { padding: 48px 12px 54px; text-align: center; color: var(--text-3); font-size: 13px; }
-.zbx-empty .mag { color: var(--text-3); opacity: .75; margin-bottom: 12px; }
-.zbx-empty .big { font-size: 14px; color: var(--text-2); font-weight: 500; margin-bottom: 5px; }
-.found-note { display: flex; align-items: center; gap: 18px; padding: 8px 10px 2px; color: var(--text-3); font-size: 12px; }
-.found-note .grow { flex: 1; }
-.zbx-bulk {
-  display: flex; align-items: center; gap: 12px; padding: 10px 12px 12px;
-  color: var(--text-3); font-size: 12.5px;
-}
-.zbx-bulk .lbl { min-width: 64px; }
 
 /* ---- Modal ---- */
 .modal-back {
@@ -186,9 +388,20 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
 .toast.error svg { color: #e5484d; }
 
 @media (max-width: 720px) {
-  .zbx { padding: 14px 12px 30px; }
+  .zbx-titlebar { padding-left: 10px; padding-right: 6px; flex-wrap: wrap; height: auto; min-height: 46px; padding-top: 6px; padding-bottom: 6px; }
+  .zbx-titlebar h1 { flex: 1 1 100%; }
+  .zbx-titlebar .spacer { display: none; }
+  .zbx-titlebtn { flex: 1 1 auto; justify-content: center; }
+  .zbx-filterbar { padding: 0 10px; }
+  .zbx-content { padding: 0 10px; }
+  .zbx-frow > label.f { width: 100%; margin: 0 0 6px; text-align: center; }
+  .zbx-input { width: min(302px, 100%); }
+  .zbx-fdivider { width: 100%; }
 }
 </style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -220,6 +433,31 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
           <a href="/discovery" class="nav-link nav-sub-link active" data-nav="discovery" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
         </div>
       </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
       <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
       <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
     </nav>
@@ -258,73 +496,132 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
       </div>
     </header>
 
-    <main class="page zbx" id="konten">
-      <!-- ======== JUDUL & AKSI ======== -->
-      <div class="zbx-head">
+    <main class="zbx" id="konten">
+      <!-- ======== JUDUL ======== -->
+      <div class="zbx-titlebar">
         <h1>Status of discovery</h1>
         <div class="spacer"></div>
-        <a class="zbx-help" href="#" title="Status of discovery — kondisi terkini perangkat per aturan pemindaian; pilih aturan untuk memfilter, centang perangkat lalu impor ke monitoring" onclick="return false" aria-label="Bantuan">?</a>
-        <button class="zbx-btn" id="btnRunSched">Jalankan jadwal</button>
-        <button class="zbx-btn primary" id="btnScanOpen">Pindai sekarang</button>
+        <button type="button" class="zbx-titlebtn" id="btnRunSched">Jalankan jadwal</button>
+        <button type="button" class="zbx-titlebtn primary" id="btnScanOpen">Pindai sekarang</button>
+        <button class="zbx-help" type="button" id="btnHelp" title="Bantuan halaman Discovery" aria-label="Bantuan halaman Discovery">?</button>
       </div>
 
       <!-- ======== BAR FILTER ======== -->
-      <div class="zbx-bar">
-        <button class="zbx-ftoggle" id="filterToggle" aria-expanded="true" aria-controls="filterPanel">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
-          Filter
-          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      <div class="zbx-filterbar">
+        <button class="zbx-ftoggle on" id="filterToggle" type="button"
+                aria-expanded="true" aria-controls="filterPanel"
+                aria-label="Tampilkan/sembunyikan filter" title="Tampilkan/sembunyikan filter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h18l-7 8v6l-4 2v-8l-7-8z"/></svg>
         </button>
       </div>
 
-      <!-- ======== PANEL FILTER ======== -->
-      <div class="zbx-filter" id="filterPanel">
-        <div class="zbx-frow">
-          <label class="f" for="fRule">Discovery rule</label>
-          <input class="zbx-input" id="fRule" placeholder="type here to search" autocomplete="off">
-          <button class="zbx-btn" id="btnRulePick">Pilih</button>
+      <div class="zbx-content">
+        <!-- ======== PANEL FILTER ======== -->
+        <div class="zbx-filter" id="filterPanel">
+          <div class="zbx-frow">
+            <label class="f" for="fRule">Discovery rule</label>
+            <input class="zbx-input" id="fRule" placeholder="type here to search" autocomplete="off">
+            <button class="zbtn" id="btnRulePick">Select</button>
+          </div>
+          <div class="zbx-fdivider"></div>
+          <div class="zbx-factions">
+            <button class="zbtn primary" id="btnApply">Apply</button>
+            <button class="zbtn" id="btnReset">Reset</button>
+          </div>
         </div>
-        <div class="rule-pop" id="rulePop" hidden></div>
-        <div class="zbx-factions">
-          <button class="zbx-btn primary" id="btnApply">Terapkan</button>
-          <button class="zbx-btn" id="btnReset">Atur ulang</button>
+
+        <div class="zbx-gap" aria-hidden="true"></div>
+
+        <!-- ======== HASIL ======== -->
+        <div class="zbx-results" id="results">
+          <div class="zbx-loading" id="loadingState">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Memuat status discovery…</span>
+          </div>
+
+          <div class="zbx-error" id="errorState" hidden>
+            <div class="big">Gagal memuat status discovery</div>
+            <div class="sub" id="errorText">Periksa koneksi ke server lalu coba lagi.</div>
+            <button class="zbtn" type="button" id="btnRetry">Coba lagi</button>
+          </div>
+
+          <div class="zbx-empty" id="emptyState" hidden>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+            <div class="big" id="emptyTitle">No data found</div>
+            <div class="sub" id="emptyText"></div>
+            <div class="actions"><button class="zbtn primary" type="button" id="emptyAction" hidden></button></div>
+          </div>
+
+          <div class="zbx-table-wrap" id="tableWrap" hidden>
+            <div class="zbx-scroll">
+              <table class="zbx-table">
+                <thead>
+                  <tr>
+                    <th class="chk"><input type="checkbox" id="chkAll" aria-label="Pilih semua perangkat"></th>
+                    <th>
+                      <button class="th-sort" id="sortName" aria-label="Urutkan berdasarkan nama perangkat">
+                        Name
+                        <svg class="chev-mini asc" id="chevName" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                      </button>
+                    </th>
+                    <th>IP address</th>
+                    <th>Status</th>
+                    <th title="Lama waktu sejak status terakhir berubah (ditemukan/hilang), bukan uptime perangkat">Status sejak</th>
+                    <th>Discovery rule</th>
+                    <th>Vendor</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody"></tbody>
+              </table>
+            </div>
+            <div class="found-note">
+              <span id="schedNote"></span>
+              <span class="grow"></span>
+              <span id="foundNote"></span>
+            </div>
+            <div class="zbx-bulk">
+              <span class="lbl" id="selLabel">0 dipilih</span>
+              <button class="zbtn" type="button" id="btnImport" disabled>Impor</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- ======== TABEL ======== -->
-      <div class="zbx-table-wrap">
-        <div class="zbx-scroll">
-          <table class="zbx">
-            <thead>
-              <tr>
-                <th class="chk"><input type="checkbox" id="chkAll" aria-label="Pilih semua perangkat"></th>
-                <th>
-                  <button class="th-sort" id="sortName" aria-label="Urutkan berdasarkan nama perangkat">
-                    Name
-                    <svg class="chev-mini asc" id="chevName" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                  </button>
-                </th>
-                <th>IP address</th>
-                <th>Status</th>
-                <th>Uptime/Downtime</th>
-                <th>Discovery rule</th>
-                <th>Vendor</th>
-              </tr>
-            </thead>
-            <tbody id="tbody"></tbody>
-          </table>
-        </div>
-        <div class="found-note">
-          <span id="schedNote"></span>
-          <span class="grow"></span>
-          <span id="foundNote"></span>
-        </div>
-        <div class="zbx-bulk">
-          <span class="lbl" id="selLabel">0 dipilih</span>
-          <button class="zbx-btn" id="btnImport" disabled>Impor</button>
-        </div>
-      </div>
+      <div class="zbx-footer">Zabbix 7.4.15. &copy; 2001&ndash;2026, Zabbix SIA</div>
     </main>
+  </div>
+</div>
+
+<!-- ======== MODAL DISCOVERY RULES ======== -->
+<div class="modal-back" id="ruleBack" role="dialog" aria-modal="true" aria-labelledby="ruleTitle">
+  <div class="modal rule-modal">
+    <div class="modal-head">
+      <h3 id="ruleTitle">Discovery rules</h3>
+      <button class="modal-x" id="ruleClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body rule-modal-body">
+      <table class="rule-table" aria-labelledby="ruleTitle">
+        <colgroup>
+          <col class="rule-check-col">
+          <col>
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="rule-check-col"><input type="checkbox" id="ruleSelectAll" aria-label="Pilih semua discovery rule" disabled></th>
+            <th scope="col">Name</th>
+          </tr>
+        </thead>
+        <tbody id="ruleRows"></tbody>
+      </table>
+      <div class="rule-empty" id="ruleEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+        <div>No data found</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="zbtn primary" id="ruleSelect">Select</button>
+      <button type="button" class="zbtn" id="ruleCancel">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -354,6 +651,10 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
         <input type="checkbox" id="saveSchedule" class="xcheck">
         <span>Jadwalkan otomatis tiap 6 jam — rentang &amp; community disimpan sebagai rule terjadwal</span>
       </label>
+      <div class="zbx-scanprog" id="scanProg" hidden>
+        <div class="bar" role="progressbar" aria-label="Pemindaian berjalan" aria-valuetext="Memindai"><span></span></div>
+        <div class="txt" id="scanProgText" aria-live="polite"></div>
+      </div>
       <div class="modal-err" id="scanErr"></div>
       <div class="note-line">Maksimum <b>256 alamat</b> per pemindaian. Community scan manual hanya dipakai untuk request ini dan tidak disimpan di server.</div>
     </div>
@@ -397,6 +698,32 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
     <div class="modal-foot">
       <button class="zbx-btn" id="importCancel">Batal</button>
       <button class="zbx-btn primary" id="btnImportConfirm">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======== MODAL BANTUAN ======== -->
+<div class="modal-back" id="helpBack" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="helpTitle">Bantuan — Status of discovery</h3>
+      <button class="modal-x" id="helpClose" aria-label="Tutup">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;line-height:1.7;margin:0">
+        Halaman ini menampilkan kondisi terakhir tiap perangkat yang ditemukan
+        scanner SNMP, dikelompokkan per aturan pemindaian.
+      </p>
+      <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.8;color:var(--text-2)">
+        <li><b>Pindai sekarang</b> memindai satu rentang CIDR (maks. 256 alamat). Hasilnya tercatat sebagai aturan <i>Manual</i>.</li>
+        <li><b>Jalankan jadwal</b> memakai rentang dan community yang tersimpan, lalu mencatat aturan <i>Terjadwal</i>.</li>
+        <li><b>Ditemukan</b> berarti perangkat merespons saat pemindaian terakhir; <b>Hilang</b> berarti tidak lagi merespons.</li>
+        <li>Baris <b>Terdaftar</b> sudah ada di menu Hosts dan tidak bisa dipilih untuk impor.</li>
+        <li>Pilih baris lalu klik <b>Impor</b> untuk menambahkannya sebagai host terpantau.</li>
+      </ul>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="zbx-btn primary" id="helpOk">Mengerti</button>
     </div>
   </div>
 </div>
@@ -457,7 +784,6 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  var ICON_MAG = '<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>';
   var ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>';
   var ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M2.5 12S6 5.5 12 5.5c2 0 3.7.7 5.1 1.6M21.5 12S18 18.5 12 18.5c-2 0-3.7-.7-5.1-1.6"/><path d="M4 4l16 16"/></svg>';
   var REFRESH_S = 30;
@@ -467,6 +793,14 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
   var rules = [];
   var selected = {};        /* id event → true */
   var lastCommunity = '';   /* community scan terakhir (in-memory saja) */
+  var totals = { total: 0, totalAll: 0 };
+  var schedule = { network: '', last: null, next: null };
+  var loading = false;
+  var loadSeq = 0;
+  var lastError = '';
+  var scanBusy = false;
+  var scanTimer = null;
+  var scanStarted = 0;
 
   try {
     var saved = JSON.parse(localStorage.getItem('nms_discovery_filter') || 'null');
@@ -481,7 +815,7 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
     $('sortName').setAttribute('aria-label', 'Urutkan berdasarkan nama perangkat (kini ' + (state.sort === 'name_asc' ? 'A-Z' : 'Z-A') + ')');
   }
 
-  /* ---------- durasi uptime/downtime ---------- */
+  /* ---------- durasi sejak status terakhir ---------- */
   function fmtDur(ts) {
     var t = new Date(String(ts).replace(' ', 'T'));
     if (isNaN(t.getTime())) return '—';
@@ -494,16 +828,67 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
   }
 
   /* ---------- render ---------- */
+  function fmtStamp(v) {
+    if (!v) return '';
+    var t = new Date(String(v).replace(' ', 'T'));
+    if (isNaN(t.getTime())) return String(v);
+    try {
+      return t.toLocaleString('id-ID', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+    } catch (_) { return String(v); }
+  }
+
+  function renderSchedule() {
+    var el = $('schedNote');
+    var s = schedule || {};
+    if (!s.network) {
+      el.textContent = 'Belum ada jadwal otomatis.';
+      el.title = '';
+      return;
+    }
+    var parts = ['Jadwal aktif: <b>' + esc(s.network) + '</b>', 'tiap 6 jam'];
+    if (s.last && s.last.at) parts.push('terakhir ' + esc(fmtStamp(s.last.at)));
+    if (s.next) parts.push('berikutnya ' + esc(fmtStamp(s.next)));
+    el.innerHTML = parts.join(' · ');
+    var title = [];
+    if (s.last && s.last.at) {
+      title.push('Pemindaian terakhir: ' + s.last.at + (s.last.source ? ' (' + s.last.source + ')' : '') +
+        (typeof s.last.count === 'number' ? ', ' + s.last.count + ' perangkat' : ''));
+    }
+    if (s.next) title.push('Pemindaian berikutnya: ' + s.next);
+    el.title = title.join('\n');
+  }
+
+  function setEmptyAction(label, handler) {
+    var btn = $('emptyAction');
+    btn.textContent = label;
+    btn.hidden = false;
+    btn.onclick = handler;
+  }
+
   function render() {
     var tb = $('tbody');
-    if (!rows.length) {
-      var big = state.rule ? 'Tidak ada data sesuai filter.' : 'Tidak ada data';
-      var sub = state.rule
-        ? 'Coba kata kunci lain, atau klik Atur ulang.'
-        : 'Belum ada pemindaian. Klik <strong>Pindai sekarang</strong> untuk memindai jaringan.';
-      tb.innerHTML = '<tr><td colspan="7" class="zbx-empty"><div class="mag">' + ICON_MAG + '</div>' +
-        '<div class="big">' + big + '</div><div>' + sub + '</div></td></tr>';
+    var filterActive = String(state.rule || '').trim() !== '';
+    var hasRows = rows.length > 0;
+    var failed = !!lastError;
+    $('emptyState').hidden = hasRows || loading || failed;
+    $('errorState').hidden = !failed || hasRows;
+    $('tableWrap').hidden = !hasRows;
+    if (!hasRows) {
+      tb.innerHTML = '';
+      if (!loading && !failed) {
+        $('emptyTitle').textContent = 'No data found';
+        if (totals.totalAll === 0) {
+          $('emptyText').textContent = 'Belum ada perangkat yang ditemukan. Jalankan pemindaian untuk mengisi daftar.';
+          setEmptyAction('Pindai sekarang', function () { $('btnScanOpen').click(); });
+        } else {
+          $('emptyText').textContent = 'Tidak ada perangkat yang cocok dengan filter “' + state.rule + '” (0 dari ' + totals.totalAll + ' perangkat).';
+          setEmptyAction('Reset filter', function () { $('btnReset').click(); });
+        }
+      }
     } else {
+      $('emptyAction').hidden = true;
       var html = '';
       for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
@@ -518,14 +903,23 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
           '<td class="ip-mono">' + esc(r.ip) + '</td>' +
           '<td><span class="disc-badge ' + (r.status === 'discovered' ? 'ok' : 'bad') + '">' +
           (r.status === 'discovered' ? 'Ditemukan' : 'Hilang') + '</span></td>' +
-          '<td class="durc" data-ts="' + esc(r.ts) + '" title="' + esc(r.ts) + '">' + fmtDur(r.ts) + '</td>' +
+          '<td class="durc" data-ts="' + esc(r.ts) + '" title="Status terakhir: ' + esc(r.ts) + '">' + fmtDur(r.ts) + '</td>' +
           '<td class="rulec">' + esc(r.rule) + '</td>' +
           '<td class="vendc">' + esc(r.vendor || '—') + '</td>' +
           '</tr>';
       }
       tb.innerHTML = html;
     }
-    $('foundNote').textContent = 'Ditampilkan ' + rows.length + ' dari ' + rows.length + ' yang ditemukan';
+    if (!hasRows) {
+      $('foundNote').textContent = totals.totalAll
+        ? 'Ditampilkan 0 dari ' + totals.totalAll + ' perangkat'
+        : 'Belum ada perangkat ditemukan';
+    } else if (filterActive) {
+      $('foundNote').textContent = 'Ditampilkan ' + totals.total + ' dari ' + totals.totalAll + ' perangkat (difilter)';
+    } else {
+      $('foundNote').textContent = totals.total + ' perangkat ditemukan';
+    }
+    renderSchedule();
     syncBulk();
   }
   function syncBulk() {
@@ -541,36 +935,60 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
     all.checked = canPick > 0 && picked === canPick;
     all.indeterminate = picked > 0 && picked < canPick;
   }
-  function load() {
+  function statusQuery() {
     var q = new URLSearchParams();
     q.set('sort', state.sort);
-    if (state.rule) q.set('rule', state.rule);
-    return fetch('/api/discovery/status?' + q.toString(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    String(state.rule || '').split(',').map(function (s) {
+      return s.trim();
+    }).filter(Boolean).forEach(function (term) {
+      q.append('rule', term);
+    });
+    return q;
+  }
+  function load(silent) {
+    var seq = ++loadSeq;
+    loading = true;
+    lastError = '';
+    if (!silent) {
+      $('loadingState').hidden = false;
+      $('emptyState').hidden = true;
+      $('errorState').hidden = true;
+      $('results').setAttribute('aria-busy', 'true');
+    }
+    return fetch('/api/discovery/status?' + statusQuery().toString(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) {
+        if (r.status === 401) {
+          location.href = '/login?next=' + encodeURIComponent(location.pathname);
+          return null;
+        }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
       .then(function (data) {
+        if (!data || seq !== loadSeq) return;
         rows = data.rows || [];
         rules = data.rules || [];
+        totals.total = typeof data.total === 'number' ? data.total : rows.length;
+        totals.totalAll = typeof data.total_all === 'number' ? data.total_all : rows.length;
+        schedule = data.schedule || { network: '', last: null, next: null };
         var alive = {}; rows.forEach(function (r) { alive[r.id] = true; });
         Object.keys(selected).forEach(function (k) { if (!alive[k]) delete selected[k]; });
+        $('errorState').hidden = true;
+      })
+      .catch(function (err) {
+        if (seq !== loadSeq) return;
+        lastError = err.message || 'gagal memuat';
+        $('errorText').textContent = 'Server tidak merespons (' + lastError + '). Periksa koneksi lalu coba lagi.';
+        $('errorState').hidden = false;
+        if (!silent) toast('Gagal memuat status discovery: ' + lastError, 'error');
+      })
+      .finally(function () {
+        if (seq !== loadSeq) return;
+        loading = false;
+        $('loadingState').hidden = true;
+        $('results').setAttribute('aria-busy', 'false');
         render();
-        loadSchedNote();
-      })
-      .catch(function (err) { toast('Gagal memuat status discovery: ' + err.message, 'error'); });
-  }
-
-  /* ---------- catatan jadwal ---------- */
-  function loadSchedNote() {
-    fetch('/api/settings', { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.ok ? r.json() : {}; })
-      .then(function (s) {
-        var el = $('schedNote');
-        if (s.discovery_network) {
-          el.innerHTML = 'Jadwal aktif: <b>' + esc(s.discovery_network) + '</b> · dipindai otomatis tiap 6 jam';
-        } else {
-          el.textContent = 'Belum ada jadwal otomatis.';
-        }
-      })
-      .catch(function () {});
+      });
   }
 
   /* ---------- filter & sort ---------- */
@@ -600,47 +1018,74 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
     load();
   });
 
-  /* ---------- popover pilih rule ---------- */
-  function closeRulePop() { $('rulePop').hidden = true; }
-  $('btnRulePick').addEventListener('click', function (e) {
-    e.stopPropagation();
-    var pop = $('rulePop');
-    if (!pop.hidden) { pop.hidden = true; return; }
-    if (!rules.length) {
-      pop.innerHTML = '<div class="rp-empty">Belum ada rule — jalankan pemindaian dulu.</div>';
-    } else {
-      pop.innerHTML = rules.map(function (rl) {
-        return '<button type="button" class="rp-item" data-rule="' + esc(rl.label) + '">' +
-          '<span>' + esc(rl.label) + '</span><span class="cnt">' + rl.count + ' perangkat</span></button>';
-      }).join('');
-    }
-    pop.hidden = false;
+  /* ---------- modal pilih discovery rule ---------- */
+  function syncRuleSelectAll() {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('#ruleRows .rule-pick'));
+    var picked = boxes.filter(function (b) { return b.checked; }).length;
+    var all = $('ruleSelectAll');
+    all.disabled = boxes.length === 0;
+    all.checked = boxes.length > 0 && picked === boxes.length;
+    all.indeterminate = picked > 0 && picked < boxes.length;
+  }
+  function openRuleModal() {
+    var current = String(state.rule || '').split(',').map(function (s) {
+      return s.trim();
+    }).filter(Boolean);
+    $('ruleRows').innerHTML = rules.map(function (rl, idx) {
+      var key = rl.key || (rl.network || '');
+      var legacy = rl.network || '';
+      var checked = (key && current.indexOf(key) >= 0) || (legacy && current.indexOf(legacy) >= 0) ? ' checked' : '';
+      return '<tr>' +
+        '<td class="rule-check-col"><input type="checkbox" class="rule-pick" id="rulePick' + idx + '" value="' + esc(key) + '"' + checked + '></td>' +
+        '<td><label class="rule-name" for="rulePick' + idx + '" title="' + esc(rl.count + ' perangkat') + '">' + esc(rl.label) + '</label></td>' +
+        '</tr>';
+    }).join('');
+    $('ruleEmpty').hidden = rules.length > 0;
+    syncRuleSelectAll();
+    modalOpen('ruleBack');
+    var first = $('ruleRows').querySelector('input:checked') || $('ruleRows').querySelector('input');
+    if (first) first.focus();
+  }
+  $('btnRulePick').addEventListener('click', openRuleModal);
+  $('ruleSelectAll').addEventListener('change', function () {
+    var on = this.checked;
+    document.querySelectorAll('#ruleRows .rule-pick').forEach(function (b) {
+      b.checked = on;
+    });
   });
-  $('rulePop').addEventListener('click', function (e) {
-    var b = e.target.closest('.rp-item');
-    if (!b) return;
-    var label = b.getAttribute('data-rule');
-    var network = label.slice(label.indexOf('·') + 2);
-    $('fRule').value = network;
-    $('rulePop').hidden = true;
+  $('ruleRows').addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('rule-pick')) syncRuleSelectAll();
+  });
+  $('ruleCancel').addEventListener('click', function () { modalHide('ruleBack'); });
+  $('ruleSelect').addEventListener('click', function () {
+    var picked = Array.prototype.slice.call(
+      document.querySelectorAll('#ruleRows .rule-pick:checked')
+    ).map(function (b) { return b.value; }).filter(function (v, i, arr) {
+      return arr.indexOf(v) === i;
+    });
+    $('fRule').value = picked.join(', ');
+    modalHide('ruleBack');
     $('btnApply').click();
-  });
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('#rulePop') && !e.target.closest('#btnRulePick')) closeRulePop();
   });
 
   /* ---------- modal umum ---------- */
   function modalOpen(id) { $(id).classList.add('on'); }
   function modalHide(id) { $(id).classList.remove('on'); }
+  function canClose(id) { return !(id === 'scanBack' && scanBusy); }
   document.querySelectorAll('.modal-back').forEach(function (b) {
-    b.addEventListener('click', function (e) { if (e.target === b) modalHide(b.id); });
+    b.addEventListener('click', function (e) {
+      if (e.target === b && canClose(b.id)) modalHide(b.id);
+    });
     var x = b.querySelector('.modal-x');
-    if (x) x.addEventListener('click', function () { modalHide(b.id); });
-    var cbtn = b.querySelector('.modal-foot .zbx-btn');
-    if (cbtn) cbtn.addEventListener('click', function () { modalHide(b.id); });
+    if (x) x.addEventListener('click', function () { if (canClose(b.id)) modalHide(b.id); });
+    var cbtn = b.querySelector('.modal-foot .zbx-btn:not(.primary)');
+    if (cbtn) cbtn.addEventListener('click', function () { if (canClose(b.id)) modalHide(b.id); });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { ['scanBack', 'importBack'].forEach(function (id) { modalHide(id); }); closeRulePop(); }
+    if (e.key !== 'Escape') return;
+    ['ruleBack', 'scanBack', 'importBack', 'helpBack'].forEach(function (id) {
+      if (canClose(id)) modalHide(id);
+    });
   });
 
   /* ---------- toggle community ---------- */
@@ -682,47 +1127,88 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
   });
 
   /* ---------- pindai ---------- */
+  function setScanBusy(on) {
+    scanBusy = on;
+    $('btnScan').disabled = on;
+    $('btnScan').textContent = on ? 'Memindai…' : 'Mulai scan';
+    $('scanCancel').disabled = on;
+    $('scanClose').disabled = on;
+    $('cidrInput').disabled = on;
+    $('communityInput').disabled = on;
+    $('saveSchedule').disabled = on;
+  }
+
+  function startScanTimer(network) {
+    scanStarted = Date.now();
+    $('scanProg').hidden = false;
+    var tick = function () {
+      var s = Math.max(0, Math.round((Date.now() - scanStarted) / 1000));
+      $('scanProgText').textContent = 'Memindai ' + network + '… ' + s + ' detik. Jendela ini tidak bisa ditutup sampai selesai.';
+    };
+    tick();
+    scanTimer = setInterval(tick, 1000);
+  }
+
+  function stopScanTimer() {
+    if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+    $('scanProg').hidden = true;
+  }
+
   $('btnScanOpen').addEventListener('click', function () {
+    if (scanBusy) return;
     $('scanErr').textContent = '';
     $('cidrHint').textContent = ''; $('cidrHint').className = 'fhint';
-    $('cidrInput').value = '';
+    $('cidrInput').value = (schedule && schedule.network) || '';
     $('communityInput').value = lastCommunity;
     $('saveSchedule').checked = false;
+    stopScanTimer();
     modalOpen('scanBack');
     $('cidrInput').focus();
   });
   $('btnScan').addEventListener('click', function () {
-    var btn = $('btnScan');
+    if (scanBusy) return;
     var network = $('cidrInput').value.trim();
     var community = $('communityInput').value;
     var r = validateCidr(network);
     if (!r.ok) { $('scanErr').textContent = r.error; $('cidrInput').focus(); return; }
     if (!community) { $('scanErr').textContent = 'SNMP community wajib diisi.'; $('communityInput').focus(); return; }
-    btn.disabled = true;
-    btn.textContent = 'Memindai…';
     $('scanErr').textContent = '';
+    setScanBusy(true);
+    startScanTimer(network);
+    var startedAt = Date.now();
     fetch('/api/discovery/snmp', {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ network: network, community: community })
     })
       .then(function (res) { return res.json().catch(function () { return {}; }).then(function (d) { return { ok: res.status < 300, d: d }; }); })
       .then(function (res) {
-        if (!res.ok) { $('scanErr').textContent = res.d.error || 'Discovery gagal.'; return; }
+        if (!res.ok) {
+          $('scanErr').textContent = res.d.error || 'Discovery gagal.';
+          return;
+        }
         lastCommunity = community;
+        var normalized = res.d.network || network;
         var n = res.d.count || 0;
+        var secs = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
         var finish = function () {
+          stopScanTimer();
           modalHide('scanBack');
-          toast(n ? n + ' perangkat ditemukan.' : (res.d.message || 'Pemindaian selesai — tidak ada perangkat SNMP yang merespons.'), n ? 'success' : 'error');
-          load();
+          toast(
+            n ? n + ' perangkat ditemukan dalam ' + secs + ' detik.'
+              : (res.d.message || 'Pemindaian selesai — tidak ada perangkat SNMP yang merespons.'),
+            n ? 'success' : 'error'
+          );
+          schedule.network = normalized;
+          load(true);
         };
         if ($('saveSchedule').checked) {
           return fetch('/api/settings', {
             method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ discovery_network: network, discovery_community: community })
+            body: JSON.stringify({ discovery_network: normalized, discovery_community: community })
           })
             .then(function (res2) { return res2.json().catch(function () { return {}; }).then(function (d2) { return { ok: res2.status < 300, d: d2 }; }); })
             .then(function (res2) {
-              if (res2.ok) toast('Jadwal 6 jam tersimpan untuk ' + network + '.');
+              if (res2.ok) toast('Jadwal 6 jam tersimpan untuk ' + normalized + '.');
               else $('scanErr').textContent = res2.d.error || 'Scan sukses, tapi jadwal gagal disimpan.';
               finish();
             });
@@ -730,7 +1216,7 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
         finish();
       })
       .catch(function (e) { $('scanErr').textContent = 'Gagal: ' + e.message; })
-      .finally(function () { btn.disabled = false; btn.textContent = 'Mulai scan'; });
+      .finally(function () { stopScanTimer(); setScanBusy(false); });
   });
 
   /* ---------- jalankan rule terjadwal sekarang ---------- */
@@ -744,10 +1230,12 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
         if (!res.ok) { toast(res.d.error || 'Gagal menjalankan scan', 'error'); return; }
         var st = res.d.status;
         if (st === 'disabled') toast('Belum ada rule terjadwal — centang "Jadwalkan otomatis" saat memindai.', 'error');
+        else if (st === 'busy') toast('Pemindaian lain sedang berjalan. Coba lagi sebentar.', 'error');
+        else if (st === 'error') toast('Pemindaian terjadwal gagal. Periksa log server.', 'error');
         else {
           var a = (res.d.added || []).length, rm = (res.d.removed || []).length;
           toast('Scan terjadwal selesai — baru: ' + a + ', hilang: ' + rm + '.');
-          load();
+          load(true);
         }
       })
       .catch(function (e) { toast('Gagal: ' + e.message, 'error'); })
@@ -815,27 +1303,21 @@ td.chk input[disabled] { opacity: .35; cursor: not-allowed; }
         var skipped = res.d.skipped || [];
         toast((res.d.count || 0) + ' host ditambahkan ke monitoring.' +
           (skipped.length ? ' (' + skipped.length + ' dilewati)' : ''));
-        load();
+        load(true);
       })
       .catch(function (e) { $('importErr').textContent = 'Gagal: ' + e.message; })
       .finally(function () { btn.disabled = false; btn.textContent = 'Import'; });
   });
 
-  /* ---------- auto refresh ---------- */
+  /* ---------- bantuan & error ---------- */
+  $('btnHelp').addEventListener('click', function () { modalOpen('helpBack'); });
+  $('helpOk').addEventListener('click', function () { modalHide('helpBack'); });
+  $('btnRetry').addEventListener('click', function () { load(); });
+
+  /* ---------- auto refresh (tanpa reset filter/scroll) ---------- */
   setInterval(function () {
     if (document.hidden) return;
-    fetch('/api/discovery/status?sort=' + state.sort + (state.rule ? '&rule=' + encodeURIComponent(state.rule) : ''),
-      { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (data) {
-        if (!data) return;
-        rows = data.rows || [];
-        rules = data.rules || [];
-        var alive = {}; rows.forEach(function (r) { alive[r.id] = true; });
-        Object.keys(selected).forEach(function (k) { if (!alive[k]) delete selected[k]; });
-        render();
-      })
-      .catch(function () {});
+    load(true);
   }, REFRESH_S * 1000);
 
   load();

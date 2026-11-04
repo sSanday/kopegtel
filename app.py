@@ -18,6 +18,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask import (
     Flask,
     Response,
+    abort,
     jsonify,
     redirect,
     render_template,
@@ -91,8 +92,10 @@ from nms.db import (
     mark_alerts_escalated,
 )
 from nms.notify import audit, channel_status, send_alert, send_telegram_alert
-from nms.validators import validate_backup_filename
+from nms.validators import validate_backup_filename, validate_dns_query_name
 from nms.anomaly import summarize_anomalies
+from nms import service_checks
+from nms import sla as sla_engine
 from nms import twofa as twofa
 from nms.query_helpers import (
     get_all_agent_metrics,
@@ -694,6 +697,305 @@ def _is_url_allowed_for_monitoring(url):
     return True
 
 
+def check_single_service(svc):
+    """Pembungkus -> nms.service_checks. Signature/return tetap sama.
+
+    Tuple: (id, ip, name, type, port, url[, query, expected]) — dua elemen
+    terakhir opsional agar pemanggil/test lama (6-tuple) tetap jalan.
+    """
+    svc_id, ip, name, svc_type, port, url = svc[:6]
+    query = str(svc[6] or "") if len(svc) > 6 else ""
+    expected = str(svc[7] or "") if len(svc) > 7 else ""
+    status, latency = service_checks.run_check(
+        svc_type,
+        ip,
+        port,
+        url,
+        query=query,
+        expected=expected,
+        is_url_allowed=_is_url_allowed_for_monitoring,
+    )
+    return svc_id, status, latency
+
+
+SSL_WARN_DAYS = 30
+SSL_HIGH_DAYS = 7
+
+
+def _ssl_level(days_left):
+    if days_left is None:
+        return None
+    try:
+        d = int(days_left)
+    except (ValueError, TypeError):
+        return None
+    if d < 0:
+        return "expired"
+    if d <= SSL_HIGH_DAYS:
+        return "high"
+    if d <= SSL_WARN_DAYS:
+        return "warning"
+    return None
+
+
+def get_ssl_expiry(url, timeout=5):
+    import ssl as _ssl
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url or "")
+        if (parsed.scheme or "").lower() != "https":
+            return None, None
+        host = (parsed.hostname or "").strip()
+        if not host:
+            return None, None
+        try:
+            port = parsed.port or 443
+        except ValueError:
+            return None, None
+        if not 1 <= port <= 65535:
+            return None, None
+        ctx = _ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert = ssock.getpeercert()
+        not_after = (cert or {}).get("notAfter")
+        if not not_after:
+            return None, None
+        exp = None
+        for fmt in ("%b %d %H:%M:%S %Y %Z", "%b  %d %H:%M:%S %Y %Z"):
+            try:
+                exp = datetime.strptime(str(not_after), fmt)
+                break
+            except ValueError:
+                continue
+        if exp is None:
+            return None, None
+        days_left = (exp - datetime.now(timezone.utc).replace(tzinfo=None)).days
+        return exp.strftime("%Y-%m-%d %H:%M:%S"), days_left
+    except Exception as e:
+        print(f"[SSL] {url}: {e}")
+        return None, None
+
+
+def check_ssl_expiry(service_id=None):
+    try:
+        conn, c = get_db()
+        try:
+            try:
+                sql = (
+                    "SELECT id, ip, name, url, ssl_days_left, ssl_last_alert "
+                    "FROM services WHERE type='http' AND url LIKE 'https://%'"
+                )
+                params = ()
+                if service_id is not None:
+                    sql += " AND id=?"
+                    params = (int(service_id),)
+                c.execute(sql, params)
+            except (sqlite3.OperationalError, ValueError, TypeError):
+                return
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[SSL] load services gagal: {e}")
+        return
+    if not rows:
+        return
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for s in rows:
+        sid = s["id"]
+        url = s.get("url") or ""
+        if not _is_url_allowed_for_monitoring(url):
+            continue
+        exp_str, days = get_ssl_expiry(url)
+        if exp_str is None:
+            continue
+        level = _ssl_level(days)
+        prev_level = (s.get("ssl_last_alert") or "") or None
+        order = {"warning": 1, "high": 2, "expired": 3}
+        escalated = bool(
+            level
+            and level != prev_level
+            and (not prev_level or order.get(level, 0) > order.get(prev_level, 0))
+        )
+        with db_lock:
+            conn, c = get_db()
+            try:
+                try:
+                    c.execute(
+                        "UPDATE services SET ssl_expires_at=?, ssl_days_left=?, ssl_checked_at=?, ssl_last_alert=? WHERE id=?",
+                        (exp_str, days, timestamp, level or "", sid),
+                    )
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] ssl update gagal: {e}")
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    continue
+                if level:
+                    try:
+                        _insert_system_log(
+                            c,
+                            "SSL_EXPIRY" if level != "expired" else "SSL_EXPIRED",
+                            s.get("ip") or "-",
+                            f"{s.get('name')} {url} sisa {days} hari (exp {exp_str})",
+                            timestamp,
+                        )
+                    except Exception:
+                        pass
+                _commit_with_retry(conn)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        if escalated:
+            try:
+                if level == "expired":
+                    send_telegram_alert(
+                        f"🚨 *SSL EXPIRED*\nService: `{s.get('name')}`\nURL: {url}\nExpired: {exp_str}\nWaktu: {timestamp}"
+                    )
+                elif level == "high":
+                    send_telegram_alert(
+                        f"⚠️ *SSL SEGERA EXPIRE*\nService: `{s.get('name')}`\nURL: {url}\nSisa: *{days} hari*\nExp: {exp_str}"
+                    )
+                else:
+                    send_telegram_alert(
+                        f"ℹ️ *SSL Expire H-{days}*\nService: `{s.get('name')}`\nURL: {url}\nExp: {exp_str}"
+                    )
+            except Exception as e:
+                print(f"[WARN] telegram ssl gagal: {e}")
+
+
+def trigger_async_ssl_check(service_id=None):
+    threading.Thread(
+        target=check_ssl_expiry, args=(service_id,), daemon=True
+    ).start()
+
+
+def check_services():
+    try:
+
+        conn, c = get_db()
+        try:
+            try:
+                c.execute(
+                    "SELECT id, ip, name, type, port, url, query, expected FROM services"
+                )
+            except Exception:
+                # DB lama tanpa kolom query/expected -> tuple 6 elemen
+                c.execute("SELECT id, ip, name, type, port, url FROM services")
+            services = []
+            for row in c.fetchall():
+                s = dict(row)
+                services.append(
+                    (
+                        s.get("id"),
+                        s.get("ip"),
+                        s.get("name"),
+                        s.get("type"),
+                        s.get("port"),
+                        s.get("url"),
+                        (s.get("query") or ""),
+                        (s.get("expected") or ""),
+                    )
+                )
+        finally:
+            conn.close()
+
+        results = []
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(check_single_service, s) for s in services]
+            for future in as_completed(futures):
+                try:
+                    results.append(future.result())
+                except Exception as e:
+                    print(f"[WARN] check service gagal: {e}")
+
+        if not results:
+            return
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with db_lock:
+            conn, c = get_db()
+            try:
+                for svc_id, status, latency in results:
+                    c.execute(
+                        "UPDATE services SET status=?, latency=?, last_checked=? WHERE id=?",
+                        (status, latency, timestamp, svc_id),
+                    )
+                try:
+                    c.executemany(
+                        "INSERT INTO service_history (service_id, status, latency, timestamp) VALUES (?, ?, ?, ?)",
+                        [(sid, st, lat, timestamp) for sid, st, lat in results],
+                    )
+                except sqlite3.OperationalError as e:
+                    print(f"[DB LOCK] service_history gagal: {e}")
+                _commit_with_retry(conn)
+            except sqlite3.OperationalError as e:
+                print(f"[DB LOCK] check_services gagal: {e}")
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            finally:
+                conn.close()
+    except Exception as e:
+        print(f"Error checking services: {e}")
+
+
+_manual_svc_lock = threading.Lock()
+_last_manual_svc = 0.0
+
+
+def trigger_manual_service_check():
+    global _last_manual_svc
+    with _manual_svc_lock:
+        if time.time() - _last_manual_svc < 60:
+            return
+        _last_manual_svc = time.time()
+    threading.Thread(target=check_services, daemon=True).start()
+
+
+def _run_service_check(svc_id):
+    """Periksa satu service dan simpan hasilnya (dipakai endpoint per baris)."""
+    try:
+        conn, c = get_db()
+        try:
+            row = c.execute(
+                "SELECT id, ip, name, type, port, url, query, expected "
+                "FROM services WHERE id=?",
+                (svc_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        checked_id, status, latency = check_single_service(tuple(row))
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with db_lock:
+            conn, c = get_db()
+            try:
+                c.execute(
+                    "UPDATE services SET status=?, latency=?, last_checked=? "
+                    "WHERE id=?",
+                    (status, latency, timestamp, checked_id),
+                )
+                c.execute(
+                    "INSERT INTO service_history "
+                    "(service_id, status, latency, timestamp) VALUES (?, ?, ?, ?)",
+                    (checked_id, status, latency, timestamp),
+                )
+                _commit_with_retry(conn)
+            finally:
+                conn.close()
+        return status
+    except Exception as e:
+        logger.warning(f"Pemeriksaan service {svc_id} gagal: {e}")
+        return None
+
+
 init_db()
 _seed_admin_from_env()
 
@@ -801,6 +1103,24 @@ def rebuild_alarm_memory():
 rebuild_alarm_memory()
 
 
+_DISC_SCAN_LOCK = threading.Lock()
+
+
+def _disc_normalize_network(value):
+    """CIDR kanonik (alamat network), atau string asli bila tidak valid.
+
+    Contoh: 192.168.30.1/24 -> 192.168.30.0/24. Dipakai agar satu jaringan
+    tidak tercatat sebagai beberapa aturan hanya karena host bit berbeda.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        return str(ipaddress.ip_network(raw, strict=False))
+    except ValueError:
+        return raw
+
+
 def _disc_record_events(c, source, network, found_devices):
     """Catat transisi status perangkat untuk satu aturan pemindaian.
 
@@ -865,43 +1185,64 @@ def _disc_record_events(c, source, network, found_devices):
 
 
 def run_scheduled_snmp_discovery():
-    network = get_setting("discovery_network", "", type_cast=str).strip()
+    network = _disc_normalize_network(
+        get_setting("discovery_network", "", type_cast=str)
+    )
     community = get_setting("discovery_community", "", type_cast=str).strip()
     if not network or not community:
         return {"status": "disabled", "added": [], "removed": []}
-    try:
-        found = discover_subnet(network, community, timeout=0.8, max_hosts=256)
-    except Exception as exc:
-        logger.warning(f"Scheduled SNMP discovery gagal: {exc}")
-        return {"status": "error", "added": [], "removed": []}
-    current = {item["ip"] for item in found}
-    previous_raw = get_setting("discovery_last_hosts", "[]", type_cast=str)
-    try:
-        previous = set(json.loads(previous_raw))
-    except (TypeError, ValueError):
-        previous = set()
-    added, removed = sorted(current - previous), sorted(previous - current)
-    if added or removed:
-        parts = ["[NMS DISCOVERY] Perubahan perangkat"]
-        if added:
-            parts.append("Baru: " + ", ".join(added[:20]))
-        if removed:
-            parts.append("Hilang: " + ", ".join(removed[:20]))
-        send_telegram_alert("\n".join(parts))
-    conn, c = get_db()
+    if not _DISC_SCAN_LOCK.acquire(blocking=False):
+        return {"status": "busy", "added": [], "removed": []}
     try:
         try:
-            _disc_record_events(c, "scheduled", network, found)
+            found = discover_subnet(network, community, timeout=0.8, max_hosts=256)
         except Exception as exc:
-            logger.warning(f"Catat event discovery gagal: {exc}")
-        c.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-            ("discovery_last_hosts", json.dumps(sorted(current))),
-        )
-        conn.commit()
+            logger.warning(f"Scheduled SNMP discovery gagal: {exc}")
+            return {"status": "error", "added": [], "removed": []}
+        current = {item["ip"] for item in found}
+        previous_raw = get_setting("discovery_last_hosts", "[]", type_cast=str)
+        try:
+            previous = set(json.loads(previous_raw))
+        except (TypeError, ValueError):
+            previous = set()
+        added, removed = sorted(current - previous), sorted(previous - current)
+        if added or removed:
+            parts = ["[NMS DISCOVERY] Perubahan perangkat"]
+            if added:
+                parts.append("Baru: " + ", ".join(added[:20]))
+            if removed:
+                parts.append("Hilang: " + ", ".join(removed[:20]))
+            send_telegram_alert("\n".join(parts))
+        conn, c = get_db()
+        try:
+            try:
+                _disc_record_events(c, "scheduled", network, found)
+            except Exception as exc:
+                logger.warning(f"Catat event discovery gagal: {exc}")
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                ("discovery_last_hosts", json.dumps(sorted(current))),
+            )
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (
+                    "discovery_last_scan",
+                    json.dumps(
+                        {
+                            "network": network,
+                            "count": len(found),
+                            "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "source": "scheduled",
+                        }
+                    ),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return {"status": "ok", "added": added, "removed": removed}
     finally:
-        conn.close()
-    return {"status": "ok", "added": added, "removed": removed}
+        _DISC_SCAN_LOCK.release()
 
 
 def escalate_unacknowledged_alerts():
@@ -951,10 +1292,20 @@ if SCHEDULER_ENABLED:
         **_job_defaults,
     )
     scheduler.add_job(
-        func=run_scheduled_snmp_discovery, trigger="interval", hours=6, **_job_defaults
+        func=run_scheduled_snmp_discovery,
+        trigger="interval",
+        hours=6,
+        id="discovery_scheduled",
+        **_job_defaults,
     )
     scheduler.add_job(
         func=check_agent_heartbeat, trigger="interval", seconds=60, **_job_defaults
+    )
+    scheduler.add_job(
+        func=check_services, trigger="interval", seconds=30, **_job_defaults
+    )
+    scheduler.add_job(
+        func=check_ssl_expiry, trigger="interval", hours=6, **_job_defaults
     )
     scheduler.add_job(
         func=poll_snmp_bandwidth, trigger="interval", seconds=30, **_job_defaults
@@ -978,10 +1329,20 @@ if SCHEDULER_ENABLED:
         func=poll_fiber_trend, trigger="interval", hours=3, **_job_defaults
     )
     scheduler.add_job(
-        func=send_heartbeat, trigger="cron", hour=8, minute=0, **_job_defaults
+        func=send_heartbeat,
+        trigger="cron",
+        hour=8,
+        minute=0,
+        id="send_heartbeat",
+        **_job_defaults,
     )
     scheduler.add_job(
-        func=send_fiber_summary, trigger="cron", hour=8, minute=5, **_job_defaults
+        func=send_fiber_summary,
+        trigger="cron",
+        hour=8,
+        minute=5,
+        id="send_fiber_summary",
+        **_job_defaults,
     )
     scheduler.add_job(
         func=poll_mt_backups, trigger="cron", hour=2, minute=0, **_job_defaults
@@ -993,7 +1354,12 @@ if SCHEDULER_ENABLED:
         func=backup_database, trigger="cron", hour=0, minute=5, **_job_defaults
     )
     scheduler.add_job(
-        func=send_daily_report, trigger="cron", hour=7, minute=0, **_job_defaults
+        func=send_daily_report,
+        trigger="cron",
+        hour=7,
+        minute=0,
+        id="send_daily_report",
+        **_job_defaults,
     )
     try:
         scheduler.start()
@@ -1509,6 +1875,359 @@ def api_host_stats(ip):
 
 
 SNMP_PROFILES = ("auto", "mikrotik", "generic")
+IPMI_AUTH_ALGOS = ("default", "none", "md2", "md5", "straight", "oem", "rmcp+")
+IPMI_PRIVILEGE_LEVELS = ("callback", "user", "operator", "administrator", "oem")
+HOST_TAG_LIMIT = 50
+HOST_MACRO_LIMIT = 100
+HOST_MACRO_TYPES = ("text", "secret", "vault")
+HOST_MACRO_RE = re.compile(r"^\{\$[^{}]+\}$")
+HOST_INVENTORY_MODES = ("disabled", "manual", "automatic")
+HOST_INVENTORY_TEXT_LIMIT = 255
+HOST_INVENTORY_TEXTAREA_LIMIT = 4000
+HOST_INVENTORY_FIELDS = (
+    "type",
+    "type_full",
+    "name",
+    "alias",
+    "os",
+    "os_full",
+    "os_short",
+    "serialno_a",
+    "serialno_b",
+    "tag",
+    "asset_tag",
+    "macaddress_a",
+    "macaddress_b",
+    "hardware",
+    "hardware_full",
+    "software",
+    "software_full",
+    "software_app_a",
+    "software_app_b",
+    "software_app_c",
+    "software_app_d",
+    "software_app_e",
+    "contact",
+    "location",
+    "location_lat",
+    "location_lon",
+    "notes",
+    "chassis",
+    "model",
+    "hw_arch",
+    "vendor",
+    "contract_number",
+    "installer_name",
+    "deployment_status",
+    "url_a",
+    "url_b",
+    "url_c",
+    "host_networks",
+    "host_netmask",
+    "host_router",
+    "oob_ip",
+    "oob_netmask",
+    "oob_router",
+    "date_hw_purchase",
+    "date_hw_install",
+    "date_hw_expiry",
+    "date_hw_decomm",
+    "site_address_a",
+    "site_address_b",
+    "site_address_c",
+    "site_city",
+    "site_state",
+    "site_country",
+    "site_zip",
+    "site_rack",
+    "site_notes",
+    "poc_1_name",
+    "poc_1_email",
+    "poc_1_phone_a",
+    "poc_1_phone_b",
+    "poc_1_cell",
+    "poc_1_screen",
+    "poc_1_notes",
+    "poc_2_name",
+    "poc_2_email",
+    "poc_2_phone_a",
+    "poc_2_phone_b",
+    "poc_2_cell",
+    "poc_2_screen",
+    "poc_2_notes",
+)
+HOST_INVENTORY_TEXTAREA_FIELDS = frozenset(
+    {
+        "hardware_full",
+        "software_full",
+        "contact",
+        "location",
+        "notes",
+        "host_networks",
+        "site_notes",
+        "poc_1_notes",
+        "poc_2_notes",
+    }
+)
+HOST_ENCRYPTION_METHODS = ("none", "psk", "certificate")
+
+
+def _parse_host_tags(data):
+    """Validasi daftar tag host dari form New host. Kembalikan (list, err)."""
+    raw = data.get("tags", [])
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list):
+        return None, "Tags harus berupa daftar"
+    if len(raw) > HOST_TAG_LIMIT:
+        return None, f"Maksimum {HOST_TAG_LIMIT} tag per host"
+    tags = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, "Format tag tidak valid"
+        name = str(item.get("name") or "").strip()[:255]
+        value = str(item.get("value") or "").strip()[:255]
+        if not name and not value:
+            continue
+        if not name:
+            return None, "Nama tag wajib diisi"
+        tags.append({"name": name, "value": value})
+    return tags, None
+
+
+def _decode_host_tags(raw):
+    """Baca kolom JSON host_tags dengan aman; data rusak diabaikan."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    tags = []
+    for item in items[:HOST_TAG_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()[:255]
+        value = str(item.get("value") or "").strip()[:255]
+        if name:
+            tags.append({"name": name, "value": value})
+    return tags
+
+
+def _parse_host_macros(data):
+    """Validasi macro host dari form New host. Kembalikan (list, err)."""
+    raw = data.get("macros", [])
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list):
+        return None, "Macros harus berupa daftar"
+    if len(raw) > HOST_MACRO_LIMIT:
+        return None, f"Maksimum {HOST_MACRO_LIMIT} macro per host"
+    macros = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, "Format macro tidak valid"
+        name = str(item.get("name") or item.get("macro") or "").strip()[:255]
+        description = str(item.get("description") or "").strip()[:255]
+        value = str(item.get("value") or "")[:2048]
+        macro_type = str(item.get("type") or "text").strip().lower()
+        if not name and not value and not description:
+            continue
+        if not name:
+            return None, "Nama macro wajib diisi"
+        if not HOST_MACRO_RE.match(name):
+            return None, "Format macro harus {$MACRO}"
+        if macro_type not in HOST_MACRO_TYPES:
+            return None, "Tipe macro tidak valid"
+        key = name.lower()
+        if key in seen:
+            return None, f"Macro {name} duplikat"
+        seen.add(key)
+        stored_value = encrypt_secret(value) if macro_type == "secret" else value
+        macros.append(
+            {
+                "name": name,
+                "value": stored_value,
+                "description": description,
+                "type": macro_type,
+            }
+        )
+    return macros, None
+
+
+def _decode_host_macros(raw):
+    """Baca kolom JSON host_macros tanpa membocorkan nilai secret."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(items, list):
+        return []
+    macros = []
+    for item in items[:HOST_MACRO_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()[:255]
+        if not name or not HOST_MACRO_RE.match(name):
+            continue
+        description = str(item.get("description") or "").strip()[:255]
+        macro_type = str(item.get("type") or "text").strip().lower()
+        if macro_type not in HOST_MACRO_TYPES:
+            macro_type = "text"
+        stored_value = str(item.get("value") or "")[:2048]
+        if macro_type == "secret":
+            value = ""
+            value_set = bool(stored_value)
+        else:
+            value = stored_value
+            value_set = bool(value)
+        macros.append(
+            {
+                "name": name,
+                "value": value,
+                "value_set": value_set,
+                "description": description,
+                "type": macro_type,
+            }
+        )
+    return macros
+
+
+def _parse_host_inventory(data):
+    """Validasi mode + field inventory host dari form New host."""
+    raw = data.get("inventory", {})
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        return None, "Inventory harus berupa objek"
+    mode = str(raw.get("mode") or "disabled").strip().lower()
+    if mode not in HOST_INVENTORY_MODES:
+        return None, "Mode inventory tidak valid"
+    raw_fields = raw.get("fields", {})
+    if raw_fields is None:
+        raw_fields = {}
+    if not isinstance(raw_fields, dict):
+        return None, "Format inventory tidak valid"
+    fields = {}
+    for key in HOST_INVENTORY_FIELDS:
+        if key not in raw_fields:
+            continue
+        limit = (
+            HOST_INVENTORY_TEXTAREA_LIMIT
+            if key in HOST_INVENTORY_TEXTAREA_FIELDS
+            else HOST_INVENTORY_TEXT_LIMIT
+        )
+        value = str(raw_fields.get(key) or "").strip()[:limit]
+        if value:
+            fields[key] = value
+    return {"mode": mode, "fields": fields}, None
+
+
+def _decode_host_inventory(raw):
+    """Baca kolom JSON host_inventory dengan aman; data rusak diabaikan."""
+    default = {"mode": "disabled", "fields": {}}
+    if not raw:
+        return default
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return default
+    if not isinstance(data, dict):
+        return default
+    mode = str(data.get("mode") or "disabled").strip().lower()
+    if mode not in HOST_INVENTORY_MODES:
+        mode = "disabled"
+    raw_fields = data.get("fields")
+    if not isinstance(raw_fields, dict):
+        raw_fields = {}
+    fields = {}
+    for key in HOST_INVENTORY_FIELDS:
+        if key not in raw_fields:
+            continue
+        limit = (
+            HOST_INVENTORY_TEXTAREA_LIMIT
+            if key in HOST_INVENTORY_TEXTAREA_FIELDS
+            else HOST_INVENTORY_TEXT_LIMIT
+        )
+        value = str(raw_fields.get(key) or "").strip()[:limit]
+        if value:
+            fields[key] = value
+    return {"mode": mode, "fields": fields}
+
+
+def _parse_host_encryption(data):
+    """Validasi mode enkripsi host dari form New host."""
+    raw = data.get("encryption", {})
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        return None, "Encryption harus berupa objek"
+    to_host = str(raw.get("to_host") or "none").strip().lower()
+    if to_host not in HOST_ENCRYPTION_METHODS:
+        return None, "Mode encryption ke host tidak valid"
+    raw_from = raw.get("from_host", ["none"])
+    if raw_from is None:
+        raw_from = []
+    if not isinstance(raw_from, list):
+        return None, "Format encryption dari host tidak valid"
+    from_host = []
+    for item in raw_from:
+        method = str(item or "").strip().lower()
+        if method not in HOST_ENCRYPTION_METHODS:
+            return None, "Mode encryption dari host tidak valid"
+        if method not in from_host:
+            from_host.append(method)
+    if not from_host or "none" in from_host:
+        from_host = ["none"]
+    result = {"to_host": to_host, "from_host": from_host}
+    if to_host == "psk" or "psk" in from_host:
+        psk_identity = str(raw.get("psk_identity") or "").strip()[:128]
+        psk = str(raw.get("psk") or "").strip()
+        if not psk_identity:
+            return None, "PSK identity wajib diisi"
+        if not psk:
+            return None, "PSK wajib diisi"
+        result["psk_identity"] = psk_identity
+        result["psk"] = psk[:512]
+    return result, None
+
+
+def _decode_host_encryption(raw):
+    """Baca kolom JSON host_encryption dengan aman; data rusak diabaikan."""
+    default = {"to_host": "none", "from_host": ["none"]}
+    if not raw:
+        return default
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return default
+    if not isinstance(data, dict):
+        return default
+    to_host = str(data.get("to_host") or "none").strip().lower()
+    if to_host not in HOST_ENCRYPTION_METHODS:
+        to_host = "none"
+    raw_from = data.get("from_host")
+    if not isinstance(raw_from, list):
+        raw_from = ["none"]
+    from_host = []
+    for item in raw_from:
+        method = str(item or "").strip().lower()
+        if method in HOST_ENCRYPTION_METHODS and method not in from_host:
+            from_host.append(method)
+    if not from_host or "none" in from_host:
+        from_host = ["none"]
+    result = {"to_host": to_host, "from_host": from_host}
+    psk_identity = str(data.get("psk_identity") or "").strip()[:128]
+    if psk_identity:
+        result["psk_identity"] = psk_identity
+    if str(data.get("psk") or "").strip():
+        result["psk_set"] = True
+    return result
 
 
 def _parse_snmp_fields(data):
@@ -1562,7 +2281,11 @@ def api_get_hosts():
         "SELECT id, ip, snmp_community, if_index, alias, category,"
         " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
         " ssh_user, ssh_port, backup_enable, backup_last, backup_ok,"
-        " CASE WHEN ssh_pass IS NOT NULL AND ssh_pass != '' THEN 1 ELSE 0 END AS ssh_pass_set"
+        " description, iface_type, iface_port,"
+        " ipmi_auth, ipmi_privilege, ipmi_username, host_tags, host_macros,"
+        " host_inventory, host_encryption,"
+        " CASE WHEN ssh_pass IS NOT NULL AND ssh_pass != '' THEN 1 ELSE 0 END AS ssh_pass_set,"
+        " CASE WHEN ipmi_password IS NOT NULL AND ipmi_password != '' THEN 1 ELSE 0 END AS ipmi_password_set"
         " FROM hosts ORDER BY id ASC"
     )
     hosts = []
@@ -1590,6 +2313,25 @@ def api_get_hosts():
                 "backup_enable": bool(r["backup_enable"]),
                 "backup_last": r["backup_last"] or "",
                 "backup_ok": bool(r["backup_ok"]),
+                "description": r["description"] or "",
+                "iface_type": r["iface_type"] or "",
+                "iface_port": r["iface_port"] or 0,
+                "ipmi_auth": (
+                    (r["ipmi_auth"] or "default")
+                    if (r["ipmi_auth"] or "default") in IPMI_AUTH_ALGOS
+                    else "default"
+                ),
+                "ipmi_privilege": (
+                    (r["ipmi_privilege"] or "user")
+                    if (r["ipmi_privilege"] or "user") in IPMI_PRIVILEGE_LEVELS
+                    else "user"
+                ),
+                "ipmi_username": r["ipmi_username"] or "",
+                "ipmi_password_set": bool(r["ipmi_password_set"]),
+                "tags": _decode_host_tags(r["host_tags"]),
+                "macros": _decode_host_macros(r["host_macros"]),
+                "inventory": _decode_host_inventory(r["host_inventory"]),
+                "encryption": _decode_host_encryption(r["host_encryption"]),
             }
         )
     conn.close()
@@ -1604,85 +2346,102 @@ def discovery_page():
 
 @app.route("/api/discovery/scheduled/run", methods=["POST"])
 @api_login_required
+@require_role("admin", "operator")
+@limiter.limit("20/minute")
 def api_scheduled_discovery_run():
     return jsonify(run_scheduled_snmp_discovery())
 
 
 @app.route("/api/discovery/snmp", methods=["POST"])
 @api_login_required
+@require_role("admin", "operator")
+@limiter.limit("20/minute")
 def api_snmp_discovery():
     data = request.get_json(silent=True) or {}
-    network = str(data.get("network") or "").strip()
+    network = _disc_normalize_network(data.get("network"))
     community = str(data.get("community") or "").strip()
-    try:
-        results, diagnostics = discover_subnet(
-            network,
-            community,
-            timeout=data.get("timeout", 0.8),
-            max_hosts=256,
-            return_diagnostics=True,
+    if not _DISC_SCAN_LOCK.acquire(blocking=False):
+        return (
+            jsonify({"error": "Pemindaian lain sedang berjalan. Coba lagi sebentar."}),
+            409,
         )
-    except (ValueError, TypeError) as exc:
-        return jsonify({"error": str(exc)}), 400
-    except Exception as exc:
-        logger.warning(f"SNMP discovery gagal: {exc}")
-        return jsonify({"error": "Discovery gagal"}), 502
     try:
-        conn, c = get_db()
         try:
-            c.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-                (
-                    "discovery_last_scan",
-                    json.dumps(
-                        {
-                            "network": network,
-                            "count": len(results),
-                            "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        }
+            results, diagnostics = discover_subnet(
+                network,
+                community,
+                timeout=data.get("timeout", 0.8),
+                max_hosts=256,
+                return_diagnostics=True,
+            )
+        except (ValueError, TypeError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            logger.warning(f"SNMP discovery gagal: {exc}")
+            return jsonify({"error": "Discovery gagal"}), 502
+        try:
+            conn, c = get_db()
+            try:
+                c.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (
+                        "discovery_last_scan",
+                        json.dumps(
+                            {
+                                "network": network,
+                                "count": len(results),
+                                "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "source": "manual",
+                            }
+                        ),
                     ),
-                ),
-            )
-            _disc_record_events(c, "manual", network, results)
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception as exc:
-        logger.warning(f"Simpan riwayat discovery gagal: {exc}")
-    message = f"Pemindaian selesai - {len(results)} perangkat ditemukan."
-    if not results:
-        if (
-            diagnostics.get("timeout", 0) == diagnostics.get("hosts", 0)
-            and diagnostics.get("hosts", 0) > 0
-        ):
-            message = "Pemindaian selesai - semua host timeout atau tidak ada balasan."
-        elif diagnostics.get("community_or_error", 0) > 0:
-            message = (
-                "Pemindaian selesai - tidak ada perangkat valid yang merespons. "
-                "Community mungkin salah/ditolak, port 161 tertutup, firewall, host tidak aktif, atau host tidak mendukung SNMPv2c."
-            )
-        elif diagnostics.get("no_response", 0) > 0:
-            message = (
-                "Pemindaian selesai - tidak ada balasan SNMP. "
-                "Periksa community, port 161, firewall, dan ketersediaan SNMP pada perangkat."
-            )
-        elif diagnostics.get("partial", 0) > 0:
-            message = "Pemindaian selesai - balasan SNMP tidak lengkap."
-        else:
-            message = "Pemindaian selesai - tidak ada perangkat SNMP yang merespons."
-    return jsonify(
-        {
-            "network": network,
-            "count": len(results),
-            "devices": results,
-            "diagnostics": diagnostics,
-            "message": message,
-        }
-    )
+                )
+                _disc_record_events(c, "manual", network, results)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:
+            logger.warning(f"Simpan riwayat discovery gagal: {exc}")
+        message = f"Pemindaian selesai - {len(results)} perangkat ditemukan."
+        if not results:
+            if (
+                diagnostics.get("timeout", 0) == diagnostics.get("hosts", 0)
+                and diagnostics.get("hosts", 0) > 0
+            ):
+                message = (
+                    "Pemindaian selesai - semua host timeout atau tidak ada balasan."
+                )
+            elif diagnostics.get("community_or_error", 0) > 0:
+                message = (
+                    "Pemindaian selesai - tidak ada perangkat valid yang merespons. "
+                    "Community mungkin salah/ditolak, port 161 tertutup, firewall, host tidak aktif, atau host tidak mendukung SNMPv2c."
+                )
+            elif diagnostics.get("no_response", 0) > 0:
+                message = (
+                    "Pemindaian selesai - tidak ada balasan SNMP. "
+                    "Periksa community, port 161, firewall, dan ketersediaan SNMP pada perangkat."
+                )
+            elif diagnostics.get("partial", 0) > 0:
+                message = "Pemindaian selesai - balasan SNMP tidak lengkap."
+            else:
+                message = "Pemindaian selesai - tidak ada perangkat SNMP yang merespons."
+        return jsonify(
+            {
+                "network": network,
+                "count": len(results),
+                "devices": results,
+                "diagnostics": diagnostics,
+                "message": message,
+            }
+        )
+    finally:
+        _DISC_SCAN_LOCK.release()
 
 
 @app.route("/api/discovery/import", methods=["POST"])
 @api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
 def api_discovery_import():
     data = request.get_json(silent=True) or {}
     devices = data.get("devices")
@@ -1747,11 +2506,21 @@ def _disc_rule_label(source, network):
 def api_discovery_status():
     """Status discovery: kondisi terkini tiap perangkat per aturan pemindaian.
 
-    Satu baris per (aturan, IP) dari event terakhir — status 'discovered'
-    atau 'lost' — plus flag 'monitored' bila IP sudah masuk daftar host.
-    Filter `rule` cocokkan substring network; `sort` name_asc/name_desc.
+    Satu baris per (sumber, jaringan, IP) dari event terakhir — status
+    'discovered' atau 'lost' — plus flag 'monitored' bila IP sudah masuk
+    daftar host. ``network`` dinormalkan sehingga 192.168.30.1/24 dan
+    192.168.30.0/24 dihitung sebagai aturan yang sama.
+
+    Filter ``rule`` (boleh berulang atau dipisah koma) menerima token
+    ``sumber|jaringan`` (mis. ``scheduled|192.168.30.0/24``) atau substring
+    jaringan/sumber untuk kompatibilitas. ``sort`` name_asc/name_desc.
     """
-    rule_q = (request.args.get("rule") or "").strip()
+    rule_terms = [
+        part.strip().lower()
+        for value in request.args.getlist("rule")
+        for part in value.split(",")
+        if part.strip()
+    ]
     sort = (request.args.get("sort") or "name_asc").lower()
     if sort not in ("name_asc", "name_desc"):
         sort = "name_asc"
@@ -1767,28 +2536,83 @@ def api_discovery_status():
         raw = [dict(r) for r in c.fetchall()]
         c.execute("SELECT ip FROM hosts")
         monitored = {r["ip"] for r in c.fetchall()}
+        c.execute(
+            "SELECT key, value FROM settings"
+            " WHERE key IN ('discovery_last_scan','discovery_network')"
+        )
+        setting_rows = {r["key"]: r["value"] for r in c.fetchall()}
     finally:
         conn.close()
 
-    rule_counts = {}
+    def norm(value):
+        return _disc_normalize_network(value)
+
+    # Gabungkan event per (sumber, jaringan ternormalisasi, IP); pakai id terbaru.
+    latest = {}
     for r in raw:
         if r["status"] not in ("discovered", "lost"):
             continue
-        label = _disc_rule_label(r["source"], r["network"])
-        rule_counts[label] = rule_counts.get(label, 0) + 1
+        net = norm(r["network"])
+        key = (r["source"], net, r["ip"])
+        prev = latest.get(key)
+        if prev is None or r["id"] > prev["id"]:
+            latest[key] = r
+    merged = list(latest.values())
+
+    rule_counts = {}
+    for r in merged:
+        net = norm(r["network"])
+        key = f'{r["source"]}|{net}'
+        entry = rule_counts.get(key)
+        if entry is None:
+            entry = {
+                "key": key,
+                "label": _disc_rule_label(r["source"], net),
+                "source": r["source"],
+                "network": net,
+                "count": 0,
+            }
+            rule_counts[key] = entry
+        entry["count"] += 1
+
+    def matches(rule):
+        if not rule_terms:
+            return True
+        net = norm(rule["network"]).lower()
+        source = (rule["source"] or "").lower()
+        label = _disc_rule_label(rule["source"], norm(rule["network"])).lower()
+        for term in rule_terms:
+            token = term.lower()
+            if "|" in token:
+                t_source, _, t_network = token.partition("|")
+                if t_source.strip() and source != t_source.strip():
+                    continue
+                target = norm(t_network).lower()
+                if not target or net == target:
+                    return True
+            else:
+                token_net = norm(token).lower()
+                if (
+                    token_net in net
+                    or token in net
+                    or token in source
+                    or token in label
+                ):
+                    return True
+        return False
 
     rows = []
-    for r in raw:
-        if r["status"] not in ("discovered", "lost"):
+    for r in merged:
+        if not matches(r):
             continue
-        if rule_q and rule_q.lower() not in r["network"].lower():
-            continue
+        net = norm(r["network"])
         rows.append(
             {
                 "id": r["id"],
                 "source": r["source"],
-                "network": r["network"],
-                "rule": _disc_rule_label(r["source"], r["network"]),
+                "network": net,
+                "key": f'{r["source"]}|{net}',
+                "rule": _disc_rule_label(r["source"], net),
                 "ip": r["ip"],
                 "name": (r["sys_name"] or "").strip() or r["ip"],
                 "vendor": (r["vendor"] or "").strip(),
@@ -1797,14 +2621,44 @@ def api_discovery_status():
                 "monitored": r["ip"] in monitored,
             }
         )
-    rows.sort(key=lambda d: d["name"].lower(), reverse=(sort == "name_desc"))
+    rows.sort(
+        key=lambda d: (d["name"].lower(), d["ip"]),
+        reverse=(sort == "name_desc"),
+    )
+
+    schedule = {"network": "", "last": None, "next": None}
+    schedule["network"] = norm(setting_rows.get("discovery_network") or "")
+    last_raw = setting_rows.get("discovery_last_scan") or ""
+    if last_raw:
+        try:
+            last = json.loads(last_raw)
+            if isinstance(last, dict) and last.get("at"):
+                schedule["last"] = {
+                    "at": last.get("at"),
+                    "network": norm(last.get("network")),
+                    "count": last.get("count", 0),
+                    "source": last.get("source") or "",
+                }
+                if not schedule["network"]:
+                    schedule["network"] = norm(last.get("network"))
+        except (TypeError, ValueError):
+            pass
+    if SCHEDULER_ENABLED:
+        try:
+            job = scheduler.get_job("discovery_scheduled")
+            nxt = getattr(job, "next_run_time", None) if job else None
+            schedule["next"] = nxt.isoformat() if nxt else None
+        except Exception:
+            pass
+
     return jsonify(
         {
             "rows": rows,
-            "rules": [
-                {"label": lb, "count": n} for lb, n in sorted(rule_counts.items())
-            ],
+            "rules": sorted(rule_counts.values(), key=lambda item: item["label"]),
             "count": len(rows),
+            "total": len(rows),
+            "total_all": len(merged),
+            "schedule": schedule,
         }
     )
 
@@ -1818,6 +2672,44 @@ def api_add_host():
     alias = str(data.get("alias") or "").strip()
     category = str(data.get("category") or "").strip() or "Uncategorized"
     snmp_community = str(data.get("snmp_community") or "").strip()
+    description = str(data.get("description") or "").strip()[:2000]
+    iface_type = str(data.get("iface_type") or "").strip().lower()
+    if iface_type not in ("", "agent", "snmp"):
+        return jsonify({"error": "Tipe interface tidak valid"}), 400
+    try:
+        iface_port = int(data.get("iface_port") or 0)
+    except (ValueError, TypeError):
+        iface_port = 0
+    if iface_port and not (1 <= iface_port <= 65535):
+        return jsonify({"error": "Port interface tidak valid"}), 400
+    ipmi_auth = str(data.get("ipmi_auth") or "default").strip().lower()
+    if ipmi_auth not in IPMI_AUTH_ALGOS:
+        return jsonify({"error": "Authentication algorithm IPMI tidak valid"}), 400
+    ipmi_privilege = str(data.get("ipmi_privilege") or "user").strip().lower()
+    if ipmi_privilege not in IPMI_PRIVILEGE_LEVELS:
+        return jsonify({"error": "Privilege level IPMI tidak valid"}), 400
+    ipmi_username = str(data.get("ipmi_username") or "").strip()[:64]
+    ipmi_password = encrypt_secret(str(data.get("ipmi_password") or "")[:128])
+    host_tags_list, err = _parse_host_tags(data)
+    if err:
+        return jsonify({"error": err}), 400
+    assert host_tags_list is not None
+    host_tags = json.dumps(host_tags_list, ensure_ascii=False)
+    host_macros_list, err = _parse_host_macros(data)
+    if err:
+        return jsonify({"error": err}), 400
+    assert host_macros_list is not None
+    host_macros = json.dumps(host_macros_list, ensure_ascii=False)
+    host_inventory_data, err = _parse_host_inventory(data)
+    if err:
+        return jsonify({"error": err}), 400
+    assert host_inventory_data is not None
+    host_inventory = json.dumps(host_inventory_data, ensure_ascii=False)
+    host_encryption_data, err = _parse_host_encryption(data)
+    if err:
+        return jsonify({"error": err}), 400
+    assert host_encryption_data is not None
+    host_encryption = json.dumps(host_encryption_data, ensure_ascii=False)
     snmp_vals, err = _parse_snmp_fields(data)
     if err:
         return jsonify({"error": err}), 400
@@ -1855,8 +2747,12 @@ def api_add_host():
         c.execute(
             "INSERT INTO hosts (ip, snmp_community, if_index, alias, category,"
             " snmp_profile, cpu_oid, mem_oid, storage_oid, temp_oid,"
-            " ssh_user, ssh_pass, ssh_port, backup_enable)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " ssh_user, ssh_pass, ssh_port, backup_enable, description,"
+            " iface_type, iface_port, ipmi_auth, ipmi_privilege,"
+            " ipmi_username, ipmi_password, host_tags, host_macros,"
+            " host_inventory, host_encryption)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ip,
                 snmp_community,
@@ -1872,6 +2768,17 @@ def api_add_host():
                 ssh_vals.get("ssh_pass", ""),
                 ssh_vals.get("ssh_port", 22),
                 ssh_vals.get("backup_enable", 0),
+                description,
+                iface_type,
+                iface_port,
+                ipmi_auth,
+                ipmi_privilege,
+                ipmi_username,
+                ipmi_password,
+                host_tags,
+                host_macros,
+                host_inventory,
+                host_encryption,
             ),
         )
         conn.commit()
@@ -1970,8 +2877,9 @@ def api_hosts_zbx():
         service_map = {r["ip"]: r["cnt"] or 0 for r in c.fetchall()}
 
         c.execute(
-            "SELECT id, ip, alias, category, snmp_community, snmp_profile, ssh_port"
-            " FROM hosts ORDER BY id ASC"
+            "SELECT id, ip, alias, category, snmp_community, snmp_profile,"
+            " ssh_port, iface_type, iface_port, host_tags, host_macros,"
+            " host_inventory, host_encryption FROM hosts ORDER BY id ASC"
         )
         rows = []
         for r in c.fetchall():
@@ -2049,6 +2957,12 @@ def api_hosts_zbx():
                     "severities": host_sevs,
                     "web_count": service_map.get(ip, 0),
                     "ssh_port": d["ssh_port"] or 22,
+                    "iface_type": d["iface_type"] or "",
+                    "iface_port": d["iface_port"] or 0,
+                    "tags": _decode_host_tags(d["host_tags"]),
+                    "macros": _decode_host_macros(d["host_macros"]),
+                    "inventory": _decode_host_inventory(d["host_inventory"]),
+                    "encryption": _decode_host_encryption(d["host_encryption"]),
                 }
             )
     finally:
@@ -2099,7 +3013,8 @@ def api_latest_data():
     """Item terkini per host (gaya Zabbix): nilai terakhir + perubahan.
 
     Sumber nyata: device_health (SNMP), agent_metrics (agent), dan
-    ping_logs (latensi). Satu item per metrik yang benar-benar punya data.
+    ping_logs (latensi). Satu item per metrik yang punya data; metrik yang
+    hilang pada pemeriksaan terakhir ditandai state="unsupported".
     """
     host_q = (request.args.get("host") or "").strip()
     group_q = (request.args.get("group") or "").strip()
@@ -2118,6 +3033,49 @@ def api_latest_data():
         categories = sorted({r["category"] or "Uncategorized" for r in host_rows})
 
         items = []
+
+        def push_item(
+            *,
+            host,
+            ip,
+            category,
+            name,
+            unit,
+            value,
+            check,
+            source,
+            prev=None,
+            prev_ts=None,
+            error=None,
+        ):
+            """Simpan satu item; value None berarti item Not supported."""
+            delta = prev_val = None
+            if prev is not None:
+                try:
+                    prev_val = round(float(prev), 2)
+                    if value is not None:
+                        delta = round(float(value) - prev_val, 2)
+                except (TypeError, ValueError):
+                    prev_val = None
+                    prev_ts = None
+            items.append(
+                {
+                    "host": host,
+                    "ip": ip,
+                    "category": category,
+                    "name": name,
+                    "unit": unit,
+                    "value": None if value is None else round(float(value), 2),
+                    "delta": delta,
+                    "prev": prev_val,
+                    "prev_check": prev_ts,
+                    "check": check,
+                    "source": source,
+                    "state": "normal" if value is not None else "unsupported",
+                    "error": error,
+                }
+            )
+
         for r in host_rows:
             ip = r["ip"]
             alias = (r["alias"] or "").strip()
@@ -2141,27 +3099,25 @@ def api_latest_data():
                     ("temp_c", "Temperature", "°C"),
                 ):
                     v = new[key]
-                    if v is None:
+                    prev_v = prev[key] if prev is not None else None
+                    if v is None and prev_v is None:
                         continue
-                    delta = prev_val = prev_ts = None
-                    if prev is not None and prev[key] is not None:
-                        delta = round(float(v) - float(prev[key]), 2)
-                        prev_val = round(float(prev[key]), 2)
-                        prev_ts = prev["timestamp"]
-                    items.append(
-                        {
-                            "host": display,
-                            "ip": ip,
-                            "category": category,
-                            "name": nm,
-                            "unit": unit,
-                            "value": round(float(v), 2),
-                            "delta": delta,
-                            "prev": prev_val,
-                            "prev_check": prev_ts,
-                            "check": new["timestamp"],
-                            "source": "snmp",
-                        }
+                    push_item(
+                        host=display,
+                        ip=ip,
+                        category=category,
+                        name=nm,
+                        unit=unit,
+                        value=v,
+                        check=new["timestamp"],
+                        prev=prev_v,
+                        prev_ts=prev["timestamp"] if prev_v is not None else None,
+                        source="snmp",
+                        error=(
+                            None
+                            if v is not None
+                            else "Nilai tidak dikembalikan pada pemeriksaan terakhir"
+                        ),
                     )
 
             c.execute(
@@ -2182,27 +3138,25 @@ def api_latest_data():
                     ("net_out", "Net out (agent)", "KB/s"),
                 ):
                     v = new[key]
-                    if v is None:
+                    prev_v = prev[key] if prev is not None else None
+                    if v is None and prev_v is None:
                         continue
-                    delta = prev_val = prev_ts = None
-                    if prev is not None and prev[key] is not None:
-                        delta = round(float(v) - float(prev[key]), 2)
-                        prev_val = round(float(prev[key]), 2)
-                        prev_ts = prev["timestamp"]
-                    items.append(
-                        {
-                            "host": display,
-                            "ip": ip,
-                            "category": category,
-                            "name": nm,
-                            "unit": unit,
-                            "value": round(float(v), 2),
-                            "delta": delta,
-                            "prev": prev_val,
-                            "prev_check": prev_ts,
-                            "check": new["timestamp"],
-                            "source": "agent",
-                        }
+                    push_item(
+                        host=display,
+                        ip=ip,
+                        category=category,
+                        name=nm,
+                        unit=unit,
+                        value=v,
+                        check=new["timestamp"],
+                        prev=prev_v,
+                        prev_ts=prev["timestamp"] if prev_v is not None else None,
+                        source="agent",
+                        error=(
+                            None
+                            if v is not None
+                            else "Nilai tidak dikembalikan agen pada pemeriksaan terakhir"
+                        ),
                     )
 
             c.execute(
@@ -2215,27 +3169,29 @@ def api_latest_data():
                 new = pings[0]
                 prev = pings[1] if len(pings) > 1 else None
                 v = new["latency"]
-                # -1 berarti ping gagal (lihat /api/history) — bukan item valid
-                if v is not None and float(v) >= 0:
-                    delta = prev_val = prev_ts = None
-                    if prev is not None and prev["latency"] is not None:
-                        delta = round(float(v) - float(prev["latency"]), 2)
-                        prev_val = round(float(prev["latency"]), 2)
-                        prev_ts = prev["timestamp"]
-                    items.append(
-                        {
-                            "host": display,
-                            "ip": ip,
-                            "category": category,
-                            "name": "Ping latency",
-                            "unit": "ms",
-                            "value": round(float(v), 2),
-                            "delta": delta,
-                            "prev": prev_val,
-                            "prev_check": prev_ts,
-                            "check": new["timestamp"],
-                            "source": "ping",
-                        }
+                # -1 berarti ping gagal (lihat /api/history).
+                if v is not None and float(v) < 0:
+                    v = None
+                prev_v = prev["latency"] if prev is not None else None
+                if prev_v is not None and float(prev_v) < 0:
+                    prev_v = None
+                if v is not None or prev_v is not None:
+                    push_item(
+                        host=display,
+                        ip=ip,
+                        category=category,
+                        name="Ping latency",
+                        unit="ms",
+                        value=v,
+                        check=new["timestamp"],
+                        prev=prev_v,
+                        prev_ts=prev["timestamp"] if prev_v is not None else None,
+                        source="ping",
+                        error=(
+                            None
+                            if v is not None
+                            else "Ping gagal pada pemeriksaan terakhir"
+                        ),
                     )
     finally:
         conn.close()
@@ -2243,13 +3199,26 @@ def api_latest_data():
     total = len(items)
     low_host, low_group, low_name = host_q.lower(), group_q.lower(), name_q.lower()
     if low_host:
+        host_terms = [
+            t.strip().lower() for t in host_q.replace(";", ",").split(",") if t.strip()
+        ]
         items = [
             d
             for d in items
-            if low_host in d["host"].lower() or low_host in d["ip"].lower()
+            if any(
+                term in d["host"].lower() or term in d["ip"].lower()
+                for term in host_terms
+            )
         ]
     if low_group:
-        items = [d for d in items if low_group in d["category"].lower()]
+        group_terms = [
+            t.strip().lower() for t in group_q.replace(";", ",").split(",") if t.strip()
+        ]
+        items = [
+            d
+            for d in items
+            if any(term in d["category"].lower() for term in group_terms)
+        ]
     if low_name:
         items = [d for d in items if low_name in d["name"].lower()]
     if source_f != "all":
@@ -2293,6 +3262,18 @@ def _map_valid_name(name):
     return name
 
 
+def _map_name_taken(c, name, exclude_id=None):
+    """Cek nama peta ganda (case-insensitive), opsional kecualikan id sendiri."""
+    if exclude_id is None:
+        c.execute("SELECT id FROM maps WHERE name = ? COLLATE NOCASE", (name,))
+    else:
+        c.execute(
+            "SELECT id FROM maps WHERE name = ? COLLATE NOCASE AND id <> ?",
+            (name, exclude_id),
+        )
+    return c.fetchone() is not None
+
+
 def _map_valid_dim(v):
     try:
         n = int(v)
@@ -2311,6 +3292,284 @@ def _map_valid_pos(v):
     if not (0 <= n <= 100000):
         return None
     return n
+
+
+_MAP_SETTINGS_DEFAULTS = {
+    "background_image": "none",
+    "background_scale": "proportional",
+    "automatic_icon_mapping": "manual",
+    "icon_highlight": False,
+    "mark_elements": False,
+    "display_problems": "expand_single",
+    "label_type": "label",
+    "advanced_labels": True,
+    "host_group_label_type": "label",
+    "host_label_type": "label",
+    "trigger_label_type": "status",
+    "map_label_type": "label",
+    "image_label_type": "nothing",
+    "label_location": "bottom",
+    "show_element_labels": "always",
+    "show_link_labels": "always",
+    "problem_display": "all",
+    "minimum_severity": "not_classified",
+    "show_suppressed": False,
+    "urls": [],
+    "sharing": {"type": "public", "user_groups": [], "users": []},
+}
+
+_MAP_SETTINGS_ENUMS = {
+    "background_image": ("none",),
+    "background_scale": ("none", "proportional"),
+    "automatic_icon_mapping": ("manual",),
+    "display_problems": ("expand_single", "number", "number_most_critical"),
+    "label_type": ("label", "ip", "name", "status", "nothing"),
+    "host_group_label_type": ("label", "ip", "name", "status", "nothing"),
+    "host_label_type": ("label", "ip", "name", "status", "nothing"),
+    "trigger_label_type": ("label", "ip", "name", "status", "nothing"),
+    "map_label_type": ("label", "ip", "name", "status", "nothing"),
+    "image_label_type": ("label", "ip", "name", "status", "nothing"),
+    "label_location": ("bottom", "left", "right", "top"),
+    "show_element_labels": ("always", "auto_hide"),
+    "show_link_labels": ("always", "auto_hide"),
+    "problem_display": ("all", "separated", "unacknowledged"),
+    "minimum_severity": (
+        "not_classified",
+        "information",
+        "warning",
+        "average",
+        "high",
+        "disaster",
+    ),
+}
+
+_MAP_SETTINGS_BOOLS = (
+    "icon_highlight",
+    "mark_elements",
+    "advanced_labels",
+    "show_suppressed",
+)
+
+_MAP_URL_ELEMENTS = ("host", "host_group", "trigger", "map", "image")
+_MAP_SHARE_PERMISSIONS = ("read-only", "read-write")
+
+
+def _map_settings_defaults():
+    """Salinan baru default pengaturan peta (hindari list/dict bersama)."""
+    return json.loads(json.dumps(_MAP_SETTINGS_DEFAULTS))
+
+
+def _map_settings_payload(data):
+    """Ambil pengaturan dari payload API (nested ``settings`` atau field datar)."""
+    if not isinstance(data, dict):
+        return {}
+    if "settings" in data:
+        nested = data.get("settings")
+        if not isinstance(nested, dict):
+            raise ValueError("settings harus berupa objek")
+        return nested
+    return {k: data[k] for k in _MAP_SETTINGS_DEFAULTS if k in data}
+
+
+def _map_setting_bool(raw, key, default):
+    value = raw.get(key, default)
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    raise ValueError(f"{key} harus berupa boolean")
+
+
+def _map_setting_enum(raw, key, allowed, default):
+    value = raw.get(key, default)
+    if value is None:
+        return default
+    value = str(value).strip().lower()
+    if value not in allowed:
+        raise ValueError(f"Nilai {key} tidak valid")
+    return value
+
+
+def _map_parse_urls(raw):
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("urls harus berupa list")
+    if len(raw) > 100:
+        raise ValueError("urls maksimal 100 item")
+    urls = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("URL peta tidak valid")
+        name = str(item.get("name") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if not name and not url:
+            continue
+        if not name or not url:
+            raise ValueError("Nama dan URL wajib diisi")
+        if len(name) > 128:
+            raise ValueError("Nama URL maksimal 128 karakter")
+        if len(url) > 2048:
+            raise ValueError("URL maksimal 2048 karakter")
+        element = str(item.get("element") or "host").strip().lower()
+        if element not in _MAP_URL_ELEMENTS:
+            raise ValueError("Element URL tidak dikenal")
+        urls.append({"name": name, "url": url, "element": element})
+    return urls
+
+
+def _map_parse_shares(raw, label):
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"{label} harus berupa list")
+    if len(raw) > 100:
+        raise ValueError(f"{label} maksimal 100 item")
+    shares = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} tidak valid")
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        if len(name) > 128:
+            raise ValueError(f"Nama pada {label} maksimal 128 karakter")
+        permission = str(item.get("permission") or "read-only").strip().lower()
+        if permission not in _MAP_SHARE_PERMISSIONS:
+            raise ValueError(f"Permission pada {label} tidak valid")
+        shares.append({"name": name, "permission": permission})
+    return shares
+
+
+def _map_parse_sharing(raw, base):
+    if raw is None:
+        return base
+    if not isinstance(raw, dict):
+        raise ValueError("sharing harus berupa objek")
+    out = {
+        "type": base.get("type", "public"),
+        "user_groups": list(base.get("user_groups") or []),
+        "users": list(base.get("users") or []),
+    }
+    if "type" in raw:
+        out["type"] = _map_setting_enum(raw, "type", ("private", "public"), out["type"])
+    if "user_groups" in raw:
+        out["user_groups"] = _map_parse_shares(raw.get("user_groups"), "user_groups")
+    if "users" in raw:
+        out["users"] = _map_parse_shares(raw.get("users"), "users")
+    return out
+
+
+def _map_parse_settings(raw, base=None):
+    """Validasi + gabungkan pengaturan peta dengan default/nilai sebelumnya."""
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError("settings harus berupa objek")
+
+    out = _map_settings_defaults()
+    if isinstance(base, dict):
+        for key in _MAP_SETTINGS_DEFAULTS:
+            if key in base and key not in ("urls", "sharing"):
+                out[key] = base[key]
+        if isinstance(base.get("urls"), list):
+            out["urls"] = list(base["urls"])
+        if isinstance(base.get("sharing"), dict):
+            out["sharing"].update(base["sharing"])
+
+    for key, allowed in _MAP_SETTINGS_ENUMS.items():
+        if key in raw:
+            out[key] = _map_setting_enum(raw, key, allowed, out.get(key))
+    for key in _MAP_SETTINGS_BOOLS:
+        if key in raw:
+            out[key] = _map_setting_bool(raw, key, out.get(key, False))
+    if "urls" in raw:
+        out["urls"] = _map_parse_urls(raw.get("urls"))
+    if "sharing" in raw:
+        out["sharing"] = _map_parse_sharing(raw.get("sharing"), out["sharing"])
+    return out
+
+
+def _map_valid_owner(value):
+    owner = str(value or "").strip()
+    if not (1 <= len(owner) <= 150):
+        return None
+    return owner
+
+
+def _map_role():
+    return str(getattr(current_user, "role", "") or "").strip().lower()
+
+
+def _map_sharing(settings):
+    sharing = (settings or {}).get("sharing")
+    return sharing if isinstance(sharing, dict) else {}
+
+
+def _map_share_permission(settings, username):
+    """Permission share untuk user (string kosong bila tidak dibagikan)."""
+    if not username:
+        return ""
+    for item in _map_sharing(settings).get("users") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("name") or "").strip() == username:
+            return str(item.get("permission") or "read-only").strip().lower()
+    return ""
+
+
+def _map_can_read(owner, settings, username, role):
+    """Boleh melihat peta: admin, owner, peta publik, atau share user.
+
+    ``user_groups`` belum bisa dievaluasi karena aplikasi ini belum punya
+    model keanggotaan grup; share ke grup tetap disimpan apa adanya.
+    """
+    if role == "admin":
+        return True
+    if not username:
+        return False
+    if str(owner or "").strip() == username:
+        return True
+    if str(_map_sharing(settings).get("type") or "public").lower() == "public":
+        return True
+    return bool(_map_share_permission(settings, username))
+
+
+def _map_can_write(owner, settings, username, role):
+    """Boleh mengubah peta: admin, owner, atau share read-write."""
+    if role == "admin":
+        return True
+    if not username:
+        return False
+    if str(owner or "").strip() == username:
+        return True
+    return _map_share_permission(settings, username) == "read-write"
+
+
+def _map_load_settings(c, map_id):
+    """Baca owner + settings peta; data lama/korup jatuh ke default."""
+    c.execute("SELECT owner, settings FROM map_settings WHERE map_id=?", (map_id,))
+    row = c.fetchone()
+    if row is None:
+        return "", _map_settings_defaults()
+    owner = str(row["owner"] or "").strip()
+    try:
+        settings = _map_parse_settings(json.loads(row["settings"] or "{}"))
+    except (TypeError, ValueError):
+        settings = _map_settings_defaults()
+    return owner, settings
+
+
+def _map_save_settings(c, map_id, owner, settings):
+    c.execute(
+        "INSERT OR REPLACE INTO map_settings (map_id, owner, settings, updated_at)"
+        " VALUES (?,?,?,datetime('now','localtime'))",
+        (map_id, owner, json.dumps(settings, ensure_ascii=False)),
+    )
 
 
 def _map_parse_content(raw_elems, raw_links):
@@ -2381,7 +3640,111 @@ def _map_insert_content(c, map_id, elems, links):
 @app.route("/maps")
 @login_required
 def maps_page():
-    return render_template("maps.html")
+    return render_template(
+        "maps.html", can_create=_map_role() in ("admin", "operator")
+    )
+
+
+_MAP_USER_GROUPS = (
+    "Disabled",
+    "Enabled debug mode",
+    "Guests",
+    "Internal",
+    "No access to the frontend",
+    "Zabbix administrators",
+)
+
+_MAP_SHARE_USER_META = {
+    "admin": ("Admin", "Zabbix", "Administrator"),
+    "guest": ("guest", "", ""),
+}
+
+
+@app.route("/maps/new")
+@login_required
+def map_new_page():
+    """Form Create map lengkap (gaya Zabbix 7.4 Network maps)."""
+    role_labels = {
+        "admin": "Administrator",
+        "operator": "Operator",
+        "viewer": "Viewer",
+    }
+    users, seen = [], set()
+    try:
+        raw_users = list_users()
+    except Exception:
+        raw_users = []
+    for item in raw_users:
+        username = str((item or {}).get("username") or "").strip()
+        if not username or username in seen:
+            continue
+        role = str((item or {}).get("role") or "operator").strip().lower()
+        users.append(
+            {
+                "username": username,
+                "role": role,
+                "label": f"{username} ({role_labels.get(role, role.title() or 'User')})",
+            }
+        )
+        seen.add(username)
+    owner = str(current_user.username or DASHBOARD_USERNAME).strip()
+    owner_role = str(getattr(current_user, "role", "admin") or "admin").lower()
+    if owner not in seen:
+        users.insert(
+            0,
+            {
+                "username": owner,
+                "role": owner_role,
+                "label": f"{owner} ({role_labels.get(owner_role, owner_role.title() or 'User')})",
+            },
+        )
+    owner_label = next(
+        (u["label"] for u in users if u["username"] == owner),
+        f"{owner} ({role_labels.get(owner_role, 'User')})",
+    )
+    share_users = []
+    for item in users:
+        username = item["username"]
+        display, first_name, last_name = _MAP_SHARE_USER_META.get(
+            username, (username, "", "")
+        )
+        share_users.append(
+            {
+                "username": username,
+                "label": display,
+                "name": first_name,
+                "last_name": last_name,
+            }
+        )
+    if not any(u["username"] == "guest" for u in share_users):
+        share_users.append(
+            {"username": "guest", "label": "guest", "name": "", "last_name": ""}
+        )
+    return render_template(
+        "map_form.html",
+        owner=owner,
+        owner_label=owner_label,
+        users=users,
+        user_groups=list(_MAP_USER_GROUPS),
+        share_users=share_users,
+    )
+
+
+@app.route("/maps/<int:map_id>")
+@login_required
+def map_view_page(map_id):
+    """Tampilan peta read-only (dipakai juga oleh mode kiosk/fullscreen)."""
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id FROM maps WHERE id=?", (map_id,))
+        if c.fetchone() is None:
+            return "<p>Peta tidak ditemukan</p>", 404
+        owner, settings = _map_load_settings(c, map_id)
+    finally:
+        conn.close()
+    if not _map_can_read(owner, settings, current_user.username, _map_role()):
+        return "<p>Peta tidak ditemukan</p>", 404
+    return render_template("map_view.html", map_id=map_id)
 
 
 @app.route("/maps/<int:map_id>/edit")
@@ -2391,10 +3754,13 @@ def map_edit_page(map_id):
     try:
         c.execute("SELECT id FROM maps WHERE id=?", (map_id,))
         exist = c.fetchone()
+        owner, settings = _map_load_settings(c, map_id) if exist else ("", {})
     finally:
         conn.close()
     if exist is None:
         return "<p>Peta tidak ditemukan</p>", 404
+    if not _map_can_write(owner, settings, current_user.username, _map_role()):
+        return "<p>Anda tidak punya akses untuk mengubah peta ini.</p>", 403
     return render_template("map_edit.html", map_id=map_id)
 
 
@@ -2402,32 +3768,40 @@ def map_edit_page(map_id):
 @api_login_required
 @limiter.limit("120/minute")
 def api_maps_list():
-    """Daftar peta: Name lebar tinggi + jumlah elemen, filter Name."""
-    name_q = (request.args.get("name") or "").strip()
+    """Daftar peta yang boleh dilihat user, plus filter Name.
+
+    ``total`` adalah jumlah peta yang terlihat sebelum filter, sehingga UI
+    bisa menampilkan "N of M maps found" yang benar.
+    """
+    name_q = (request.args.get("name") or "").strip().lower()
     sort = (request.args.get("sort") or "name_asc").lower()
     if sort not in ("name_asc", "name_desc"):
         sort = "name_asc"
+    username = str(current_user.username or "").strip()
+    role = _map_role()
 
     conn, c = get_db()
     try:
-        sql = (
+        c.execute(
             "SELECT m.id, m.name, m.width, m.height, m.created_at,"
-            " (SELECT COUNT(*) FROM map_elements e WHERE e.map_id = m.id) AS elements"
-            " FROM maps m"
+            " (SELECT COUNT(*) FROM map_elements e WHERE e.map_id = m.id) AS elements,"
+            " s.owner AS owner, s.settings AS settings_json"
+            " FROM maps m LEFT JOIN map_settings s ON s.map_id = m.id"
+            + (
+                " ORDER BY m.name COLLATE NOCASE"
+                if sort == "name_asc"
+                else " ORDER BY m.name COLLATE NOCASE DESC"
+            )
         )
-        params = []
-        if name_q:
-            sql += " WHERE m.name LIKE ? ESCAPE '\\'"
-            params.append(f"%{_like_escape(name_q)}%")
-        sql += (
-            " ORDER BY m.name COLLATE NOCASE"
-            if sort == "name_asc"
-            else " ORDER BY m.name COLLATE NOCASE DESC"
-        )
-        c.execute(sql, params)
-        rows = []
+        visible = []
         for r in c.fetchall():
-            rows.append(
+            try:
+                settings = _map_parse_settings(json.loads(r["settings_json"] or "{}"))
+            except (TypeError, ValueError):
+                settings = _map_settings_defaults()
+            if not _map_can_read(r["owner"] or "", settings, username, role):
+                continue
+            visible.append(
                 {
                     "id": r["id"],
                     "name": r["name"],
@@ -2435,15 +3809,23 @@ def api_maps_list():
                     "height": int(r["height"]),
                     "created_at": r["created_at"],
                     "elements": int(r["elements"]),
+                    "owner": str(r["owner"] or ""),
+                    "can_write": _map_can_write(
+                        r["owner"] or "", settings, username, role
+                    ),
                 }
             )
     finally:
         conn.close()
-    return jsonify({"maps": rows, "count": len(rows)})
+    total = len(visible)
+    if name_q:
+        visible = [m for m in visible if name_q in str(m["name"]).lower()]
+    return jsonify({"maps": visible, "count": len(visible), "total": total})
 
 
 @app.route("/api/maps", methods=["POST"])
 @api_login_required
+@require_role("admin", "operator")
 @limiter.limit("60/minute")
 def api_maps_create():
     data = request.get_json(silent=True) or {}
@@ -2455,13 +3837,26 @@ def api_maps_create():
             jsonify({"error": "Nama 1-128 karakter; dimensi 100-65535"}),
             400,
         )
+    if "owner" in data:
+        owner = _map_valid_owner(data.get("owner"))
+    else:
+        owner = str(current_user.username or DASHBOARD_USERNAME).strip()
+    if owner is None:
+        return jsonify({"error": "Owner wajib dipilih"}), 400
+    try:
+        settings = _map_parse_settings(_map_settings_payload(data))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     conn, c = get_db()
     try:
+        if _map_name_taken(c, name):
+            return jsonify({"error": "Nama peta sudah dipakai"}), 400
         c.execute(
             "INSERT INTO maps (name, width, height) VALUES (?,?,?)",
             (name, width, height),
         )
         new_id = c.lastrowid
+        _map_save_settings(c, new_id, owner, settings)
         conn.commit()
     finally:
         conn.close()
@@ -2470,7 +3865,16 @@ def api_maps_create():
     except Exception:
         pass
     return (
-        jsonify({"id": new_id, "name": name, "width": width, "height": height}),
+        jsonify(
+            {
+                "id": new_id,
+                "name": name,
+                "width": width,
+                "height": height,
+                "owner": owner,
+                "settings": settings,
+            }
+        ),
         201,
     )
 
@@ -2496,6 +3900,9 @@ def api_maps_detail(map_id):
             "height": int(mrow["height"]),
             "created_at": mrow["created_at"],
         }
+        owner, settings = _map_load_settings(c, map_id)
+        if not _map_can_read(owner, settings, current_user.username, _map_role()):
+            return jsonify({"error": "Peta tidak ditemukan"}), 404
         c.execute(
             "SELECT id, uid, etype, label, ip, x, y FROM map_elements"
             " WHERE map_id=? ORDER BY id ASC",
@@ -2551,7 +3958,19 @@ def api_maps_detail(map_id):
             hosts.append({"ip": r["ip"], "alias": alias, "name": alias or r["ip"]})
     finally:
         conn.close()
-    return jsonify({"map": m, "elements": elements, "links": links, "hosts": hosts})
+    return jsonify(
+        {
+            "map": m,
+            "elements": elements,
+            "links": links,
+            "hosts": hosts,
+            "owner": owner,
+            "settings": settings,
+            "can_write": _map_can_write(
+                owner, settings, current_user.username, _map_role()
+            ),
+        }
+    )
 
 
 @app.route("/api/maps/<int:map_id>", methods=["PATCH"])
@@ -2580,22 +3999,60 @@ def api_maps_update(map_id):
             return jsonify({"error": "Tinggi 100-65535"}), 400
         sets.append("height=?")
         params.append(height)
-    if not sets:
+    owner_update = None
+    if "owner" in data:
+        owner_update = _map_valid_owner(data.get("owner"))
+        if owner_update is None:
+            return jsonify({"error": "Owner wajib dipilih"}), 400
+    settings_update = None
+    has_settings = "settings" in data or any(
+        key in data for key in _MAP_SETTINGS_DEFAULTS
+    )
+    if has_settings:
+        try:
+            settings_update = _map_parse_settings(_map_settings_payload(data))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+    if not sets and owner_update is None and settings_update is None:
         return jsonify({"error": "Tidak ada kolom yang dikenal"}), 400
     conn, c = get_db()
     try:
         c.execute("SELECT name FROM maps WHERE id=?", (map_id,))
         if c.fetchone() is None:
             return jsonify({"error": "Peta tidak ditemukan"}), 404
-        c.execute(f"UPDATE maps SET {', '.join(sets)} WHERE id=?", params + [map_id])
+        current_owner, current_settings = _map_load_settings(c, map_id)
+        if not _map_can_write(
+            current_owner, current_settings, current_user.username, _map_role()
+        ):
+            return jsonify({"error": "Tidak punya akses mengubah peta ini"}), 403
+        if "name" in data and _map_name_taken(c, name, map_id):
+            return jsonify({"error": "Nama peta sudah dipakai"}), 400
+        if sets:
+            c.execute(
+                f"UPDATE maps SET {', '.join(sets)} WHERE id=?", params + [map_id]
+            )
+        if owner_update is not None or settings_update is not None:
+            owner = owner_update if owner_update is not None else current_owner
+            if not owner:
+                owner = str(current_user.username or DASHBOARD_USERNAME).strip()
+            settings = current_settings
+            if settings_update is not None:
+                # Patch parsial: gabungkan dengan pengaturan yang sudah ada.
+                settings = _map_parse_settings(
+                    _map_settings_payload(data), current_settings
+                )
+            _map_save_settings(c, map_id, owner, settings)
         conn.commit()
         c.execute("SELECT id, name, width, height FROM maps WHERE id=?", (map_id,))
         r = c.fetchone()
+        owner, settings = _map_load_settings(c, map_id)
         row = {
             "id": r["id"],
             "name": r["name"],
             "width": int(r["width"]),
             "height": int(r["height"]),
+            "owner": owner,
+            "settings": settings,
         }
     finally:
         conn.close()
@@ -2624,6 +4081,9 @@ def api_maps_content(map_id):
         c.execute("SELECT id FROM maps WHERE id=?", (map_id,))
         if c.fetchone() is None:
             return jsonify({"error": "Peta tidak ditemukan"}), 404
+        owner, settings = _map_load_settings(c, map_id)
+        if not _map_can_write(owner, settings, current_user.username, _map_role()):
+            return jsonify({"error": "Tidak punya akses mengubah peta ini"}), 403
         ne, nl = _map_insert_content(c, map_id, elems, links)
         conn.commit()
     finally:
@@ -2668,8 +4128,17 @@ def api_maps_delete():
             row = c.fetchone()
             if row is None:
                 continue
+            owner, settings = _map_load_settings(c, mid)
+            if not _map_can_write(
+                owner, settings, current_user.username, _map_role()
+            ):
+                return (
+                    jsonify({"error": f"Tidak punya akses menghapus '{row['name']}'"}),
+                    403,
+                )
             c.execute("DELETE FROM map_elements WHERE map_id=?", (mid,))
             c.execute("DELETE FROM map_links WHERE map_id=?", (mid,))
+            c.execute("DELETE FROM map_settings WHERE map_id=?", (mid,))
             c.execute("DELETE FROM maps WHERE id=?", (mid,))
             deleted += 1
             names.append(row["name"])
@@ -2721,6 +4190,11 @@ def api_maps_export():
             m = c.fetchone()
             if m is None:
                 continue
+            owner, settings = _map_load_settings(c, mid)
+            if not _map_can_read(
+                owner, settings, current_user.username, _map_role()
+            ):
+                continue
             c.execute(
                 "SELECT uid, etype, label, ip, x, y FROM map_elements"
                 " WHERE map_id=? ORDER BY id ASC",
@@ -2748,6 +4222,8 @@ def api_maps_export():
                     "name": m["name"],
                     "width": int(m["width"]),
                     "height": int(m["height"]),
+                    "owner": owner,
+                    "settings": settings,
                     "elements": [
                         {
                             "uid": e["uid"],
@@ -2772,6 +4248,7 @@ def api_maps_export():
 
 @app.route("/api/maps/import", methods=["POST"])
 @api_login_required
+@require_role("admin", "operator")
 @limiter.limit("30/minute")
 def api_maps_import():
     """Impor JSON hasil ekspor: {version, maps:[name,width,elements,links]}.
@@ -2785,7 +4262,7 @@ def api_maps_import():
         return jsonify({"error": "Tidak ada peta untuk diimpor"}), 400
     if len(raw_maps) > 50:
         return jsonify({"error": "Maksimal 50 peta per permintaan"}), 400
-    created, errs = [], []
+    created, errs, seen_names = [], [], set()
     conn, c = get_db()
     try:
         for raw in raw_maps:
@@ -2797,6 +4274,23 @@ def api_maps_import():
             height = _map_valid_dim(raw.get("height", 540))
             if name is None or width is None or height is None:
                 errs.append(f"'{str(raw.get('name') or '')[:32]}' tidak valid")
+                continue
+            if name.lower() in seen_names or _map_name_taken(c, name):
+                errs.append(f"'{name[:32]}': nama peta sudah dipakai")
+                continue
+            if "owner" in raw:
+                owner = _map_valid_owner(raw.get("owner"))
+            else:
+                owner = str(current_user.username or DASHBOARD_USERNAME).strip()
+            if owner is None:
+                errs.append(f"'{name[:32]}': owner tidak valid")
+                continue
+            try:
+                settings = _map_parse_settings(
+                    raw.get("settings") if "settings" in raw else {}
+                )
+            except ValueError as exc:
+                errs.append(f"'{name[:32]}': {exc}")
                 continue
             try:
                 elems, links = _map_parse_content(
@@ -2811,6 +4305,8 @@ def api_maps_import():
                 (name, width, height),
             )
             new_id = c.lastrowid
+            seen_names.add(name.lower())
+            _map_save_settings(c, new_id, owner, settings)
             _map_insert_content(c, new_id, elems, links)
             created.append({"id": new_id, "name": name})
         conn.commit()
@@ -3336,7 +4832,7 @@ def api_save_settings():
                 ipaddress.ip_network(network, strict=False)
             except ValueError:
                 return jsonify({"error": "discovery_network harus CIDR valid"}), 400
-        vals["discovery_network"] = network
+        vals["discovery_network"] = _disc_normalize_network(network)
     if "discovery_community" in data:
         community = str(data.get("discovery_community") or "").strip()
         if len(community) > 128:
@@ -4846,6 +6342,78 @@ def send_daily_report_endpoint():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/reports/scheduled/bulk", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("20/minute")
+def api_reports_scheduled_bulk():
+
+    if not getattr(scheduler, "running", False):
+        return jsonify({"error": "Penjadwal sedang tidak aktif."}), 409
+
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "").strip().lower()
+    job_ids = data.get("ids")
+    if action not in ("enable", "disable"):
+        return jsonify({"error": "Aksi tidak valid."}), 400
+    if not isinstance(job_ids, list) or not job_ids:
+        return jsonify({"error": "Pilih minimal satu laporan."}), 400
+
+    updated = []
+    for job_id in job_ids[:50]:
+        if job_id not in _REPORT_JOB_META:
+            continue
+        if scheduler.get_job(job_id) is None:
+            continue
+        try:
+            if action == "enable":
+                scheduler.resume_job(job_id)
+            else:
+                scheduler.pause_job(job_id)
+            updated.append(job_id)
+        except Exception as exc:
+            logger.warning("Gagal %s job laporan %s: %s", action, job_id, exc)
+
+    if updated:
+        try:
+            audit(
+                current_user.username,
+                f"report.scheduled.{action}",
+                ",".join(updated),
+            )
+        except Exception:
+            pass
+
+    return jsonify({"status": "success", "updated": updated}), 200
+
+
+@app.route("/api/reports/scheduled/create", methods=["POST"])
+@api_login_required
+@require_role("admin")
+@limiter.limit("20/minute")
+def api_reports_scheduled_create():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Report name is required."}), 400
+    owner = str(data.get("owner") or current_user.username or "Admin").strip()
+    period = str(data.get("period") or "Previous day").strip()
+    cycle = str(data.get("cycle") or "Daily").strip()
+
+    try:
+        audit(current_user.username, "report.scheduled.create", f"name={name}, cycle={cycle}")
+    except Exception:
+        pass
+
+    return jsonify({"status": "success", "message": f"Report '{name}' added successfully."}), 200
+
+
+@app.route("/reports/scheduled/create")
+@login_required
+def reports_scheduled_create_alias():
+    return redirect(url_for("reports_page", page="scheduled", action="create"))
+
+
 @app.route("/api/events")
 @api_login_required
 def get_events():
@@ -5112,6 +6680,1609 @@ def api_maintenance_delete(mid):
     return jsonify({"status": "success"})
 
 
+def _svc_target(svc):
+    svc_type = (svc.get("type") or "").lower()
+    if svc_type == "http":
+        return svc.get("url") or ""
+    if svc_type == "tcp":
+        port = svc.get("port")
+        return f"{svc.get('ip') or ''}:{port}" if port else (svc.get("ip") or "")
+    if svc_type == "dns":
+        query = svc.get("query") or ""
+        return f"{query} @ {svc.get('ip')}" if query else (svc.get("ip") or "")
+    return svc.get("ip") or ""
+
+
+def _svc_availability(online, offline):
+    total = (online or 0) + (offline or 0)
+    if total <= 0:
+        return None
+    return round((online or 0) / total * 100, 2)
+
+
+def _svc_agg(rows):
+    checks = len(rows)
+    online = sum(1 for r in rows if (r.get("status") or "").upper() == "ONLINE")
+    offline = sum(1 for r in rows if (r.get("status") or "").upper() == "OFFLINE")
+    pending = checks - online - offline
+    latencies = [
+        float(r.get("latency"))
+        for r in rows
+        if (r.get("status") or "").upper() == "ONLINE" and r.get("latency") is not None
+    ]
+    return {
+        "checks": checks,
+        "online": online,
+        "offline": offline,
+        "pending": pending,
+        "availability": _svc_availability(online, offline),
+        "avg_latency": round(sum(latencies) / len(latencies), 2) if latencies else None,
+    }
+
+
+def _parse_svc_timestamp(value):
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None
+
+
+try:
+    SERVICE_STALE_SECONDS = max(
+        60, int(os.environ.get("SERVICE_STALE_SECONDS", "180"))
+    )
+except (TypeError, ValueError):
+    SERVICE_STALE_SECONDS = 180
+
+
+def _service_last_checked_age(value):
+    ts = _parse_svc_timestamp(value)
+    if ts is None:
+        return None
+    return max(0, int((datetime.now() - ts).total_seconds()))
+
+
+def _sla_bucket_plan(hours):
+    hours = max(1, int(hours))
+    if hours <= 24:
+        return 3600, hours
+    if hours <= 72:
+        return 3600, hours
+    if hours <= 168:
+        return 21600, 28
+    return 86400, min(max(1, hours // 24), 31)
+
+
+def _sla_timeline(rows, hours):
+    bucket_seconds, bucket_count = _sla_bucket_plan(hours)
+    now = datetime.now()
+    start = now - timedelta(hours=hours)
+    buckets = [{"online": 0, "offline": 0} for _ in range(bucket_count)]
+    for row in rows:
+        ts = _parse_svc_timestamp(row.get("timestamp"))
+        if not ts:
+            continue
+        idx = int((ts - start).total_seconds() // bucket_seconds)
+        if idx < 0 or idx >= bucket_count:
+            continue
+        status = (row.get("status") or "").upper()
+        if status == "ONLINE":
+            buckets[idx]["online"] += 1
+        elif status == "OFFLINE":
+            buckets[idx]["offline"] += 1
+    labels = []
+    values = []
+    for i in range(bucket_count):
+        bucket_end = start + timedelta(seconds=(i + 1) * bucket_seconds)
+        if bucket_seconds >= 86400:
+            labels.append(bucket_end.strftime("%d/%m"))
+        elif bucket_seconds >= 3600 and hours > 24:
+            labels.append(bucket_end.strftime("%d/%m %H:%M"))
+        else:
+            labels.append(bucket_end.strftime("%H:%M"))
+        values.append(_svc_availability(buckets[i]["online"], buckets[i]["offline"]))
+    return {"labels": labels, "values": values}
+
+
+@app.route("/services")
+@login_required
+def services_page():
+    return render_template("services.html")
+
+
+@app.route("/services/sla")
+@login_required
+def services_sla_page():
+    return render_template("services_sla.html")
+
+
+@app.route("/services/sla/report")
+@login_required
+def services_sla_report_page():
+    return render_template("services_sla_report.html")
+
+
+# ============================================================
+# Inventory — aset & field inventory host (kolom host_inventory)
+# ============================================================
+# Field yang boleh dikelompokkan di halaman Inventory > Overview.
+INVENTORY_OVERVIEW_FIELDS = (
+    ("vendor", "Vendor"),
+    ("type", "Type"),
+    ("model", "Model"),
+    ("os", "OS"),
+    ("hardware", "Hardware"),
+    ("software", "Software"),
+    ("location", "Location"),
+    ("site_rack", "Rack"),
+    ("asset_tag", "Asset tag"),
+    ("serialno_a", "Serial number"),
+    ("deployment_status", "Deployment status"),
+    ("installer_name", "Installer"),
+    ("contact", "Contact"),
+    ("poc_1_name", "PIC"),
+)
+INVENTORY_EMPTY_LABEL = "(belum diisi)"
+
+# Kolom dan pilihan filter pada halaman Inventory > Hosts (gaya Zabbix).
+INVENTORY_HOST_FIELDS = (
+    ("alias", "Alias"),
+    ("name", "Name"),
+    ("type", "Type"),
+    ("os", "OS"),
+    ("serialno_a", "Serial number A"),
+    ("tag", "Tag"),
+    ("macaddress_a", "MAC address A"),
+    ("vendor", "Vendor"),
+    ("model", "Model"),
+    ("location", "Location"),
+    ("site_rack", "Rack"),
+    ("asset_tag", "Asset tag"),
+    ("serialno_b", "Serial number B"),
+    ("macaddress_b", "MAC address B"),
+    ("hardware", "Hardware"),
+    ("software", "Software"),
+    ("contact", "Contact"),
+    ("deployment_status", "Deployment status"),
+    ("poc_1_name", "PIC"),
+)
+INVENTORY_FILTER_OPERATORS = (
+    "contains",
+    "equals",
+    "does_not_contain",
+    "does_not_equal",
+    "exists",
+    "does_not_exist",
+)
+# Field yang bisa diubah lewat dialog Edit inventory di Inventory > Hosts.
+INVENTORY_EDIT_FIELDS = ("name", "type", "os", "serialno_a", "tag", "macaddress_a")
+
+
+def _inventory_field_value(host, field):
+    """Nilai yang dipakai filter Field pada halaman Inventory > Hosts."""
+    if field == "alias":
+        return host.get("alias") or ""
+    return host.get("fields", {}).get(field) or ""
+
+
+def _inventory_filter_match(value, operator, wanted):
+    """Cocokkan satu nilai inventory dengan operator filter Zabbix."""
+    value_l = str(value or "").strip().lower()
+    wanted_l = str(wanted or "").strip().lower()
+    if operator == "exists":
+        return bool(value_l)
+    if operator == "does_not_exist":
+        return not value_l
+    if not wanted_l:
+        return True
+    if operator == "equals":
+        return value_l == wanted_l
+    if operator == "does_not_equal":
+        return value_l != wanted_l
+    if operator == "does_not_contain":
+        return wanted_l not in value_l
+    return wanted_l in value_l
+
+
+@app.route("/inventory")
+@login_required
+def inventory_page():
+    return render_template("inventory.html")
+
+
+@app.route("/inventory/hosts")
+@login_required
+def inventory_hosts_page():
+    return render_template("inventory_hosts.html")
+
+
+def _inventory_hosts():
+    """Ambil host aktif bersama field inventory-nya (JSON host_inventory)."""
+    conn, c = get_db()
+    c.execute(
+        "SELECT id, ip, alias, category, host_inventory FROM hosts ORDER BY ip ASC"
+    )
+    rows = []
+    for r in c.fetchall():
+        inv = _decode_host_inventory(r["host_inventory"])
+        fields = inv["fields"]
+        rows.append(
+            {
+                "id": r["id"],
+                "ip": r["ip"] or "",
+                "alias": r["alias"] or "",
+                "name": fields.get("name") or (r["alias"] or r["ip"] or ""),
+                "category": r["category"] or "Uncategorized",
+                "mode": inv["mode"],
+                "fields": fields,
+            }
+        )
+    conn.close()
+    return rows
+
+
+def _inventory_filter_options(hosts):
+    opts = {key: set() for key in ("vendor", "type", "location", "deployment_status")}
+    for host in hosts:
+        for key, bucket in opts.items():
+            value = host["fields"].get(key)
+            if value:
+                bucket.add(value)
+    return {key: sorted(values, key=str.lower) for key, values in opts.items()}
+
+
+@app.route("/api/inventory/overview", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_inventory_overview():
+    """Host inventory overview: hitungan host per nilai field inventory.
+
+    ``group_by`` kosong berarti "not selected" — seperti Zabbix, tabel
+    dibiarkan kosong sampai pengguna memilih field. ``groups`` menyaring
+    host berdasarkan kategori/group-nya (dipisah koma).
+    """
+    labels = dict(INVENTORY_OVERVIEW_FIELDS)
+    group_by = (request.args.get("group_by") or "").strip().lower()
+    if group_by not in labels:
+        group_by = ""
+    group_filter = [
+        item.strip().lower()
+        for item in (request.args.get("groups") or "").split(",")
+        if item.strip()
+    ]
+
+    all_hosts = _inventory_hosts()
+    host_groups = sorted({host["category"] for host in all_hosts}, key=str.lower)
+    hosts = (
+        [h for h in all_hosts if h["category"].lower() in group_filter]
+        if group_filter
+        else all_hosts
+    )
+    counts = {}
+    unique = {"vendor": set(), "type": set(), "location": set()}
+    inventory_on = 0
+    filled_hosts = 0
+    filled_fields = 0
+    for host in hosts:
+        fields = host["fields"]
+        if host["mode"] != "disabled":
+            inventory_on += 1
+        if fields:
+            filled_hosts += 1
+            filled_fields += len(fields)
+        for key, bucket in unique.items():
+            value = fields.get(key)
+            if value:
+                bucket.add(value)
+        if not group_by:
+            continue
+        value = fields.get(group_by) or INVENTORY_EMPTY_LABEL
+        counts[value] = counts.get(value, 0) + 1
+
+    groups = [
+        {"value": value, "count": count, "empty": value == INVENTORY_EMPTY_LABEL}
+        for value, count in counts.items()
+    ]
+    groups.sort(key=lambda g: (g["empty"], -g["count"], g["value"].lower()))
+
+    return jsonify(
+        {
+            "summary": {
+                "hosts_total": len(hosts),
+                "hosts_with_inventory": inventory_on,
+                "hosts_filled": filled_hosts,
+                "fields_filled": filled_fields,
+                "vendors": len(unique["vendor"]),
+                "locations": len(unique["location"]),
+                "types": len(unique["type"]),
+            },
+            "group_by": group_by,
+            "fields": [
+                {"key": key, "label": label} for key, label in INVENTORY_OVERVIEW_FIELDS
+            ],
+            "groups": groups,
+            "host_groups": host_groups,
+        }
+    )
+
+
+@app.route("/api/inventory/hosts", methods=["GET"])
+@api_login_required
+@limiter.limit("120/minute")
+def api_inventory_hosts():
+    """Daftar host beserta field inventory, dengan filter gaya Zabbix."""
+    q = (request.args.get("q") or "").strip().lower()
+    filters = {
+        key: (request.args.get(key) or "").strip().lower()
+        for key in ("vendor", "type", "location", "deployment_status")
+    }
+    groups = [
+        item.strip().lower()
+        for item in (request.args.get("groups") or "").split(",")
+        if item.strip()
+    ]
+    field_labels = dict(INVENTORY_HOST_FIELDS)
+    field = (request.args.get("field") or "alias").strip().lower()
+    if field not in field_labels:
+        field = "alias"
+    operator = (request.args.get("operator") or "contains").strip().lower()
+    if operator not in INVENTORY_FILTER_OPERATORS:
+        operator = "contains"
+    filter_value = (request.args.get("value") or "").strip()
+
+    hosts = _inventory_hosts()
+    options = _inventory_filter_options(hosts)
+    host_groups = sorted({host["category"] for host in hosts}, key=str.lower)
+    rows = []
+    for host in hosts:
+        fields = host["fields"]
+        if groups and host["category"].lower() not in groups:
+            continue
+        if q and q not in " ".join((host["name"], host["ip"], host["alias"])).lower():
+            continue
+        if any(
+            (fields.get(key) or "").lower() != wanted
+            for key, wanted in filters.items()
+            if wanted
+        ):
+            continue
+        if not _inventory_filter_match(
+            _inventory_field_value(host, field), operator, filter_value
+        ):
+            continue
+        rows.append(
+            {
+                "id": host["id"],
+                "name": host["name"],
+                "ip": host["ip"],
+                "alias": host["alias"],
+                "category": host["category"],
+                "mode": host["mode"],
+                "url": "/host/" + host["ip"],
+                "fields": fields,
+                "filled": len(fields),
+            }
+        )
+
+    return jsonify(
+        {
+            "rows": rows,
+            "total": len(hosts),
+            "matched": len(rows),
+            "options": options,
+            "host_groups": host_groups,
+            "fields": [
+                {"key": key, "label": label} for key, label in INVENTORY_HOST_FIELDS
+            ],
+        }
+    )
+
+
+@app.route("/api/hosts/<path:ip>/inventory", methods=["PATCH"])
+@api_login_required
+@limiter.limit("60/minute")
+def api_update_host_inventory(ip):
+    """Simpan field inventory yang diedit dari halaman Inventory > Hosts."""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Format inventory tidak valid"}), 400
+    raw_fields = data.get("fields")
+    if not isinstance(raw_fields, dict):
+        return jsonify({"error": "Format inventory tidak valid"}), 400
+
+    parsed, err = _parse_host_inventory(
+        {"inventory": {"mode": "manual", "fields": raw_fields}}
+    )
+    if err:
+        return jsonify({"error": err}), 400
+    assert parsed is not None
+    incoming = parsed["fields"]
+
+    conn, c = get_db()
+    try:
+        c.execute("SELECT id, host_inventory FROM hosts WHERE ip=?", (ip,))
+        row = c.fetchone()
+        if not row:
+            return jsonify({"error": "Host tidak ditemukan"}), 404
+
+        current = _decode_host_inventory(row["host_inventory"])
+        merged = dict(current["fields"])
+        for key in INVENTORY_EDIT_FIELDS:
+            if key not in raw_fields:
+                continue
+            if key in incoming:
+                merged[key] = incoming[key]
+            else:
+                merged.pop(key, None)
+        mode = "manual" if merged else "disabled"
+        payload = json.dumps({"mode": mode, "fields": merged}, ensure_ascii=False)
+        c.execute(
+            "UPDATE hosts SET host_inventory=? WHERE id=?",
+            (payload, row["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        audit(
+            current_user.username,
+            "host.inventory_update",
+            f"{ip} fields={','.join(sorted(incoming))}",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success", "mode": mode, "fields": merged})
+
+
+@app.route("/api/services", methods=["GET"])
+@api_login_required
+def get_services_api():
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        hours = 24
+    hours = max(1, min(hours, 720))
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM services ORDER BY sort_order ASC, id ASC")
+        rows = [dict(r) for r in c.fetchall()]
+        stats = {}
+        try:
+            c.execute(
+                """
+                SELECT service_id,
+                       COUNT(*) AS checks,
+                       SUM(CASE WHEN status='ONLINE' THEN 1 ELSE 0 END) AS online,
+                       SUM(CASE WHEN status='OFFLINE' THEN 1 ELSE 0 END) AS offline,
+                       AVG(CASE WHEN status='ONLINE' THEN latency END) AS avg_latency
+                FROM service_history
+                WHERE timestamp > datetime('now','localtime',?)
+                GROUP BY service_id
+                """,
+                (f"-{hours} hours",),
+            )
+            for r in c.fetchall():
+                stats[r["service_id"]] = dict(r)
+        except sqlite3.OperationalError:
+            stats = {}
+    finally:
+        conn.close()
+    by_id = {int(svc["id"]): svc for svc in rows}
+    child_counts = {}
+    for svc in rows:
+        parent_id = svc.get("parent_id")
+        if parent_id:
+            child_counts[int(parent_id)] = child_counts.get(int(parent_id), 0) + 1
+
+    out = []
+    for svc in rows:
+        st = stats.get(svc["id"], {})
+        online = st.get("online") or 0
+        offline = st.get("offline") or 0
+        svc["target"] = _svc_target(svc)
+        svc["checks"] = st.get("checks") or 0
+        svc["availability"] = _svc_availability(online, offline)
+        age = _service_last_checked_age(svc.get("last_checked"))
+        svc["last_checked_age"] = age
+        svc["stale"] = bool(
+            age is not None
+            and age > SERVICE_STALE_SECONDS
+            and str(svc.get("status") or "").upper() in ("ONLINE", "OFFLINE")
+        )
+        svc["avg_latency"] = (
+            round(st["avg_latency"], 2) if st.get("avg_latency") is not None else None
+        )
+        svc["ssl_level"] = _ssl_level(svc.get("ssl_days_left"))
+        svc["problem_tags"] = svc.get("problem_tags") or ""
+        svc["sort_order"] = svc.get("sort_order") or 0
+        svc["status_rule"] = svc.get("status_rule") or "most_critical_child"
+        svc["description"] = svc.get("description") or ""
+        svc["propagation_rule"] = svc.get("propagation_rule") or "as_is"
+        svc["weight"] = svc.get("weight") or 0
+        svc["additional_rules"] = svc.get("additional_rules") or "[]"
+        svc["child_count"] = child_counts.get(int(svc["id"]), 0)
+        parent = by_id.get(svc.get("parent_id"))
+        svc["parent_name"] = parent["name"] if parent else ""
+        out.append(svc)
+    return jsonify(out)
+
+
+SERVICE_STATUS_RULES = {
+    "most_critical_child",
+    "most_critical_all",
+    "all_children_problem",
+    "any_child_problem",
+}
+SERVICE_PROPAGATION_RULES = {"as_is", "increase", "decrease", "ignore", "fixed"}
+
+
+def _normalize_service_tag_list(raw, label):
+    """Normalisasi daftar tag (list atau string dipisah koma)."""
+    if isinstance(raw, (list, tuple)):
+        items = raw
+    else:
+        items = str(raw or "").split(",")
+    tags = []
+    seen = set()
+    for item in items:
+        tag = re.sub(r"\s*:\s*", ": ", str(item or "").strip())
+        if not tag:
+            continue
+        if len(tag) > 64:
+            return None, f"{label} terlalu panjang (maks 64 karakter)"
+        if tag.casefold() in seen:
+            continue
+        seen.add(tag.casefold())
+        tags.append(tag)
+    if len(tags) > 20:
+        return None, f"Maksimal 20 {label.lower()} per service"
+    text = ", ".join(tags)
+    if len(text) > 500:
+        return None, f"Total {label.lower()} terlalu panjang (maks 500)"
+    return text, None
+
+
+def _normalize_additional_rules(raw):
+    """Normalisasi additional rules menjadi list teks."""
+    if raw in (None, ""):
+        return [], None
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            parsed = [raw]
+        items = parsed if isinstance(parsed, list) else [parsed]
+    elif isinstance(raw, (list, tuple)):
+        items = raw
+    else:
+        return None, "Additional rules tidak valid"
+    rules = []
+    seen = set()
+    for item in items:
+        rule = str(item or "").strip()
+        if not rule:
+            continue
+        if len(rule) > 128:
+            return None, "Additional rule terlalu panjang (maks 128 karakter)"
+        if rule.casefold() in seen:
+            continue
+        seen.add(rule.casefold())
+        rules.append(rule)
+    if len(rules) > 50:
+        return None, "Maksimal 50 additional rules per service"
+    return rules, None
+
+
+def _validate_service_fields(data):
+    """Validasi payload service dan kembalikan field yang sudah dinormalisasi."""
+    ip = str(data.get("ip") or "").strip()
+    name = str(data.get("name") or "").strip()
+    svc_type = str(data.get("type") or "tcp").strip().lower()
+    port_raw = data.get("port")
+    url = str(data.get("url") or "").strip()
+    query = str(data.get("query") or "").strip()
+    expected = str(data.get("expected") or "").strip()
+
+    tags_text, error = _normalize_service_tag_list(data.get("tags"), "Tag")
+    if error:
+        return None, error
+    problem_tags_text, error = _normalize_service_tag_list(
+        data.get("problem_tags"), "Problem tag"
+    )
+    if error:
+        return None, error
+
+    try:
+        sort_order = int(data.get("sort_order", 0) or 0)
+    except (ValueError, TypeError):
+        return None, "Sort order harus angka 0-999"
+    if not 0 <= sort_order <= 999:
+        return None, "Sort order harus angka 0-999"
+
+    try:
+        weight = int(data.get("weight", 0) or 0)
+    except (ValueError, TypeError):
+        return None, "Weight harus angka 0-1000000"
+    if not 0 <= weight <= 1000000:
+        return None, "Weight harus angka 0-1000000"
+
+    status_rule = str(data.get("status_rule") or "most_critical_child").strip().lower()
+    if status_rule not in SERVICE_STATUS_RULES:
+        return None, "Status calculation rule tidak valid"
+
+    propagation_rule = str(data.get("propagation_rule") or "as_is").strip().lower()
+    if propagation_rule not in SERVICE_PROPAGATION_RULES:
+        return None, "Status propagation rule tidak valid"
+
+    description = str(data.get("description") or "").strip()
+    if len(description) > 2048:
+        return None, "Description terlalu panjang (maks 2048)"
+
+    parent_id = None
+    parent_raw = data.get("parent_id")
+    if parent_raw not in (None, "", 0, "0"):
+        try:
+            parent_id = int(parent_raw)
+        except (ValueError, TypeError):
+            return None, "Parent service tidak valid"
+        if parent_id <= 0:
+            return None, "Parent service tidak valid"
+
+    child_ids = None
+    if "child_ids" in data:
+        raw_children = data.get("child_ids")
+        if raw_children in (None, ""):
+            child_ids = []
+        elif not isinstance(raw_children, (list, tuple)):
+            return None, "Child services tidak valid"
+        else:
+            child_ids = []
+            for item in raw_children:
+                try:
+                    child_id = int(item)
+                except (ValueError, TypeError):
+                    return None, "Child services tidak valid"
+                if child_id <= 0:
+                    return None, "Child services tidak valid"
+                if child_id not in child_ids:
+                    child_ids.append(child_id)
+            if len(child_ids) > 200:
+                return None, "Maksimal 200 child service"
+
+    additional_rules, error = _normalize_additional_rules(data.get("additional_rules"))
+    if error:
+        return None, error
+
+    if not ip or not name:
+        return None, "IP dan Name diperlukan"
+    if svc_type not in ("tcp", "http", "icmp", "dns"):
+        return None, "Type harus tcp, http, icmp, atau dns"
+    if len(name) > 100 or len(ip) > 255:
+        return None, "Name/IP terlalu panjang"
+    if len(expected) > 200:
+        return None, "Expected/keyword terlalu panjang (maks 200)"
+
+    port = None
+    if svc_type == "tcp":
+        try:
+            port = int(port_raw or 0)
+        except (ValueError, TypeError):
+            return None, "TCP Port harus angka 1-65535"
+        if not 1 <= port <= 65535:
+            return None, "TCP Port harus 1-65535"
+        url = None
+        query = ""
+        expected = ""
+    elif svc_type == "http":
+        if not url or not re.match(r"^https?://[^\s/$.?#].[^\s]*$", url, re.IGNORECASE):
+            return None, "URL http harus diawali http(s)://"
+        if len(url) > 500:
+            return None, "URL terlalu panjang"
+        port = None
+        query = ""
+    elif svc_type == "icmp":
+        port = None
+        url = None
+        query = ""
+        expected = ""
+    else:
+        ok, err = validate_dns_query_name(query)
+        if not ok:
+            return None, err or "Query DNS bermasalah"
+        port = None
+        url = None
+
+    return {
+        "ip": ip,
+        "name": name,
+        "type": svc_type,
+        "port": port,
+        "url": url,
+        "query": query,
+        "expected": expected,
+        "tags": tags_text,
+        "problem_tags": problem_tags_text,
+        "sort_order": sort_order,
+        "status_rule": status_rule,
+        "description": description,
+        "propagation_rule": propagation_rule,
+        "weight": weight,
+        "additional_rules": json.dumps(additional_rules, ensure_ascii=False),
+        "parent_id": parent_id,
+        "child_ids": child_ids,
+    }, None
+
+
+def _find_duplicate_service(c, fields, exclude_id=None):
+    svc_type = fields["type"]
+    if svc_type == "tcp":
+        sql = "SELECT id FROM services WHERE ip=? AND type='tcp' AND port=?"
+        params = (fields["ip"], fields["port"])
+    elif svc_type == "http":
+        sql = "SELECT id FROM services WHERE ip=? AND type='http' AND url=?"
+        params = (fields["ip"], fields["url"])
+    elif svc_type == "icmp":
+        sql = "SELECT id FROM services WHERE ip=? AND type='icmp'"
+        params = (fields["ip"],)
+    else:
+        sql = "SELECT id FROM services WHERE ip=? AND type='dns' AND query=?"
+        params = (fields["ip"], fields["query"])
+    if exclude_id is not None:
+        sql += " AND id != ?"
+        params = params + (exclude_id,)
+    c.execute(sql, params)
+    return c.fetchone()
+
+
+def _service_ancestor_ids(c, svc_id):
+    """Kembalikan id parent dan leluhur sebuah service."""
+    ancestors = []
+    seen = set()
+    current = int(svc_id)
+    while current:
+        if current in seen:
+            break
+        seen.add(current)
+        row = c.execute(
+            "SELECT parent_id FROM services WHERE id=?", (current,)
+        ).fetchone()
+        if not row:
+            break
+        current = row["parent_id"]
+        if current:
+            ancestors.append(int(current))
+    return ancestors
+
+
+def _service_hierarchy_error(c, svc_id, parent_id, child_ids):
+    """Validasi relasi parent/child dan cegah siklus hierarki."""
+    if parent_id is not None:
+        row = c.execute("SELECT id FROM services WHERE id=?", (parent_id,)).fetchone()
+        if not row:
+            return "Parent service tidak ditemukan"
+        if svc_id is not None:
+            if int(parent_id) == int(svc_id):
+                return "Parent service tidak boleh dirinya sendiri"
+            if int(svc_id) in _service_ancestor_ids(c, parent_id):
+                return "Parent service tidak boleh turunan dari service ini"
+
+    if child_ids:
+        placeholders = ",".join("?" for _ in child_ids)
+        rows = c.execute(
+            f"SELECT id FROM services WHERE id IN ({placeholders})",
+            tuple(child_ids),
+        ).fetchall()
+        found = {int(row["id"]) for row in rows}
+        if any(int(child_id) not in found for child_id in child_ids):
+            return "Child service tidak ditemukan"
+        if svc_id is not None:
+            if int(svc_id) in child_ids:
+                return "Child service tidak boleh dirinya sendiri"
+            ancestors = set(_service_ancestor_ids(c, svc_id))
+            if any(child_id in ancestors for child_id in child_ids):
+                return "Child service tidak boleh induk dari service ini"
+        if parent_id is not None:
+            if parent_id in child_ids:
+                return "Parent dan child service tidak boleh sama"
+            parent_ancestors = set(_service_ancestor_ids(c, parent_id))
+            if any(child_id in parent_ancestors for child_id in child_ids):
+                return "Relasi parent/child membentuk siklus"
+    return None
+
+
+def _sync_service_children(c, svc_id, child_ids):
+    """Samakan parent_id child service dengan daftar child yang dipilih."""
+    wanted = {int(child_id) for child_id in (child_ids or [])}
+    rows = c.execute("SELECT id FROM services WHERE parent_id=?", (svc_id,)).fetchall()
+    current = {int(row["id"]) for row in rows}
+    for child_id in current - wanted:
+        c.execute("UPDATE services SET parent_id=NULL WHERE id=?", (child_id,))
+    for child_id in wanted:
+        c.execute("UPDATE services SET parent_id=? WHERE id=?", (svc_id, child_id))
+
+
+@app.route("/api/services", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def add_service_api():
+    data = request.get_json(silent=True) or {}
+    fields, error = _validate_service_fields(data)
+    if error:
+        return jsonify({"error": error}), 400
+
+    conn, c = get_db()
+    if _find_duplicate_service(c, fields):
+        conn.close()
+        return jsonify({"error": "Service monitor ini sudah ada"}), 400
+    hierarchy_error = _service_hierarchy_error(
+        c, None, fields["parent_id"], fields["child_ids"] or []
+    )
+    if hierarchy_error:
+        conn.close()
+        return jsonify({"error": hierarchy_error}), 400
+    c.execute(
+        "INSERT INTO services"
+        " (ip, name, type, port, url, query, expected, tags, created_at,"
+        " parent_id, problem_tags, sort_order, status_rule, description,"
+        " propagation_rule, weight, additional_rules)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            fields["ip"],
+            fields["name"],
+            fields["type"],
+            fields["port"],
+            fields["url"],
+            fields["query"],
+            fields["expected"],
+            fields["tags"],
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            fields["parent_id"],
+            fields["problem_tags"],
+            fields["sort_order"],
+            fields["status_rule"],
+            fields["description"],
+            fields["propagation_rule"],
+            fields["weight"],
+            fields["additional_rules"],
+        ),
+    )
+    new_id = c.lastrowid
+    if fields["child_ids"]:
+        _sync_service_children(c, new_id, fields["child_ids"])
+    conn.commit()
+    conn.close()
+
+    try:
+        audit(
+            current_user.username,
+            "service.create",
+            f"{fields['name']} {fields['type']} {fields['ip']}",
+        )
+    except Exception:
+        pass
+
+    trigger_manual_service_check()
+    if fields["type"] == "http" and (fields["url"] or "").lower().startswith(
+        "https://"
+    ):
+        trigger_async_ssl_check(new_id)
+    return jsonify({"status": "success", "id": new_id}), 201
+
+
+@app.route("/api/services/<int:svc_id>", methods=["PUT"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("60/minute")
+def update_service_api(svc_id):
+    data = request.get_json(silent=True) or {}
+    fields, error = _validate_service_fields(data)
+    if error:
+        return jsonify({"error": error}), 400
+
+    conn, c = get_db()
+    c.execute("SELECT id, name FROM services WHERE id=?", (svc_id,))
+    existing = c.fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({"error": "Service tidak ditemukan"}), 404
+    if _find_duplicate_service(c, fields, exclude_id=svc_id):
+        conn.close()
+        return jsonify({"error": "Service monitor ini sudah ada"}), 400
+    hierarchy_error = _service_hierarchy_error(
+        c, svc_id, fields["parent_id"], fields["child_ids"]
+    )
+    if hierarchy_error:
+        conn.close()
+        return jsonify({"error": hierarchy_error}), 400
+
+    c.execute(
+        "UPDATE services SET ip=?, name=?, type=?, port=?, url=?, query=?,"
+        " expected=?, tags=?, parent_id=?, problem_tags=?, sort_order=?,"
+        " status_rule=?, description=?, propagation_rule=?, weight=?,"
+        " additional_rules=? WHERE id=?",
+        (
+            fields["ip"],
+            fields["name"],
+            fields["type"],
+            fields["port"],
+            fields["url"],
+            fields["query"],
+            fields["expected"],
+            fields["tags"],
+            fields["parent_id"],
+            fields["problem_tags"],
+            fields["sort_order"],
+            fields["status_rule"],
+            fields["description"],
+            fields["propagation_rule"],
+            fields["weight"],
+            fields["additional_rules"],
+            svc_id,
+        ),
+    )
+    if fields["child_ids"] is not None:
+        _sync_service_children(c, svc_id, fields["child_ids"])
+    conn.commit()
+    conn.close()
+
+    try:
+        audit(
+            current_user.username,
+            "service.update",
+            f"{fields['name']} {fields['type']} {fields['ip']} id={svc_id}",
+        )
+    except Exception:
+        pass
+
+    trigger_manual_service_check()
+    if fields["type"] == "http" and (fields["url"] or "").lower().startswith(
+        "https://"
+    ):
+        trigger_async_ssl_check(svc_id)
+    return jsonify({"status": "success", "id": svc_id})
+
+
+@app.route("/api/services/check", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("10/minute")
+def api_services_check_now():
+    trigger_manual_service_check()
+    return jsonify({"status": "queued"})
+
+
+@app.route("/api/services/<int:svc_id>/check", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def api_service_check_one(svc_id):
+    conn, c = get_db()
+    try:
+        row = c.execute("SELECT id FROM services WHERE id=?", (svc_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return jsonify({"error": "Service tidak ditemukan"}), 404
+    threading.Thread(
+        target=_run_service_check, args=(svc_id,), daemon=True
+    ).start()
+    return jsonify({"status": "queued", "id": svc_id})
+
+
+@app.route("/api/services/<int:svc_id>", methods=["DELETE"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def delete_service_api(svc_id):
+    conn, c = get_db()
+    c.execute("SELECT ip, name FROM services WHERE id=?", (svc_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Service tidak ditemukan"}), 404
+    c.execute("UPDATE services SET parent_id=NULL WHERE parent_id=?", (svc_id,))
+    c.execute("DELETE FROM services WHERE id=?", (svc_id,))
+    try:
+        c.execute("DELETE FROM service_history WHERE service_id=?", (svc_id,))
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
+    conn.close()
+    try:
+        audit(
+            current_user.username,
+            "service.delete",
+            f"{row['name']} {row['ip']} id={svc_id}",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/services/<int:svc_id>/history")
+@api_login_required
+def api_service_history(svc_id):
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "hours harus angka 1-168"}), 400
+    hours = max(1, min(hours, 168))
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT id, name, type, ip, port, url, status FROM services WHERE id=?",
+            (svc_id,),
+        )
+        svc = c.fetchone()
+        if not svc:
+            return jsonify({"error": "Service tidak ditemukan"}), 404
+        c.execute(
+            "SELECT timestamp, latency, status FROM service_history "
+            "WHERE service_id=? AND timestamp > datetime('now','localtime',?) ORDER BY id ASC",
+            (svc_id, f"-{hours} hours"),
+        )
+        rows = c.fetchall()
+    finally:
+        conn.close()
+    labels = [
+        (
+            r["timestamp"].split(" ")[1]
+            if " " in (r["timestamp"] or "")
+            else r["timestamp"]
+        )
+        for r in rows
+    ]
+    values = [round(r["latency"], 2) if r["status"] == "ONLINE" else None for r in rows]
+    return jsonify(
+        {
+            "service": dict(svc),
+            "hours": hours,
+            "labels": labels,
+            "values": values,
+            "count": len(rows),
+        }
+    )
+
+
+@app.route("/api/services/<int:svc_id>/ssl-check", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("10/minute")
+def api_service_ssl_check(svc_id):
+    conn, c = get_db()
+    c.execute("SELECT url FROM services WHERE id=?", (svc_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Service tidak ditemukan"}), 404
+    if not (row["url"] or "").lower().startswith("https://"):
+        return jsonify({"error": "Service ini bukan HTTPS"}), 400
+    trigger_async_ssl_check(svc_id)
+    return jsonify({"status": "queued"})
+
+
+def _sla_collect_children(c, sla_ids=None):
+    """Ambil tag dan downtime sekaligus untuk menghindari N+1."""
+    tags = {}
+    downtimes = {}
+    if sla_ids is None:
+        tag_rows = c.execute(
+            "SELECT sla_id, name, op, value FROM sla_tags ORDER BY id ASC"
+        ).fetchall()
+        downtime_rows = c.execute(
+            "SELECT sla_id, name, start_at, duration_seconds"
+            " FROM sla_downtimes ORDER BY start_at ASC, id ASC"
+        ).fetchall()
+    elif sla_ids:
+        placeholders = ",".join("?" for _ in sla_ids)
+        tag_rows = c.execute(
+            f"SELECT sla_id, name, op, value FROM sla_tags WHERE sla_id IN ({placeholders}) ORDER BY id ASC",
+            tuple(sla_ids),
+        ).fetchall()
+        downtime_rows = c.execute(
+            f"SELECT sla_id, name, start_at, duration_seconds FROM sla_downtimes"
+            f" WHERE sla_id IN ({placeholders}) ORDER BY start_at ASC, id ASC",
+            tuple(sla_ids),
+        ).fetchall()
+    else:
+        tag_rows, downtime_rows = [], []
+    for row in tag_rows:
+        tags.setdefault(int(row["sla_id"]), []).append(
+            {"name": row["name"], "op": row["op"], "value": row["value"] or ""}
+        )
+    for row in downtime_rows:
+        downtimes.setdefault(int(row["sla_id"]), []).append(
+            {
+                "name": row["name"],
+                "start": row["start_at"],
+                "duration_seconds": int(row["duration_seconds"] or 0),
+            }
+        )
+    return tags, downtimes
+
+
+def _sla_load(c, sla_id):
+    row = c.execute("SELECT * FROM slas WHERE id=?", (sla_id,)).fetchone()
+    if not row:
+        return None
+    tags, downtimes = _sla_collect_children(c, [int(sla_id)])
+    return sla_engine.serialize_sla(row, tags.get(int(sla_id), []), downtimes.get(int(sla_id), []))
+
+
+def _sla_all(c):
+    rows = c.execute(
+        "SELECT * FROM slas ORDER BY LOWER(name) ASC, id ASC"
+    ).fetchall()
+    if not rows:
+        return []
+    ids = [int(row["id"]) for row in rows]
+    tags, downtimes = _sla_collect_children(c, ids)
+    services = [
+        dict(row)
+        for row in c.execute("SELECT id, name, tags FROM services ORDER BY id ASC").fetchall()
+    ]
+    out = []
+    for row in rows:
+        sid = int(row["id"])
+        matched = sum(
+            1
+            for svc in services
+            if sla_engine.service_matches_tags(
+                svc.get("tags"), tags.get(sid, []), row["tag_eval"]
+            )
+        )
+        out.append(
+            sla_engine.serialize_sla(
+                row, tags.get(sid, []), downtimes.get(sid, []), matched
+            )
+        )
+    return out
+
+
+def _sla_name_taken(c, name, exclude_id=None):
+    if exclude_id:
+        row = c.execute(
+            "SELECT id FROM slas WHERE LOWER(name)=LOWER(?) AND id<>?",
+            (name, int(exclude_id)),
+        ).fetchone()
+    else:
+        row = c.execute(
+            "SELECT id FROM slas WHERE LOWER(name)=LOWER(?)", (name,)
+        ).fetchone()
+    return row is not None
+
+
+def _sla_save_children(c, sla_id, fields):
+    c.execute("DELETE FROM sla_tags WHERE sla_id=?", (sla_id,))
+    c.execute("DELETE FROM sla_downtimes WHERE sla_id=?", (sla_id,))
+    for tag in fields["tags"]:
+        c.execute(
+            "INSERT INTO sla_tags (sla_id, name, op, value) VALUES (?, ?, ?, ?)",
+            (sla_id, tag["name"], tag["op"], tag.get("value") or ""),
+        )
+    for downtime in fields["downtimes"]:
+        c.execute(
+            "INSERT INTO sla_downtimes (sla_id, name, start_at, duration_seconds)"
+            " VALUES (?, ?, ?, ?)",
+            (
+                sla_id,
+                downtime["name"],
+                downtime["start"],
+                int(downtime["duration_seconds"]),
+            ),
+        )
+
+
+@app.route("/api/sla", methods=["GET"])
+@api_login_required
+def api_sla_list():
+    conn, c = get_db()
+    try:
+        rows = _sla_all(c)
+    finally:
+        conn.close()
+    return jsonify({"slas": rows, "count": len(rows)})
+
+
+@app.route("/api/sla", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def api_sla_create():
+    data = request.get_json(silent=True) or {}
+    try:
+        fields = sla_engine.validate_payload(data)
+    except sla_engine.SLAValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    conn, c = get_db()
+    try:
+        if _sla_name_taken(c, fields["name"]):
+            return jsonify({"error": "Nama SLA sudah dipakai"}), 409
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            "INSERT INTO slas"
+            " (name, slo, reporting_period, timezone, schedule, effective_date,"
+            " description, enabled, tag_eval, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                fields["name"],
+                fields["slo"],
+                fields["reporting_period"],
+                fields["timezone"],
+                fields["schedule"],
+                fields["effective_date"],
+                fields["description"],
+                fields["enabled"],
+                fields["tag_eval"],
+                now,
+                now,
+            ),
+        )
+        sla_id = c.lastrowid
+        _sla_save_children(c, sla_id, fields)
+        _commit_with_retry(conn)
+        created = _sla_load(c, sla_id)
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "sla.create", f"{fields['name']} id={sla_id}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "sla": created}), 201
+
+
+@app.route("/api/sla/<int:sla_id>", methods=["PUT"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def api_sla_update(sla_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        fields = sla_engine.validate_payload(data)
+    except sla_engine.SLAValidationError as exc:
+        return jsonify({"error": str(exc)}), 400
+    conn, c = get_db()
+    try:
+        existing = c.execute("SELECT id FROM slas WHERE id=?", (sla_id,)).fetchone()
+        if not existing:
+            return jsonify({"error": "SLA tidak ditemukan"}), 404
+        if _sla_name_taken(c, fields["name"], exclude_id=sla_id):
+            return jsonify({"error": "Nama SLA sudah dipakai"}), 409
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute(
+            "UPDATE slas SET name=?, slo=?, reporting_period=?, timezone=?,"
+            " schedule=?, effective_date=?, description=?, enabled=?, tag_eval=?,"
+            " updated_at=? WHERE id=?",
+            (
+                fields["name"],
+                fields["slo"],
+                fields["reporting_period"],
+                fields["timezone"],
+                fields["schedule"],
+                fields["effective_date"],
+                fields["description"],
+                fields["enabled"],
+                fields["tag_eval"],
+                now,
+                sla_id,
+            ),
+        )
+        _sla_save_children(c, sla_id, fields)
+        _commit_with_retry(conn)
+        updated = _sla_load(c, sla_id)
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "sla.update", f"{fields['name']} id={sla_id}")
+    except Exception:
+        pass
+    return jsonify({"status": "success", "sla": updated})
+
+
+@app.route("/api/sla/<int:sla_id>/enabled", methods=["POST"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("60/minute")
+def api_sla_enabled(sla_id):
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"error": "Field enabled wajib diisi"}), 400
+    enabled = 1 if data.get("enabled") else 0
+    conn, c = get_db()
+    try:
+        row = c.execute("SELECT name FROM slas WHERE id=?", (sla_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "SLA tidak ditemukan"}), 404
+        c.execute(
+            "UPDATE slas SET enabled=?, updated_at=? WHERE id=?",
+            (enabled, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), sla_id),
+        )
+        _commit_with_retry(conn)
+    finally:
+        conn.close()
+    try:
+        audit(
+            current_user.username,
+            "sla.enable" if enabled else "sla.disable",
+            f"{row['name']} id={sla_id}",
+        )
+    except Exception:
+        pass
+    return jsonify({"status": "success", "id": sla_id, "enabled": bool(enabled)})
+
+
+@app.route("/api/sla/<int:sla_id>", methods=["DELETE"])
+@api_login_required
+@require_role("admin", "operator")
+@limiter.limit("30/minute")
+def api_sla_delete(sla_id):
+    conn, c = get_db()
+    try:
+        row = c.execute("SELECT name FROM slas WHERE id=?", (sla_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "SLA tidak ditemukan"}), 404
+        c.execute("DELETE FROM sla_tags WHERE sla_id=?", (sla_id,))
+        c.execute("DELETE FROM sla_downtimes WHERE sla_id=?", (sla_id,))
+        c.execute("DELETE FROM slas WHERE id=?", (sla_id,))
+        _commit_with_retry(conn)
+    finally:
+        conn.close()
+    try:
+        audit(current_user.username, "sla.delete", f"{row['name']} id={sla_id}")
+    except Exception:
+        pass
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/sla/<int:sla_id>/report", methods=["GET"])
+@api_login_required
+def api_sla_report(sla_id):
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    if bool(date_from) != bool(date_to):
+        return jsonify({"error": "Isi From dan To sekaligus"}), 400
+    service_id = (request.args.get("service_id") or "").strip()
+    if service_id:
+        try:
+            service_id = int(service_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "service_id tidak valid"}), 400
+    else:
+        service_id = None
+
+    conn, c = get_db()
+    try:
+        row = c.execute("SELECT * FROM slas WHERE id=?", (sla_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "SLA tidak ditemukan"}), 404
+        tags, downtimes = _sla_collect_children(c, [sla_id])
+        sla = dict(row)
+        sla["tags"] = tags.get(sla_id, [])
+        sla["downtimes"] = downtimes.get(sla_id, [])
+        try:
+            if date_from:
+                try:
+                    d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+                    d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+                except ValueError:
+                    return jsonify({"error": "Format tanggal harus YYYY-MM-DD"}), 400
+                if d_from > d_to:
+                    return jsonify({"error": "Tanggal awal tidak boleh setelah tanggal akhir"}), 400
+                if (d_to - d_from).days > 366:
+                    return jsonify({"error": "Rentang maksimal 366 hari"}), 400
+                start, end = sla_engine.report_bounds(
+                    d_from, d_to, sla.get("timezone") or "Asia/Jakarta"
+                )
+            else:
+                start, end = sla_engine.period_bounds(
+                    sla.get("reporting_period") or "monthly",
+                    sla.get("timezone") or "Asia/Jakarta",
+                )
+            report = sla_engine.build_report(conn, c, sla, start, end, service_id)
+        except sla_engine.SLAValidationError as exc:
+            return jsonify({"error": str(exc)}), 400
+    finally:
+        conn.close()
+
+    report["sla"].update(
+        {
+            "reporting_period": sla.get("reporting_period"),
+            "reporting_label": sla_engine.reporting_label(sla.get("reporting_period")),
+            "timezone": sla.get("timezone"),
+            "timezone_label": sla_engine.timezone_label(sla.get("timezone")),
+            "schedule_label": sla_engine.schedule_label(
+                json.loads(sla["schedule"]) if isinstance(sla.get("schedule"), str) else sla.get("schedule")
+            ),
+            "effective_date": sla.get("effective_date"),
+        }
+    )
+    return jsonify(report)
+
+
+@app.route("/api/services/sla")
+@api_login_required
+def api_services_sla():
+    try:
+        hours = int(request.args.get("hours", 24))
+    except (ValueError, TypeError):
+        hours = 24
+    hours = max(1, min(hours, 720))
+    service_id = request.args.get("service_id", "").strip()
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM services ORDER BY id ASC")
+        all_services = [dict(r) for r in c.fetchall()]
+        services = all_services
+        params = [f"-{hours} hours"]
+        where = "timestamp > datetime('now','localtime',?)"
+        if service_id:
+            try:
+                sid = int(service_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "service_id tidak valid"}), 400
+            services = [s for s in all_services if s["id"] == sid]
+            where += " AND service_id=?"
+            params.append(sid)
+        c.execute(
+            "SELECT service_id, status, latency, timestamp FROM service_history "
+            f"WHERE {where} ORDER BY id ASC",
+            tuple(params),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+
+    by_service = {}
+    for row in rows:
+        by_service.setdefault(row["service_id"], []).append(row)
+
+    out_services = []
+    for svc in services:
+        agg = _svc_agg(by_service.get(svc["id"], []))
+        out_services.append(
+            {
+                "id": svc["id"],
+                "name": svc["name"],
+                "type": svc["type"],
+                "target": _svc_target(svc),
+                "status": svc.get("status"),
+                "latency": svc.get("latency"),
+                "last_checked": svc.get("last_checked"),
+                "ssl_days_left": svc.get("ssl_days_left"),
+                **agg,
+            }
+        )
+
+    total = _svc_agg(rows)
+    timeline = _sla_timeline(rows, hours)
+    return jsonify(
+        {
+            "hours": hours,
+            "service_id": service_id or None,
+            "services": out_services,
+            "service_options": [
+                {"id": s["id"], "name": s["name"]} for s in all_services
+            ],
+            "totals": {
+                **total,
+                "services": len(services),
+                "online_services": sum(
+                    1 for s in services if (s.get("status") or "").upper() == "ONLINE"
+                ),
+                "offline_services": sum(
+                    1 for s in services if (s.get("status") or "").upper() == "OFFLINE"
+                ),
+            },
+            "timeline": timeline,
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    )
+
+
+@app.route("/api/services/sla/report")
+@api_login_required
+def api_services_sla_report():
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+    today = datetime.now().date()
+    if not date_to:
+        date_to = today.strftime("%Y-%m-%d")
+    if not date_from:
+        date_from = (today - timedelta(days=6)).strftime("%Y-%m-%d")
+    try:
+        d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+        d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Format tanggal harus YYYY-MM-DD"}), 400
+    if d_from > d_to:
+        return jsonify({"error": "Tanggal awal tidak boleh setelah tanggal akhir"}), 400
+    if (d_to - d_from).days > 366:
+        return jsonify({"error": "Rentang maksimal 366 hari"}), 400
+    service_id = request.args.get("service_id", "").strip()
+
+    conn, c = get_db()
+    try:
+        c.execute("SELECT * FROM services ORDER BY id ASC")
+        all_services = [dict(r) for r in c.fetchall()]
+        services = all_services
+        params = [f"{date_from} 00:00:00", f"{date_to} 23:59:59"]
+        where = "timestamp >= ? AND timestamp <= ?"
+        if service_id:
+            try:
+                sid = int(service_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "service_id tidak valid"}), 400
+            services = [s for s in all_services if s["id"] == sid]
+            where += " AND service_id=?"
+            params.append(sid)
+        c.execute(
+            "SELECT service_id, status, latency, timestamp FROM service_history "
+            f"WHERE {where} ORDER BY id ASC",
+            tuple(params),
+        )
+        rows = [dict(r) for r in c.fetchall()]
+    finally:
+        conn.close()
+
+    by_service = {}
+    by_day = {}
+    for row in rows:
+        by_service.setdefault(row["service_id"], []).append(row)
+        day = str(row.get("timestamp") or "")[:10]
+        by_day.setdefault(day, []).append(row)
+
+    out_services = []
+    for svc in services:
+        agg = _svc_agg(by_service.get(svc["id"], []))
+        out_services.append(
+            {
+                "id": svc["id"],
+                "name": svc["name"],
+                "type": svc["type"],
+                "target": _svc_target(svc),
+                "status": svc.get("status"),
+                "last_checked": svc.get("last_checked"),
+                "ssl_days_left": svc.get("ssl_days_left"),
+                **agg,
+            }
+        )
+
+    daily = []
+    day = d_from
+    while day <= d_to:
+        key = day.strftime("%Y-%m-%d")
+        agg = _svc_agg(by_day.get(key, []))
+        daily.append({"date": key, **agg})
+        day += timedelta(days=1)
+
+    return jsonify(
+        {
+            "from": date_from,
+            "to": date_to,
+            "days": (d_to - d_from).days + 1,
+            "service_id": service_id or None,
+            "services": out_services,
+            "service_options": [
+                {"id": s["id"], "name": s["name"]} for s in all_services
+            ],
+            "daily": daily,
+            "totals": {
+                **_svc_agg(rows),
+                "services": len(services),
+                "online_services": sum(
+                    1 for s in services if (s.get("status") or "").upper() == "ONLINE"
+                ),
+                "offline_services": sum(
+                    1 for s in services if (s.get("status") or "").upper() == "OFFLINE"
+                ),
+            },
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    )
+
+
 @app.route("/sla")
 @login_required
 def sla_page():
@@ -5251,7 +8422,8 @@ def api_problems():
 
     show: recent (aktif + pulih dalam jendela), problems (aktif saja),
     history (semua status dalam jendela). Filter host/problem (LIKE),
-    severity (csv), age_less_days, ack=all|unack|ack, by_me, sort.
+    severity (csv), recent_days (jendela Recent), age_less_days,
+    ack=all|unack|ack, by_me, sort.
     format=csv mengembalikan CSV siap unduh.
     """
     show = (request.args.get("show") or "recent").lower()
@@ -5271,6 +8443,13 @@ def api_problems():
             age_days = max(1, int(age_raw))
         except (TypeError, ValueError):
             age_days = None
+    recent_raw = (request.args.get("recent_days") or "").strip()
+    recent_days = 7
+    if recent_raw:
+        try:
+            recent_days = max(1, min(int(recent_raw), 3650))
+        except (TypeError, ValueError):
+            recent_days = 7
     ack = (request.args.get("ack") or "all").lower()
     if ack not in ("all", "unack", "ack"):
         ack = "all"
@@ -5292,8 +8471,7 @@ def api_problems():
     if show == "problems":
         where.append("resolved_at IS NULL")
     elif show == "recent":
-        window_days = age_days if age_days is not None else 7
-        cut = (now - timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
+        cut = (now - timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
         where.append("(resolved_at IS NULL OR resolved_at >= ?)")
         params.append(cut)
     if age_days is not None:
@@ -5398,7 +8576,1311 @@ def audit_logs_page():
     return render_template("audit.html")
 
 
+REPORT_PAGES = [
+    ("system", "System information", "Informasi runtime aplikasi, database, dan penjadwal."),
+    ("scheduled", "Scheduled reports", "Laporan yang dikirim otomatis oleh penjadwal."),
+    ("availability", "Availability report", "Ketersediaan host berdasarkan data ping."),
+    ("triggers", "Top 100 triggers", "Trigger yang paling sering muncul beserta durasinya."),
+    ("audit", "Audit log", "Riwayat perubahan konfigurasi dan aktivitas pengguna."),
+    ("actions", "Action log", "Event operasional dan tindakan otomatis sistem."),
+    ("notifications", "Notifications", "Status channel, ambang severity, dan riwayat uji notifikasi."),
+]
+_REPORT_PAGE_MAP = {key: (title, subtitle) for key, title, subtitle in REPORT_PAGES}
+
+_REPORT_JOB_META = {
+    "send_daily_report": (
+        "Laporan harian NMS",
+        "Ringkasan host, alert, dan down event 24 jam.",
+        "Setiap hari, 07:00 WIB",
+    ),
+    "send_fiber_summary": (
+        "Ringkasan fiber",
+        "Status OLT/ODP/ONT dan alarm fiber.",
+        "Setiap hari, 08:05 WIB",
+    ),
+    "send_heartbeat": (
+        "Heartbeat harian",
+        "Status konektivitas seluruh host.",
+        "Setiap hari, 08:00 WIB",
+    ),
+}
+
+def _report_fmt_duration(seconds):
+    if seconds is None:
+        return "—"
+    try:
+        total = max(0, int(float(seconds)))
+    except (TypeError, ValueError):
+        return "—"
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
+def _report_fmt_bytes(size):
+    try:
+        value = float(size)
+    except (TypeError, ValueError):
+        return "—"
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+def _report_cutoff(hours):
+    return (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _reports_system_context():
+    """Data untuk halaman System information (tabel Parameter/Value/Details)."""
+    db_path = resolve_db_path()
+    now = datetime.now()
+    release = os.environ.get("NMS_VERSION", "1.0.0")
+    uptime_s = int((now - app_start_time).total_seconds())
+    uptime = _report_fmt_duration(uptime_s)
+    started_at = app_start_time.strftime("%Y-%m-%d %H:%M:%S")
+    db_backend = (
+        "PostgreSQL"
+        if os.environ.get("DATABASE_BACKEND", "sqlite").lower() != "sqlite"
+        else "SQLite"
+    )
+    try:
+        db_size = os.path.getsize(db_path)
+    except OSError:
+        db_size = 0
+
+    scheduler_running = False
+    scheduler_jobs = 0
+    try:
+        scheduler_running = bool(getattr(scheduler, "running", False))
+        scheduler_jobs = len(scheduler.get_jobs())
+    except Exception:
+        pass
+
+    cutoff_5m = (now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_15m = (now - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff_24h = (now - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+
+    host_total = 0
+    host_active = 0
+    service_total = 0
+    service_online = 0
+    service_offline = 0
+    service_pending = 0
+    ping_items = 0
+    agent_items = 0
+    alert_total = 0
+    alert_active = 0
+    alert_resolved = 0
+    user_total = 0
+    user_online = 0
+    rate_samples = 0
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT COUNT(*) AS cnt FROM hosts")
+            row = c.fetchone()
+            host_total = int((dict(row).get("cnt") if row else 0) or 0)
+
+            c.execute("SELECT ip FROM hosts")
+            host_ips = {
+                str(dict(r).get("ip"))
+                for r in c.fetchall()
+                if dict(r).get("ip")
+            }
+            c.execute(
+                "SELECT DISTINCT host FROM ping_logs "
+                "WHERE timestamp >= ? AND latency IS NOT NULL AND latency >= 0",
+                (cutoff_5m,),
+            )
+            active_ips = {
+                str(dict(r).get("host"))
+                for r in c.fetchall()
+                if dict(r).get("host")
+            }
+            host_active = len(host_ips & active_ips)
+
+            c.execute("SELECT status, COUNT(*) AS cnt FROM services GROUP BY status")
+            for row in c.fetchall():
+                item = dict(row)
+                status = str(item.get("status") or "").upper()
+                count = int(item.get("cnt") or 0)
+                service_total += count
+                if status == "ONLINE":
+                    service_online += count
+                elif status == "OFFLINE":
+                    service_offline += count
+                else:
+                    service_pending += count
+
+            c.execute(
+                "SELECT COUNT(DISTINCT host) AS cnt FROM ping_logs WHERE timestamp >= ?",
+                (cutoff_24h,),
+            )
+            row = c.fetchone()
+            ping_items = int((dict(row).get("cnt") if row else 0) or 0)
+
+            c.execute(
+                "SELECT COUNT(DISTINCT host) AS cnt FROM agent_metrics WHERE timestamp >= ?",
+                (cutoff_24h,),
+            )
+            row = c.fetchone()
+            agent_items = int((dict(row).get("cnt") if row else 0) or 0)
+
+            c.execute(
+                "SELECT COUNT(*) AS cnt, "
+                "SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END) AS active "
+                "FROM alert_history"
+            )
+            row = dict(c.fetchone() or {})
+            alert_total = int(row.get("cnt") or 0)
+            alert_active = int(row.get("active") or 0)
+            alert_resolved = max(0, alert_total - alert_active)
+
+            c.execute("SELECT COUNT(*) AS cnt FROM users")
+            row = c.fetchone()
+            user_total = int((dict(row).get("cnt") if row else 0) or 0)
+
+            c.execute(
+                "SELECT COUNT(*) AS cnt FROM ("
+                " SELECT username FROM users "
+                " WHERE last_login IS NOT NULL AND last_login >= ?"
+                " UNION"
+                " SELECT username FROM audit_logs "
+                " WHERE timestamp >= ? AND username IS NOT NULL AND username != ''"
+                ") AS online_users",
+                (cutoff_15m, cutoff_15m),
+            )
+            row = c.fetchone()
+            user_online = int((dict(row).get("cnt") if row else 0) or 0)
+
+            for table, ts_column in (
+                ("ping_logs", "timestamp"),
+                ("agent_metrics", "timestamp"),
+                ("snmp_traps", "received_at"),
+            ):
+                c.execute(
+                    f"SELECT COUNT(*) AS cnt FROM {table} WHERE {ts_column} >= ?",
+                    (cutoff_5m,),
+                )
+                row = c.fetchone()
+                rate_samples += int((dict(row).get("cnt") if row else 0) or 0)
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    def part(text, css_class=""):
+        return {"text": str(text), "class": css_class}
+
+    host_inactive = max(0, host_total - host_active)
+    item_total = ping_items + agent_items + service_total
+    rate = rate_samples / 300.0 if rate_samples else 0.0
+
+    rows = [
+        {
+            "label": "NMS server berjalan",
+            "value": "Ya",
+            "value_class": "ok",
+            "details": [part(f"{request.host} · up {uptime}")],
+        },
+        {
+            "label": "Uptime server",
+            "value": uptime,
+            "value_class": "",
+            "details": [part(started_at)],
+        },
+        {
+            "label": "Versi NMS server",
+            "value": release,
+            "value_class": "",
+            "details": [part("Build lokal")],
+        },
+        {
+            "label": "Versi frontend",
+            "value": release,
+            "value_class": "",
+            "details": [part("Build lokal")],
+        },
+        {
+            "label": "Pemeriksaan pembaruan terakhir",
+            "value": "Belum pernah",
+            "value_class": "muted",
+            "details": [part("Pemeriksaan otomatis belum tersedia")],
+        },
+        {
+            "label": "Rilis terbaru",
+            "value": release,
+            "value_class": "",
+            "details": [part("Anda menggunakan versi terbaru", "ok")],
+        },
+        {
+            "label": "Jumlah host (aktif/nonaktif)",
+            "value": host_total,
+            "value_class": "",
+            "details": [
+                part(host_active, "ok"),
+                part(host_inactive, "bad"),
+            ],
+        },
+        {
+            "label": "Jumlah layanan (online/offline/pending)",
+            "value": service_total,
+            "value_class": "",
+            "details": [
+                part(service_online, "ok"),
+                part(service_offline, "bad"),
+                part(service_pending, "warn"),
+            ],
+        },
+        {
+            "label": "Jumlah item monitoring (ping/agen/layanan)",
+            "value": item_total,
+            "value_class": "",
+            "details": [
+                part(ping_items),
+                part(agent_items),
+                part(service_total),
+            ],
+        },
+        {
+            "label": "Jumlah trigger (problem/selesai)",
+            "value": alert_total,
+            "value_class": "",
+            "details": [
+                part(alert_active, "bad"),
+                part(alert_resolved, "ok"),
+            ],
+        },
+        {
+            "label": "Jumlah pengguna (online)",
+            "value": user_total,
+            "value_class": "",
+            "details": [part(user_online, "ok")],
+        },
+        {
+            "label": "Performa server yang dibutuhkan, nilai baru per detik",
+            "value": f"{rate:.2f}",
+            "value_class": "",
+            "details": [part(f"Rata-rata 5 menit terakhir ({rate_samples} sampel)")],
+        },
+        {
+            "label": "Database",
+            "value": db_backend,
+            "value_class": "",
+            "details": [part(_report_fmt_bytes(db_size))],
+        },
+        {
+            "label": "Penjadwal",
+            "value": "Aktif" if scheduler_running else "Nonaktif",
+            "value_class": "ok" if scheduler_running else "bad",
+            "details": [part(f"{scheduler_jobs} job")],
+        },
+        {
+            "label": "Global scripts pada NMS server",
+            "value": "Nonaktif",
+            "value_class": "muted",
+            "details": [part("Fitur tidak tersedia")],
+        },
+        {
+            "label": "High availability cluster",
+            "value": "Nonaktif",
+            "value_class": "muted",
+            "details": [part("Mode standalone")],
+        },
+    ]
+
+    return {
+        "system": {
+            "rows": rows,
+            "version": release,
+            "year": now.year,
+            "uptime": uptime,
+            "started_at": started_at,
+            "scheduler_running": scheduler_running,
+            "scheduler_jobs": scheduler_jobs,
+        }
+    }
+
+
+def _reports_scheduled_context():
+    """Data halaman Scheduled reports (filter, tabel, dan status job)."""
+    action = (request.args.get("action") or "").strip().lower()
+    if action == "create":
+        users_list = [
+            {"username": "Admin", "name": "Zabbix", "last_name": "Administrator", "display": "Admin (Zabbix Administrator)"},
+            {"username": "guest", "name": "", "last_name": "", "display": "guest"},
+        ]
+        try:
+            conn, c = get_db()
+            try:
+                c.execute("SELECT username, role FROM users")
+                existing = {u["username"].lower() for u in users_list}
+                for row in c.fetchall():
+                    uname = str(dict(row).get("username") or "")
+                    if uname and uname.lower() not in existing:
+                        users_list.append({
+                            "username": uname,
+                            "name": "",
+                            "last_name": "",
+                            "display": uname,
+                        })
+                        existing.add(uname.lower())
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+        return {
+            "scheduled_action": "create",
+            "users_list": users_list,
+            "app_version": os.environ.get("NMS_VERSION", "1.0.0"),
+            "current_year": datetime.now().year,
+        }
+
+    scheduler_running = False
+    jobs = {}
+    try:
+        scheduler_running = bool(getattr(scheduler, "running", False))
+        jobs = {job.id: job for job in scheduler.get_jobs()}
+    except Exception:
+        pass
+
+    name_q = (request.args.get("name") or "").strip()
+    show = (request.args.get("show") or "all").strip().lower()
+    if show not in ("all", "mine"):
+        show = "all"
+    status = (request.args.get("status") or "any").strip().lower()
+    if status not in ("any", "enabled", "disabled", "expired"):
+        status = "any"
+    sort_dir = (request.args.get("dir") or "asc").strip().lower()
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+
+    last_sent_by_action = {}
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT action, MAX(timestamp) AS last_sent FROM audit_logs "
+                "WHERE action IN ('report.send_daily', 'reports.send') "
+                "GROUP BY action"
+            )
+            last_sent_by_action = {
+                str(dict(row).get("action")): dict(row).get("last_sent")
+                for row in c.fetchall()
+            }
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    rows = []
+    for job_id, (name, desc, schedule) in _REPORT_JOB_META.items():
+        job = jobs.get(job_id)
+        active = bool(
+            scheduler_running
+            and job is not None
+            and getattr(job, "next_run_time", None) is not None
+        )
+        # Sesuai Zabbix: Period = rentang laporan, bukan jam kirim.
+        period = "Previous day"
+        last_sent = (
+            last_sent_by_action.get("report.send_daily")
+            if job_id == "send_daily_report"
+            else None
+        )
+        rows.append(
+            {
+                "id": job_id,
+                "name": name,
+                "description": desc,
+                "owner": "System",
+                "repeats": "Daily",
+                "period": period,
+                "schedule": schedule,
+                "last_sent": last_sent or "Never",
+                "active": active,
+                "status_label": "Enabled" if active else "Disabled",
+            }
+        )
+
+    if name_q:
+        needle = name_q.lower()
+        rows = [
+            row
+            for row in rows
+            if needle in row["name"].lower() or needle in row["description"].lower()
+        ]
+    if show == "mine":
+        username = (current_user.username or "").lower()
+        rows = [row for row in rows if row["owner"].lower() == username]
+    if status == "enabled":
+        rows = [row for row in rows if row["active"]]
+    elif status == "disabled":
+        rows = [row for row in rows if not row["active"]]
+    elif status == "expired":
+        rows = []
+
+    rows.sort(key=lambda row: row["name"].lower(), reverse=(sort_dir == "desc"))
+
+    return {
+        "scheduler_running": scheduler_running,
+        "report_jobs": rows,
+        "filter_name": name_q,
+        "filter_show": show,
+        "filter_status": status,
+        "sort_dir": sort_dir,
+        "next_sort_dir": "desc" if sort_dir == "asc" else "asc",
+        "scheduled_action": "",
+        "app_version": os.environ.get("NMS_VERSION", "1.0.0"),
+        "current_year": datetime.now().year,
+    }
+
+
+def _availability_parse_time(value, now=None):
+    """Parse absolute or relative (now, now-15m, now-2h, now-7d) availability times."""
+    import re
+
+    now = now or datetime.now()
+    value = (value or "").strip()
+    if not value or value.lower() == "now":
+        return now
+    relative = re.fullmatch(r"now-(\d+)([mhd])", value.lower())
+    if relative:
+        amount = int(relative.group(1))
+        unit = relative.group(2)
+        delta = {"m": timedelta(minutes=amount), "h": timedelta(hours=amount), "d": timedelta(days=amount)}[unit]
+        return now - delta
+    for time_format in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value, time_format)
+        except ValueError:
+            continue
+    raise ValueError("Invalid availability time")
+
+
+def _availability_calendar_range(key, now):
+    """Return the calendar-aligned (start, end) range for a Zabbix-style preset."""
+    from datetime import timedelta
+
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if key == "yesterday":
+        return today - timedelta(days=1), today - timedelta(seconds=1)
+    if key == "day_before_yesterday":
+        return today - timedelta(days=2), today - timedelta(days=1) - timedelta(seconds=1)
+    if key == "this_day_last_week":
+        start = today - timedelta(days=7)
+        return start, start + timedelta(days=1) - timedelta(seconds=1)
+    if key == "previous_week":
+        start = today - timedelta(days=today.weekday() + 7)
+        return start, start + timedelta(days=7) - timedelta(seconds=1)
+    if key == "previous_month":
+        first_this_month = today.replace(day=1)
+        start = (first_this_month - timedelta(days=1)).replace(day=1)
+        return start, first_this_month - timedelta(seconds=1)
+    if key == "previous_year":
+        start = today.replace(month=1, day=1, year=today.year - 1)
+        return start, today.replace(month=1, day=1) - timedelta(seconds=1)
+    if key == "today":
+        return today, today + timedelta(days=1) - timedelta(seconds=1)
+    if key == "today_so_far":
+        return today, now
+    if key == "this_week":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=7) - timedelta(seconds=1)
+    if key == "this_week_so_far":
+        return today - timedelta(days=today.weekday()), now
+    if key == "this_month":
+        start = today.replace(day=1)
+        next_month = (start + timedelta(days=32)).replace(day=1)
+        return start, next_month - timedelta(seconds=1)
+    if key == "this_month_so_far":
+        return today.replace(day=1), now
+    if key == "this_year":
+        start = today.replace(month=1, day=1)
+        return start, start.replace(year=start.year + 1) - timedelta(seconds=1)
+    if key == "this_year_so_far":
+        return today.replace(month=1, day=1), now
+    return None
+
+
+def _availability_relative_value(key):
+    """Display value used by the From field for rolling presets."""
+    month_days = {"3m": 90, "6m": 180}
+    year_days = {"1y": 365, "2y": 730}
+    if key in month_days:
+        return "now-%dd" % month_days[key]
+    if key in year_days:
+        return "now-%dd" % year_days[key]
+    return "now-" + key
+
+
+def _merge_availability_intervals(intervals):
+    merged = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1] = (merged[-1][0], end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _availability_interval_seconds(intervals, start=None, end=None):
+    total = 0.0
+    for item_start, item_end in intervals:
+        if end is not None and item_start >= end:
+            continue
+        if start is not None and item_end <= start:
+            continue
+        clipped_start = max(item_start, start) if start is not None else item_start
+        clipped_end = min(item_end, end) if end is not None else item_end
+        total += max(0.0, (clipped_end - clipped_start).total_seconds())
+    return total
+
+
+def _availability_host_ip(host):
+    """Return the IP part of an alert host such as "Router (10.0.0.1)"."""
+    value = str(host or "").strip()
+    match = re.search(r"\((\d{1,3}(?:\.\d{1,3}){3})\)\s*$", value)
+    return match.group(1) if match else value
+
+
+def _availability_alert_intervals(alerts, window_start, window_end):
+    """Group alert rows by host/trigger and merge their overlapping problem intervals."""
+    from datetime import timedelta
+    from collections import defaultdict
+
+    grouped = defaultdict(lambda: {"count": 0, "intervals": []})
+    for alert in alerts:
+        trigger_name = str(alert.get("message") or alert.get("alert_type") or "Availability").strip()
+        key = (alert.get("host"), trigger_name)
+        grouped[key]["count"] += 1
+        try:
+            started = datetime.strptime(str(alert.get("triggered_at"))[:19], "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+        resolved = alert.get("resolved_at")
+        if resolved:
+            try:
+                ended = datetime.strptime(str(resolved)[:19], "%Y-%m-%d %H:%M:%S")
+            except (TypeError, ValueError):
+                ended = window_end
+        elif alert.get("duration_s") is not None:
+            ended = started + timedelta(seconds=max(0, int(alert.get("duration_s") or 0)))
+        else:
+            ended = window_end
+        clipped_start = max(started, window_start)
+        clipped_end = min(ended, window_end)
+        if clipped_end > clipped_start:
+            grouped[key]["intervals"].append((clipped_start, clipped_end))
+    return {
+        key: {"count": value["count"], "intervals": _merge_availability_intervals(value["intervals"])}
+        for key, value in grouped.items()
+    }
+
+
+def _reports_availability_context(mode_override=None):
+    from datetime import timedelta
+
+    presets = [
+        {"key": "2d", "label": "Last 2 days", "seconds": 2 * 86400},
+        {"key": "7d", "label": "Last 7 days", "seconds": 7 * 86400},
+        {"key": "30d", "label": "Last 30 days", "seconds": 30 * 86400},
+        {"key": "3m", "label": "Last 3 months", "seconds": 90 * 86400},
+        {"key": "6m", "label": "Last 6 months", "seconds": 180 * 86400},
+        {"key": "1y", "label": "Last 1 year", "seconds": 365 * 86400},
+        {"key": "2y", "label": "Last 2 years", "seconds": 2 * 365 * 86400},
+        {"key": "yesterday", "label": "Yesterday", "seconds": 86400},
+        {"key": "day_before_yesterday", "label": "Day before yesterday", "seconds": 86400},
+        {"key": "this_day_last_week", "label": "This day last week", "seconds": 86400},
+        {"key": "previous_week", "label": "Previous week", "seconds": 7 * 86400},
+        {"key": "previous_month", "label": "Previous month", "seconds": 30 * 86400},
+        {"key": "previous_year", "label": "Previous year", "seconds": 365 * 86400},
+        {"key": "today", "label": "Today", "seconds": 86400},
+        {"key": "today_so_far", "label": "Today so far", "seconds": 86400},
+        {"key": "this_week", "label": "This week", "seconds": 7 * 86400},
+        {"key": "this_week_so_far", "label": "This week so far", "seconds": 7 * 86400},
+        {"key": "this_month", "label": "This month", "seconds": 30 * 86400},
+        {"key": "this_month_so_far", "label": "This month so far", "seconds": 30 * 86400},
+        {"key": "this_year", "label": "This year", "seconds": 365 * 86400},
+        {"key": "this_year_so_far", "label": "This year so far", "seconds": 365 * 86400},
+        {"key": "5m", "label": "Last 5 minutes", "seconds": 5 * 60},
+        {"key": "15m", "label": "Last 15 minutes", "seconds": 15 * 60},
+        {"key": "30m", "label": "Last 30 minutes", "seconds": 30 * 60},
+        {"key": "1h", "label": "Last 1 hour", "seconds": 3600},
+        {"key": "3h", "label": "Last 3 hours", "seconds": 3 * 3600},
+        {"key": "6h", "label": "Last 6 hours", "seconds": 6 * 3600},
+        {"key": "12h", "label": "Last 12 hours", "seconds": 12 * 3600},
+        {"key": "1d", "label": "Last 1 day", "seconds": 86400},
+    ]
+    preset_columns = [presets[0:7], presets[7:13], presets[13:21], presets[21:]]
+    calendar_keys = {
+        "yesterday", "day_before_yesterday", "this_day_last_week", "previous_week",
+        "previous_month", "previous_year", "today", "today_so_far", "this_week",
+        "this_week_so_far", "this_month", "this_month_so_far", "this_year",
+        "this_year_so_far",
+    }
+    for item in presets:
+        item["kind"] = "calendar" if item["key"] in calendar_keys else "rolling"
+
+    legacy_range = {"24h": "1d", "7d": "7d", "30d": "30d"}
+    selected_key = (request.args.get("time") or legacy_range.get(request.args.get("range"), "1h")).lower()
+    now = datetime.now()
+
+    raw_from = (request.args.get("from") or "").strip()
+    raw_to = (request.args.get("to") or "").strip()
+    custom = bool(raw_from or raw_to)
+    range_error = ""
+    if custom:
+        raw_from = raw_from or "now-1h"
+        raw_to = raw_to or "now"
+        try:
+            start_dt = _availability_parse_time(raw_from, now)
+            end_dt = _availability_parse_time(raw_to, now)
+            if end_dt <= start_dt:
+                raise ValueError("End time must be after start time")
+            selected_key = "custom"
+            selected_label = raw_from + " — " + raw_to
+            from_value, to_value = raw_from, raw_to
+        except (TypeError, ValueError):
+            custom = False
+            range_error = "invalid"
+
+    if not custom:
+        selected = next((item for item in presets if item["key"] == selected_key), None)
+        if selected is None:
+            selected_key = "1h"
+            selected = next(item for item in presets if item["key"] == selected_key)
+        selected_label = selected["label"]
+        if selected["kind"] == "calendar":
+            start_dt, end_dt = _availability_calendar_range(selected_key, now)
+            from_value = start_dt.strftime("%Y-%m-%d %H:%M")
+            to_value = end_dt.strftime("%Y-%m-%d %H:%M")
+        else:
+            end_dt = now
+            start_dt = end_dt - timedelta(seconds=int(selected["seconds"]))
+            from_value = _availability_relative_value(selected_key)
+            to_value = "now"
+
+    if range_error:
+        range_error = (
+            'Invalid time range "%s — %s". Showing %s instead.'
+            % (raw_from, raw_to, selected_label)
+        )
+
+    cutoff = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+    end_cutoff = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    selected_time = {
+        "selected_key": selected_key,
+        "label": selected_label,
+        "from_value": from_value,
+        "to_value": to_value,
+        "custom": custom,
+    }
+
+    mode = (mode_override or request.args.get("mode") or "host").lower()
+    if mode not in ("host", "trigger"):
+        mode = "host"
+
+    stats = {}
+    hosts = []
+    problem_counts = {}
+    alerts = []
+    down_events = 0
+    data_error = False
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT host, COUNT(*) AS samples, "
+                "SUM(CASE WHEN latency IS NOT NULL AND latency >= 0 THEN 1 ELSE 0 END) AS ok, "
+                "AVG(CASE WHEN latency IS NOT NULL AND latency >= 0 THEN latency END) AS avg_latency, "
+                "AVG(packet_loss) AS avg_loss, MAX(timestamp) AS last_seen "
+                "FROM ping_logs WHERE timestamp >= ? AND timestamp <= ? GROUP BY host",
+                (cutoff, end_cutoff),
+            )
+            stats = {dict(r)["host"]: dict(r) for r in c.fetchall()}
+            c.execute("SELECT ip, alias, category FROM hosts ORDER BY ip")
+            hosts = [dict(r) for r in c.fetchall()]
+            c.execute(
+                "SELECT host, COUNT(*) AS problem_count FROM down_events "
+                "WHERE started_at <= ? AND (resolved_at IS NULL OR resolved_at >= ?) "
+                "GROUP BY host",
+                (end_cutoff, cutoff),
+            )
+            problem_counts = {dict(r)["host"]: int(dict(r).get("problem_count") or 0) for r in c.fetchall()}
+            c.execute("SELECT COUNT(*) AS cnt FROM down_events WHERE started_at >= ? AND started_at <= ?", (cutoff, end_cutoff))
+            row = c.fetchone()
+            down_events = int((dict(row).get("cnt") if row else 0) or 0)
+            if mode == "trigger":
+                c.execute(
+                    "SELECT host, alert_type, message, triggered_at, resolved_at, duration_s "
+                    "FROM alert_history WHERE triggered_at <= ? "
+                    "AND (resolved_at IS NULL OR resolved_at >= ?)",
+                    (end_cutoff, cutoff),
+                )
+                alerts = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        data_error = True
+        app.logger.exception("Gagal memuat data availability report")
+
+    alias_by_ip = {h.get("ip"): (h.get("alias") or h.get("ip")) for h in hosts}
+    category_by_ip = {h.get("ip"): (h.get("category") or "—") for h in hosts}
+
+    rows = []
+    window_seconds = max(1.0, (end_dt - start_dt).total_seconds())
+    if mode == "trigger":
+        grouped = _availability_alert_intervals(alerts, start_dt, end_dt)
+        for (host, trigger_name), info in grouped.items():
+            host_ip = _availability_host_ip(host)
+            problem_seconds = _availability_interval_seconds(info["intervals"])
+            availability = round(max(0.0, window_seconds - problem_seconds) / window_seconds * 100, 2)
+            if availability >= 99:
+                status_class, status_label = "ok", "OK"
+            elif availability >= 95:
+                status_class, status_label = "warn", "Warning"
+            else:
+                status_class, status_label = "bad", "Critical"
+            rows.append(
+                {
+                    "host": host,
+                    "host_ip": host_ip,
+                    "name": alias_by_ip.get(host_ip) or alias_by_ip.get(host) or host,
+                    "item_name": trigger_name,
+                    "category": category_by_ip.get(host_ip) or category_by_ip.get(host, "—"),
+                    "trigger_name": trigger_name,
+                    "graph_trigger": trigger_name,
+                    "samples": int(info["count"]),
+                    "ok": 0,
+                    "availability": availability,
+                    "problems": int(info["count"]),
+                    "ok_duration": _report_fmt_duration(max(0.0, window_seconds - problem_seconds)),
+                    "problem_duration": _report_fmt_duration(problem_seconds),
+                    "avg_latency": None,
+                    "avg_loss": None,
+                    "last_seen": None,
+                    "status_class": status_class,
+                    "status_label": status_label,
+                }
+            )
+    else:
+        ips = list(dict.fromkeys([h.get("ip") for h in hosts if h.get("ip")] + list(stats.keys())))
+        for ip in ips:
+            s = stats.get(ip, {})
+            samples = int(s.get("samples") or 0)
+            ok = int(s.get("ok") or 0)
+            availability = round(ok / samples * 100, 2) if samples else None
+            if samples == 0:
+                status_class, status_label = "muted", "No data"
+            elif availability is not None and availability >= 99:
+                status_class, status_label = "ok", "OK"
+            elif availability is not None and availability >= 95:
+                status_class, status_label = "warn", "Warning"
+            else:
+                status_class, status_label = "bad", "Critical"
+            if samples:
+                ok_seconds = window_seconds * ok / samples
+                down_seconds = max(0.0, window_seconds - ok_seconds)
+            else:
+                ok_seconds = down_seconds = None
+            rows.append(
+                {
+                    "host": ip,
+                    "host_ip": ip,
+                    "name": alias_by_ip.get(ip, ip),
+                    "item_name": "ICMP ping",
+                    "category": category_by_ip.get(ip, "—"),
+                    "trigger_name": "Availability",
+                    "graph_trigger": None,
+                    "samples": samples,
+                    "ok": ok,
+                    "availability": availability,
+                    "problems": problem_counts.get(ip, 0),
+                    "ok_duration": _report_fmt_duration(ok_seconds) if samples else None,
+                    "problem_duration": _report_fmt_duration(down_seconds) if samples else None,
+                    "avg_latency": round(float(s.get("avg_latency") or 0), 1) if s.get("avg_latency") is not None else None,
+                    "avg_loss": round(float(s.get("avg_loss") or 0), 1) if s.get("avg_loss") is not None else None,
+                    "last_seen": s.get("last_seen"),
+                    "status_class": status_class,
+                    "status_label": status_label,
+                }
+            )
+
+    rows.sort(key=lambda r: (r["availability"] is None, r["availability"] if r["availability"] is not None else 101, r["host"]))
+    total_samples = sum(r["samples"] for r in rows)
+    total_ok = sum(r["ok"] for r in rows)
+    if mode == "trigger":
+        overall = round(sum(r["availability"] for r in rows) / len(rows), 2) if rows else None
+        monitored = len(rows)
+        event_count = sum(int(r["problems"] or 0) for r in rows)
+    else:
+        overall = round(total_ok / total_samples * 100, 2) if total_samples else None
+        monitored = sum(1 for r in rows if r["samples"] > 0)
+        event_count = down_events
+    below = sum(1 for r in rows if r["availability"] is not None and r["availability"] < 99)
+
+    return {
+        "availability_presets": presets,
+        "availability_preset_columns": preset_columns,
+        "availability_time": selected_time,
+        "availability_mode": mode,
+        "availability_rows": rows,
+        "availability_overall": overall,
+        "availability_total_samples": total_samples,
+        "availability_monitored": monitored,
+        "availability_below": below,
+        "availability_down_events": down_events,
+        "availability_event_count": event_count,
+        "availability_cutoff": cutoff,
+        "availability_range_error": range_error,
+        "availability_data_error": data_error,
+    }
+
+
+def _reports_triggers_context():
+    time_context = _reports_availability_context(mode_override="host")
+    cutoff = time_context["availability_cutoff"]
+    end_cutoff = _availability_parse_time(
+        time_context["availability_time"]["to_value"], datetime.now()
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    rows = []
+    total_alerts = 0
+    active_alerts = 0
+    last_24h = 0
+    active_total = 0
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT host, alert_type, severity, message, COUNT(*) AS total, "
+                "SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END) AS active, "
+                "MAX(triggered_at) AS last_seen, "
+                "SUM(COALESCE(duration_s, 0)) AS total_duration "
+                "FROM alert_history WHERE triggered_at >= ? AND triggered_at <= ? "
+                "GROUP BY host, alert_type, severity, message "
+                "ORDER BY total DESC, last_seen DESC LIMIT 100",
+                (cutoff, end_cutoff),
+            )
+            rows = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT COUNT(*) AS cnt FROM alert_history")
+            total_alerts = int((dict(c.fetchone()).get("cnt") or 0))
+            c.execute("SELECT COUNT(*) AS cnt FROM alert_history WHERE resolved_at IS NULL")
+            active_alerts = int((dict(c.fetchone()).get("cnt") or 0))
+            c.execute("SELECT COUNT(*) AS cnt FROM alert_history WHERE triggered_at >= ? AND triggered_at <= ?", (cutoff, end_cutoff))
+            last_24h = int((dict(c.fetchone()).get("cnt") or 0))
+            active_total = sum(int(r.get("active") or 0) for r in rows)
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat Top triggers report")
+
+    for index, row in enumerate(rows, start=1):
+        row["rank"] = index
+        row["total"] = int(row.get("total") or 0)
+        row["active"] = int(row.get("active") or 0)
+        row["total_duration"] = _report_fmt_duration(row.get("total_duration"))
+    return {
+        "trigger_rows": rows,
+        "trigger_total_alerts": total_alerts,
+        "trigger_active_alerts": active_alerts,
+        "trigger_last_24h": last_24h,
+        "trigger_groups": len(rows),
+        "trigger_active_total": active_total,
+        "trigger_presets": time_context["availability_presets"],
+        "trigger_preset_columns": time_context["availability_preset_columns"],
+        "trigger_time": time_context["availability_time"],
+        "availability_time": time_context["availability_time"],
+        "availability_presets": time_context["availability_presets"],
+        "availability_preset_columns": time_context["availability_preset_columns"],
+        "availability_range_error": time_context["availability_range_error"],
+        "trigger_range_error": time_context["availability_range_error"],
+        "trigger_data_error": time_context["availability_data_error"],
+    }
+
+
+def _reports_audit_context():
+    q = (request.args.get("q") or "").strip()
+    action = (request.args.get("action") or "").strip()
+    try:
+        page_no = int(request.args.get("p", 1))
+    except (TypeError, ValueError):
+        page_no = 1
+    per_page = 50
+
+    where = []
+    params = []
+    if q:
+        like = f"%{q}%"
+        where.append("(username LIKE ? OR action LIKE ? OR target LIKE ? OR detail LIKE ?)")
+        params.extend([like, like, like, like])
+    if action:
+        where.append("action = ?")
+        params.append(action)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    rows = []
+    actions = []
+    total = 0
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")
+            actions = [dict(r)["action"] for r in c.fetchall() if dict(r).get("action")]
+            c.execute("SELECT COUNT(*) AS cnt FROM audit_logs" + where_sql, params)
+            total = int((dict(c.fetchone()).get("cnt") or 0))
+            pages = max(1, (total + per_page - 1) // per_page)
+            page_no = min(max(page_no, 1), pages)
+            offset = (page_no - 1) * per_page
+            c.execute(
+                "SELECT id, timestamp, username, action, target, detail, ip_address "
+                "FROM audit_logs" + where_sql + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                params + [per_page, offset],
+            )
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        page_no = 1
+        pages = 1
+        offset = 0
+    else:
+        pages = max(1, (total + per_page - 1) // per_page)
+        offset = (page_no - 1) * per_page
+
+    return {
+        "audit_rows": rows,
+        "audit_total": total,
+        "audit_page": page_no,
+        "audit_pages": pages,
+        "audit_q": q,
+        "audit_action": action,
+        "audit_actions": actions,
+        "audit_per_page": per_page,
+        "audit_from": offset + 1 if rows else 0,
+        "audit_to": offset + len(rows),
+    }
+
+
+def _reports_actions_context():
+    q = (request.args.get("q") or "").strip()
+    event = (request.args.get("event") or "").strip()
+    try:
+        page_no = int(request.args.get("p", 1))
+    except (TypeError, ValueError):
+        page_no = 1
+    per_page = 50
+
+    where = []
+    params = []
+    if q:
+        like = f"%{q}%"
+        where.append("(event_type LIKE ? OR host LIKE ? OR message LIKE ?)")
+        params.extend([like, like, like])
+    if event:
+        where.append("event_type = ?")
+        params.append(event)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    rows = []
+    event_counts = []
+    total = 0
+    pages = 1
+    offset = 0
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT event_type, COUNT(*) AS cnt FROM system_logs "
+                "GROUP BY event_type ORDER BY cnt DESC, event_type"
+            )
+            event_counts = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT COUNT(*) AS cnt FROM system_logs" + where_sql, params)
+            total = int((dict(c.fetchone()).get("cnt") or 0))
+            pages = max(1, (total + per_page - 1) // per_page)
+            page_no = min(max(page_no, 1), pages)
+            offset = (page_no - 1) * per_page
+            c.execute(
+                "SELECT id, timestamp, event_type, host, message FROM system_logs"
+                + where_sql
+                + " ORDER BY id DESC LIMIT ? OFFSET ?",
+                params + [per_page, offset],
+            )
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    return {
+        "action_rows": rows,
+        "action_total": total,
+        "action_page": page_no,
+        "action_pages": pages,
+        "action_q": q,
+        "action_event": event,
+        "action_events": event_counts,
+        "action_from": offset + 1 if rows else 0,
+        "action_to": offset + len(rows),
+    }
+
+
+def _reports_notifications_context():
+    status = channel_status()
+    channels = [
+        {
+            "key": "telegram",
+            "label": "Telegram",
+            "active": bool(status.get("telegram")),
+            "min_sev": get_setting("notify_telegram_min_sev", "info", type_cast=str),
+            "detail": "Bot token + chat ID terkonfigurasi"
+            if status.get("telegram")
+            else "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID belum lengkap",
+        },
+        {
+            "key": "email",
+            "label": "Email (SMTP)",
+            "active": bool(status.get("email")),
+            "min_sev": get_setting("notify_email_min_sev", "critical", type_cast=str),
+            "detail": "SMTP dan penerima terkonfigurasi"
+            if status.get("email")
+            else "SMTP_HOST / SMTP_FROM / ALERT_EMAIL_TO belum lengkap",
+        },
+        {
+            "key": "webhook",
+            "label": "Webhook",
+            "active": bool(status.get("webhook")),
+            "min_sev": get_setting("notify_webhook_min_sev", "warning", type_cast=str),
+            "detail": "URL webhook terkonfigurasi" if status.get("webhook") else "WEBHOOK_URL belum diisi",
+        },
+    ]
+
+    recent_tests = []
+    latest_alerts = []
+    alert_counts = []
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT timestamp, username, detail FROM audit_logs "
+                "WHERE action = 'notify.test' ORDER BY id DESC LIMIT 10"
+            )
+            recent_tests = [dict(r) for r in c.fetchall()]
+            c.execute(
+                "SELECT severity, COUNT(*) AS cnt FROM alert_history "
+                "WHERE triggered_at >= ? GROUP BY severity ORDER BY cnt DESC",
+                (_report_cutoff(24),),
+            )
+            alert_counts = [dict(r) for r in c.fetchall()]
+            c.execute(
+                "SELECT host, alert_type, severity, message, triggered_at, resolved_at "
+                "FROM alert_history ORDER BY id DESC LIMIT 8"
+            )
+            latest_alerts = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    return {
+        "notification_channels": channels,
+        "notification_active": sum(1 for ch in channels if ch["active"]),
+        "notification_tests": recent_tests,
+        "notification_alerts": latest_alerts,
+        "notification_alert_counts": alert_counts,
+        "notification_last_test": recent_tests[0]["timestamp"] if recent_tests else None,
+        "notification_total_24h": sum(int(r.get("cnt") or 0) for r in alert_counts),
+    }
+
+
+@app.route("/reports")
+@login_required
+def reports_index():
+    return redirect(url_for("reports_page", page="system"))
+
+
+def _availability_graph_buckets(start_dt, end_dt, points=None, problem_intervals=None):
+    """Aggregate availability into chart buckets instead of drawing raw samples."""
+    range_seconds = max(1.0, (end_dt - start_dt).total_seconds())
+    bucket_count = max(12, min(60, int(range_seconds // 3600) + 1))
+    bucket_seconds = range_seconds / bucket_count
+    if range_seconds <= 2 * 86400:
+        label_format = "%H:%M"
+    elif range_seconds <= 7 * 86400:
+        label_format = "%a %H:%M"
+    elif range_seconds <= 60 * 86400:
+        label_format = "%d %b"
+    else:
+        label_format = "%b %Y"
+
+    buckets = []
+    for index in range(bucket_count):
+        bucket_start = start_dt + timedelta(seconds=bucket_seconds * index)
+        bucket_end = start_dt + timedelta(seconds=bucket_seconds * (index + 1))
+        buckets.append(
+            {
+                "label": bucket_start.strftime(label_format),
+                "start": bucket_start.strftime("%Y-%m-%d %H:%M:%S"),
+                "availability": None,
+                "samples": 0,
+            }
+        )
+
+    if problem_intervals is not None:
+        for index, bucket in enumerate(buckets):
+            bucket_start = start_dt + timedelta(seconds=bucket_seconds * index)
+            bucket_end = start_dt + timedelta(seconds=bucket_seconds * (index + 1))
+            problem_seconds = _availability_interval_seconds(problem_intervals, bucket_start, bucket_end)
+            bucket["availability"] = round(max(0.0, 1.0 - problem_seconds / bucket_seconds) * 100, 2)
+        return buckets
+
+    for point in points or []:
+        try:
+            timestamp = datetime.strptime(str(point.get("timestamp"))[:19], "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+        index = int((timestamp - start_dt).total_seconds() // bucket_seconds)
+        index = min(max(index, 0), bucket_count - 1)
+        bucket = buckets[index]
+        bucket["samples"] = int(bucket.get("samples") or 0) + 1
+        latency = point.get("latency")
+        ok = latency is not None and float(latency) >= 0
+        bucket["_ok"] = int(bucket.get("_ok") or 0) + (1 if ok else 0)
+
+    for bucket in buckets:
+        samples = int(bucket.get("samples") or 0)
+        bucket["availability"] = round(int(bucket.pop("_ok", 0)) / samples * 100, 2) if samples else None
+    return buckets
+
+
+@app.route("/reports/availability/graph")
+@login_required
+def reports_availability_graph():
+    host = (request.args.get("host") or "").strip()
+    trigger = (request.args.get("trigger") or "").strip()
+    from_value = (request.args.get("from") or "").strip()
+    to_value = (request.args.get("to") or "").strip()
+    try:
+        now = datetime.now()
+        end_dt = _availability_parse_time(to_value or "now", now)
+        start_dt = _availability_parse_time(from_value, now) if from_value else end_dt - timedelta(hours=1)
+        if end_dt <= start_dt:
+            raise ValueError("Invalid time range")
+    except (TypeError, ValueError):
+        abort(400, description="Invalid availability graph time range")
+
+    points = []
+    alerts = []
+    host_name = host
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT alias FROM hosts WHERE ip = ? LIMIT 1", (_availability_host_ip(host),))
+            host_row = c.fetchone()
+            if host_row and host_row["alias"]:
+                host_name = host_row["alias"]
+            if trigger:
+                c.execute(
+                    "SELECT host, alert_type, message, triggered_at, resolved_at, duration_s "
+                    "FROM alert_history WHERE host = ? AND message = ? "
+                    "AND triggered_at <= ? AND (resolved_at IS NULL OR resolved_at >= ?)",
+                    (host, trigger, end_dt.strftime("%Y-%m-%d %H:%M:%S"), start_dt.strftime("%Y-%m-%d %H:%M:%S")),
+                )
+                alerts = [dict(row) for row in c.fetchall()]
+            else:
+                c.execute(
+                    "SELECT timestamp, latency FROM ping_logs "
+                    "WHERE host = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
+                    (host, start_dt.strftime("%Y-%m-%d %H:%M:%S"), end_dt.strftime("%Y-%m-%d %H:%M:%S")),
+                )
+                points = [dict(row) for row in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal mengambil data graph availability untuk host %s", host)
+
+    range_seconds = max(1.0, (end_dt - start_dt).total_seconds())
+    if trigger:
+        grouped = _availability_alert_intervals(alerts, start_dt, end_dt)
+        intervals = grouped.get((host, trigger), {}).get("intervals", [])
+        problem_seconds = _availability_interval_seconds(intervals)
+        availability = round(max(0.0, range_seconds - problem_seconds) / range_seconds * 100, 2)
+        buckets = _availability_graph_buckets(start_dt, end_dt, problem_intervals=intervals)
+        has_data = True
+    else:
+        ok = sum(1 for point in points if point.get("latency") is not None and float(point["latency"]) >= 0)
+        total = len(points)
+        availability = (ok * 100 / total) if total else 0
+        buckets = _availability_graph_buckets(start_dt, end_dt, points=points)
+        has_data = bool(points)
+
+    return render_template(
+        "availability_report_graph.html",
+        graph_host=host,
+        graph_host_name=host_name,
+        graph_trigger=trigger,
+        graph_mode="trigger" if trigger else "host",
+        graph_from=start_dt,
+        graph_to=end_dt,
+        graph_buckets=buckets,
+        graph_availability=availability,
+        graph_has_data=has_data,
+    )
+
+
+@app.route("/reports/<page>")
+@login_required
+def reports_page(page):
+    page = (page or "").lower()
+    if page not in _REPORT_PAGE_MAP:
+        abort(404)
+    title, subtitle = _REPORT_PAGE_MAP[page]
+
+    context = {}
+    if page == "system":
+        context.update(_reports_system_context())
+    elif page == "scheduled":
+        context.update(_reports_scheduled_context())
+    elif page == "availability":
+        context.update(_reports_availability_context())
+    elif page == "triggers":
+        context.update(_reports_triggers_context())
+    elif page == "audit":
+        context.update(_reports_audit_context())
+    elif page == "actions":
+        context.update(_reports_actions_context())
+    elif page == "notifications":
+        context.update(_reports_notifications_context())
+
+    return render_template(
+        "reports.html",
+        report_page=page,
+        report_title=title,
+        report_subtitle=subtitle,
+        report_pages=REPORT_PAGES,
+        is_admin=getattr(current_user, "role", None) == "admin",
+        **context,
+    )
+
+
 @app.route("/api/traps")
+
 @api_login_required
 def api_list_traps():
     """Riwayat SNMP trap terstruktur (tabel snmp_traps)."""

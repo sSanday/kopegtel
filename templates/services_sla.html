@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — SLA: daftar definisi SLA, SLO, dan status">
+<title>SLA · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/services.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/services_common.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/services_sla.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
+          <span>Monitoring</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
+          <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+          <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
+          <a href="/maps" class="nav-link nav-sub-link" data-nav="maps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link active" data-nav="sla" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title" style="font-size:16px;">SLA</h1>
+        <p class="page-sub">Daftar SLA, SLO, dan status</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">A</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">Admin</span>
+              <span class="user-btn-role">Kopegtel</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page svc-page svc-zabbix" id="konten">
+      <div class="zbx-page-head">
+        <h1 class="zbx-page-title">SLA</h1>
+        <div class="zbx-page-actions">
+          <button class="zbx-help-btn" id="btnSlaHelp" type="button" title="Bantuan halaman SLA" aria-label="Bantuan halaman SLA">?</button>
+          <button class="zbx-btn primary" id="btnCreateSla" type="button">Create SLA</button>
+        </div>
+      </div>
+
+      <section class="zbx-filter zbx-sla-filter" id="slaFilterPanel" aria-label="Filter SLA">
+        <div class="zbx-filter-head">
+          <button class="zbx-filter-toggle" id="btnToggleSlaFilter" type="button" aria-expanded="true" aria-controls="slaFilterForm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8v6l-4 2v-8L3 4z"/></svg>
+            <span>Filter</span>
+          </button>
+        </div>
+        <form class="zbx-filter-body" id="slaFilterForm">
+          <div class="zbx-filter-grid" id="slaFilterBody">
+            <div class="zbx-filter-col zbx-filter-col-main">
+              <div class="zbx-frow">
+                <label for="slaFilterName">Name</label>
+                <input class="zbx-input" type="text" id="slaFilterName" autocomplete="off">
+              </div>
+              <div class="zbx-frow">
+                <span class="zbx-frow-label" id="slaFilterStatusLabel">Status</span>
+                <div class="zbx-seg" id="slaFilterStatus" role="group" aria-labelledby="slaFilterStatusLabel">
+                  <button type="button" class="on" data-status="any" aria-pressed="true">Any</button>
+                  <button type="button" data-status="enabled" aria-pressed="false">Enabled</button>
+                  <button type="button" data-status="disabled" aria-pressed="false">Disabled</button>
+                </div>
+              </div>
+            </div>
+            <div class="zbx-filter-col zbx-filter-col-tags">
+              <div class="zbx-frow">
+                <span class="zbx-frow-label" id="slaFilterTagOpLabel">Service tags</span>
+                <div class="zbx-seg" id="slaFilterTagOp" role="group" aria-labelledby="slaFilterTagOpLabel">
+                  <button type="button" class="on" data-eval="and_or" aria-pressed="true">And/Or</button>
+                  <button type="button" data-eval="or" aria-pressed="false">Or</button>
+                </div>
+              </div>
+              <div class="zbx-tag-list" id="slaFilterTagList">
+                <div class="zbx-tag-row" data-sla-tag-row>
+                  <input class="zbx-input zbx-tag-name" type="text" placeholder="tag" aria-label="Tag name" autocomplete="off">
+                  <select class="zbx-input zbx-tag-op" aria-label="Tag operator">
+                    <option value="exists">Exists</option>
+                    <option value="equals">Equals</option>
+                    <option value="contains" selected>Contains</option>
+                    <option value="not_exists">Does not exist</option>
+                    <option value="not_equal">Does not equal</option>
+                    <option value="not_contains">Does not contain</option>
+                  </select>
+                  <input class="zbx-input zbx-tag-value" type="text" placeholder="value" aria-label="Tag value" autocomplete="off">
+                  <button type="button" class="zbx-text-link" data-remove-tag>Remove</button>
+                </div>
+              </div>
+              <button type="button" class="zbx-text-link zbx-add-tag" id="btnAddSlaTag">Add</button>
+            </div>
+          </div>
+          <div class="zbx-filter-sep"></div>
+          <div class="zbx-filter-actions">
+            <button class="zbx-btn primary" type="submit" id="btnApplySlaFilter">Apply</button>
+            <button class="zbx-btn" type="button" id="btnResetSlaFilter">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="zbx-table-card zbx-sla-card" aria-label="Daftar SLA">
+        <div class="zbx-sla-table-wrap">
+          <table class="zbx-table zbx-sla-table">
+            <caption class="sr-only">Daftar SLA</caption>
+            <colgroup>
+              <col class="zbx-sla-col-check">
+              <col class="zbx-sla-col-name">
+              <col class="zbx-sla-col-slo">
+              <col class="zbx-sla-col-date">
+              <col class="zbx-sla-col-period">
+              <col class="zbx-sla-col-tz">
+              <col class="zbx-sla-col-schedule">
+              <col class="zbx-sla-col-report">
+              <col class="zbx-sla-col-status">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="zbx-col-check" scope="col"><input class="zbx-check" type="checkbox" id="slaSelectAll" aria-label="Pilih semua SLA"></th>
+                <th scope="col" aria-sort="ascending">
+                  <button class="zbx-sla-sort" id="slaSortName" type="button">
+                    Name
+                    <svg class="zbx-sla-sort-arrow" id="slaSortArrow" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1.5L9 8H1z" fill="currentColor"/></svg>
+                  </button>
+                </th>
+                <th scope="col">SLO</th>
+                <th scope="col">Effective date</th>
+                <th scope="col">Reporting period</th>
+                <th scope="col">Timezone</th>
+                <th scope="col">Schedule</th>
+                <th scope="col">SLA report</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody id="slaBody" aria-busy="true">
+              <tr>
+                <td colspan="9" class="zbx-sla-empty-cell">
+                  <div class="zbx-sla-empty" role="status">
+                    <span class="zbx-spinner" aria-hidden="true"></span>
+                    <span>Memuat data…</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="zbx-sla-foot">
+          <span class="zbx-sla-selected" id="slaSelectedCount">0 selected</span>
+          <button class="zbx-btn" id="btnSlaEnable" type="button" disabled>Enable</button>
+          <button class="zbx-btn" id="btnSlaDisable" type="button" disabled>Disable</button>
+          <button class="zbx-btn" id="btnSlaDelete" type="button" disabled>Delete</button>
+          <span class="zbx-sla-info" id="slaTableInfo" aria-live="polite">Displaying 0 of 0 found</span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ============ DIALOG CREATE SLA ============ -->
+<dialog class="svc-dialog zbx-dialog svc-zabbix zbx-sla-dialog" id="slaDialog" aria-labelledby="slaDialogTitle">
+  <div class="zbx-dialog-head">
+    <h2 id="slaDialogTitle">New SLA</h2>
+    <button class="zbx-dialog-help" id="btnSlaDialogHelp" type="button" title="Bantuan SLA" aria-label="Bantuan SLA">?</button>
+    <button class="zbx-dialog-x" id="btnCloseSlaDialog" type="button" aria-label="Tutup">&times;</button>
+  </div>
+
+  <div class="zbx-sla-tabs" role="tablist" aria-label="Bagian SLA">
+    <button class="zbx-sla-tab on" id="tabSlaGeneral" type="button" role="tab" aria-selected="true" aria-controls="slaGeneralPane" data-sla-tab="general">SLA</button>
+    <button class="zbx-sla-tab" id="tabSlaDowntimes" type="button" role="tab" aria-selected="false" aria-controls="slaDowntimesPane" data-sla-tab="downtimes" tabindex="-1">Excluded downtimes</button>
+  </div>
+
+  <div class="zbx-dialog-body zbx-sla-dialog-body">
+    <section id="slaGeneralPane" role="tabpanel" aria-labelledby="tabSlaGeneral">
+      <div class="zbx-sla-form-row">
+        <label class="zbx-sla-form-label" for="slaName"><span class="zbx-req">*</span> Name</label>
+        <div class="zbx-sla-control">
+          <input class="zbx-input zbx-sla-name-input" type="text" id="slaName" maxlength="255" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row">
+        <label class="zbx-sla-form-label" for="slaSlo"><span class="zbx-req">*</span> SLO</label>
+        <div class="zbx-sla-control zbx-sla-inline">
+          <input class="zbx-input zbx-sla-slo" type="number" id="slaSlo" min="0" max="100" step="0.01" value="99.9">
+          <span class="zbx-sla-unit">%</span>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row">
+        <span class="zbx-sla-form-label" id="slaReportingLabel">Reporting period</span>
+        <div class="zbx-seg zbx-sla-seg" id="slaReporting" role="group" aria-labelledby="slaReportingLabel">
+          <button type="button" data-value="daily">Daily</button>
+          <button type="button" data-value="weekly" class="on">Weekly</button>
+          <button type="button" data-value="monthly">Monthly</button>
+          <button type="button" data-value="quarterly">Quarterly</button>
+          <button type="button" data-value="annually">Annually</button>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row">
+        <label class="zbx-sla-form-label" for="slaTimezone">Time zone</label>
+        <div class="zbx-sla-control">
+          <select class="zbx-input zbx-sla-tz" id="slaTimezone">
+            <option value="Asia/Jakarta" data-label="Asia/Jakarta" selected>System default: (UTC+07:00) Asia/Jakarta (WIB)</option>
+            <option value="Asia/Ho_Chi_Minh" data-label="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh</option>
+            <option value="Asia/Singapore" data-label="Asia/Singapore">Asia/Singapore</option>
+            <option value="Asia/Bangkok" data-label="Asia/Bangkok">Asia/Bangkok</option>
+            <option value="UTC" data-label="UTC">UTC</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row zbx-sla-form-row-top">
+        <span class="zbx-sla-form-label" id="slaScheduleLabel">Schedule</span>
+        <div class="zbx-sla-control">
+          <div class="zbx-seg zbx-sla-seg" id="slaSchedule" role="group" aria-labelledby="slaScheduleLabel">
+            <button type="button" data-value="24x7" class="on">24x7</button>
+            <button type="button" data-value="custom">Custom</button>
+          </div>
+          <div class="zbx-sla-custom-schedule" id="slaScheduleCustom" hidden>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDaySunday" data-schedule-day="sunday" aria-label="Sunday">
+              <label for="slaDaySunday">Sunday</label>
+              <input class="zbx-input" type="text" id="slaDaySundayHours" data-schedule-hours="sunday" placeholder="8:00-17:00, ..." aria-label="Sunday hours" autocomplete="off" disabled>
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDayMonday" data-schedule-day="monday" aria-label="Monday" checked>
+              <label for="slaDayMonday">Monday</label>
+              <input class="zbx-input" type="text" id="slaDayMondayHours" data-schedule-hours="monday" value="8:00-17:00" placeholder="8:00-17:00, ..." aria-label="Monday hours" autocomplete="off">
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDayTuesday" data-schedule-day="tuesday" aria-label="Tuesday" checked>
+              <label for="slaDayTuesday">Tuesday</label>
+              <input class="zbx-input" type="text" id="slaDayTuesdayHours" data-schedule-hours="tuesday" value="8:00-17:00" placeholder="8:00-17:00, ..." aria-label="Tuesday hours" autocomplete="off">
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDayWednesday" data-schedule-day="wednesday" aria-label="Wednesday" checked>
+              <label for="slaDayWednesday">Wednesday</label>
+              <input class="zbx-input" type="text" id="slaDayWednesdayHours" data-schedule-hours="wednesday" value="8:00-17:00" placeholder="8:00-17:00, ..." aria-label="Wednesday hours" autocomplete="off">
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDayThursday" data-schedule-day="thursday" aria-label="Thursday" checked>
+              <label for="slaDayThursday">Thursday</label>
+              <input class="zbx-input" type="text" id="slaDayThursdayHours" data-schedule-hours="thursday" value="8:00-17:00" placeholder="8:00-17:00, ..." aria-label="Thursday hours" autocomplete="off">
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDayFriday" data-schedule-day="friday" aria-label="Friday" checked>
+              <label for="slaDayFriday">Friday</label>
+              <input class="zbx-input" type="text" id="slaDayFridayHours" data-schedule-hours="friday" value="8:00-17:00" placeholder="8:00-17:00, ..." aria-label="Friday hours" autocomplete="off">
+            </div>
+            <div class="zbx-sla-schedule-day">
+              <input class="zbx-check" type="checkbox" id="slaDaySaturday" data-schedule-day="saturday" aria-label="Saturday">
+              <label for="slaDaySaturday">Saturday</label>
+              <input class="zbx-input" type="text" id="slaDaySaturdayHours" data-schedule-hours="saturday" placeholder="8:00-17:00, ..." aria-label="Saturday hours" autocomplete="off" disabled>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row">
+        <label class="zbx-sla-form-label" for="slaEffectiveDate"><span class="zbx-req">*</span> Effective date</label>
+        <div class="zbx-sla-control zbx-sla-date">
+          <input class="zbx-input" type="text" id="slaEffectiveDate" inputmode="numeric" maxlength="10" placeholder="YYYY-MM-DD" autocomplete="off">
+          <button class="zbx-sla-cal" id="btnSlaCalendar" type="button" aria-label="Pilih tanggal efektif" title="Pilih tanggal efektif" aria-haspopup="dialog" aria-controls="slaCalendarPopover" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17"/></svg>
+          </button>
+          <div class="zbx-sla-calendar" id="slaCalendarPopover" role="dialog" aria-label="Kalender" hidden>
+            <div class="zbx-sla-cal-head">
+              <button class="zbx-sla-cal-nav" type="button" data-cal-nav="-1" aria-label="Bulan sebelumnya">&#8249;</button>
+              <span class="zbx-sla-cal-title" id="slaCalendarTitle" aria-live="polite"></span>
+              <button class="zbx-sla-cal-nav" type="button" data-cal-nav="1" aria-label="Bulan berikutnya">&#8250;</button>
+            </div>
+            <div class="zbx-sla-cal-weekdays" aria-hidden="true">
+              <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+            </div>
+            <div class="zbx-sla-cal-grid" id="slaCalendarGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row zbx-sla-form-row-top">
+        <span class="zbx-sla-form-label"><span class="zbx-req">*</span> Service tags</span>
+        <div class="zbx-sla-control">
+          <div class="zbx-sla-tags">
+            <table class="zbx-sla-tags-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Operation</th>
+                  <th scope="col">Value</th>
+                  <th scope="col"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="slaFormTagList">
+                <tr data-sla-form-tag>
+                  <td><input class="zbx-input" type="text" data-sla-tag-name maxlength="64" placeholder="tag" aria-label="Tag name" autocomplete="off"></td>
+                  <td><select class="zbx-input" data-sla-tag-op aria-label="Tag operation"><option value="equals" selected>Equals</option><option value="contains">Contains</option></select></td>
+                  <td><input class="zbx-input" type="text" data-sla-tag-value maxlength="64" placeholder="value" aria-label="Tag value" autocomplete="off"></td>
+                  <td><button type="button" class="zbx-text-link" data-remove-sla-tag>Remove</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <button class="zbx-text-link zbx-sla-add-tag" id="btnAddSlaFormTag" type="button">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row zbx-sla-form-row-top">
+        <label class="zbx-sla-form-label" for="slaDescription">Description</label>
+        <div class="zbx-sla-control">
+          <textarea class="zbx-input zbx-sla-description" id="slaDescription" rows="5" maxlength="2048"></textarea>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-row">
+        <label class="zbx-sla-form-label" for="slaEnabled">Enabled</label>
+        <div class="zbx-sla-control">
+          <input class="zbx-check" type="checkbox" id="slaEnabled" checked>
+        </div>
+      </div>
+
+      <div class="zbx-sla-form-error" id="slaFormError" role="alert" hidden></div>
+    </section>
+
+    <section id="slaDowntimesPane" role="tabpanel" aria-labelledby="tabSlaDowntimes" hidden>
+      <div class="zbx-sla-downtime-layout">
+        <span class="zbx-sla-downtime-label">Excluded downtimes</span>
+        <div class="zbx-sla-downtime-table-wrap">
+          <table class="zbx-sla-downtime-table">
+            <caption class="sr-only">Excluded downtimes</caption>
+            <colgroup>
+              <col class="zbx-sla-downtime-col-start">
+              <col class="zbx-sla-downtime-col-duration">
+              <col class="zbx-sla-downtime-col-name">
+              <col class="zbx-sla-downtime-col-actions">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Start time</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Name</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="slaDowntimeList"></tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4"><button class="zbx-text-link" id="btnAddSlaDowntime" type="button">Add</button></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="zbx-dialog-foot">
+    <span class="zbx-dialog-spacer"></span>
+    <button class="zbx-btn primary" id="btnSlaDialogAdd" type="button">Add</button>
+    <button class="zbx-btn" id="btnSlaDialogCancel" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<!-- ============ DIALOG NEW EXCLUDED DOWNTIME ============ -->
+<dialog class="svc-dialog zbx-dialog svc-zabbix zbx-downtime-dialog" id="downtimeDialog" aria-labelledby="downtimeDialogTitle">
+  <div class="zbx-dialog-head zbx-downtime-dialog-head">
+    <h2 id="downtimeDialogTitle">New excluded downtime</h2>
+    <button class="zbx-dialog-x" id="btnCloseDowntimeDialog" type="button" aria-label="Tutup">&times;</button>
+  </div>
+
+  <div class="zbx-downtime-body">
+    <div class="zbx-downtime-row">
+      <label class="zbx-downtime-label" for="downtimeName"><span class="zbx-downtime-req">*</span> Name</label>
+      <div class="zbx-downtime-control">
+        <input class="zbx-input zbx-downtime-name" type="text" id="downtimeName" maxlength="128" placeholder="short description" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="zbx-downtime-row">
+      <label class="zbx-downtime-label" for="downtimeStart"><span class="zbx-downtime-req">*</span> Start time</label>
+      <div class="zbx-downtime-control zbx-downtime-start-field">
+        <input class="zbx-input zbx-downtime-start" type="text" id="downtimeStart" maxlength="16" placeholder="YYYY-MM-DD HH:MM" autocomplete="off">
+        <input class="zbx-downtime-date-native" type="date" id="downtimeDatePicker" tabindex="-1" aria-hidden="true">
+        <button class="zbx-sla-cal zbx-downtime-cal" id="btnDowntimeCalendar" type="button" aria-label="Pilih tanggal mulai" title="Pilih tanggal mulai">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="1.5"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="zbx-downtime-row">
+      <label class="zbx-downtime-label" for="downtimeDays"><span class="zbx-downtime-req">*</span> Duration</label>
+      <div class="zbx-downtime-control zbx-downtime-duration">
+        <input class="zbx-input zbx-downtime-days" type="number" id="downtimeDays" min="0" max="999" step="1" value="0" aria-label="Days">
+        <span class="zbx-downtime-unit">Days</span>
+        <select class="zbx-input zbx-downtime-hours" id="downtimeHours" aria-label="Hours"></select>
+        <span class="zbx-downtime-unit">Hours</span>
+        <select class="zbx-input zbx-downtime-minutes" id="downtimeMinutes" aria-label="Minutes"></select>
+        <span class="zbx-downtime-unit">Minutes</span>
+      </div>
+    </div>
+
+    <div class="zbx-downtime-error" id="downtimeError" role="alert" hidden></div>
+  </div>
+
+  <div class="zbx-dialog-foot zbx-downtime-dialog-foot">
+    <span class="zbx-dialog-spacer"></span>
+    <button class="zbx-btn primary" id="btnDowntimeAdd" type="button">Add</button>
+    <button class="zbx-btn" id="btnDowntimeCancel" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<!-- ============ DIALOG KONFIRMASI HAPUS SLA ============ -->
+<dialog class="svc-dialog zbx-dialog svc-zabbix zbx-confirm-dialog" id="slaConfirmDialog" aria-labelledby="slaConfirmTitle" aria-describedby="slaConfirmMessage">
+  <div class="zbx-dialog-head">
+    <h2 id="slaConfirmTitle">Delete SLA</h2>
+    <button class="zbx-dialog-x" id="btnCloseSlaConfirm" type="button" aria-label="Tutup">&times;</button>
+  </div>
+
+  <div class="zbx-dialog-body zbx-confirm-body">
+    <p class="zbx-confirm-message" id="slaConfirmMessage"></p>
+    <ul class="zbx-confirm-list" id="slaConfirmList"></ul>
+    <p class="zbx-confirm-note">Riwayat laporan SLA ikut terhapus dan tidak bisa dikembalikan.</p>
+    <div class="zbx-confirm-error" id="slaConfirmError" role="alert" hidden></div>
+  </div>
+
+  <div class="zbx-dialog-foot">
+    <span class="zbx-dialog-spacer"></span>
+    <button class="zbx-btn danger" id="btnConfirmSlaDelete" type="button">Delete</button>
+    <button class="zbx-btn" id="btnCancelSlaDelete" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<div class="svc-toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>
