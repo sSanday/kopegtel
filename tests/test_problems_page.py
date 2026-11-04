@@ -146,6 +146,22 @@ class ProblemsTest(unittest.TestCase):
         self.assertNotIn("10.0.0.3", hosts)
         self.assertEqual(len(rows), 3)
 
+    def test_recent_days_mengatur_jendela_pulih(self):
+        rows7 = self.client.get(
+            "/api/problems?show=recent&recent_days=7"
+        ).get_json()["problems"]
+        self.assertNotIn("10.0.0.3", {row["host"] for row in rows7})
+        rows60 = self.client.get(
+            "/api/problems?show=recent&recent_days=60"
+        ).get_json()["problems"]
+        self.assertIn("10.0.0.3", {row["host"] for row in rows60})
+        # Nilai tidak valid kembali ke default 7 hari, bukan error.
+        fallback = self.client.get(
+            "/api/problems?show=recent&recent_days=abc"
+        )
+        self.assertEqual(fallback.status_code, 200)
+        self.assertEqual(fallback.get_json()["count"], len(rows7))
+
     def test_recent_memuat_yang_pulih_muda(self):
         conn, c = m.get_db()
         now = datetime.now()

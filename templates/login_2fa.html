@@ -23,6 +23,8 @@
   } catch (_) {}
 })();
 </script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
 </head>
 <body{% if error %} class="login-page is-login-failed"{% else %} class="login-page"{% endif %}>
 <a class="skip-link" href="#form2fa">Lewati ke formulir verifikasi</a>

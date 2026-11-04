@@ -1,9 +1,30 @@
 """nms.auth — decorator auth untuk API."""
 
 from functools import wraps
+from urllib.parse import urlparse
 
 from flask import jsonify, request
 from flask_login import current_user
+
+
+def _same_origin_request():
+    """False bila Origin/Referer ada dan tidak cocok dengan Host.
+
+    Request non-browser (tanpa Origin/Referer) tetap diizinkan selama
+    lolos pemeriksaan JSON/X-Requested-With di bawah.
+    """
+    host = (request.host or "").lower()
+    for header in ("Origin", "Referer"):
+        value = request.headers.get(header)
+        if not value:
+            continue
+        try:
+            parsed = urlparse(value)
+        except ValueError:
+            return False
+        if not parsed.netloc or parsed.netloc.lower() != host:
+            return False
+    return True
 
 
 def api_login_required(f):
@@ -24,6 +45,11 @@ def api_login_required(f):
                             "error": "CSRF check failed. Gunakan Content-Type: application/json atau X-Requested-With."
                         }
                     ),
+                    403,
+                )
+            if not _same_origin_request():
+                return (
+                    jsonify({"error": "CSRF check failed. Origin tidak cocok."}),
                     403,
                 )
         return f(*args, **kwargs)

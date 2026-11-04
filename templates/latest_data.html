@@ -23,96 +23,334 @@
 })();
 </script>
 <style>
-/* ============ Halaman Latest data (struktur Zabbix, tema aplikasi) ============ */
-.zbx { padding: 18px 22px 40px; max-width: 1400px; }
 
-.zbx-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-.zbx-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
+/* ============ Halaman Latest data (klon layout Zabbix) ============ */
+.zbx { padding: 16px 20px 40px; max-width: 1440px; }
+
+.zbx-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.zbx-head h1 { font-size: 21px; font-weight: 600; letter-spacing: 0; margin: 0; }
 .zbx-head .spacer { flex: 1; }
-.zbx-help { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%; color: var(--text-2); text-decoration: none; font-weight: 700; border: 1px solid var(--border); }
-.zbx-help:hover { color: var(--text); background: var(--surface-2); }
-
-/* ---- Bar filter ---- */
-.zbx-bar { display: flex; align-items: center; gap: 10px; }
-.zbx-fbtn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 8px;
-  background: var(--surface-2); color: var(--text-2);
-  border: 1px solid var(--border); cursor: pointer;
+.zbx-help {
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 2px; border: none; background: none; color: var(--text-2);
+  font-weight: 700; font-size: 15px; cursor: pointer; font-family: inherit; text-decoration: none;
 }
-.zbx-fbtn:hover { color: var(--text); }
-.zbx-fbtn.on { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+.zbx-help:hover { background: var(--surface-2); color: var(--text); }
+
+/* ---- Kartu filter ---- */
+.zbx-card { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.zbx-bar {
+  display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 8px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+}
 .zbx-bar .grow { flex: 1; }
-.zbx-total { color: var(--text-3); font-size: 12.5px; }
+.zbx-iconbtn {
+  width: 26px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 2px; color: var(--text-2);
+  cursor: pointer; font-size: 15px; padding: 0; font-family: inherit;
+}
+.zbx-iconbtn:hover { background: var(--surface); color: var(--text); }
+.zbx-iconbtn.on { color: var(--accent); }
+.zbx-iconbtn svg { width: 16px; height: 16px; }
+.zbx-card.collapsed .zbx-fbody,
+.zbx-card.collapsed .zbx-factions { display: none; }
+.zbx-card.collapsed .zbx-collapse svg { transform: rotate(180deg); }
 
-/* ---- Panel filter ---- */
-.zbx-filter {
-  margin-top: 8px; padding: 16px 18px 14px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+/* ---- Isi panel filter ---- */
+.zbx-fbody { padding: 14px 20px 0; }
+.zbx-fgrid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 0 24px; }
+.zbx-fcol { min-width: 0; }
+.frow {
+  display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 6px 10px;
+  align-items: center; min-height: 30px; margin-bottom: 2px;
 }
-.zbx-filter.hidden { display: none; }
-.zbx-fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 48px; }
-@media (max-width: 980px) { .zbx-fgrid { grid-template-columns: 1fr; } }
-.zbx-frow { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; min-height: 34px; }
-.zbx-frow > label.f { text-align: right; font-size: 12px; color: var(--text-2); font-weight: 500; }
-.zbx-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; max-width: 100%; justify-self: start; }
-.zbx-seg button {
-  border: none; background: var(--surface-2); color: var(--text-2);
-  font-size: 12.5px; font-weight: 500; padding: 7px 13px; cursor: pointer;
-  border-right: 1px solid var(--border); font-family: inherit;
+.zbx-fcol:first-child .frow { grid-template-columns: 80px minmax(0, 1fr); }
+.frow > .flabel { text-align: right; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.frow.stack { align-items: start; }
+.frow.stack > .flabel { padding-top: 6px; }
+.zbx-filter input[type="text"],
+.zbx-filter input[type="number"],
+.zbx-filter select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 2px;
+  height: 28px; padding: 0 8px; font-size: 12.5px; font-family: inherit;
+  box-sizing: border-box; min-width: 0;
 }
-.zbx-seg button:last-child { border-right: none; }
-.zbx-seg button:hover { color: var(--text); }
-.zbx-seg button.on { background: var(--accent-btn); color: var(--on-primary); font-weight: 600; }
-.zbx-input {
-  width: 100%; box-sizing: border-box;
-  background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 7px 10px; font-size: 13px; font-family: inherit;
+.zbx-filter input[type="text"]::placeholder { color: var(--text-3); }
+.zbx-filter input:focus, .zbx-filter select:focus {
+  outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce;
 }
-.zbx-input::placeholder { color: var(--text-3); }
-.zbx-input:focus { outline: none; border-color: var(--accent); }
-.zbx-cb { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
-.zbx-cb input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
-.zbx-cb:hover { color: var(--text); }
-.zbx-factions { display: flex; justify-content: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
-.zbx-btn {
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
-  border-radius: 8px; font-weight: 600; font-size: 13px; padding: 8px 18px; cursor: pointer; font-family: inherit;
+.inline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.inline > input[type="text"], .inline > .growin { flex: 1; }
+.picker-inline { position: relative; }
+.btnselect {
+  height: 28px; padding: 0 12px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 2px; font-size: 12.5px;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
 }
-.zbx-btn:hover { background: var(--accent-soft); }
-.zbx-btn.primary { background: var(--accent-btn); color: var(--on-primary); border-color: transparent; }
-.zbx-btn.primary:hover { filter: brightness(1.08); }
+.btnselect:hover { border-color: var(--text-3); }
+.seg { display: inline-flex; flex-wrap: nowrap; }
+.seg button {
+  height: 28px; padding: 0 11px; background: var(--surface); border: 1px solid var(--border);
+  border-right: none; color: var(--text-2); font-size: 12.5px; font-family: inherit;
+  cursor: pointer; white-space: nowrap;
+}
+.seg button:first-child { border-radius: 2px 0 0 2px; }
+.seg button:last-child { border-right: 1px solid var(--border); border-radius: 0 2px 2px 0; }
+.seg button:hover:not(.on) { background: var(--surface-2); color: var(--text); }
+.seg button.on { background: #5d6d7e; border-color: #5d6d7e; color: #fff; }
+.seg.tight button { padding: 0 6px; }
+.showtags-line { flex-wrap: nowrap; }
+#tagRows { margin-top: 5px; }
+.tag-name-label { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.cb {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2);
+  cursor: pointer; white-space: nowrap; user-select: none;
+}
+.cb:hover { color: var(--text); }
+.cb input[type="checkbox"], .th-cb input, .td-cb input {
+  width: 13px; height: 13px; margin: 0; accent-color: #2e77ce; cursor: pointer;
+}
+.tagrow { gap: 4px; margin: 0 0 4px; }
+.tagrow .tagname { flex: 0 0 90px; width: 90px; }
+.tagrow .tagop { flex: 0 1 167px; width: 167px; min-width: 91px; }
+.tagrow .tagvalue { flex: 1 1 80px; min-width: 50px; }
+.tagrow .linkbtn { flex: 0 0 auto; }
+.tag-add { margin: 1px 0 2px; line-height: 1.2; }
+#tagPriority { width: 100%; max-width: 300px; }
+.linkbtn {
+  background: none; border: none; padding: 0; color: #2e77ce; font-size: 12.5px;
+  font-family: inherit; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.linkbtn:hover { text-decoration: underline; }
+.zbx-factions {
+  display: flex; justify-content: center; gap: 7px; margin-top: 12px; padding: 12px 0 14px;
+  border-top: 1px solid var(--border);
+}
+.zbtn {
+  height: 29px; padding: 0 17px; border-radius: 2px; border: 1px solid #2e77ce;
+  background: var(--surface); color: #2e77ce; font-size: 12.5px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.zbtn:hover { background: rgba(46, 119, 206, .08); }
+.zbtn.primary { background: #2e77ce; color: #fff; }
+.zbtn.primary:hover { background: #2b6cbb; }
+
+/* Dropdown Select sederhana (tanpa modal) */
+.ld-menu {
+  position: absolute; z-index: 30; top: calc(100% + 2px); left: 0; right: 0;
+  max-height: 220px; overflow: auto; padding: 4px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 2px; box-shadow: 0 8px 24px rgba(0,0,0,.24);
+}
+.ld-menu[hidden] { display: none; }
+.ld-opt {
+  display: block; width: 100%; text-align: left; border: none; background: none;
+  color: var(--text); font: inherit; font-size: 12.5px; padding: 6px 8px;
+  border-radius: 2px; cursor: pointer;
+}
+.ld-opt:hover { background: var(--surface-2); }
+.ld-empty { padding: 8px; color: var(--text-3); font-size: 12px; }
+
+/* ---- Dialog pilih Host groups (hanya halaman Latest data) ---- */
+.host-groups-dialog {
+  --hz-link: #6aa9ff;
+  --hz-link-hover: #9cc7ff;
+  border: 1px solid var(--border); border-radius: 3px; background: var(--surface);
+  color: var(--text); font-size: 13px;
+  width: min(748px, calc(100vw - 40px)); max-width: 748px;
+  margin: auto; min-height: 199px; box-sizing: border-box;
+  padding: 16px 16px 15px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+}
+.host-groups-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.host-groups-dialog[open] { display: flex; flex-direction: column; }
+.host-groups-dialog h2 {
+  margin: 0 26px 8px 0; font-size: 17px; font-weight: 600; line-height: 24px;
+  color: var(--text);
+}
+.host-groups-dialog .hgd-close {
+  position: absolute; top: 9px; right: 9px; width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 2px; background: none; color: var(--text-3);
+  font-size: 26px; line-height: 1; font-family: inherit; cursor: pointer; padding: 0;
+}
+.host-groups-dialog .hgd-close:hover { background: var(--surface-2); color: var(--text); }
+.host-groups-dialog .hgd-table { display: flex; flex-direction: column; min-width: 0; }
+.host-groups-dialog .hgd-head {
+  display: flex; align-items: center; gap: 11px; height: 42px; padding: 0 1px;
+  border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px;
+}
+.host-groups-dialog .hgd-head input,
+.host-groups-dialog .grouplist input {
+  width: 16px; height: 16px; flex: 0 0 auto; margin: 0;
+  accent-color: var(--hz-link); cursor: pointer;
+}
+.host-groups-dialog .grouplist {
+  flex: 1; max-height: 300px; margin: 0; padding: 0;
+  overflow: auto; border: none; border-radius: 0;
+}
+.host-groups-dialog .grouplist label {
+  display: flex; align-items: center; gap: 11px;
+  min-height: 50px; padding: 14px 1px;
+  border-bottom: 1px solid var(--border);
+  color: var(--hz-link); font-size: 13px; cursor: pointer;
+}
+.host-groups-dialog .grouplist label:hover { background: var(--surface-2); }
+.host-groups-dialog .grouplist label:last-child { border-bottom: 1px solid var(--border); }
+.host-groups-dialog .hint { padding: 15px 1px; margin: 0; color: var(--text-3); font-size: 12px; }
+.host-groups-dialog form {
+  margin: auto 0 0; padding: 11px 0 0;
+  display: flex; justify-content: flex-end; gap: 9px;
+}
+.host-groups-dialog .zbtn {
+  height: 33px; min-width: 83px; padding: 0 20px;
+  border: 1px solid var(--hz-link); border-radius: 2px;
+  background: var(--surface); color: var(--hz-link);
+  font-size: 13px; font-weight: 600;
+}
+.host-groups-dialog .zbtn:hover { background: var(--surface-2); }
+.host-groups-dialog .zbtn.primary {
+  background: var(--hz-link); border-color: var(--hz-link); color: #fff;
+}
+.host-groups-dialog .zbtn.primary:hover { background: var(--hz-link-hover); border-color: var(--hz-link-hover); }
+[data-theme="light"] .host-groups-dialog {
+  --hz-link: #2e77ce;
+  --hz-link-hover: #235fa8;
+  background: #fff; border-color: #c7d0d6; color: #1f2c33;
+}
+[data-theme="light"] .host-groups-dialog .hgd-close { color: #a7b0b6; }
+[data-theme="light"] .host-groups-dialog .hgd-close:hover { background: #eef1f3; color: #4b5a63; }
+[data-theme="light"] .host-groups-dialog .hgd-head { border-color: #d9e0e4; color: #333; }
+[data-theme="light"] .host-groups-dialog .grouplist label { border-color: #d9e0e4; color: #0275b8; }
+[data-theme="light"] .host-groups-dialog .grouplist label:hover { background: #f2f7fb; }
+[data-theme="light"] .host-groups-dialog .zbtn {
+  border-color: #0275b8; background: #fff; color: #0275b8;
+}
+[data-theme="light"] .host-groups-dialog .zbtn:hover { background: #eef6fc; }
+[data-theme="light"] .host-groups-dialog .zbtn.primary {
+  background: #0275b8; border-color: #0275b8; color: #fff;
+}
+[data-theme="light"] .host-groups-dialog .zbtn.primary:hover { background: #02679f; border-color: #02679f; }
+
+/* ---- Dialog pilih Hosts (hanya halaman Latest data) ---- */
+.host-pick-dialog {
+  width: min(668px, calc(100vw - 40px));
+  max-width: 668px;
+  min-height: 496px;
+}
+.host-pick-dialog .hpd-filter {
+  display: grid; grid-template-columns: 84px minmax(0, 302px) auto;
+  gap: 6px; align-items: center; justify-content: start;
+  padding: 2px 0 16px;
+}
+.hpd-flabel { color: var(--text-2); font-size: 12.5px; text-align: right; white-space: nowrap; }
+.hpd-input {
+  height: 24px; padding: 0 7px; box-sizing: border-box; min-width: 0;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 2px; font-family: inherit; font-size: 12.5px;
+}
+.hpd-input::placeholder { color: var(--text-3); }
+.hpd-input:focus { outline: 1px solid #2e77ce; outline-offset: -1px; border-color: #2e77ce; }
+.hpd-select {
+  height: 24px; padding: 0 12px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 2px; font-family: inherit;
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.hpd-select:hover { border-color: var(--text-3); }
+.hpd-table { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.hpd-head {
+  display: flex; align-items: center; gap: 11px; height: 34px; padding: 0 1px;
+  border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px;
+}
+.hpd-head input, .hpd-list input {
+  width: 16px; height: 16px; flex: 0 0 auto; margin: 0;
+  accent-color: var(--hz-link); cursor: pointer;
+}
+.hpd-list { flex: 1; max-height: 300px; overflow: auto; }
+.hpd-list[hidden] { display: none; }
+.hpd-row {
+  display: flex; align-items: center; gap: 11px; min-height: 30px;
+  padding: 4px 1px; border-bottom: 1px solid var(--border);
+}
+.hpd-row:hover { background: var(--surface-2); }
+.hpd-name { color: var(--hz-link); font-size: 13px; text-decoration: none; cursor: pointer; }
+.hpd-name:hover, .hpd-name:focus-visible { text-decoration: underline; }
+.hpd-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; min-height: 250px; padding: 24px 0;
+  text-align: center; color: var(--text-3);
+}
+.hpd-empty[hidden] { display: none; }
+.hpd-empty svg { width: 40px; height: 40px; margin-bottom: 10px; stroke-width: 1.5; }
+.hpd-empty .t1 { margin: 0; color: var(--text-2); font-size: 15px; }
+.hpd-empty .t2 { margin: 0; font-size: 12.5px; color: var(--text-3); }
+
+/* ---- Dialog pilih Host groups dari dialog Hosts ---- */
+.host-group-pick-dialog {
+  width: min(708px, calc(100vw - 40px));
+  max-width: 708px;
+  min-height: 166px;
+}
+.hgp-table { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.hgp-head {
+  display: flex; align-items: center; height: 34px; padding: 0 1px;
+  border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px;
+}
+.hgp-list { flex: 1; max-height: 260px; overflow: auto; }
+.hgp-item {
+  display: flex; align-items: center; width: 100%; min-height: 31px;
+  padding: 4px 6px; border: 0; border-bottom: 1px solid var(--border);
+  background: none; color: var(--hz-link); font-family: inherit; font-size: 13px;
+  text-align: left; cursor: pointer;
+}
+.hgp-item:hover, .hgp-item:focus-visible {
+  background: rgba(46, 119, 206, .10); text-decoration: underline; outline: none;
+}
+.hgp-empty { padding: 15px 1px; margin: 0; color: var(--text-3); font-size: 12px; }
+.hgp-empty[hidden] { display: none; }
+[data-theme="light"] .host-pick-dialog .hpd-head,
+[data-theme="light"] .host-pick-dialog .hpd-row,
+[data-theme="light"] .host-group-pick-dialog .hgp-head,
+[data-theme="light"] .host-group-pick-dialog .hgp-item { border-color: #d9e0e4; }
+[data-theme="light"] .host-pick-dialog .hpd-row:hover { background: #f2f7fb; }
+[data-theme="light"] .host-pick-dialog .hpd-empty,
+[data-theme="light"] .host-pick-dialog .hpd-empty .t2 { color: #89969d; }
+[data-theme="light"] .host-pick-dialog .hpd-empty .t1 { color: #53636b; }
+[data-theme="light"] .host-group-pick-dialog .hgp-item:hover,
+[data-theme="light"] .host-group-pick-dialog .hgp-item:focus-visible { background: #e7f1fb; }
 
 /* ---- Tabel hasil ---- */
 .zbx-table-wrap {
   margin-top: 10px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
 }
-.zbx-scroll { overflow-x: auto; }
-table.zbx { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.zbx thead th {
-  text-align: left; font-weight: 600; color: var(--text-2);
-  padding: 10px 10px; white-space: nowrap; border-bottom: 1px solid var(--border);
-  background: var(--surface); font-size: 12.5px;
+.zbx-scroll { overflow-x: auto; min-height: 360px; }
+table.latest-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1120px; }
+table.latest-table thead th {
+  text-align: left; font-weight: 600; color: var(--text-2); background: var(--surface);
+  padding: 9px 10px; white-space: nowrap; border-bottom: 1px solid var(--border); font-size: 12px;
 }
-table.zbx thead th .th-sort {
-  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 4px; padding: 0; font-family: inherit;
+table.latest-table thead th .th-sort {
+  background: none; border: none; color: #2e77ce; font: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; padding: 0;
+  font-family: inherit; font-size: 12px; font-weight: 600;
 }
-table.zbx thead th .th-sort:hover { color: var(--text); }
-.chev-mini { width: 11px; height: 11px; transition: transform .15s; }
+table.latest-table thead th .th-sort:hover { text-decoration: underline; }
+.chev-mini { width: 10px; height: 10px; transition: transform .15s; }
 .chev-mini.asc { transform: rotate(180deg); }
-table.zbx tbody td { padding: 10px 10px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-2); }
-table.zbx tbody tr:hover td { background: var(--surface-2); }
-table.zbx tbody tr:last-child td { border-bottom: none; }
-td.hostc { min-width: 170px; }
+th.th-cb, td.td-cb { width: 34px; padding-right: 0; text-align: center; }
+table.latest-table tbody td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+  color: var(--text-2); vertical-align: middle;
+}
+table.latest-table tbody tr:hover td { background: var(--surface-2); }
+table.latest-table tbody tr:last-child td { border-bottom: none; }
+td.hostc { min-width: 190px; }
 .host-name { color: var(--text); font-weight: 600; }
 .host-link { color: var(--text); font-weight: 600; text-decoration: none; }
-.host-link:hover { color: var(--accent); text-decoration: underline; }
+.host-link:hover { color: #2e77ce; text-decoration: underline; }
 .host-ip { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-td.namec { min-width: 150px; color: var(--text); }
+td.namec { min-width: 170px; color: var(--text); }
 .item-detail { margin-top: 3px; font-size: 11.5px; color: var(--text-3); font-weight: 400; }
 td.checkc { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-3); font-size: 12.5px; }
 td.valc { white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -126,19 +364,63 @@ td.changec { white-space: nowrap; font-variant-numeric: tabular-nums; font-size:
 .chg.down { color: #3fb27f; }
 .tagchip {
   display: inline-block; background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-3); border-radius: 999px; padding: 2px 9px; font-size: 11px; white-space: nowrap;
+  color: var(--text-2); border-radius: 2px; padding: 1px 7px; font-size: 11px;
+  white-space: nowrap; margin-right: 4px;
 }
 td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
 .src-badge {
-  display: inline-block; border-radius: 6px; padding: 2px 8px;
+  display: inline-block; border-radius: 2px; padding: 1px 7px;
   font-size: 10.5px; font-weight: 700; letter-spacing: .02em; line-height: 16px;
   background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border);
 }
-.zbx-empty { padding: 42px 12px; text-align: center; color: var(--text-3); font-size: 13px; }
-.zbx-empty svg { width: 34px; height: 34px; opacity: .5; margin-bottom: 8px; }
-.zbx-empty .big { font-size: 14.5px; color: var(--text-2); font-weight: 600; margin-bottom: 4px; }
-.zbx-foot { display: flex; align-items: center; gap: 18px; padding: 10px 12px; color: var(--text-3); font-size: 12px; }
-.zbx-foot .grow { flex: 1; }
+/* ---- Item Not supported ---- */
+.val-na { color: #d9a13c; font-size: 11.5px; font-weight: 600; }
+.info-na {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; margin-right: 6px; border-radius: 50%;
+  color: #d9a13c; background: rgba(217, 161, 60, .12); cursor: help;
+  vertical-align: middle;
+}
+.info-na svg { width: 12px; height: 12px; }
+.row-na td.namec { color: var(--text-2); }
+/* ---- Grup baris per host ---- */
+tr.group-head td {
+  padding: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+tr.group-head:first-child td { border-top: none; }
+.group-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; background: none; border: none; color: var(--text);
+  font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.group-toggle:hover { background: var(--surface); }
+.group-toggle .gchev {
+  width: 12px; height: 12px; flex: 0 0 auto; color: var(--text-3);
+  transition: transform .15s;
+}
+.group-toggle.collapsed .gchev { transform: rotate(-90deg); }
+.gh-name { font-weight: 600; }
+.gh-ip { color: var(--text-3); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.gh-group {
+  color: var(--text-2); font-size: 11px; border: 1px solid var(--border);
+  border-radius: 2px; padding: 0 6px; line-height: 16px;
+}
+.gh-count {
+  margin-left: auto; color: var(--text-3); font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.gh-na { color: #d9a13c; }
+tr.grp-hidden { display: none; }
+.zbx-filter input[aria-invalid="true"] {
+  border-color: #e5484d; outline-color: #e5484d;
+}
+.latest-table td.zbx-empty {
+  height: 300px; padding: 0 12px; text-align: center; vertical-align: middle;
+  color: var(--text-3); font-size: 13.5px; border-bottom: none;
+}
+.zbx-empty svg { width: 44px; height: 44px; opacity: .45; margin-bottom: 10px; }
+.zbx-empty .big { font-size: 15px; color: var(--text-2); font-weight: 400; margin-bottom: 4px; }
 
 /* toast */
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 500; }
@@ -151,12 +433,22 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
 .toast.success svg { color: #3fb27f; }
 .toast.error svg { color: #e5484d; }
 
-@media (max-width: 720px) {
-  .zbx { padding: 14px 12px 30px; }
-  .zbx-frow { grid-template-columns: 1fr; }
-  .zbx-frow > label.f { text-align: left; }
+@media (max-width: 1100px) {
+  .zbx-fgrid { grid-template-columns: 1fr; }
+  .showtags-line { flex-wrap: wrap; }
 }
+@media (max-width: 720px) {
+  .zbx { padding: 12px 10px 30px; }
+  .frow, .zbx-fcol:first-child .frow { grid-template-columns: 1fr; }
+  .frow > .flabel { text-align: left; }
+  .tagrow { flex-wrap: wrap; }
+  .tagrow .tagname, .tagrow .tagop, .tagrow .tagvalue { flex: 1 1 auto; width: auto; min-width: 0; }
+}
+
 </style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -188,6 +480,31 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
           <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
         </div>
       </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+
       <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
       <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
     </nav>
@@ -234,77 +551,122 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
         <a class="zbx-help" href="#" title="Latest data — nilai terkini item pantauan: CPU, memori, storage, suhu, latensi ping, bandwidth" onclick="return false" aria-label="Bantuan">?</a>
       </div>
 
-      <!-- ======== BAR FILTER ======== -->
-      <div class="zbx-bar">
-        <button class="zbx-fbtn on" id="filterToggle" aria-expanded="true" aria-controls="filterPanel" aria-label="Tampilkan atau sembunyikan panel filter">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
-        </button>
-        <div class="grow"></div>
-        <span class="zbx-total" id="totalLabel"></span>
-      </div>
-
-      <!-- ======== PANEL FILTER ======== -->
-      <div class="zbx-filter" id="filterPanel">
-        <div class="zbx-fgrid">
-          <!-- kolom kiri -->
-          <div>
-            <div class="zbx-frow">
-              <label class="f" for="fGroup">Host groups</label>
-              <input class="zbx-input" id="fGroup" list="groupOptions" placeholder="semua grup (kategori)" autocomplete="off">
-              <datalist id="groupOptions"></datalist>
-            </div>
-            <div class="zbx-frow">
-              <label class="f" for="fHost">Hosts</label>
-              <input class="zbx-input" id="fHost" list="hostOptions" placeholder="nama atau IP host" autocomplete="off">
-              <datalist id="hostOptions"></datalist>
-            </div>
-            <div class="zbx-frow">
-              <label class="f" for="fName">Name</label>
-              <input class="zbx-input" id="fName" placeholder="nama item, mis. CPU" autocomplete="off">
-            </div>
-          </div>
-          <!-- kolom kanan -->
-          <div>
-            <div class="zbx-frow">
-              <label class="f">Urutan</label>
-              <div class="zbx-seg" id="segSort">
-                <button type="button" data-sort="name_asc" class="on">Nama ↑</button>
-                <button type="button" data-sort="name_desc">Nama ↓</button>
-                <button type="button" data-sort="check_desc">Cek terbaru</button>
-                <button type="button" data-sort="check_asc">Cek terlama</button>
-              </div>
-            </div>
-            <div class="zbx-frow">
-              <label class="f">Sumber</label>
-              <div class="zbx-seg" id="segSource">
-                <button type="button" data-source="all" class="on">Semua</button>
-                <button type="button" data-source="snmp">SNMP</button>
-                <button type="button" data-source="agent">Agent</button>
-                <button type="button" data-source="ping">Ping</button>
-              </div>
-            </div>
-            <div class="zbx-frow">
-              <label class="f">Show details</label>
-              <label class="zbx-cb"><input type="checkbox" id="optDetails">Tampilkan rincian item (nilai sebelumnya)</label>
-            </div>
-          </div>
+      <!-- ======== KARTU FILTER ======== -->
+      <div class="zbx-card" id="filterCard">
+        <div class="zbx-bar">
+          <button class="zbx-iconbtn on" id="filterToggle" type="button" aria-expanded="true" aria-controls="filterPanel" aria-label="Tampilkan atau sembunyikan panel filter">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
+          </button>
+          <div class="grow"></div>
+          <button class="zbx-iconbtn zbx-collapse" id="filterCollapse" type="button" aria-controls="filterPanel" aria-label="Ciutkan panel filter">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
         </div>
-        <div class="zbx-factions">
-          <button class="zbx-btn" id="btnSave">Simpan sebagai</button>
-          <button class="zbx-btn primary" id="btnApply">Terapkan</button>
-          <button class="zbx-btn" id="btnReset">Atur ulang</button>
+
+        <div class="zbx-fbody zbx-filter" id="filterPanel">
+          <div class="zbx-fgrid">
+            <!-- kolom kiri -->
+            <div class="zbx-fcol">
+              <div class="frow">
+                <label class="flabel" for="fGroup">Host groups</label>
+                <div class="inline picker-inline">
+                  <input type="text" id="fGroup" list="groupOptions" placeholder="type here to search" autocomplete="off">
+                  <button class="btnselect" id="btnGroupSelect" type="button">Select</button>
+                </div>
+              </div>
+              <div class="frow">
+                <label class="flabel" for="fHost">Hosts</label>
+                <div class="inline picker-inline">
+                  <input type="text" id="fHost" list="hostOptions" placeholder="type here to search" autocomplete="off">
+                  <button class="btnselect" id="btnHostSelect" type="button">Select</button>
+                </div>
+              </div>
+              <div class="frow">
+                <label class="flabel" for="fName">Name</label>
+                <input type="text" id="fName" placeholder="" autocomplete="off">
+              </div>
+            </div>
+
+            <!-- kolom kanan -->
+            <div class="zbx-fcol">
+              <div class="frow stack">
+                <span class="flabel">Tags</span>
+                <div>
+                  <div class="seg" id="segTagOp">
+                    <button type="button" data-op="and" class="on">And/Or</button>
+                    <button type="button" data-op="or">Or</button>
+                  </div>
+                  <div id="tagRows"></div>
+                  <div class="tag-add">
+                    <button type="button" class="linkbtn" id="tagAdd">Add</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="frow">
+                <span class="flabel">Show tags</span>
+                <div class="inline showtags-line">
+                  <div class="seg tight" id="segShowTags">
+                    <button type="button" data-n="none">None</button>
+                    <button type="button" data-n="1">1</button>
+                    <button type="button" data-n="2">2</button>
+                    <button type="button" data-n="3" class="on">3</button>
+                  </div>
+                  <span class="tag-name-label">Tag name</span>
+                  <div class="seg tight" id="segTagName">
+                    <button type="button" data-nm="full" class="on">Full</button>
+                    <button type="button" data-nm="shortened">Shortened</button>
+                    <button type="button" data-nm="none">None</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="frow">
+                <label class="flabel" for="tagPriority">Tag display priority</label>
+                <input type="text" id="tagPriority" placeholder="" autocomplete="off">
+              </div>
+
+              <div class="frow">
+                <span class="flabel">State</span>
+                <div class="seg" id="segState">
+                  <button type="button" data-state="all" class="on">All</button>
+                  <button type="button" data-state="normal">Normal</button>
+                  <button type="button" data-state="unsupported">Not supported</button>
+                </div>
+              </div>
+
+              <div class="frow">
+                <span class="flabel">Show details</span>
+                <label class="cb"><input type="checkbox" id="optDetails" aria-label="Tampilkan rincian item"></label>
+              </div>
+            </div>
+          </div>
+
+          <datalist id="groupOptions"></datalist>
+          <datalist id="hostOptions"></datalist>
+          <datalist id="tagNameOptions">
+            <option value="group"></option>
+            <option value="source"></option>
+          </datalist>
+        </div>
+
+        <div class="zbx-factions" id="filterActions">
+          <button class="zbtn" id="btnSave" type="button">Save as</button>
+          <button class="zbtn primary" id="btnApply" type="button">Apply</button>
+          <button class="zbtn" id="btnReset" type="button">Reset</button>
         </div>
       </div>
 
       <!-- ======== TABEL ======== -->
       <div class="zbx-table-wrap">
         <div class="zbx-scroll">
-          <table class="zbx">
+          <table class="latest-table">
             <thead>
               <tr>
+                <th class="th-cb"><input type="checkbox" id="allItems" aria-label="Pilih semua item"></th>
                 <th>Host</th>
                 <th>
-                  <button class="th-sort" id="sortName" aria-label="Urutkan berdasarkan nama item">
+                  <button class="th-sort" id="sortName" type="button" aria-label="Urutkan berdasarkan nama item" title="Urutkan item di dalam setiap host">
                     Name
                     <svg class="chev-mini" id="chevName" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                   </button>
@@ -319,16 +681,68 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
             <tbody id="tbody"></tbody>
           </table>
         </div>
-        <div class="zbx-foot">
-          <span id="footCount"></span>
-          <div class="grow"></div>
-          <span id="refreshLabel">Muat ulang otomatis 30 detik</span>
-          <span id="footUpdated"></span>
-        </div>
       </div>
     </main>
   </div>
 </div>
+
+<!-- ======== DIALOG PILIH HOST GROUP ======== -->
+<dialog class="host-groups-dialog" id="latestGroupDlg" aria-labelledby="latestGroupDlgTitle">
+  <button class="hgd-close" id="latestGroupClose" type="button" aria-label="Close">&times;</button>
+  <h2 id="latestGroupDlgTitle">Host groups</h2>
+  <div class="hgd-table">
+    <div class="hgd-head">
+      <input type="checkbox" id="latestGroupAll" aria-label="Select all host groups">
+      <span>Name</span>
+    </div>
+    <div class="grouplist" id="latestGroupList"></div>
+  </div>
+  <form method="dialog">
+    <button class="zbtn primary" type="button" id="latestGroupApply">Select</button>
+    <button class="zbtn" type="button" id="latestGroupCancel">Cancel</button>
+  </form>
+</dialog>
+
+<!-- ======== DIALOG PILIH HOSTS ======== -->
+<dialog class="host-groups-dialog host-pick-dialog" id="latestHostDlg" aria-labelledby="latestHostDlgTitle">
+  <button class="hgd-close" id="latestHostClose" type="button" aria-label="Close">&times;</button>
+  <h2 id="latestHostDlgTitle">Hosts</h2>
+  <div class="hpd-filter">
+    <label class="hpd-flabel" for="latestHostGroup">Host group</label>
+    <input class="hpd-input" type="text" id="latestHostGroup" placeholder="type here to search" autocomplete="off">
+    <button class="hpd-select" id="latestHostGroupSelect" type="button">Select</button>
+  </div>
+  <div class="hpd-table">
+    <div class="hpd-head">
+      <input type="checkbox" id="latestHostAll" aria-label="Select all hosts">
+      <span>Name</span>
+    </div>
+    <div class="hpd-list" id="latestHostList" hidden></div>
+    <div class="hpd-empty" id="latestHostEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>
+      <p class="t1" id="latestHostEmptyTitle">Filter is not set</p>
+      <p class="t2" id="latestHostEmptyText">Use the filter to display results</p>
+    </div>
+  </div>
+  <form method="dialog">
+    <button class="zbtn primary" type="button" id="latestHostApply">Select</button>
+    <button class="zbtn" type="button" id="latestHostCancel">Cancel</button>
+  </form>
+</dialog>
+
+<!-- ======== DIALOG PILIH HOST GROUP (dari dialog Hosts) ======== -->
+<dialog class="host-groups-dialog host-group-pick-dialog" id="latestHostGroupDlg" aria-labelledby="latestHostGroupDlgTitle">
+  <button class="hgd-close" id="latestHostGroupClose" type="button" aria-label="Close">&times;</button>
+  <h2 id="latestHostGroupDlgTitle">Host groups</h2>
+  <div class="hgp-table">
+    <div class="hgp-head"><span>Name</span></div>
+    <div class="hgp-list" id="latestHostGroupList"></div>
+    <p class="hgp-empty" id="latestHostGroupEmpty" hidden></p>
+  </div>
+  <form method="dialog">
+    <button class="zbtn" type="button" id="latestHostGroupCancel">Cancel</button>
+  </form>
+</dialog>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -381,103 +795,224 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
 /* ================= Latest data: filter, tabel ================= */
 (function () {
   function $(id) { return document.getElementById(id); }
+  function qsa(sel, root) {
+    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+
   var REFRESH_S = 30;
-  var state = { host: '', group: '', name: '', sort: 'name_asc', source: 'all', details: false };
+  var TAG_OPS = [
+    ['exists', 'Exists'],
+    ['equals', 'Equals'],
+    ['contains', 'Contains'],
+    ['does_not_exist', 'Does not exist'],
+    ['does_not_equal', 'Does not equal'],
+    ['does_not_contain', 'Does not contain']
+  ];
+  var DEFAULTS = {
+    host: '', group: '', name: '', sort: 'name_asc', details: false,
+    tagOp: 'and', showTags: '3', tagName: 'full', tagPriority: '', itemState: 'all'
+  };
+  function defaults() {
+    var d = {};
+    Object.keys(DEFAULTS).forEach(function (k) { d[k] = DEFAULTS[k]; });
+    return d;
+  }
+
+  var state = defaults();
+  var tagConds = [{ tag: '', op: 'contains', value: '' }];
+  var appliedTags = [];
+  var appliedTagOp = 'and';
+  var appliedState = 'all';
   var applied = false;   /* false = "Filter is not set" ala Zabbix */
   var timerLeft = REFRESH_S;
+  var lastData = null;
+  var optionsData = { categories: [] };
+  var optionsPromise = null;
+  var collapsedHosts = {};
+  try {
+    var savedCollapsed = JSON.parse(localStorage.getItem('nms_latest_collapsed') || '[]');
+    if (Array.isArray(savedCollapsed)) {
+      savedCollapsed.forEach(function (k) { if (k) collapsedHosts[String(k)] = true; });
+    }
+  } catch (_) {}
+  function persistCollapsed() {
+    try {
+      var keys = Object.keys(collapsedHosts).filter(function (k) { return collapsedHosts[k]; });
+      localStorage.setItem('nms_latest_collapsed', JSON.stringify(keys));
+    } catch (_) {}
+  }
 
+  function activeTagConds(list) {
+    /* Baris tanpa nama tag diabaikan; nama tag saja sudah berarti "exists". */
+    return (list || []).filter(function (c) {
+      return (c.tag || '').trim() !== '';
+    });
+  }
   function buildQuery() {
     var q = new URLSearchParams();
     q.set('sort', state.sort);
     if (state.host.trim()) q.set('host', state.host.trim());
     if (state.group.trim()) q.set('group', state.group.trim());
     if (state.name.trim()) q.set('name', state.name.trim());
-    if (state.source !== 'all') q.set('source', state.source);
     return q.toString();
   }
+  var URL_KEYS = ['host', 'group', 'name', 'sort', 'state'];
+  function urlState() {
+    var q = new URLSearchParams(location.search);
+    URL_KEYS.forEach(function (k) { q.delete(k); });
+    if (state.host.trim()) q.set('host', state.host.trim());
+    if (state.group.trim()) q.set('group', state.group.trim());
+    if (state.name.trim()) q.set('name', state.name.trim());
+    if (state.sort !== 'name_asc') q.set('sort', state.sort);
+    if (state.itemState !== 'all') q.set('state', state.itemState);
+    return q.toString();
+  }
+  function syncUrl() {
+    try {
+      var qs = urlState();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    } catch (_) {}
+  }
+  function clearUrlFilters() {
+    try {
+      var q = new URLSearchParams(location.search);
+      URL_KEYS.forEach(function (k) { q.delete(k); });
+      var qs = q.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    } catch (_) {}
+  }
 
-  function bindSeg(id, key) {
-    var seg = $(id);
-    seg.addEventListener('click', function (e) {
-      var b = e.target.closest('button'); if (!b) return;
-      [].forEach.call(seg.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === b); });
-      state[key] = b.getAttribute('data-' + key);
-      applied = true;
-      load();
+  function setSeg(id, attr, value) {
+    qsa('#' + id + ' button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute(attr) === value);
     });
   }
-  function syncSegButtons() {
-    [].forEach.call($('segSort').querySelectorAll('button'), function (x) { x.classList.toggle('on', x.getAttribute('data-sort') === state.sort); });
-    [].forEach.call($('segSource').querySelectorAll('button'), function (x) { x.classList.toggle('on', x.getAttribute('data-source') === state.source); });
+  function bindSeg(id, attr, cb) {
+    var root = $(id);
+    if (!root) return;
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      qsa('#' + id + ' button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      cb(b.getAttribute(attr), b);
+    });
   }
-  bindSeg('segSort', 'sort');
-  bindSeg('segSource', 'source');
 
-  $('filterToggle').addEventListener('click', function () {
-    var p = $('filterPanel');
-    var hide = p.classList.toggle('hidden');
-    this.classList.toggle('on', !hide);
-    this.setAttribute('aria-expanded', hide ? 'false' : 'true');
-  });
+  /* ---------------- tag rows ---------------- */
+  function tagRowHtml(c) {
+    c = c || { tag: '', op: 'contains', value: '' };
+    var op = c.op || 'contains';
+    return '<div class="inline tagrow">' +
+      '<input type="text" class="tagname" list="tagNameOptions" placeholder="tag" value="' + esc(c.tag || '') + '">' +
+      '<select class="tagop" aria-label="Operator tag">' +
+        TAG_OPS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (op === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') +
+      '</select>' +
+      '<input type="text" class="growin tagvalue" placeholder="value" value="' + esc(c.value || '') + '">' +
+      '<button type="button" class="linkbtn rm-row" aria-label="Hapus baris">Remove</button>' +
+    '</div>';
+  }
+  function renderTagRows() {
+    $('tagRows').innerHTML = (tagConds.length ? tagConds : [{ tag: '', op: 'contains', value: '' }])
+      .map(tagRowHtml).join('');
+  }
 
-  $('sortName').addEventListener('click', function () {
-    state.sort = (state.sort === 'name_asc' || state.sort === 'name_desc')
-      ? (state.sort === 'name_asc' ? 'name_desc' : 'name_asc')
-      : 'name_asc';
-    syncSegButtons();
-    applied = true;
-    load();
-  });
-
-  $('btnApply').addEventListener('click', function () {
-    state.host = $('fHost').value;
-    state.group = $('fGroup').value;
-    state.name = $('fName').value;
+  /* ---------------- UI <-> state ---------------- */
+  function collect() {
+    state.host = $('fHost').value.trim();
+    state.group = $('fGroup').value.trim();
+    state.name = $('fName').value.trim();
     state.details = $('optDetails').checked;
-    applied = true;
-    load();
-  });
+    state.tagPriority = $('tagPriority').value.trim();
+    tagConds = qsa('#tagRows .tagrow').map(function (r) {
+      return {
+        tag: r.querySelector('.tagname').value.trim(),
+        op: r.querySelector('.tagop').value,
+        value: r.querySelector('.tagvalue').value.trim()
+      };
+    });
+  }
+  function validateTagRows() {
+    var ok = true;
+    qsa('#tagRows .tagrow').forEach(function (r) {
+      var tag = r.querySelector('.tagname');
+      var val = r.querySelector('.tagvalue');
+      var bad = !tag.value.trim() && val.value.trim() !== '';
+      tag.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      if (bad) ok = false;
+    });
+    return ok;
+  }
+  function syncSortIcon() {
+    var c = $('chevName');
+    if (c) c.classList.toggle('asc', state.sort === 'name_asc');
+  }
+  function syncForm() {
+    $('fHost').value = state.host || '';
+    $('fGroup').value = state.group || '';
+    $('fName').value = state.name || '';
+    $('optDetails').checked = !!state.details;
+    $('tagPriority').value = state.tagPriority || '';
+    setSeg('segTagOp', 'data-op', state.tagOp);
+    setSeg('segShowTags', 'data-n', state.showTags);
+    setSeg('segTagName', 'data-nm', state.tagName);
+    setSeg('segState', 'data-state', state.itemState);
+    renderTagRows();
+    syncSortIcon();
+  }
 
-  $('btnReset').addEventListener('click', function () {
-    state = { host: '', group: '', name: '', sort: 'name_asc', source: 'all', details: false };
-    $('fHost').value = ''; $('fGroup').value = ''; $('fName').value = ''; $('optDetails').checked = false;
-    syncSegButtons();
-    applied = true;
-    load();
-  });
+  /* ---------------- filter client-side (tag & state) ---------------- */
+  /* Tag yang benar-benar ditampilkan di kolom Tags: group + source. */
+  function itemTags(item) {
+    var tags = [];
+    if (item.category) tags.push({ n: 'group', v: String(item.category) });
+    if (item.source) tags.push({ n: 'source', v: String(item.source) });
+    return tags;
+  }
+  function tagValueMatches(item, cond) {
+    var name = (cond.tag || '').trim().toLowerCase();
+    if (!name) return false;
+    var op = cond.op || 'contains';
+    var values = itemTags(item)
+      .filter(function (t) { return t.n === name; })
+      .map(function (t) { return t.v.toLowerCase(); });
+    var has = values.length > 0;
+    if (op === 'exists') return has;
+    if (op === 'does_not_exist') return !has;
+    var expected = (cond.value || '').trim().toLowerCase();
+    if (!expected) {
+      return (op === 'does_not_contain' || op === 'does_not_equal') ? !has : has;
+    }
+    if (op === 'equals') return values.some(function (v) { return v === expected; });
+    if (op === 'does_not_equal') return values.every(function (v) { return v !== expected; });
+    if (op === 'does_not_contain') return values.every(function (v) { return v.indexOf(expected) < 0; });
+    return values.some(function (v) { return v.indexOf(expected) >= 0; });
+  }
+  function filterItems(items) {
+    var rows = items || [];
+    if (appliedState === 'normal' || appliedState === 'unsupported') {
+      rows = rows.filter(function (item) {
+        return (item.state || 'normal') === appliedState;
+      });
+    }
+    var conds = appliedTags;
+    if (!conds.length) return rows;
+    return rows.filter(function (item) {
+      var results = conds.map(function (c) { return tagValueMatches(item, c); });
+      return appliedTagOp === 'or' ? results.some(Boolean) : results.every(Boolean);
+    });
+  }
 
-  $('btnSave').addEventListener('click', function () {
-    $('btnApply').click();
-    try { localStorage.setItem('nms_latest_filter', JSON.stringify(state)); toast('Filter disimpan'); }
-    catch (_) { toast('Gagal menyimpan filter', 'error'); }
-  });
-  (function restoreSaved() {
-    try {
-      var saved = JSON.parse(localStorage.getItem('nms_latest_filter') || 'null');
-      if (!saved) return;
-      state = Object.assign(state, saved);
-      $('fHost').value = state.host || ''; $('fGroup').value = state.group || ''; $('fName').value = state.name || '';
-      $('optDetails').checked = !!state.details;
-      syncSegButtons();
-      applied = true; /* filter tersimpan → langsung muat data */
-    } catch (_) {}
-  })();
-
-  // Deep link dari halaman Hosts: /latest-data?host=<ip>
-  (function applyUrlHost() {
-    try {
-      var h = new URLSearchParams(location.search).get('host');
-      if (h) { state.host = h; $('fHost').value = h; applied = true; }
-    } catch (_) {}
-  })();
-
+  /* ---------------- table ---------------- */
   function valueClass(item) {
     var v = item.value;
+    if (v === null || v === undefined) return '';
     if (item.unit === '%') return v >= 90 ? 'val-bad' : (v >= 80 ? 'val-warn' : '');
     if (item.unit === '°C') return v >= 70 ? 'val-bad' : (v >= 60 ? 'val-warn' : '');
     return '';
@@ -490,68 +1025,687 @@ td.infoc { white-space: nowrap; font-size: 12px; color: var(--text-3); }
     var arrow = d.delta > 0 ? '▲' : '▼';
     return '<span class="chg ' + cls + '">' + arrow + ' ' + (d.delta > 0 ? '+' : '−') + fmt(Math.abs(d.delta)) + '</span>';
   }
-  function rowHtml(d) {
+  function tagsHtml(d) {
+    if (state.showTags === 'none') return '';
+    var tags = [];
+    if (d.category) tags.push({ n: 'group', v: d.category });
+    if (d.source) tags.push({ n: 'source', v: d.source });
+    var pri = (state.tagPriority || '').split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    if (pri.length > 1 && tags.length > 1) {
+      tags.sort(function (a, b) {
+        var ia = pri.indexOf(a.n.toLowerCase()); if (ia < 0) ia = 999;
+        var ib = pri.indexOf(b.n.toLowerCase()); if (ib < 0) ib = 999;
+        return ia - ib;
+      });
+    }
+    var lim = state.showTags === '3' ? 99 : (parseInt(state.showTags, 10) || 0);
+    return tags.slice(0, lim).map(function (t) {
+      var name = t.n;
+      if (state.tagName === 'none') name = '';
+      else if (state.tagName === 'shortened' && name.length > 8) name = name.slice(0, 8) + '.';
+      var txt = name ? name + ': ' + t.v : t.v;
+      return '<span class="tagchip">' + esc(txt) + '</span>';
+    }).join('');
+  }
+  function infoHtml(d) {
+    var src = '<span class="src-badge">' + esc(String(d.source || '').toUpperCase()) + '</span>';
+    if ((d.state || 'normal') !== 'unsupported') return src;
+    var msg = d.error || 'Item tidak didukung pada pemeriksaan terakhir';
+    return '<span class="info-na" role="img" aria-label="' + esc(msg) + '" title="' + esc(msg) + '">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 17H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>' +
+      '</span>' + src;
+  }
+  function rowHtml(d, grpId, hidden) {
+    var na = (d.state || 'normal') === 'unsupported';
     var detail = state.details
-          ? '<div class="item-detail">' +
+      ? '<div class="item-detail">' +
         (d.prev === null || d.prev === undefined
           ? 'belum ada nilai sebelumnya'
           : 'sebelumnya ' + fmt(d.prev) + ' ' + esc(d.unit) + ' · ' + esc(d.prev_check || '')) + '</div>'
       : '';
-    return '<tr>' +
+    var valueCell = na
+      ? '<span class="val-na">Not supported</span>'
+      : '<span class="val ' + valueClass(d) + '">' + fmt(d.value) + '</span><span class="val-unit">' + esc(d.unit) + '</span>';
+    return '<tr class="item-row' + (na ? ' row-na' : '') + (hidden ? ' grp-hidden' : '') + '" data-grp="' + grpId + '">' +
+      '<td class="td-cb"><input type="checkbox" class="row-cb" aria-label="Pilih item"></td>' +
       '<td class="hostc"><a class="host-link" href="/hosts?name=' + encodeURIComponent(d.ip) + '">' + esc(d.host) + '</a><br><span class="host-ip">' + esc(d.ip) + '</span></td>' +
       '<td class="namec">' + esc(d.name) + detail + '</td>' +
       '<td class="checkc">' + esc(d.check) + '</td>' +
-      '<td class="valc"><span class="val ' + valueClass(d) + '">' + fmt(d.value) + '</span><span class="val-unit">' + esc(d.unit) + '</span></td>' +
+      '<td class="valc">' + valueCell + '</td>' +
       '<td class="changec">' + changeHtml(d) + '</td>' +
-      '<td><span class="tagchip">' + esc(d.category || 'Uncategorized') + '</span></td>' +
-      '<td class="infoc"><span class="src-badge">' + d.source.toUpperCase() + '</span></td>' +
+      '<td class="tagcell">' + tagsHtml(d) + '</td>' +
+      '<td class="infoc">' + infoHtml(d) + '</td>' +
       '</tr>';
   }
+  var EMPTY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>';
   function emptyNotSet() {
-    $('tbody').innerHTML = '<tr><td colspan="7" class="zbx-empty">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5z"/></svg>' +
-      '<div class="big">Filter belum diatur</div>' +
-      '<div>Gunakan panel filter untuk menampilkan hasil</div></td></tr>';
-    $('footCount').textContent = '';
-    $('totalLabel').textContent = '';
-    $('footUpdated').textContent = '';
+    $('tbody').innerHTML = '<tr><td colspan="8" class="zbx-empty">' + EMPTY_ICON +
+      '<div class="big">Filter is not set</div>' +
+      '<div>Use the filter to display results</div></td></tr>';
+    var all = $('allItems');
+    all.checked = false;
+    all.indeterminate = false;
+    all.disabled = true;
+  }
+  function emptyNoData() {
+    $('tbody').innerHTML = '<tr><td colspan="8" class="zbx-empty">' + EMPTY_ICON +
+      '<div class="big">No data found</div>' +
+      '<div>Try changing the filter</div></td></tr>';
+    var all = $('allItems');
+    all.checked = false;
+    all.indeterminate = false;
+    all.disabled = true;
+  }
+  function syncSelectAll() {
+    var boxes = qsa('#tbody .row-cb');
+    var all = $('allItems');
+    var checked = boxes.filter(function (b) { return b.checked; }).length;
+    all.disabled = boxes.length === 0;
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
+
+  /* ---------------- options / Select ---------------- */
+  function unique(list) {
+    var seen = {};
+    return (list || []).filter(function (v) {
+      var key = String(v);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+  function fillOptions(data) {
+    optionsData.categories = unique(data.categories || []);
+    var allHosts = unique(data.hosts || []);
+    $('groupOptions').innerHTML = optionsData.categories.map(function (c) {
+      return '<option value="' + esc(c) + '">';
+    }).join('');
+    $('hostOptions').innerHTML = allHosts.map(function (h) {
+      return '<option value="' + esc(h) + '">';
+    }).join('');
+  }
+  function fetchOptions() {
+    if (optionsPromise) return optionsPromise;
+    optionsPromise = fetch('/api/latest-data?sort=name_asc', {
+      credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      fillOptions(data);
+      return data;
+    }).catch(function () {
+      optionsPromise = null;
+      return null;
+    });
+    return optionsPromise;
+  }
+  /* ---------------- dialog Select Host groups ---------------- */
+  function normText(v) {
+    return String(v == null ? '' : v).trim().toLowerCase();
+  }
+  function selectedGroupKeys() {
+    return $('fGroup').value.split(/[,;]/).map(normText).filter(Boolean);
+  }
+  function syncGroupAll() {
+    var boxes = qsa('#latestGroupList input[type="checkbox"]');
+    var checked = boxes.filter(function (i) { return i.checked; }).length;
+    var all = $('latestGroupAll');
+    all.disabled = boxes.length === 0;
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
+  function renderGroupList() {
+    var cats = optionsData.categories.slice().sort(function (a, b) {
+      return normText(a) < normText(b) ? -1 : 1;
+    });
+    var selected = selectedGroupKeys();
+    if (!cats.length) {
+      $('latestGroupList').innerHTML = '<p class="hint">No host groups.</p>';
+    } else {
+      $('latestGroupList').innerHTML = cats.map(function (c) {
+        var on = selected.indexOf(normText(c)) >= 0;
+        return '<label><input type="checkbox" value="' + esc(c) + '"' + (on ? ' checked' : '') + '> ' + esc(c) + '</label>';
+      }).join('');
+    }
+    syncGroupAll();
+    $('latestGroupList').scrollTop = 0;
+  }
+  function openGroupDialog() {
+    var loading = !optionsData.categories.length;
+    if (loading) {
+      $('latestGroupList').innerHTML = '<p class="hint">Loading...</p>';
+      syncGroupAll();
+    } else {
+      renderGroupList();
+    }
+    if (!$('latestGroupDlg').open) $('latestGroupDlg').showModal();
+    if (loading) {
+      fetchOptions().then(function () {
+        if ($('latestGroupDlg').open) renderGroupList();
+      });
+    }
+  }
+
+  /* ---------------- dialog Select Hosts ---------------- */
+  var hostPickerData = null;
+  var hostPickerPromise = null;
+  var hostPickerError = false;
+  var hostPickGroup = '';
+  var hostPickSel = [];
+  var hostPickWanted = [];
+
+  function splitPickTerms(v) {
+    return String(v == null ? '' : v).split(/[,;]/)
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+  function pickerCategories() {
+    var cats = (hostPickerData && hostPickerData.categories.length)
+      ? hostPickerData.categories
+      : optionsData.categories;
+    return unique(cats).sort(function (a, b) {
+      var na = normText(a), nb = normText(b);
+      return na < nb ? -1 : (na > nb ? 1 : 0);
+    });
+  }
+  function ensureHostPickerData() {
+    if (hostPickerData) return Promise.resolve(hostPickerData);
+    if (hostPickerPromise) return hostPickerPromise;
+    hostPickerError = false;
+    hostPickerPromise = fetch('/api/hosts/zbx?sort=name_asc', {
+      credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      hostPickerData = {
+        categories: unique(data.categories || []),
+        hosts: (data.hosts || []).map(function (h) {
+          return {
+            ip: String(h.ip == null ? '' : h.ip),
+            name: String(h.name == null ? (h.ip || '') : h.name),
+            category: String(h.category == null ? '' : h.category).trim()
+          };
+        }).filter(function (h) { return h.ip; })
+      };
+      resolveHostPickWanted();
+      if ($('latestHostDlg').open) renderHostPicker();
+      if ($('latestHostGroupDlg').open) renderHostGroupPicker();
+      return hostPickerData;
+    }).catch(function () {
+      hostPickerError = true;
+      hostPickerPromise = null;
+      return null;
+    });
+    return hostPickerPromise;
+  }
+  function resolveHostPickWanted() {
+    if (!hostPickerData || !hostPickWanted.length) return;
+    var wanted = hostPickWanted.map(normText);
+    hostPickSel = hostPickerData.hosts.filter(function (h) {
+      return wanted.indexOf(normText(h.ip)) >= 0 || wanted.indexOf(normText(h.name)) >= 0;
+    }).map(function (h) { return h.ip; });
+    if (!hostPickGroup && hostPickSel.length) {
+      var first = hostPickerData.hosts.filter(function (h) { return h.ip === hostPickSel[0]; })[0];
+      if (first && first.category) {
+        hostPickGroup = first.category;
+        $('latestHostGroup').value = hostPickGroup;
+      }
+    }
+  }
+  function hostRowsForPickGroup() {
+    if (!hostPickGroup || !hostPickerData) return [];
+    var g = normText(hostPickGroup);
+    return hostPickerData.hosts.filter(function (h) {
+      return normText(h.category) === g;
+    }).sort(function (a, b) {
+      return String(a.name || a.ip).localeCompare(
+        String(b.name || b.ip), 'id', { sensitivity: 'base' });
+    });
+  }
+  function syncHostPickerAll() {
+    var boxes = qsa('#latestHostList .latest-host-pick');
+    var on = boxes.filter(function (b) { return b.checked; }).length;
+    var all = $('latestHostAll');
+    all.checked = boxes.length > 0 && on === boxes.length;
+    all.indeterminate = on > 0 && on < boxes.length;
+  }
+  function renderHostPicker() {
+    var rows = hostRowsForPickGroup();
+    $('latestHostList').innerHTML = rows.map(function (h) {
+      var on = hostPickSel.indexOf(h.ip) >= 0;
+      return '<div class="hpd-row">' +
+        '<input type="checkbox" class="latest-host-pick" value="' + esc(h.ip) + '"' +
+        (on ? ' checked' : '') +
+        ' aria-label="' + esc(h.name || h.ip) + '">' +
+        '<a href="#" class="hpd-name">' + esc(h.name || h.ip) + '</a>' +
+        '</div>';
+    }).join('');
+    $('latestHostList').hidden = rows.length === 0;
+    var empty = $('latestHostEmpty');
+    if (!hostPickGroup) {
+      empty.hidden = false;
+      $('latestHostEmptyTitle').textContent = 'Filter is not set';
+      $('latestHostEmptyText').textContent = 'Use the filter to display results';
+    } else if (hostPickerError) {
+      empty.hidden = false;
+      $('latestHostEmptyTitle').textContent = 'Unable to load hosts';
+      $('latestHostEmptyText').textContent = 'Close the dialog and try again.';
+    } else if (!hostPickerData) {
+      empty.hidden = false;
+      $('latestHostEmptyTitle').textContent = 'Loading hosts…';
+      $('latestHostEmptyText').textContent = 'Please wait';
+    } else if (!rows.length) {
+      empty.hidden = false;
+      $('latestHostEmptyTitle').textContent = 'No hosts found';
+      $('latestHostEmptyText').textContent = 'There are no hosts in this host group.';
+    } else {
+      empty.hidden = true;
+    }
+    syncHostPickerAll();
+  }
+  function renderHostGroupPicker() {
+    var q = normText($('latestHostGroup').value);
+    var all = pickerCategories();
+    var cats = all.filter(function (c) { return !q || normText(c).indexOf(q) >= 0; });
+    $('latestHostGroupList').innerHTML = cats.map(function (c) {
+      return '<button type="button" class="hgp-item" data-group="' + esc(c) + '">' + esc(c) + '</button>';
+    }).join('');
+    var empty = $('latestHostGroupEmpty');
+    empty.hidden = cats.length > 0;
+    if (all.length) empty.textContent = 'No host groups match the filter.';
+    else if (!hostPickerData && !hostPickerError) empty.textContent = 'Loading host groups…';
+    else empty.textContent = 'No host groups.';
+    $('latestHostGroupList').scrollTop = 0;
+  }
+  function openHostGroupPicker() {
+    renderHostGroupPicker();
+    if (!$('latestHostGroupDlg').open) $('latestHostGroupDlg').showModal();
+    var first = $('latestHostGroupList').querySelector('.hgp-item');
+    if (first) first.focus();
+    else $('latestHostGroupCancel').focus();
+    if (!hostPickerData) {
+      ensureHostPickerData().then(function () {
+        if ($('latestHostGroupDlg').open) renderHostGroupPicker();
+      });
+    }
+  }
+  function openHostPicker() {
+    hostPickWanted = splitPickTerms($('fHost').value);
+    hostPickSel = [];
+    hostPickGroup = '';
+    $('latestHostGroup').value = '';
+    var currentGroup = splitPickTerms($('fGroup').value)[0] || '';
+    if (currentGroup) {
+      var exact = pickerCategories().filter(function (c) {
+        return normText(c) === normText(currentGroup);
+      })[0];
+      if (exact) {
+        hostPickGroup = exact;
+        $('latestHostGroup').value = exact;
+      }
+    }
+    if (hostPickerData) resolveHostPickWanted();
+    renderHostPicker();
+    if (!$('latestHostDlg').open) $('latestHostDlg').showModal();
+    $('latestHostGroup').focus();
+    ensureHostPickerData().then(function () {
+      if ($('latestHostDlg').open) renderHostPicker();
+    });
+  }
+  function closeHostPicker() {
+    if ($('latestHostDlg').open) $('latestHostDlg').close();
+    $('btnHostSelect').focus();
+  }
+  function setHostPickChecked(box) {
+    var ip = box.value;
+    var at = hostPickSel.indexOf(ip);
+    if (box.checked && at < 0) hostPickSel.push(ip);
+    if (!box.checked && at >= 0) hostPickSel.splice(at, 1);
+  }
+  function applyHostPick() {
+    var byIp = {};
+    (hostPickerData ? hostPickerData.hosts : []).forEach(function (h) { byIp[h.ip] = h; });
+    var chosen = hostPickSel.map(function (ip) {
+      var h = byIp[ip];
+      return h ? (h.name || h.ip) : ip;
+    });
+    $('fHost').value = chosen.join(', ');
+    closeHostPicker();
+    $('btnApply').focus();
+  }
+
+  /* ---------------- load & render ---------------- */
+  var GROUP_CHEV = '<svg class="gchev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  function groupByHost(rows) {
+    var groups = [], index = {};
+    rows.forEach(function (r) {
+      var key = r.ip || r.host || '';
+      var g = index[key];
+      if (!g) {
+        g = { key: key, host: r.host, ip: r.ip, category: r.category, items: [] };
+        index[key] = g;
+        groups.push(g);
+      }
+      g.items.push(r);
+    });
+    groups.sort(function (a, b) {
+      var na = String(a.host || a.ip), nb = String(b.host || b.ip);
+      return na.localeCompare(nb, 'id', { sensitivity: 'base' }) ||
+        String(a.ip).localeCompare(String(b.ip));
+    });
+    return groups;
   }
   function render(data) {
-    var rows = data.items || [];
+    lastData = data;
+    fillOptions(data);
+    var rows = filterItems(data.items || []);
     var tb = $('tbody');
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="7" class="zbx-empty">Tidak ada item sesuai filter.</td></tr>';
-    } else {
-      var html = '';
-      for (var i = 0; i < rows.length; i++) html += rowHtml(rows[i]);
-      tb.innerHTML = html;
+      emptyNoData();
+      return;
     }
-    $('footCount').textContent = 'Menampilkan ' + rows.length + ' dari ' + data.total + ' item';
-    $('totalLabel').textContent = rows.length + ' dari ' + data.total + ' item';
-    $('footUpdated').textContent = 'Diperbarui ' + new Date().toLocaleTimeString('id-ID');
-    var cats = data.categories || [];
-    $('groupOptions').innerHTML = cats.map(function (c) { return '<option value="' + esc(c) + '">'; }).join('');
-    $('hostOptions').innerHTML = (data.hosts || []).map(function (h) { return '<option value="' + esc(h) + '">'; }).join('');
+    var groups = groupByHost(rows);
+    var html = '';
+    groups.forEach(function (g, gi) {
+      var gid = 'grp-' + gi;
+      /* Satu grup tidak perlu auto-collapse: semua baris akan tersembunyi. */
+      var collapsed = groups.length > 1 && !!collapsedHosts[g.key];
+      var naCount = g.items.filter(function (i) {
+        return (i.state || 'normal') === 'unsupported';
+      }).length;
+      html += '<tr class="group-head"><td colspan="8">' +
+        '<button type="button" class="group-toggle' + (collapsed ? ' collapsed' : '') + '"' +
+        ' data-gid="' + gid + '" data-gkey="' + esc(g.key) + '"' +
+        ' aria-expanded="' + (collapsed ? 'false' : 'true') + '">' +
+        GROUP_CHEV +
+        '<span class="gh-name">' + esc(g.host || g.ip) + '</span>' +
+        '<span class="gh-ip">' + esc(g.ip) + '</span>' +
+        (g.category ? '<span class="gh-group">' + esc(g.category) + '</span>' : '') +
+        '<span class="gh-count">' + g.items.length + ' item' +
+        (naCount ? ' · <span class="gh-na">' + naCount + ' not supported</span>' : '') +
+        '</span>' +
+        '</button></td></tr>';
+      g.items.forEach(function (item) {
+        html += rowHtml(item, gid, collapsed);
+      });
+    });
+    tb.innerHTML = html;
+    syncSelectAll();
   }
   function load() {
-    return fetch('/api/latest-data?' + buildQuery(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(render)
-      .catch(function (err) {
-        $('footCount').textContent = 'Gagal memuat data: ' + err.message;
+    return fetch('/api/latest-data?' + buildQuery(), {
+      credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(render).catch(function (err) {
+      if (window.toast) toast('Gagal memuat data: ' + err.message, 'error');
+    });
+  }
+  function applyFilter() {
+    collect();
+    if (!validateTagRows() && window.toast) {
+      toast('Baris tag tanpa nama diabaikan', 'error');
+    }
+    appliedTags = activeTagConds(tagConds);
+    appliedTagOp = state.tagOp;
+    appliedState = state.itemState;
+    applied = true;
+    timerLeft = REFRESH_S;
+    syncUrl();
+    load();
+  }
+
+  /* ---------------- wiring ---------------- */
+  bindSeg('segTagOp', 'data-op', function (v) { state.tagOp = v; });
+  bindSeg('segShowTags', 'data-n', function (v) {
+    state.showTags = v;
+    if (lastData) render(lastData);
+  });
+  bindSeg('segTagName', 'data-nm', function (v) {
+    state.tagName = v;
+    if (lastData) render(lastData);
+  });
+  bindSeg('segState', 'data-state', function (v) { state.itemState = v; });
+
+  $('tagAdd').addEventListener('click', function () {
+    var d = document.createElement('div');
+    d.innerHTML = tagRowHtml({ tag: '', op: 'contains', value: '' });
+    $('tagRows').appendChild(d.firstChild);
+  });
+  $('tagRows').addEventListener('click', function (e) {
+    var b = e.target.closest('.rm-row');
+    if (!b) return;
+    var row = b.closest('.tagrow');
+    if (row) row.parentNode.removeChild(row);
+    if (!$('tagRows').children.length) {
+      var d = document.createElement('div');
+      d.innerHTML = tagRowHtml();
+      $('tagRows').appendChild(d.firstChild);
+    }
+  });
+
+  function setCollapsed(v) {
+    $('filterCard').classList.toggle('collapsed', v);
+    $('filterToggle').classList.toggle('on', !v);
+    $('filterToggle').setAttribute('aria-expanded', v ? 'false' : 'true');
+    $('filterCollapse').setAttribute('aria-expanded', v ? 'false' : 'true');
+  }
+  $('filterToggle').addEventListener('click', function () {
+    setCollapsed(!$('filterCard').classList.contains('collapsed'));
+  });
+  $('filterCollapse').addEventListener('click', function () {
+    setCollapsed(!$('filterCard').classList.contains('collapsed'));
+  });
+
+  $('btnGroupSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    openGroupDialog();
+  });
+  $('btnHostSelect').addEventListener('click', function (e) {
+    e.stopPropagation();
+    openHostPicker();
+  });
+  $('latestGroupClose').addEventListener('click', function () { $('latestGroupDlg').close(); });
+  $('latestGroupCancel').addEventListener('click', function () { $('latestGroupDlg').close(); });
+  $('latestGroupAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#latestGroupList input[type="checkbox"]').forEach(function (i) { i.checked = on; });
+    syncGroupAll();
+  });
+  $('latestGroupList').addEventListener('change', syncGroupAll);
+  $('latestGroupApply').addEventListener('click', function () {
+    var vals = qsa('#latestGroupList input[type="checkbox"]:checked').map(function (i) { return i.value; });
+    $('fGroup').value = vals.join(', ');
+    $('latestGroupDlg').close();
+  });
+  $('latestHostClose').addEventListener('click', closeHostPicker);
+  $('latestHostCancel').addEventListener('click', closeHostPicker);
+  $('latestHostApply').addEventListener('click', applyHostPick);
+  $('latestHostGroupSelect').addEventListener('click', openHostGroupPicker);
+  $('latestHostGroup').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    openHostGroupPicker();
+  });
+  $('latestHostGroup').addEventListener('input', function () {
+    var q = normText(this.value);
+    var exact = pickerCategories().filter(function (c) { return normText(c) === q; })[0];
+    hostPickGroup = exact || '';
+    renderHostPicker();
+  });
+  $('latestHostAll').addEventListener('change', function () {
+    var on = this.checked;
+    qsa('#latestHostList .latest-host-pick').forEach(function (box) {
+      box.checked = on;
+      setHostPickChecked(box);
+    });
+    syncHostPickerAll();
+  });
+  $('latestHostList').addEventListener('change', function (e) {
+    if (!e.target.classList.contains('latest-host-pick')) return;
+    setHostPickChecked(e.target);
+    syncHostPickerAll();
+  });
+  $('latestHostList').addEventListener('click', function (e) {
+    var a = e.target.closest('.hpd-name');
+    if (!a) return;
+    e.preventDefault();
+    var box = a.parentNode.querySelector('.latest-host-pick');
+    if (!box) return;
+    box.checked = !box.checked;
+    setHostPickChecked(box);
+    syncHostPickerAll();
+  });
+  $('latestHostGroupList').addEventListener('click', function (e) {
+    var b = e.target.closest('.hgp-item');
+    if (!b) return;
+    hostPickGroup = b.getAttribute('data-group') || '';
+    $('latestHostGroup').value = hostPickGroup;
+    $('latestHostGroupDlg').close();
+    renderHostPicker();
+    var first = $('latestHostList').querySelector('.latest-host-pick');
+    if (first) first.focus();
+    else $('latestHostGroup').focus();
+  });
+  $('latestHostGroupClose').addEventListener('click', function () {
+    $('latestHostGroupDlg').close();
+    $('latestHostGroupSelect').focus();
+  });
+  $('latestHostGroupCancel').addEventListener('click', function () {
+    $('latestHostGroupDlg').close();
+    $('latestHostGroupSelect').focus();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if ($('latestHostGroupDlg').open) {
+      e.preventDefault();
+      $('latestHostGroupDlg').close();
+      $('latestHostGroupSelect').focus();
+      return;
+    }
+    if ($('latestHostDlg').open) {
+      e.preventDefault();
+      closeHostPicker();
+    }
+  });
+
+  $('sortName').addEventListener('click', function () {
+    state.sort = state.sort === 'name_asc' ? 'name_desc' : 'name_asc';
+    syncSortIcon();
+    if (applied) load();
+  });
+
+  $('btnApply').addEventListener('click', applyFilter);
+  $('btnReset').addEventListener('click', function () {
+    state = defaults();
+    tagConds = [{ tag: '', op: 'contains', value: '' }];
+    appliedTags = [];
+    appliedTagOp = 'and';
+    appliedState = 'all';
+    applied = false;
+    lastData = null;
+    try { localStorage.removeItem('nms_latest_filter'); } catch (_) {}
+    clearUrlFilters();
+    syncForm();
+    emptyNotSet();
+    setCollapsed(false);
+  });
+  $('btnSave').addEventListener('click', function () {
+    applyFilter();
+    var saved = {};
+    Object.keys(state).forEach(function (k) { saved[k] = state[k]; });
+    saved.tags = activeTagConds(tagConds);
+    try {
+      localStorage.setItem('nms_latest_filter', JSON.stringify(saved));
+      if (window.toast) toast('Filter disimpan');
+    } catch (_) {
+      if (window.toast) toast('Gagal menyimpan filter', 'error');
+    }
+  });
+
+  $('allItems').addEventListener('change', function () {
+    qsa('#tbody .row-cb').forEach(function (b) { b.checked = this.checked; }, this);
+    syncSelectAll();
+  });
+  $('tbody').addEventListener('change', function (e) {
+    if (e.target.classList.contains('row-cb')) syncSelectAll();
+  });
+  $('tbody').addEventListener('click', function (e) {
+    var btn = e.target.closest('.group-toggle');
+    if (!btn) return;
+    var collapsed = btn.classList.toggle('collapsed');
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var gid = btn.getAttribute('data-gid');
+    qsa('#tbody tr.item-row[data-grp="' + gid + '"]').forEach(function (tr) {
+      tr.classList.toggle('grp-hidden', collapsed);
+    });
+    var key = btn.getAttribute('data-gkey') || '';
+    if (collapsed) collapsedHosts[key] = true; else delete collapsedHosts[key];
+    persistCollapsed();
+  });
+
+  /* ---------------- restore / bootstrap ---------------- */
+  (function restoreSaved() {
+    try {
+      var saved = JSON.parse(localStorage.getItem('nms_latest_filter') || 'null');
+      if (!saved) return;
+      Object.keys(DEFAULTS).forEach(function (k) {
+        if (saved[k] !== undefined) state[k] = saved[k];
       });
+      if (Array.isArray(saved.tags) && saved.tags.length) {
+        tagConds = saved.tags.map(function (c) {
+          return { tag: c.tag || '', op: c.op || 'contains', value: c.value || '' };
+        });
+        appliedTags = activeTagConds(tagConds);
+      }
+      if (state.sort !== 'name_asc' && state.sort !== 'name_desc') state.sort = 'name_asc';
+      appliedTagOp = state.tagOp;
+      appliedState = state.itemState;
+      applied = true;
+    } catch (_) {}
+  })();
+
+  (function applyUrlFilters() {
+    try {
+      var q = new URLSearchParams(location.search);
+      var h = q.get('host');
+      if (h) { state.host = h; applied = true; }
+      var g = q.get('group');
+      if (g) { state.group = g; applied = true; }
+      var n = q.get('name');
+      if (n) { state.name = n; applied = true; }
+      var s = q.get('sort');
+      if (s === 'name_desc' || s === 'check_desc' || s === 'check_asc') {
+        state.sort = s; applied = true;
+      }
+      var st = q.get('state');
+      if (st === 'normal' || st === 'unsupported') {
+        state.itemState = st; applied = true;
+      }
+    } catch (_) {}
+  })();
+
+  syncForm();
+  setCollapsed(false);
+  if (applied) {
+    appliedTags = activeTagConds(tagConds);
+    appliedTagOp = state.tagOp;
+    appliedState = state.itemState;
+    load();
+  } else {
+    emptyNotSet();
+    fetchOptions();
   }
 
   setInterval(function () {
     if (!applied) return;
     timerLeft -= 1;
     if (timerLeft <= 0) { timerLeft = REFRESH_S; load(); }
-    $('refreshLabel').textContent = 'Muat ulang otomatis dalam ' + timerLeft + ' detik';
   }, 1000);
-
-  // Perilaku Zabbix: tanpa filter ter-apply, tabel menampilkan
-  // "Filter is not set". Setelah terapkan / ada filter tersimpan, data dimuat.
-  if (applied) load(); else emptyNotSet();
 })();
 </script>
 </body>

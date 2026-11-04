@@ -1,0 +1,5 @@
+302\n<!doctype html>
+<html lang=en>
+<title>Redirecting...</title>
+<h1>Redirecting...</h1>
+<p>You should be redirected automatically to the target URL: <a href="/login?next=%2Freports%2Favailability">/login?next=%2Freports%2Favailability</a>. If not, click the link.

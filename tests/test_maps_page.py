@@ -53,6 +53,7 @@ class MapsTest(unittest.TestCase):
 
     def setUp(self):
         conn, c = m.get_db()
+        c.execute("DELETE FROM map_settings")
         c.execute("DELETE FROM maps")
         c.execute("DELETE FROM map_elements")
         c.execute("DELETE FROM map_links")
@@ -92,12 +93,101 @@ class MapsTest(unittest.TestCase):
         body = r.get_data(as_text=True)
         self.assertIn("Maps", body)
         self.assertIn('href="/maps" class="nav-link nav-sub-link active"', body)
-        self.assertIn("Buat peta", body)
+        self.assertIn("Create map", body)
+        self.assertIn('href="/maps/new"', body)
+        self.assertIn("Apply", body)
+        self.assertIn("Displaying", body)
         # tautan lama yang mati (404) tidak boleh tersisa
         self.assertNotIn('/topo"', body)
 
+    def test_halaman_form_create_lengkap(self):
+        r = self.client.get("/maps/new")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        for text in (
+            "Network maps",
+            "Map",
+            "Sharing",
+            "Owner",
+            "Select",
+            "Name",
+            "Width",
+            "Height",
+            'value="800"',
+            'value="600"',
+            "Background image",
+            "Background scale",
+            "Proportionally",
+            "Automatic icon mapping",
+            "show icon mappings",
+            "Icon highlight",
+            "Mark elements on trigger status change",
+            "Display problems",
+            "Expand single problem",
+            "Number of problems",
+            "Number of problems and expand most critical one",
+            "Map element label type",
+            "Advanced labels",
+            "Host group label type",
+            "Host label type",
+            "Trigger label type",
+            "Map label type",
+            "Image label type",
+            "Map element label location",
+            "Show map element labels",
+            "Auto hide",
+            "Show link labels",
+            "Problem display",
+            "Minimum severity",
+            "Not classified",
+            "Information",
+            "Warning",
+            "Average",
+            "High",
+            "Disaster",
+            "Show suppressed problems",
+            "URLs",
+            "Element",
+            "Add",
+            "Cancel",
+            "Zabbix 7.4.15",
+        ):
+            self.assertIn(text, body)
+        self.assertIn('href="/maps" class="nav-link nav-sub-link active"', body)
+        self.assertIn('id="panelSharing"', body)
+        self.assertIn('id="ownerModal"', body)
+        self.assertIn('id="urlRowTpl"', body)
+        self.assertIn('id="mLabelType"', body)
+        # Modal pilih user group untuk List of user group shares.
+        self.assertIn('id="groupModal"', body)
+        self.assertIn('id="groupModalList"', body)
+        self.assertIn('id="groupSelectAll"', body)
+        self.assertIn("User groups", body)
+        for group in (
+            "Disabled",
+            "Enabled debug mode",
+            "Guests",
+            "Internal",
+            "No access to the frontend",
+            "Zabbix administrators",
+        ):
+            self.assertIn(group, body)
+        # Modal pilih user untuk List of user shares.
+        self.assertIn('id="userModal"', body)
+        self.assertIn('id="userModalList"', body)
+        self.assertIn('id="userSelectAll"', body)
+        self.assertIn('value="admin"', body)
+        self.assertIn('value="guest"', body)
+        self.assertIn("Zabbix", body)
+        self.assertIn("Administrator", body)
+        self.assertIn('<option value="label" selected>Label</option>', body)
+        self.assertLess(
+            body.index("Map element label type"),
+            body.index("Map element label location"),
+        )
+
     def test_halaman_dan_api_butuh_login(self):
-        for url in ("/maps", "/api/maps"):
+        for url in ("/maps", "/maps/new", "/api/maps"):
             r = m.app.test_client().get(url)
             self.assertIn(r.status_code, (302, 401))
 
@@ -135,6 +225,106 @@ class MapsTest(unittest.TestCase):
         j = self.post_json("/api/maps", {"name": "Kecil", "width": 640, "height": 480})
         self.assertEqual(j["width"], 640)
         self.assertEqual(j["height"], 480)
+
+    def test_buat_dengan_pengaturan_lengkap(self):
+        settings = {
+            "background_image": "none",
+            "background_scale": "none",
+            "automatic_icon_mapping": "manual",
+            "icon_highlight": True,
+            "mark_elements": True,
+            "display_problems": "number_most_critical",
+            "label_type": "name",
+            "advanced_labels": False,
+            "host_group_label_type": "name",
+            "host_label_type": "ip",
+            "trigger_label_type": "status",
+            "map_label_type": "nothing",
+            "image_label_type": "label",
+            "label_location": "top",
+            "show_element_labels": "auto_hide",
+            "show_link_labels": "auto_hide",
+            "problem_display": "separated",
+            "minimum_severity": "high",
+            "show_suppressed": True,
+            "urls": [
+                {
+                    "name": "Latest data",
+                    "url": "https://example.test/latest",
+                    "element": "host",
+                }
+            ],
+            "sharing": {
+                "type": "private",
+                "user_groups": [{"name": "Ops", "permission": "read-only"}],
+                "users": [{"name": "admin", "permission": "read-write"}],
+            },
+        }
+        j = self.post_json(
+            "/api/maps",
+            {
+                "name": "Peta Lengkap",
+                "width": 800,
+                "height": 600,
+                "owner": "admin",
+                "settings": settings,
+            },
+        )
+        self.assertEqual(j["owner"], "admin")
+        d = self.detail(j["id"])
+        self.assertEqual(d["owner"], "admin")
+        self.assertEqual(d["settings"], settings)
+        # default tetap dipakai untuk field yang tidak dikirim
+        j2 = self.post_json("/api/maps", {"name": "Peta Default"})
+        d2 = self.detail(j2["id"])
+        self.assertEqual(d2["owner"], "admin")
+        self.assertEqual(d2["settings"]["background_scale"], "proportional")
+        self.assertEqual(d2["settings"]["label_type"], "label")
+        self.assertEqual(d2["settings"]["minimum_severity"], "not_classified")
+        self.assertEqual(d2["settings"]["sharing"]["type"], "public")
+        self.assertEqual(d2["settings"]["urls"], [])
+
+    def test_pengaturan_validasi_dan_patch(self):
+        r = self.client.post(
+            "/api/maps",
+            json={"name": "X", "settings": {"minimum_severity": "unknown"}},
+        )
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post(
+            "/api/maps",
+            json={"name": "X", "settings": {"label_type": "unknown"}},
+        )
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post(
+            "/api/maps",
+            json={"name": "X", "settings": {"urls": [{"name": "A", "url": ""}]}},
+        )
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/maps", json={"name": "X", "settings": "bukan objek"})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/maps", json={"name": "X", "owner": "  "})
+        self.assertEqual(r.status_code, 400)
+
+        j = self.create_map()
+        row = self.patch_json(
+            f"/api/maps/{j['id']}",
+            {
+                "owner": "operator1",
+                "settings": {"background_scale": "none", "show_suppressed": True},
+            },
+        )
+        self.assertEqual(row["owner"], "operator1")
+        self.assertEqual(row["settings"]["background_scale"], "none")
+        self.assertTrue(row["settings"]["show_suppressed"])
+        # field lain tetap memakai nilai sebelumnya/default
+        self.assertEqual(row["settings"]["minimum_severity"], "not_classified")
+        d = self.detail(j["id"])
+        self.assertEqual(d["settings"]["background_scale"], "none")
+        r = self.client.patch(
+            f"/api/maps/{j['id']}",
+            json={"settings": {"problem_display": "aneh"}},
+        )
+        self.assertEqual(r.status_code, 400)
 
     def test_filter_nama_dan_urutan(self):
         self.create_map("Highlight Kantor")
@@ -311,6 +501,10 @@ class MapsTest(unittest.TestCase):
         r = self.client.delete("/api/maps", json={"ids": [a["id"], 99999]})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.get_json()["deleted"], 1)
+        conn, c = m.get_db()
+        c.execute("SELECT COUNT(*) AS n FROM map_settings WHERE map_id=?", (a["id"],))
+        self.assertEqual(c.fetchone()["n"], 0)
+        conn.close()
         data = self.client.get("/api/maps").get_json()
         self.assertEqual(data["count"], 1)
         # peta B tetap utuh
@@ -325,7 +519,23 @@ class MapsTest(unittest.TestCase):
     # ---------- ekspor & impor ----------
 
     def test_ekspor_json(self):
-        j = self.create_map("Ekspor Saya")
+        j = self.post_json(
+            "/api/maps",
+            {
+                "name": "Ekspor Saya",
+                "settings": {
+                    "background_scale": "none",
+                    "minimum_severity": "warning",
+                    "urls": [
+                        {
+                            "name": "Docs",
+                            "url": "https://example.test",
+                            "element": "map",
+                        }
+                    ],
+                },
+            },
+        )
         self.put_json(f"/api/maps/{j['id']}/content", self._cont())
         r = self.client.post("/api/maps/export", json={"ids": [j["id"]]})
         self.assertEqual(r.status_code, 200)
@@ -334,6 +544,10 @@ class MapsTest(unittest.TestCase):
         self.assertEqual(len(payload["maps"]), 1)
         mm = payload["maps"][0]
         self.assertEqual(mm["name"], "Ekspor Saya")
+        self.assertEqual(mm["owner"], "admin")
+        self.assertEqual(mm["settings"]["background_scale"], "none")
+        self.assertEqual(mm["settings"]["minimum_severity"], "warning")
+        self.assertEqual(len(mm["settings"]["urls"]), 1)
         self.assertEqual([e["uid"] for e in mm["elements"]], ["h1", "t1"])
         self.assertEqual(mm["links"], [{"from": "h1", "to": "t1"}])
         # id yang tidak ada dilewati; ids kosong → 400
@@ -351,6 +565,11 @@ class MapsTest(unittest.TestCase):
                     "name": "Impor Kantor",
                     "width": 800,
                     "height": 400,
+                    "owner": "admin",
+                    "settings": {
+                        "minimum_severity": "average",
+                        "sharing": {"type": "private"},
+                    },
                     "elements": self._cont()["elements"],
                     "links": self._cont()["links"],
                 },
@@ -370,6 +589,9 @@ class MapsTest(unittest.TestCase):
         self.assertEqual([e["uid"] for e in d["elements"]], ["h1", "t1"])
         self.assertEqual(d["links"], [{"from": "h1", "to": "t1"}])
         self.assertEqual(d["map"]["width"], 800)
+        self.assertEqual(d["owner"], "admin")
+        self.assertEqual(d["settings"]["minimum_severity"], "average")
+        self.assertEqual(d["settings"]["sharing"]["type"], "private")
         # impor kosong / format salah
         r = self.client.post("/api/maps/import", json={"maps": []})
         self.assertEqual(r.status_code, 400)
@@ -383,6 +605,81 @@ class MapsTest(unittest.TestCase):
         self.assertEqual(d["elements"], [])
         self.assertEqual(d["links"], [])
         self.assertEqual(d["map"]["name"], "Jaringan Kantor")
+
+    # ---------- validasi nama, total, tampilan, ACL ----------
+
+    def test_nama_peta_harus_unik(self):
+        a = self.create_map("Jaringan Kantor")
+        r = self.client.post("/api/maps", json={"name": "jaringan kantor "})
+        self.assertEqual(r.status_code, 400, msg=r.get_data(as_text=True))
+        b = self.create_map("Jaringan Cabang")
+        r = self.client.patch(f"/api/maps/{b['id']}", json={"name": "Jaringan Kantor"})
+        self.assertEqual(r.status_code, 400)
+        # Menyimpan ulang nama sendiri (beda kapital) tetap boleh.
+        r = self.client.patch(f"/api/maps/{a['id']}", json={"name": "JARINGAN KANTOR"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_daftar_punya_total_sebelum_filter(self):
+        for name in ("Alpha", "Beta", "Gamma"):
+            self.create_map(name)
+        data = self.client.get("/api/maps?name=bet").get_json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["total"], 3)
+        self.assertEqual(data["maps"][0]["name"], "Beta")
+
+    def test_halaman_lihat_peta(self):
+        j = self.create_map("Peta Lihat")
+        self.put_json(f"/api/maps/{j['id']}/content", self._cont())
+        r = self.client.get(f"/maps/{j['id']}")
+        self.assertEqual(r.status_code, 200)
+        body = r.get_data(as_text=True)
+        self.assertIn("Lihat peta", body)
+        self.assertIn("Fullscreen", body)
+        self.assertIn("Kiosk", body)
+        self.assertIn("30", body)
+        self.assertEqual(self.client.get("/maps/99999").status_code, 404)
+        # Detail mengirim can_write agar tombol Edit bisa disembunyikan.
+        self.assertTrue(self.detail(j["id"])["can_write"])
+
+    def test_acl_peta_privat_dan_publik(self):
+        private = {
+            "sharing": {
+                "type": "private",
+                "user_groups": [],
+                "users": [{"name": "operator1", "permission": "read-only"}],
+            }
+        }
+        self.assertFalse(m._map_can_read("admin", private, "operator2", "viewer"))
+        self.assertFalse(m._map_can_write("admin", private, "operator1", "operator"))
+        self.assertTrue(m._map_can_read("admin", private, "operator1", "operator"))
+        self.assertTrue(m._map_can_write("admin", private, "admin", "operator"))
+        # Admin selalu boleh, terlepas dari sharing.
+        self.assertTrue(m._map_can_read("admin", private, "anyone", "admin"))
+
+        public = m._map_settings_defaults()
+        self.assertTrue(m._map_can_read("budi", public, "siti", "viewer"))
+        self.assertFalse(m._map_can_write("budi", public, "siti", "viewer"))
+
+        rw = {
+            "sharing": {
+                "type": "private",
+                "users": [{"name": "siti", "permission": "read-write"}],
+            }
+        }
+        self.assertTrue(m._map_can_write("budi", rw, "siti", "operator"))
+
+    def test_impor_nama_ganda_ditolak(self):
+        payload = {
+            "maps": [
+                {"name": "Impor A", "elements": [], "links": []},
+                {"name": "impor a", "elements": [], "links": []},
+            ]
+        }
+        r = self.client.post("/api/maps/import", json=payload)
+        self.assertEqual(r.status_code, 201)
+        body = r.get_json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(len(body["errors"]), 1)
 
 
 if __name__ == "__main__":

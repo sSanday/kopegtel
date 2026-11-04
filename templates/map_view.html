@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Lihat peta topologi (read-only), cocok untuk layar NOC">
+<title>Lihat peta · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (_) {}
+})();
+</script>
+<style>
+/* ============ Lihat peta: kanvas read-only + mode kiosk ============ */
+.view-page { --vp-pad: 14px; padding: var(--vp-pad); min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
+.viewbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.viewbar .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2);
+  text-decoration: none; font-size: 13px; font-weight: 600; }
+.viewbar .back:hover { color: var(--text); }
+.viewbar h1 { font-size: 16px; font-weight: 800; margin: 0; max-width: 46ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewbar .grow { flex: 1; }
+.viewbar .legend { display: inline-flex; align-items: center; gap: 12px; color: var(--text-3); font-size: 12px; }
+.viewbar .legend span { display: inline-flex; align-items: center; gap: 5px; }
+.vbtn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  border-radius: 8px; font-weight: 600; font-size: 13px; padding: 7px 13px; cursor: pointer;
+  font-family: inherit; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+}
+.vbtn:hover { background: var(--accent-soft); }
+.vbtn.primary { background: var(--accent-btn); color: var(--on-primary); border-color: transparent; }
+.vbtn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); font-weight: 700; }
+
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.legend-dot.up { background: #3fb27f; }
+.legend-dot.down { background: #e5484d; }
+.legend-dot.unknown { background: var(--text-3); }
+
+.stage { flex: 1; min-height: 240px; display: flex; align-items: center; justify-content: center;
+  overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.canvas-holder { position: relative; transform-origin: top left; }
+#canvas {
+  position: relative; margin: 0 auto; transform-origin: top left;
+  background:
+    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) -1px -1px / 22px 22px,
+    var(--bg);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+#linkLayer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#linkLayer line { stroke-width: 2; }
+#linkLayer line.lk-up { stroke: #3fb27f; }
+#linkLayer line.lk-down { stroke: #e5484d; }
+#linkLayer line.lk-unk { stroke: var(--border); }
+
+.map-el {
+  position: absolute; display: inline-flex; align-items: center; gap: 7px;
+  max-width: 170px; padding: 6px 10px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 12.5px; font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0,0,0,.28); white-space: nowrap; cursor: default;
+}
+.map-el.host .lbl { overflow: hidden; text-overflow: ellipsis; }
+.map-el .ips { color: var(--text-3); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.map-el.txt { font-weight: 500; color: var(--text-2); background: transparent; border-style: dashed; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot.st-up { background: #3fb27f; }
+.dot.st-down { background: #e5484d; }
+.dot.st-unknown { background: var(--text-3); }
+.mbg { display: none; font-size: 9.5px; font-weight: 800; color: #d9a13c;
+  border: 1px solid #d9a13c; border-radius: 5px; padding: 0 4px; line-height: 14px; }
+.map-el.is-maint .mbg { display: inline-block; }
+.canvas-empty { position: absolute; left: 0; right: 0; top: 84px; text-align: center;
+  color: var(--text-3); font-size: 13px; }
+.canvas-empty a { color: var(--accent); }
+.foot { display: flex; align-items: center; gap: 16px; color: var(--text-3); font-size: 12px; }
+
+/* ---- Kiosk: sembunyikan seluruh chrome, kanvas penuh layar ---- */
+body.kiosk .viewbar, body.kiosk .foot { display: none; }
+body.kiosk .view-page { padding: 0; gap: 0; }
+body.kiosk .stage { border: 0; border-radius: 0; padding: 0; background: var(--bg); }
+.exit-hint {
+  display: none; position: fixed; right: 14px; bottom: 14px; z-index: 40;
+  color: var(--text-3); font-size: 11.5px; background: var(--surface); opacity: .55;
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+}
+body.kiosk .exit-hint { display: block; }
+body.kiosk .exit-hint:hover { opacity: 1; }
+@media (max-width: 720px) {
+  .viewbar { gap: 8px; }
+  .viewbar .legend { order: 3; width: 100%; }
+}
+</style>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
+</head>
+<body>
+<a class="skip-link" href="#stage">Lewati ke konten utama</a>
+
+<div class="view-page">
+  <header class="viewbar">
+    <a class="back" href="/maps">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      Maps
+    </a>
+    <h1 id="mapTitle">Memuat peta…</h1>
+    <span class="legend" id="legend">
+      <span><i class="legend-dot up" aria-hidden="true"></i><b id="nUp">0</b> up</span>
+      <span><i class="legend-dot down" aria-hidden="true"></i><b id="nDown">0</b> down</span>
+      <span><i class="legend-dot unknown" aria-hidden="true"></i><b id="nUnknown">0</b> unknown</span>
+    </span>
+    <div class="grow"></div>
+    <a class="vbtn" id="editLink" href="#" hidden>Edit</a>
+    <button class="vbtn" id="fitBtn" type="button" aria-pressed="true" title="Sesuaikan skala kanvas dengan layar">Fit</button>
+    <button class="vbtn" id="fsBtn" type="button" aria-pressed="false">Fullscreen</button>
+    <button class="vbtn" id="kioskBtn" type="button" aria-pressed="false" title="Sembunyikan seluruh panel (Esc untuk keluar)">Kiosk</button>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="canvas-holder" id="canvasHolder">
+      <div id="canvas" role="img" aria-label="Peta topologi">
+        <svg id="linkLayer" aria-hidden="true"></svg>
+        <div id="chipLayer"></div>
+        <div class="canvas-empty" id="canvasEmpty" hidden>Peta belum berisi elemen. <a id="emptyEditLink" href="#">Tambah elemen</a></div>
+      </div>
+    </div>
+  </main>
+
+  <div class="foot">
+    <span id="statElems"></span>
+    <span>Status host diperbarui otomatis setiap 30 detik</span>
+    <div style="flex:1"></div>
+    <span id="lastUpdated"></span>
+  </div>
+  <button class="exit-hint" id="exitHint" type="button">Esc untuk keluar dari mode kiosk</button>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  var MAP_ID = {{ map_id }};
+  var REFRESH_S = 30;
+
+  var map = { id: MAP_ID, name: '', width: 960, height: 540 };
+  var elems = [];       /* {uid,etype,label,ip,x,y,status,maintenance} */
+  var links = [];       /* {from,to} pasangan uid */
+  var canWrite = false;
+  var fitOn = true;
+
+  window.toast = function (msg, type) {
+    var w = $('toasts'); if (!w) return;
+    var el = document.createElement('div');
+    el.className = 'toast ' + (type === 'error' ? 'error' : 'success');
+    el.setAttribute('role', 'status');
+    el.innerHTML = (type === 'error'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 17H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>') + '<span></span>';
+    el.lastChild.textContent = msg;
+    w.appendChild(el);
+    setTimeout(function () { el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 250); }, 3500);
+  };
+
+  function byUid(uid) {
+    for (var i = 0; i < elems.length; i++) if (elems[i].uid === uid) return elems[i];
+    return null;
+  }
+  function centerOf(e) {
+    if (!e) return { x: 0, y: 0 };
+    return { x: e.x + 12, y: e.y + 14 };
+  }
+  function linkClass(uids) {
+    var down = false, up = 0;
+    for (var i = 0; i < uids.length; i++) {
+      var e = byUid(uids[i]);
+      if (!e) continue;
+      if (e.status === 'down') down = true;
+      if (e.status === 'up') up++;
+    }
+    if (down) return 'lk-down';
+    if (up === 2) return 'lk-up';
+    return 'lk-unk';
+  }
+  function renderLinks() {
+    var svg = $('linkLayer');
+    var html = '';
+    for (var i = 0; i < links.length; i++) {
+      var a = centerOf(byUid(links[i].from));
+      var b = centerOf(byUid(links[i].to));
+      html += '<line class="' + linkClass([links[i].from, links[i].to]) + '" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+    }
+    svg.innerHTML = html;
+  }
+  function chipHtml(e) {
+    var cls = 'map-el ' + e.etype + (e.maintenance ? ' is-maint' : '');
+    if (e.etype === 'host') {
+      var st = e.status || 'unknown';
+      return '<div class="' + cls + '" data-uid="' + esc(e.uid) + '" title="' + esc(e.label + ' — ping: ' + st + (e.maintenance ? ' (maintenance)' : '')) + '">' +
+        '<span class="dot st-' + esc(st) + '"></span><span class="lbl">' + esc(e.label) + '</span>' +
+        (e.ip ? '<span class="ips">' + esc(e.ip) + '</span>' : '') +
+        '<span class="mbg" title="Sedang maintenance">M</span></div>';
+    }
+    return '<div class="' + cls + '" data-uid="' + esc(e.uid) + '">' + esc(e.label) + '</div>';
+  }
+  function renderChips() {
+    var html = '';
+    for (var i = 0; i < elems.length; i++) {
+      html += chipHtml(elems[i]);
+    }
+    $('chipLayer').innerHTML = html;
+    $('canvasEmpty').hidden = elems.length > 0;
+    $('statElems').textContent = elems.length + ' elemen, ' + links.length + ' tautan';
+    var up = 0, down = 0, unknown = 0;
+    for (var j = 0; j < elems.length; j++) {
+      if (elems[j].etype !== 'host') continue;
+      if (elems[j].status === 'up') up++;
+      else if (elems[j].status === 'down') down++;
+      else unknown++;
+    }
+    $('nUp').textContent = up;
+    $('nDown').textContent = down;
+    $('nUnknown').textContent = unknown;
+    $('canvas').setAttribute(
+      'aria-label',
+      map.name + ': ' + elems.length + ' elemen, ' + up + ' up, ' + down + ' down, ' + unknown + ' unknown'
+    );
+  }
+  function applyCanvasSize() {
+    var c = $('canvas');
+    c.style.width = map.width + 'px';
+    c.style.height = map.height + 'px';
+    $('mapTitle').textContent = map.name;
+    document.title = map.name + ' · Maps · NMS Kopegtel';
+  }
+  /* Skala kanvas agar seluruh peta terlihat (dipakai mode kiosk). */
+  function fitCanvas() {
+    var holder = $('canvasHolder');
+    var stage = $('stage');
+    var c = $('canvas');
+    if (!fitOn) {
+      c.style.transform = 'none';
+      holder.style.width = map.width + 'px';
+      holder.style.height = map.height + 'px';
+      return;
+    }
+    var pad = document.body.classList.contains('kiosk') ? 8 : 24;
+    var aw = Math.max(120, stage.clientWidth - pad);
+    var ah = Math.max(120, stage.clientHeight - pad);
+    var s = Math.min(aw / map.width, ah / map.height, 1);
+    holder.style.width = (map.width * s) + 'px';
+    holder.style.height = (map.height * s) + 'px';
+    c.style.transform = 'scale(' + s + ')';
+  }
+  function updateEditLinks() {
+    var link = $('editLink'), empty = $('emptyEditLink');
+    link.hidden = !canWrite;
+    link.href = '/maps/' + MAP_ID + '/edit';
+    empty.hidden = !canWrite;
+    empty.href = '/maps/' + MAP_ID + '/edit';
+  }
+  function stamp() {
+    $('lastUpdated').textContent = 'Diperbarui ' + new Date().toLocaleTimeString('id-ID');
+  }
+  function load() {
+    return fetch('/api/maps/' + MAP_ID, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) {
+        if (r.status === 404) throw new Error('peta tidak ditemukan');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        map = { id: data.map.id, name: data.map.name, width: data.map.width, height: data.map.height };
+        elems = data.elements || [];
+        links = data.links || [];
+        canWrite = !!data.can_write;
+        applyCanvasSize();
+        renderChips();
+        renderLinks();
+        updateEditLinks();
+        fitCanvas();
+        stamp();
+      })
+      .catch(function (e) {
+        toast('Gagal memuat peta: ' + e.message, 'error');
+        $('mapTitle').textContent = 'Peta tidak dapat dimuat';
+      });
+  }
+  /* Refresh hanya status host; posisi/label tidak berubah. */
+  function refreshStatus() {
+    fetch('/api/maps/' + MAP_ID, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var fresh = {};
+        (data.elements || []).forEach(function (e) { fresh[e.uid] = e; });
+        var changed = false;
+        for (var i = 0; i < elems.length; i++) {
+          var f = fresh[elems[i].uid];
+          if (!f || f.etype !== 'host') continue;
+          if (elems[i].status !== f.status || elems[i].maintenance !== f.maintenance) {
+            elems[i].status = f.status;
+            elems[i].maintenance = f.maintenance;
+            changed = true;
+          }
+        }
+        if (changed) { renderChips(); renderLinks(); }
+        stamp();
+      })
+      .catch(function () {});
+  }
+
+  /* ---- Fit toggle ---- */
+  $('fitBtn').addEventListener('click', function () {
+    fitOn = !fitOn;
+    this.setAttribute('aria-pressed', fitOn ? 'true' : 'false');
+    fitCanvas();
+  });
+
+  /* ---- Fullscreen ---- */
+  function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (!fsElement()) {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) { req.call(el); return; }
+      toast('Browser tidak mendukung fullscreen', 'error');
+      return;
+    }
+    var exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+  }
+  function syncFs() {
+    var on = !!fsElement();
+    $('fsBtn').setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('fsBtn').textContent = on ? 'Keluar fullscreen' : 'Fullscreen';
+    setTimeout(fitCanvas, 60);
+  }
+  $('fsBtn').addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', syncFs);
+  document.addEventListener('webkitfullscreenchange', syncFs);
+
+  /* ---- Kiosk ---- */
+  function setKiosk(on) {
+    document.body.classList.toggle('kiosk', on);
+    $('kioskBtn').setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('kioskBtn').textContent = on ? 'Keluar kiosk' : 'Kiosk';
+    var url = new URL(window.location.href);
+    if (on) url.searchParams.set('kiosk', '1'); else url.searchParams.delete('kiosk');
+    try { history.replaceState(null, '', url.toString()); } catch (_) {}
+    setTimeout(fitCanvas, 30);
+  }
+  $('kioskBtn').addEventListener('click', function () {
+    setKiosk(!document.body.classList.contains('kiosk'));
+  });
+  $('exitHint').addEventListener('click', function () { setKiosk(false); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (document.body.classList.contains('kiosk')) setKiosk(false);
+  });
+  try {
+    if (new URL(window.location.href).searchParams.get('kiosk') === '1') setKiosk(true);
+  } catch (_) {}
+
+  window.addEventListener('resize', function () { fitCanvas(); });
+
+  load();
+  setInterval(refreshStatus, REFRESH_S * 1000);
+})();
+</script>
+</body>
+</html>

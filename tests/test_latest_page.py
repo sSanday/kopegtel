@@ -127,6 +127,33 @@ class LatestPageTest(unittest.TestCase):
         self.assertEqual(tem["delta"], 0.0)
         self.assertEqual(data["total"], 4)
 
+    def test_item_menjadi_not_supported_saat_nilai_hilang(self):
+        now = datetime.now()
+        conn, c = m.get_db()
+        c.execute(
+            "INSERT INTO device_health (host, cpu, mem_used, timestamp) VALUES (?,?,?,?)",
+            ("10.78.0.1", 10.0, 20.0, _stamp(now - timedelta(minutes=5))),
+        )
+        c.execute(
+            "INSERT INTO device_health (host, cpu, mem_used, timestamp) VALUES (?,?,?,?)",
+            ("10.78.0.1", None, 22.0, _stamp(now)),
+        )
+        conn.commit()
+        conn.close()
+        data = self.get_json()
+        cpu = self.find(data, "10.78.0.1", "CPU load")
+        self.assertIsNotNone(cpu)
+        self.assertEqual(cpu["state"], "unsupported")
+        self.assertIsNone(cpu["value"])
+        self.assertEqual(cpu["prev"], 10.0)
+        self.assertIsNone(cpu["delta"])
+        self.assertIn("tidak dikembalikan", cpu["error"])
+        mem = self.find(data, "10.78.0.1", "Memory used")
+        self.assertEqual(mem["state"], "normal")
+        self.assertEqual(mem["delta"], 2.0)
+        # metrik yang tidak pernah punya nilai tidak dibuatkan item
+        self.assertIsNone(self.find(data, "10.78.0.1", "Temperature"))
+
     def test_host_tanpa_data_kosong(self):
         data = self.get_json("?host=10.78.0.2")
         self.assertEqual(data["count"], 0)
@@ -193,6 +220,27 @@ class LatestPageTest(unittest.TestCase):
         conn.close()
         self.assertEqual(self.get_json("?source=ping")["count"], 0)
 
+    def test_ping_gagal_menjadi_not_supported(self):
+        now = datetime.now()
+        conn, c = m.get_db()
+        c.execute(
+            "INSERT INTO ping_logs (host, latency, timestamp) VALUES (?,?,?)",
+            ("10.78.0.1", 12.5, _stamp(now - timedelta(minutes=1))),
+        )
+        c.execute(
+            "INSERT INTO ping_logs (host, latency, timestamp) VALUES (?,?,?)",
+            ("10.78.0.1", -1, _stamp(now)),
+        )
+        conn.commit()
+        conn.close()
+        data = self.get_json("?source=ping")
+        self.assertEqual(data["count"], 1)
+        p = self.find(data, "10.78.0.1", "Ping latency")
+        self.assertEqual(p["state"], "unsupported")
+        self.assertIsNone(p["value"])
+        self.assertEqual(p["prev"], 12.5)
+        self.assertIn("Ping gagal", p["error"])
+
     # ---------- filter ----------
 
     def test_filter_nama_host_dan_group(self):
@@ -212,8 +260,18 @@ class LatestPageTest(unittest.TestCase):
         self.assertEqual([d["name"] for d in data["items"]], ["CPU load", "CPU load"])
         data = self.get_json("?host=Switch")
         self.assertEqual({d["ip"] for d in data["items"]}, {"10.78.0.1"})
+        # beberapa host (hasil dialog Select) digabung dengan koma
+        data = self.get_json("?host=Switch,10.78.0.2")
+        self.assertEqual(
+            {d["ip"] for d in data["items"]}, {"10.78.0.1", "10.78.0.2"}
+        )
         data = self.get_json("?group=Client")
         self.assertEqual({d["ip"] for d in data["items"]}, {"10.78.0.2"})
+        # beberapa host group (hasil dialog Select) digabung dengan koma
+        data = self.get_json("?group=Core,Client")
+        self.assertEqual(
+            {d["ip"] for d in data["items"]}, {"10.78.0.1", "10.78.0.2"}
+        )
         # kategori/host tersedia untuk datalist
         self.assertIn("Core", self.get_json()["categories"])
         self.assertIn("Switch Utama", self.get_json()["hosts"])
