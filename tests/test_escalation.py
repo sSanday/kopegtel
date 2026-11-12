@@ -89,6 +89,14 @@ def _open_problem(db, device_id, kind="device_down", severity="high", message="t
     return problem_id
 
 
+def _set_problem_started_at(db, problem_id, started_at):
+    """Pin problem start time so business-hours tests are time-independent."""
+    with db.connection._lock:
+        conn = db.get_conn()
+        conn.execute("UPDATE problems SET started_at=? WHERE id=?", (started_at, problem_id))
+        conn.commit()
+
+
 def test_policy_crud_and_validation(fresh_db):
     channel_id = _mk_telegram_channel(fresh_db, "tg-crud")
     created = fresh_db.create_policy({
@@ -233,6 +241,9 @@ def test_engine_respects_business_hours(fresh_db, telegram_capture):
                    "business_hours_only": True}],
     })
     problem_id = _open_problem(fresh_db, device_id)
+    # Waktu mulai problem dipatok ke tanggal skenario agar tes tidak
+    # bergantung pada jam berjalan saat suite dieksekusi.
+    _set_problem_started_at(fresh_db, problem_id, "2026-11-11T00:00:00Z")
     fresh_db.register_escalation(problem_id, policy_id)
 
     # 2026-11-12 00:00 UTC = 07:00 WIB (luar jam kerja).
