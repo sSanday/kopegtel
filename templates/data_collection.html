@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0f14">
+<meta name="description" content="NMS Kopegtel — Data collection: {{ dc_title }}">
+<title>{{ dc_title }} · Data collection · NMS Kopegtel</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/services.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/data_collection.css') }}">
+<script>
+// Terapkan tema tersimpan sebelum render untuk menghindari kedip.
+(function () {
+  try {
+    var t = localStorage.getItem("nms_theme");
+    if (t !== "light" && t !== "dark") {
+      t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+    }
+    document.documentElement.setAttribute("data-theme", t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", t === "dark" ? "#0b0f14" : "#eef1f6");
+  } catch (_) {}
+})();
+</script>
+<script src="{{ url_for('static', filename='js/services_common.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/data_collection.js') }}" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#konten">Lewati ke konten utama</a>
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+
+{% macro empty_row(colspan, title, hint) -%}
+<tr>
+  <td colspan="{{ colspan }}" class="dc-empty">
+    <div class="dc-empty-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg>
+      <b>{{ title }}</b>
+      <span>{{ hint }}</span>
+    </div>
+  </td>
+</tr>
+{%- endmacro %}
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg>
+      </span>
+      <span><span class="brand-name">NMS Kopegtel</span><br><span class="brand-sub">Monitoring Jaringan</span></span>
+    </div>
+    <nav class="nav" aria-label="Menu">
+      <div class="nav-group">Menu</div>
+      <a href="/" class="nav-link" data-nav="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dasbor</span></a>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="10.5" cy="10" r="2.4"/><path d="M12.4 11.9l2.1 2.1"/></svg>
+          <span>Monitoring</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/problems" class="nav-link nav-sub-link" data-nav="monitoring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6v3.5L4 15v1h16v-1l-2-2.5V9a6 6 0 00-6-6z"/><path d="M10 19a2 2 0 004 0"/></svg><span>Problems</span></a>
+          <a href="/hosts" class="nav-link nav-sub-link" data-nav="hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+          <a href="/latest-data" class="nav-link nav-sub-link" data-nav="latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h.01M8 6h12M4 12h.01M8 12h12M4 18h.01M8 18h12"/></svg><span>Latest Data</span></a>
+          <a href="/maps" class="nav-link nav-sub-link" data-nav="maps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.2-6-10a6 6 0 1112 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Maps</span></a>
+          <a href="/discovery" class="nav-link nav-sub-link" data-nav="discovery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg><span>Discovery</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg>
+          <span>Services</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/services" class="nav-link nav-sub-link" data-nav="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Services</span></a>
+          <a href="/services/sla" class="nav-link nav-sub-link" data-nav="sla"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 109 9"/><path d="M12 7v5l3 2"/><path d="M17 3l4 4-4 4"/></svg><span>SLA</span></a>
+          <a href="/services/sla/report" class="nav-link nav-sub-link" data-nav="sla-report"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></svg><span>SLA report</span></a>
+        </div>
+      </details>
+      <details class="nav-sub-wrap" open>
+        <summary class="nav-sub-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8.5v7L12 21l-9-5.5v-7L12 3l9 5.5z"/><path d="M3 8.5L12 14l9-5.5"/><path d="M12 14v7"/></svg>
+          <span>Inventory</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="nav-sub">
+          <a href="/inventory" class="nav-link nav-sub-link" data-nav="inventory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 4v8h8"/></svg><span>Overview</span></a>
+          <a href="/inventory/hosts" class="nav-link nav-sub-link" data-nav="inventory-hosts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01"/></svg><span>Hosts</span></a>
+        </div>
+      </details>
+      {% include "_reports_nav.html" %}
+      <a href="/fiber" class="nav-link" data-nav="fiber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 17c4-1 5-8 8-8s4 7 10 5"/><circle cx="3" cy="17" r="1.4"/><circle cx="21" cy="14" r="1.4"/></svg><span>Fiber</span></a>
+      <a href="/mikrotik" class="nav-link" data-nav="mikrotik"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="1.5"/><path d="M7 16v3M17 16v3M12 12v7"/></svg><span>MikroTik</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="collapse-btn" id="collapseBtn" aria-label="Ciutkan sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></svg><span>Ciutkan</span></button>
+    </div>
+  </aside>
+
+  <!-- ============ KOLOM UTAMA ============ -->
+  <div class="main-col">
+    <header class="header">
+      <span class="hamburger-wrap">
+        <button class="icon-btn" id="sidebarToggle" aria-label="Buka menu navigasi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </span>
+      <div>
+        <h1 class="page-title" style="font-size:16px;">Data collection</h1>
+        <p class="page-sub">Templates, host groups, and monitoring data collection rules</p>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeBtn" aria-label="Ganti tema" title="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5z"/></svg></button>
+        <div class="user-wrap">
+          <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Menu pengguna">
+            <span class="user-btn-avatar" aria-hidden="true">{{ (current_user.username or 'U')[0]|upper }}</span>
+            <span class="user-btn-meta">
+              <span class="user-btn-name">{{ current_user.username }}</span>
+              <span class="user-btn-role">{{ (current_user.role or 'operator')|capitalize }}</span>
+            </span>
+          </button>
+          <div class="menu-pop" id="userMenu" role="menu" style="display:none;">
+            <a href="/" role="menuitem" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:var(--text);text-decoration:none;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Dasbor</a>
+            <form action="/logout" method="post" onsubmit="return confirm('Keluar dari aplikasi?')">
+              <button type="submit" style="display:flex;align-items:center;gap:9px;width:100%;background:none;border:none;cursor:pointer;text-align:left;color:#e5484d;font-size:13px;font-weight:500;padding:11px 13px;border-radius:9px;">Keluar</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page dc-page{% if dc_page in ['template-groups', 'host-groups', 'templates'] %} dc-tg-page{% endif %}{% if dc_page == 'templates' %} dc-tpl-page{% endif %}" id="konten">
+      <div class="dc-heading">
+        <div class="dc-heading-title">
+          <h1 class="dc-title">{{ dc_title }}</h1>
+          <a href="https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/data_collection" target="_blank" rel="noopener" class="dc-help" title="Help" aria-label="Help">?</a>
+        </div>
+        <div class="dc-heading-actions">
+          {% if dc_page == "template-groups" %}
+          <button type="button" class="dc-btn dc-btn-primary dc-create-btn" id="dcCreateOpen">Create template group</button>
+          {% elif dc_page == "host-groups" %}
+          <button type="button" class="dc-btn dc-btn-primary dc-create-btn" id="dcCreateOpen">Create host group</button>
+          {% elif dc_page == "templates" %}
+          <button type="button" class="dc-btn dc-btn-primary dc-create-btn" id="dcCreateOpen">Create template</button>
+          <button type="button" class="dc-btn dc-btn-primary dc-create-btn" id="dcImportOpen">Import</button>
+          {% endif %}
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="dc-notices" role="status">
+        {% for category, message in messages %}
+        <div class="dc-notice dc-notice-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      {% if dc_page == "template-groups" or dc_page == "host-groups" %}
+      <div class="dc-filterbar">
+        <button type="button" class="dc-filter-toggle" id="dcFilterToggle" aria-expanded="true" aria-controls="dcFilterPanel">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg>
+          <span>Filter</span>
+        </button>
+      </div>
+
+      <div class="dc-filter-panel" id="dcFilterPanel">
+        <form class="dc-filter-form" method="get" action="{{ dc_filter_action }}">
+          <input type="hidden" name="sort" value="{{ dc_sort }}">
+          <input type="hidden" name="order" value="{{ dc_sort_order }}">
+          <div class="dc-filter-row">
+            <label class="dc-filter-label" for="dcFilterName">Name</label>
+            <input class="dc-filter-input" id="dcFilterName" name="name" type="search" value="{{ dc_filter_name }}" autocomplete="off">
+          </div>
+          <div class="dc-filter-actions">
+            <button type="submit" class="dc-btn dc-btn-primary">Apply</button>
+            <a class="dc-btn dc-btn-outline" href="{{ dc_reset_url }}">Reset</a>
+          </div>
+        </form>
+      </div>
+      {% elif dc_page == "templates" %}
+      <div class="dc-filterbar">
+        <button type="button" class="dc-filter-toggle" id="dcFilterToggle" aria-expanded="true" aria-controls="dcFilterPanel">
+          <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg>
+          <span>Filter</span>
+        </button>
+      </div>
+
+      <div class="dc-filter-panel dc-tpl-filter-panel" id="dcFilterPanel">
+        <form class="dc-tpl-filter-form" method="get" action="{{ dc_filter_action }}">
+          <div class="dc-tpl-filter-grid">
+            <div class="dc-tpl-filter-main">
+              <div class="dc-tpl-filter-row">
+                <label class="dc-tpl-filter-label" for="dcTemplateGroupFilter">Template groups</label>
+                <div class="dc-tpl-pick">
+                  <input class="dc-filter-input dc-tpl-filter-input" id="dcTemplateGroupFilter" name="template_group" type="text" value="{{ dc_template_group_filter }}" placeholder="type here to search" autocomplete="off">
+                  <button type="button" class="dc-btn dc-tpl-pick-btn" data-pick-toggle="dcTemplateGroupOptions">Select</button>
+                  <div class="dc-tpl-pick-menu" id="dcTemplateGroupOptions" hidden>
+                    {% for group in dc_template_group_options %}
+                    <button type="button" class="dc-tpl-pick-option" data-pick-input="dcTemplateGroupFilter" data-pick-value="{{ group }}">{{ group }}</button>
+                    {% else %}
+                    <span class="dc-tpl-pick-empty">No template groups</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="dc-tpl-filter-row">
+                <label class="dc-tpl-filter-label" for="dcLinkedTemplateFilter">Linked templates</label>
+                <div class="dc-tpl-pick">
+                  <input class="dc-filter-input dc-tpl-filter-input" id="dcLinkedTemplateFilter" name="linked" type="text" value="{{ dc_template_linked_filter }}" placeholder="type here to search" autocomplete="off">
+                  <button type="button" class="dc-btn dc-tpl-pick-btn" data-pick-toggle="dcLinkedTemplateOptions">Select</button>
+                  <div class="dc-tpl-pick-menu" id="dcLinkedTemplateOptions" hidden>
+                    {% for template_name in dc_template_names %}
+                    <button type="button" class="dc-tpl-pick-option" data-pick-input="dcLinkedTemplateFilter" data-pick-value="{{ template_name }}">{{ template_name }}</button>
+                    {% else %}
+                    <span class="dc-tpl-pick-empty">No templates</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="dc-tpl-filter-row">
+                <label class="dc-tpl-filter-label" for="dcFilterName">Name</label>
+                <input class="dc-filter-input dc-tpl-filter-input" id="dcFilterName" name="name" type="text" value="{{ dc_template_name_filter }}" autocomplete="off">
+              </div>
+              <div class="dc-tpl-filter-row">
+                <label class="dc-tpl-filter-label" for="dcTemplateVendorFilter">Vendor</label>
+                <input class="dc-filter-input dc-tpl-filter-input" id="dcTemplateVendorFilter" name="vendor" type="text" value="{{ dc_template_vendor_filter }}" autocomplete="off">
+              </div>
+              <div class="dc-tpl-filter-row">
+                <label class="dc-tpl-filter-label" for="dcTemplateVersionFilter">Version</label>
+                <input class="dc-filter-input dc-tpl-filter-input" id="dcTemplateVersionFilter" name="version" type="text" value="{{ dc_template_version_filter }}" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="dc-tpl-filter-tags">
+              <input type="hidden" name="tag_eval" id="dcTagEval" value="{{ dc_template_tag_eval }}">
+              <div class="dc-tpl-tags-top">
+                <span class="dc-tpl-filter-label">Tags</span>
+                <div class="dc-tpl-tag-eval" role="group" aria-label="Tag evaluation">
+                  <button type="button" class="dc-tpl-eval-btn{% if dc_template_tag_eval != 'or' %} active{% endif %}" data-tag-eval="and">And/Or</button>
+                  <button type="button" class="dc-tpl-eval-btn{% if dc_template_tag_eval == 'or' %} active{% endif %}" data-tag-eval="or">Or</button>
+                </div>
+              </div>
+              <div class="dc-tpl-tag-rows" id="dcTagRows">
+                {% set tag_rows = dc_template_tag_filters if dc_template_tag_filters else [{'name': '', 'op': 'contains', 'value': ''}] %}
+                {% for tag in tag_rows %}
+                <div class="dc-tpl-tag-row">
+                  <span class="dc-tpl-filter-label" aria-hidden="true"></span>
+                  <input class="dc-filter-input dc-tpl-tag-input" name="tag" type="text" value="{{ tag.name }}" placeholder="tag" autocomplete="off" aria-label="Tag name">
+                  <select class="dc-tpl-select" name="tag_op" aria-label="Tag operator">
+                    {% for operator_key, operator_label in dc_template_tag_operators %}
+                    <option value="{{ operator_key }}"{% if tag.op == operator_key %} selected{% endif %}>{{ operator_label }}</option>
+                    {% endfor %}
+                  </select>
+                  <input class="dc-filter-input dc-tpl-value-input" name="tag_value" type="text" value="{{ tag.value }}" placeholder="value" autocomplete="off" aria-label="Tag value">
+                  <button type="button" class="dc-tpl-remove">Remove</button>
+                </div>
+                {% endfor %}
+              </div>
+              <button type="button" class="dc-tpl-add" id="dcAddTag">Add</button>
+            </div>
+          </div>
+          <div class="dc-tpl-filter-actions">
+            <button type="submit" class="dc-btn dc-btn-primary">Apply</button>
+            <a class="dc-btn dc-btn-outline" href="{{ dc_reset_url }}">Reset</a>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if dc_page == "template-groups" %}
+      <section class="dc-tg-card" aria-label="Template groups">
+        <div class="dc-table-wrap">
+          <table class="dc-tg-table">
+            <thead>
+              <tr>
+                <th scope="col" class="dc-tg-check"><input type="checkbox" id="dcSelectAll" aria-label="Select all template groups"></th>
+                <th scope="col" class="dc-tg-name"{% if dc_sort == "name" %} aria-sort="{{ 'descending' if dc_sort_order == 'desc' else 'ascending' }}"{% endif %}>
+                  <a class="dc-sort" href="{{ dc_sort_name_url }}">Name <span class="dc-sort-arrow" aria-hidden="true">{% if dc_sort == "name" and dc_sort_order == "desc" %}▼{% else %}▲{% endif %}</span></a>
+                </th>
+                <th scope="col" class="dc-tg-templates">Templates</th>
+              </tr>
+              <tr class="dc-tg-section">
+                <td colspan="3">Templates</td>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dc_template_groups %}
+              <tr>
+                <td class="dc-tg-check">
+                  <input type="checkbox" class="dc-row-check" name="selected" value="{{ row.checkbox_value }}" form="dc-delete-form" aria-label="Select {{ row.name }}">
+                </td>
+                <td class="dc-tg-name">
+                  <a class="dc-tg-link" href="{{ url_for('data_collection_page', page='templates') }}">{{ row.name }}</a>
+                  <span class="dc-count-badge" title="{{ row.templates }} template{% if row.templates != 1 %}s{% endif %}">{{ row.templates }}</span>
+                </td>
+                <td class="dc-tg-templates">
+                  {% if row.template_names %}
+                  <span class="dc-template-list">{{ row.template_names|join(', ') }}</span>
+                  {% else %}
+                  <span class="dc-tg-no-templates">No templates</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              {% if dc_filter_name %}
+              {{ empty_row(3, "No template groups match this filter", "Try a different name or reset the filter.") }}
+              {% else %}
+              {{ empty_row(3, "No template groups found", "Use Create template group to add one.") }}
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="dc-tg-foot">
+        <span class="dc-tg-count">Displaying {{ dc_row_count }} of {{ dc_total_count }} found</span>
+        {% if dc_pager %}
+        <nav class="dc-tg-pager" aria-label="Pagination">
+          {% for item in dc_pager %}
+          {% if item.current %}
+          <span class="dc-pager-current" aria-current="page">{{ item.number }}</span>
+          {% else %}
+          <a href="{{ item.url }}">{{ item.number }}</a>
+          {% endif %}
+          {% endfor %}
+        </nav>
+        {% endif %}
+      </div>
+
+      <div class="dc-selectbar">
+        <span class="dc-selected"><b id="dcSelectedCount">0</b> selected</span>
+        <button type="submit" form="dc-delete-form" class="dc-btn dc-btn-danger" id="dcDeleteBtn" disabled>Delete</button>
+      </div>
+      <form id="dc-delete-form" method="post" action="{{ url_for('data_collection_template_group_delete') }}" class="dc-delete-form" data-dc-entity="template group"></form>
+
+      {% elif dc_page == "host-groups" %}
+      <section class="dc-tg-card" aria-label="Host groups">
+        <div class="dc-table-wrap">
+          <table class="dc-tg-table dc-hg-table">
+            <thead>
+              <tr>
+                <th scope="col" class="dc-tg-check"><input type="checkbox" id="dcSelectAll" aria-label="Select all host groups"></th>
+                <th scope="col" class="dc-hg-name"{% if dc_sort == "name" %} aria-sort="{{ 'descending' if dc_sort_order == 'desc' else 'ascending' }}"{% endif %}>
+                  <a class="dc-sort" href="{{ dc_sort_name_url }}">Name <span class="dc-sort-arrow" aria-hidden="true">{% if dc_sort == "name" and dc_sort_order == "desc" %}▼{% else %}▲{% endif %}</span></a>
+                </th>
+                <th scope="col" class="dc-hg-hosts">Hosts</th>
+                <th scope="col" class="dc-hg-info">Info</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dc_host_groups %}
+              <tr>
+                <td class="dc-tg-check">
+                  <input type="checkbox" class="dc-row-check" name="selected" value="{{ row.checkbox_value }}" form="dc-delete-form" aria-label="Select {{ row.name }}">
+                </td>
+                <td class="dc-hg-name">
+                  <a class="dc-tg-link" href="{{ url_for('hosts_page') }}">{{ row.name }}</a>
+                </td>
+                <td class="dc-hg-hosts">
+                  <span class="dc-count-badge" title="{{ row.hosts }} host{% if row.hosts != 1 %}s{% endif %}">{{ row.hosts }}</span>
+                </td>
+                <td class="dc-hg-info">
+                  {% if row.host_names %}
+                  <span class="dc-host-list">
+                    {% for host in row.host_names %}<a class="dc-host-link" href="{{ url_for('hosts_page') }}">{{ host }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+                  </span>
+                  {% else %}
+                  <span class="dc-tg-no-templates">No hosts</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              {% if dc_filter_name %}
+              {{ empty_row(4, "No host groups match this filter", "Try a different name or reset the filter.") }}
+              {% else %}
+              {{ empty_row(4, "No host groups found", "Host groups are derived from the categories of registered hosts.") }}
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="dc-tg-foot">
+        <span class="dc-tg-count">Displaying {{ dc_row_count }} of {{ dc_total_count }} found</span>
+        {% if dc_pager %}
+        <nav class="dc-tg-pager" aria-label="Pagination">
+          {% for item in dc_pager %}
+          {% if item.current %}
+          <span class="dc-pager-current" aria-current="page">{{ item.number }}</span>
+          {% else %}
+          <a href="{{ item.url }}">{{ item.number }}</a>
+          {% endif %}
+          {% endfor %}
+        </nav>
+        {% endif %}
+      </div>
+
+      <div class="dc-selectbar">
+        <span class="dc-selected"><b id="dcSelectedCount">0</b> selected</span>
+        <button type="button" class="dc-btn" disabled title="Enable hosts is managed from the Hosts page">Enable hosts</button>
+        <button type="button" class="dc-btn" disabled title="Disable hosts is managed from the Hosts page">Disable hosts</button>
+        <button type="submit" form="dc-delete-form" class="dc-btn dc-btn-danger" id="dcDeleteBtn" disabled>Delete</button>
+      </div>
+      <form id="dc-delete-form" method="post" action="{{ url_for('data_collection_host_group_delete') }}" class="dc-delete-form" data-dc-entity="host group"></form>
+
+      {% elif dc_page == "templates" %}
+      <section class="dc-tg-card" aria-label="Templates">
+        <div class="dc-table-wrap">
+          <table class="dc-tg-table dc-tpl-table">
+            <colgroup>
+              <col class="dc-tpl-col-check">
+              <col class="dc-tpl-col-name">
+              <col class="dc-tpl-col-hosts">
+              <col class="dc-tpl-col-items">
+              <col class="dc-tpl-col-triggers">
+              <col class="dc-tpl-col-graphs">
+              <col class="dc-tpl-col-dashboards">
+              <col class="dc-tpl-col-discovery">
+              <col class="dc-tpl-col-web">
+              <col class="dc-tpl-col-vendor">
+              <col class="dc-tpl-col-version">
+              <col class="dc-tpl-col-linked">
+              <col class="dc-tpl-col-linkedto">
+              <col class="dc-tpl-col-tags">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" class="dc-tg-check"><input type="checkbox" id="dcSelectAll" aria-label="Select all templates"></th>
+                <th scope="col" class="dc-tpl-name"{% if dc_sort == "name" %} aria-sort="{{ 'descending' if dc_sort_order == 'desc' else 'ascending' }}"{% endif %}>
+                  <a class="dc-sort" href="{{ dc_sort_name_url }}">Name <span class="dc-sort-arrow" aria-hidden="true">{% if dc_sort == "name" and dc_sort_order == "desc" %}▼{% else %}▲{% endif %}</span></a>
+                </th>
+                <th scope="col">Hosts</th>
+                <th scope="col">Items</th>
+                <th scope="col">Triggers</th>
+                <th scope="col">Graphs</th>
+                <th scope="col">Dashboards</th>
+                <th scope="col">Discovery</th>
+                <th scope="col">Web</th>
+                <th scope="col">Vendor</th>
+                <th scope="col">Version</th>
+                <th scope="col">Linked templates</th>
+                <th scope="col">Linked to templates</th>
+                <th scope="col">Tags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dc_templates %}
+              <tr>
+                <td class="dc-tg-check">
+                  <input type="checkbox" class="dc-row-check" name="selected" value="{{ row.checkbox_value }}" form="dc-delete-form" aria-label="Select {{ row.name }}">
+                </td>
+                <td class="dc-tpl-name">
+                  <a class="dc-tg-link dc-tpl-name-link" href="{{ url_for('hosts_page') }}" title="Hosts using {{ row.name }}">{{ row.name }}</a>
+                </td>
+                <td class="dc-tpl-hosts"><a class="dc-tpl-link" href="{{ url_for('hosts_page') }}" title="{{ row.hosts }} host{% if row.hosts != 1 %}s{% endif %} using this template">Hosts</a></td>
+                <td class="dc-tpl-items">
+                  {% if row["items"] %}<a class="dc-tpl-link" href="{{ url_for('latest_data_page') }}">Items <span class="dc-tpl-count">{{ row["items"] }}</span></a>{% else %}<span class="dc-tpl-zero">Items</span>{% endif %}
+                </td>
+                <td class="dc-tpl-triggers">
+                  {% if row.triggers %}<a class="dc-tpl-link" href="{{ url_for('problems_page') }}">Triggers <span class="dc-tpl-count">{{ row.triggers }}</span></a>{% else %}<span class="dc-tpl-zero">Triggers</span>{% endif %}
+                </td>
+                <td class="dc-tpl-graphs">
+                  {% if row.graphs %}<a class="dc-tpl-link" href="{{ url_for('latest_data_page') }}">Graphs <span class="dc-tpl-count">{{ row.graphs }}</span></a>{% else %}<span class="dc-tpl-zero">Graphs</span>{% endif %}
+                </td>
+                <td class="dc-tpl-dashboards">
+                  {% if row.dashboards %}<a class="dc-tpl-link" href="{{ url_for('index') }}">Dashboards <span class="dc-tpl-count">{{ row.dashboards }}</span></a>{% else %}<span class="dc-tpl-zero">Dashboards</span>{% endif %}
+                </td>
+                <td class="dc-tpl-discovery">
+                  {% if row.discovery %}<a class="dc-tpl-link" href="{{ url_for('data_collection_page', page='discovery') }}">Discovery <span class="dc-tpl-count">{{ row.discovery }}</span></a>{% else %}<span class="dc-tpl-zero">Discovery</span>{% endif %}
+                </td>
+                <td class="dc-plain">Web</td>
+                <td class="dc-plain">{{ row.vendor }}</td>
+                <td class="dc-plain">{{ row.version }}</td>
+                <td class="dc-tpl-linked">
+                  {% for linked_name in row.linked_names %}<a class="dc-tpl-link" href="{{ url_for('data_collection_page', page='templates', name=linked_name) }}">{{ linked_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+                </td>
+                <td class="dc-tpl-linkedto">
+                  {% for linked_name in row.linked_to %}<a class="dc-tpl-link" href="{{ url_for('data_collection_page', page='templates', name=linked_name) }}">{{ linked_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+                </td>
+                <td class="dc-tpl-tags-cell">
+                  {% for tag in row.tags %}
+                  <span class="dc-tpl-tag" title="{{ tag.name }}: {{ tag.value }}">{{ tag.name }}: {{ tag.value }}</span>
+                  {% else %}
+                  <span class="dc-tpl-zero">-</span>
+                  {% endfor %}
+                </td>
+              </tr>
+              {% else %}
+              {% if dc_template_name_filter or dc_template_group_filter or dc_template_linked_filter or dc_template_vendor_filter or dc_template_version_filter or dc_template_tag_filters %}
+              {{ empty_row(14, "No templates match this filter", "Try different filter values or reset the filter.") }}
+              {% else %}
+              {{ empty_row(14, "No templates found", "Use Create template or Import to add one.") }}
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="dc-tg-foot dc-tpl-foot">
+        <nav class="dc-tg-pager" aria-label="Pagination">
+          {% for item in dc_pager %}
+          {% if item.current %}
+          <span class="dc-pager-current" aria-current="page">{{ item.number }}</span>
+          {% else %}
+          <a href="{{ item.url }}">{{ item.number }}</a>
+          {% endif %}
+          {% endfor %}
+          {% if dc_has_next %}
+          <a class="dc-tg-pager-next" href="{{ dc_next_url }}" aria-label="Next page">▶</a>
+          {% endif %}
+        </nav>
+        <span class="dc-tg-count">{% if dc_total_count %}Displaying {{ dc_range_start }} to {{ dc_range_end }} of {{ dc_total_count }} found{% else %}Displaying 0 of 0 found{% endif %}</span>
+      </div>
+
+      <div class="dc-selectbar dc-tpl-selectbar">
+        <span class="dc-selected"><b id="dcSelectedCount">0</b> selected</span>
+        <div class="dc-export" data-export-url="{{ url_for('data_collection_template_export') }}">
+          <button type="button" class="dc-btn dc-export-main" id="dcExportBtn" data-dc-export disabled>Export</button>
+          <button type="button" class="dc-btn dc-export-caret" id="dcExportToggle" data-dc-export disabled aria-label="Export options" aria-haspopup="menu" aria-expanded="false">▾</button>
+          <div class="dc-export-menu" id="dcExportMenu" role="menu" hidden>
+            <button type="button" role="menuitem" data-export-format="csv">CSV</button>
+            <button type="button" role="menuitem" data-export-format="json">JSON</button>
+          </div>
+        </div>
+        <button type="button" class="dc-btn" disabled title="Mass update is not available for built-in templates">Mass update</button>
+        <button type="submit" form="dc-delete-form" class="dc-btn dc-btn-danger" id="dcDeleteBtn" disabled>Delete</button>
+        <button type="submit" form="dc-delete-form" class="dc-btn dc-btn-danger" id="dcDeleteClearBtn" name="clear" value="1" disabled>Delete and clear</button>
+      </div>
+      <form id="dc-delete-form" method="post" action="{{ url_for('data_collection_template_delete') }}" class="dc-delete-form" data-dc-entity="template"></form>
+
+      {% elif dc_page == "maintenance" %}
+      <section class="dc-card" aria-label="Maintenance periods">
+        <div class="dc-table-wrap">
+          <table class="dc-table">
+            <thead>
+              <tr>
+                <th scope="col">Host</th>
+                <th scope="col">Start</th>
+                <th scope="col">End</th>
+                <th scope="col">Reason</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dc_maintenance %}
+              <tr>
+                <td><span class="dc-name">{{ row.host }}</span></td>
+                <td class="dc-mono">{{ row.start_at }}</td>
+                <td class="dc-mono">{{ row.end_at }}</td>
+                <td class="dc-desc">{{ row.reason or '-' }}</td>
+                <td><span class="dc-status {{ row.status_class }}">{{ row.status_label }}</span></td>
+              </tr>
+              {% else %}
+              {{ empty_row(5, "No maintenance periods found", "Maintenance windows scheduled for hosts will be listed here.") }}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {% elif dc_page == "event-correlation" %}
+      <section class="dc-card" aria-label="Event correlation rules">
+        <div class="dc-table-wrap">
+          <table class="dc-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Type</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{ empty_row(3, "No event correlation rules found", "Event correlation rules can be added when alert correlation is configured.") }}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% endif %}
+
+      {% if dc_page not in ['template-groups', 'host-groups', 'templates'] %}
+      <div class="dc-foot"><span>Displaying {{ dc_row_count|default(0) }} of {{ dc_total_count|default(dc_row_count|default(0)) }} found</span></div>
+      {% endif %}
+      <footer class="dc-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. c 2001-2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+    </main>
+  </div>
+</div>
+
+{% if dc_page in ['template-groups', 'host-groups', 'templates'] %}
+{% set dc_create_template = dc_page == "templates" %}
+{% set dc_create_host_group = dc_page == "host-groups" %}
+{% set dc_create_endpoint = "data_collection_template_create" if dc_create_template else ("data_collection_host_group_create" if dc_create_host_group else "data_collection_template_group_create") %}
+{% set dc_modal_help_url = "https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/data_collection/templates" if dc_create_template else ("https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/data_collection/host_groups" if dc_create_host_group else "https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/data_collection/template_groups") %}
+<div class="modal-overlay" id="dcCreateModal" role="dialog" aria-modal="true" aria-labelledby="dcCreateTitle">
+  <div class="modal dc-modal{% if dc_create_template %} dc-modal-template{% endif %}">
+    <div class="modal-header">
+      <div class="modal-title" id="dcCreateTitle">{{ "New template" if dc_create_template else ("New host group" if dc_create_host_group else "New template group") }}</div>
+      <div class="dc-modal-tools">
+        <a href="{{ dc_modal_help_url }}" target="_blank" rel="noopener" class="dc-modal-help" title="Help" aria-label="Help">?</a>
+        <button type="button" class="modal-close" data-dc-modal-close aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for(dc_create_endpoint) }}">
+      <div class="modal-body">
+        {% if dc_create_template %}
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true">*</span>
+          <label for="dcCreateName">Name</label>
+          <input id="dcCreateName" name="name" type="text" maxlength="128" required autocomplete="off" aria-required="true">
+        </div>
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateGroup">Template group</label>
+          <select id="dcCreateGroup" name="template_group">
+            <option value="Custom templates">Custom templates</option>
+            {% for group in dc_template_group_options %}
+            {% if group != "Custom templates" %}<option value="{{ group }}">{{ group }}</option>{% endif %}
+            {% endfor %}
+          </select>
+        </div>
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateVendor">Vendor</label>
+          <input id="dcCreateVendor" name="vendor" type="text" value="Zabbix" autocomplete="off">
+        </div>
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateVersion">Version</label>
+          <input id="dcCreateVersion" name="version" type="text" value="7.4.15" autocomplete="off">
+        </div>
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateLinked">Linked templates</label>
+          <input id="dcCreateLinked" name="linked" type="text" placeholder="Comma-separated template names" autocomplete="off">
+        </div>
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateTags">Tags</label>
+          <input id="dcCreateTags" name="tags" type="text" placeholder="class: network, target: custom" autocomplete="off">
+        </div>
+        <div class="dc-modal-row dc-modal-row-top">
+          <span class="dc-modal-required" aria-hidden="true"></span>
+          <label for="dcCreateDescription">Description</label>
+          <textarea id="dcCreateDescription" name="description" rows="3"></textarea>
+        </div>
+        {% else %}
+        <div class="dc-modal-row">
+          <span class="dc-modal-required" aria-hidden="true">*</span>
+          <label for="dcCreateName">Group name</label>
+          <input id="dcCreateName" name="name" type="text" maxlength="128" required autocomplete="off" aria-required="true">
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-foot">
+        <button type="submit" class="dc-btn dc-btn-primary">Add</button>
+        <button type="button" class="dc-btn dc-btn-outline" data-dc-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if dc_page == "templates" %}
+<div class="modal-overlay" id="dcImportModal" role="dialog" aria-modal="true" aria-labelledby="dcImportTitle">
+  <div class="modal dc-modal dc-import-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="dcImportTitle">Import templates</div>
+      <div class="dc-modal-tools">
+        <a href="{{ dc_modal_help_url }}" target="_blank" rel="noopener" class="dc-modal-help" title="Help" aria-label="Help">?</a>
+        <button type="button" class="modal-close" data-dc-modal-close aria-label="Close">&times;</button>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('data_collection_template_import') }}">
+      <div class="modal-body">
+        <div class="dc-import-field">
+          <label for="dcImportText">Template JSON</label>
+          <textarea id="dcImportText" name="payload" rows="10" required spellcheck="false" placeholder='[{"name": "My template", "template_group": "Custom templates", "vendor": "Zabbix", "version": "7.4.15", "tags": [{"name": "class", "value": "custom"}]}]'></textarea>
+          <p class="dc-import-hint">Paste a JSON object or array. Each template must have a unique name; template_group, vendor, version, description, tags, and linked are optional.</p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="submit" class="dc-btn dc-btn-primary">Import</button>
+        <button type="button" class="dc-btn dc-btn-outline" data-dc-modal-close>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+</body>
+</html>

@@ -5,6 +5,9 @@
   var panel = document.getElementById("availabilityTimePanel");
   var toggle = document.getElementById("availabilityTimeToggle");
   var filterPanel = document.getElementById("availabilityFilterPanel");
+  var auditFilterPanel = document.getElementById("auditFilterPanel");
+  var actionPanel = document.querySelector("[data-action-panel]");
+  var actionFilterPanel = document.getElementById("actionFilterPanel");
   var filterButton = document.getElementById("availabilityFilterButton");
   var table = document.getElementById("availabilityTable");
   var modeSelect = document.getElementById("availabilityMode");
@@ -17,7 +20,18 @@
   }
 
   toggle.addEventListener("click", function () {
-    setPanel(panel.hidden);
+    if (actionFilterPanel) {
+      var actionOpen = panel.hidden;
+      panel.hidden = !actionOpen;
+      actionFilterPanel.hidden = true;
+      toggle.setAttribute("aria-expanded", actionOpen ? "true" : "false");
+      toggle.classList.toggle("active", actionOpen);
+      if (filterButton) filterButton.setAttribute("aria-expanded", "false");
+      return;
+    }
+    var open = panel.hidden;
+    if (open) setAuditFilterPanel(false);
+    setPanel(open);
   });
 
   document.querySelectorAll(".rpt-availability-preset").forEach(function (link) {
@@ -46,12 +60,259 @@
     if (!filterPanel || !filterButton) return;
     filterPanel.hidden = !open;
     filterButton.setAttribute("aria-expanded", open ? "true" : "false");
-    if (!open) closeFilterDialog();
+    if (!open) closePicker();
   }
 
   if (filterButton && filterPanel) {
     filterButton.addEventListener("click", function () {
       setFilterPanel(filterPanel.hidden);
+    });
+  }
+
+  // Audit log: panel filter terpisah dari panel rentang waktu.
+  var auditUsersSelect = document.getElementById("auditUsersSelect");
+  var auditUsersInput = document.getElementById("auditFilterUsers");
+  var auditUsersDialog = document.getElementById("auditUsersDialog");
+  var auditUsersList = document.getElementById("auditUsersList");
+  var auditUsersAll = document.getElementById("auditUsersAll");
+
+  function auditUserBoxes() {
+    return auditUsersList ? auditUsersList.querySelectorAll("input") : [];
+  }
+
+  function syncAuditUsersAll() {
+    if (!auditUsersAll) return;
+    var boxes = auditUserBoxes();
+    var checked = 0;
+    Array.prototype.forEach.call(boxes, function (box) {
+      if (box.checked) checked += 1;
+    });
+    auditUsersAll.checked = boxes.length > 0 && checked === boxes.length;
+    auditUsersAll.indeterminate = checked > 0 && checked < boxes.length;
+    auditUsersAll.disabled = boxes.length === 0;
+  }
+
+  function closeUsersPicker() {
+    if (auditUsersDialog && auditUsersDialog.open) auditUsersDialog.close();
+    if (auditUsersSelect) auditUsersSelect.setAttribute("aria-expanded", "false");
+  }
+
+  function setAuditFilterPanel(open) {
+    if (!auditFilterPanel || !filterButton) return;
+    auditFilterPanel.hidden = !open;
+    filterButton.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open) closeUsersPicker();
+  }
+
+  if (filterButton && auditFilterPanel) {
+    filterButton.addEventListener("click", function () {
+      var open = auditFilterPanel.hidden;
+      if (open) setPanel(false);
+      setAuditFilterPanel(open);
+    });
+  }
+
+  // Action log: panel Filter terpisah dari panel rentang waktu.
+  if (filterButton && actionFilterPanel) {
+    filterButton.addEventListener("click", function () {
+      var open = actionFilterPanel.hidden;
+      actionFilterPanel.hidden = !open;
+      panel.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+      toggle.classList.remove("active");
+      filterButton.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open) closeActionPicker();
+    });
+  }
+
+  // Jangan kirim field teks kosong agar URL filter tetap ringkas seperti Zabbix.
+  var actionFilterForm = document.getElementById("actionFilterForm");
+  if (actionFilterForm) {
+    actionFilterForm.addEventListener("submit", function () {
+      Array.prototype.forEach.call(
+        actionFilterForm.querySelectorAll('input[type="text"][name]'),
+        function (input) {
+          if (!input.value.trim()) input.disabled = true;
+        }
+      );
+    });
+  }
+
+  // Dialog Select untuk Recipients / Actions / Media types pada Action log.
+  var actionPickerDialog = document.getElementById("actionFilterPicker");
+  var actionPickerList = document.getElementById("actionFilterPickerList");
+  var actionPickerTitle = document.getElementById("actionFilterPickerTitle");
+  var actionPickerOptions = document.getElementById("actionFilterOptions");
+  var actionPickerTarget = null;
+  var actionPickerKind = "";
+  var actionPickerValues = {};
+  var actionPickerInputs = {
+    recipients: "actionFilterRecipients",
+    actions: "actionFilterActions",
+    media: "actionFilterMedia"
+  };
+  var actionPickerLabels = {
+    recipients: "Recipients",
+    actions: "Actions",
+    media: "Media types"
+  };
+
+  if (actionPickerOptions) {
+    try {
+      actionPickerValues = JSON.parse(actionPickerOptions.textContent) || {};
+    } catch (error) {
+      actionPickerValues = {};
+    }
+  }
+
+  function closeActionPicker() {
+    if (actionPickerDialog && actionPickerDialog.open) actionPickerDialog.close();
+    actionPickerTarget = null;
+  }
+
+  function renderActionPickerList() {
+    if (!actionPickerList) return;
+    actionPickerList.innerHTML = "";
+    var values = actionPickerValues[actionPickerKind] || [];
+    var selected = actionPickerTarget
+      ? actionPickerTarget.value.split(",").map(function (value) { return value.trim(); })
+      : [];
+    if (!values.length) {
+      var empty = document.createElement("p");
+      empty.className = "rpt-picker-empty";
+      empty.textContent = "No data found";
+      actionPickerList.appendChild(empty);
+      return;
+    }
+    values.forEach(function (value) {
+      var row = document.createElement("label");
+      row.className = "rpt-picker-users-row";
+      var cell = document.createElement("span");
+      cell.className = "rpt-picker-users-cell";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "rpt-picker-check";
+      box.value = value;
+      box.checked = selected.indexOf(value) !== -1;
+      cell.appendChild(box);
+      var name = document.createElement("span");
+      name.className = "rpt-picker-users-name";
+      name.textContent = value;
+      row.appendChild(cell);
+      row.appendChild(name);
+      actionPickerList.appendChild(row);
+    });
+  }
+
+  if (actionPickerDialog) {
+    document.querySelectorAll("[data-action-picker]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        actionPickerKind = button.getAttribute("data-action-picker");
+        actionPickerTarget = document.getElementById(actionPickerInputs[actionPickerKind]);
+        if (!actionPickerTarget) return;
+        actionPickerTitle.textContent = actionPickerLabels[actionPickerKind] || "Select";
+        renderActionPickerList();
+        button.setAttribute("aria-expanded", "true");
+        if (!actionPickerDialog.open) {
+          actionPickerDialog.showModal();
+          actionPickerDialog.focus();
+        }
+      });
+    });
+
+    document.getElementById("actionFilterPickerClose").addEventListener("click", closeActionPicker);
+    document.getElementById("actionFilterPickerCancel").addEventListener("click", closeActionPicker);
+    document.getElementById("actionFilterPickerSelect").addEventListener("click", function () {
+      if (!actionPickerTarget || !actionPickerList) {
+        closeActionPicker();
+        return;
+      }
+      var picked = [];
+      Array.prototype.forEach.call(
+        actionPickerList.querySelectorAll('input[type="checkbox"]'),
+        function (box) {
+          if (box.checked) picked.push(box.value);
+        }
+      );
+      actionPickerTarget.value = picked.join(", ");
+      actionPickerTarget.focus();
+      closeActionPicker();
+    });
+    actionPickerDialog.addEventListener("click", function (event) {
+      if (event.target === actionPickerDialog) closeActionPicker();
+    });
+    actionPickerDialog.addEventListener("close", function () {
+      document.querySelectorAll("[data-action-picker]").forEach(function (button) {
+        button.setAttribute("aria-expanded", "false");
+      });
+    });
+  }
+
+  if (auditUsersSelect && auditUsersDialog) {
+    auditUsersSelect.addEventListener("click", function () {
+      syncAuditUsersAll();
+      if (!auditUsersDialog.open) {
+        auditUsersDialog.showModal();
+        // Fokus ke dialog, bukan tombol Close, agar tidak ada focus ring.
+        auditUsersDialog.focus();
+      }
+      auditUsersSelect.setAttribute("aria-expanded", "true");
+    });
+    auditUsersDialog.addEventListener("close", function () {
+      auditUsersSelect.setAttribute("aria-expanded", "false");
+    });
+    document.getElementById("auditUsersDialogClose").addEventListener("click", closeUsersPicker);
+    document.getElementById("auditUsersDialogCancel").addEventListener("click", closeUsersPicker);
+    document.getElementById("auditUsersDialogSelect").addEventListener("click", function () {
+      var values = [];
+      Array.prototype.forEach.call(auditUserBoxes(), function (box) {
+        if (box.checked) values.push(box.value);
+      });
+      if (auditUsersInput) {
+        auditUsersInput.value = values.join(", ");
+        auditUsersInput.focus();
+      }
+      closeUsersPicker();
+    });
+    if (auditUsersAll) {
+      auditUsersAll.addEventListener("change", function () {
+        Array.prototype.forEach.call(auditUserBoxes(), function (box) {
+          box.checked = auditUsersAll.checked;
+        });
+        syncAuditUsersAll();
+      });
+    }
+    if (auditUsersList) {
+      auditUsersList.addEventListener("change", syncAuditUsersAll);
+    }
+    auditUsersDialog.addEventListener("click", function (event) {
+      if (event.target !== auditUsersDialog) return;
+      var rect = auditUsersDialog.getBoundingClientRect();
+      var inside = event.clientX >= rect.left && event.clientX <= rect.right &&
+        event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!inside) closeUsersPicker();
+    });
+  }
+
+  var auditFilterForm = document.getElementById("auditFilterForm");
+  if (auditFilterForm) {
+    auditFilterForm.addEventListener("submit", function () {
+      Array.prototype.forEach.call(auditFilterForm.elements, function (element) {
+        if (element.type === "text" || element.tagName === "SELECT") {
+          if (!String(element.value || "").trim()) element.disabled = true;
+        }
+      });
+    });
+  }
+
+  if (auditFilterPanel && filterButton) {
+    document.addEventListener("click", function (event) {
+      if (auditFilterPanel.hidden) return;
+      // Klik dari dialog Users (termasuk Select/Cancel yang sudah menutup
+      // dialog) bukan klik di luar panel; jangan ikut menutup panel.
+      if (auditUsersDialog && (auditUsersDialog.open || auditUsersDialog.contains(event.target))) return;
+      if (auditFilterPanel.contains(event.target) || filterButton.contains(event.target)) return;
+      setAuditFilterPanel(false);
     });
   }
 
@@ -112,7 +373,10 @@
       button.className = "rpt-av-cal-day" + (day.getMonth() === month ? "" : " outside") + (day.toDateString() === selected.toDateString() ? " selected" : "");
       button.textContent = day.getDate();
       button.addEventListener("click", function (picked) {
-        return function () {
+        return function (event) {
+          // Jangan biarkan handler document menutup popover/panel setelah
+          // tombol hari ini digambar ulang (target sudah lepas dari DOM).
+          if (event) event.stopPropagation();
           var time = calendar.querySelector("[data-cal-time]").value || "00:00";
           activeCalendarInput.value = formatDate(new Date(picked.getFullYear(), picked.getMonth(), picked.getDate(), Number(time.slice(0, 2)), Number(time.slice(3, 5))));
           calendarDate = new Date(picked.getFullYear(), picked.getMonth(), 1);
@@ -224,65 +488,112 @@
     return values;
   }
 
-  var filterDialog = null;
-  var filterDialogInput = null;
-  var filterDialogTrigger = null;
-
-  function ensureFilterDialog() {
-    if (filterDialog) return filterDialog;
-    filterDialog = document.createElement("div");
-    filterDialog.id = "availabilityFilterDialog";
-    filterDialog.className = "rpt-av-modal";
-    filterDialog.hidden = true;
-    filterDialog.innerHTML = '<div class="rpt-av-modal-window" role="dialog" aria-modal="true" aria-labelledby="availabilityFilterDialogTitle">' +
-      '<div class="rpt-av-modal-head"><h2 class="rpt-av-modal-title" id="availabilityFilterDialogTitle"></h2><button type="button" class="rpt-av-modal-close" aria-label="Close">×</button></div>' +
-      '<div class="rpt-av-modal-body"><div class="rpt-av-modal-list" role="group"></div><div class="rpt-av-modal-empty" hidden>No data found</div></div>' +
-      '<div class="rpt-av-modal-foot"><button type="button" class="rpt-av-modal-select" data-dialog-action="select">Select</button><button type="button" class="rpt-av-modal-cancel" data-dialog-action="cancel">Cancel</button></div>' +
-      '</div>';
-    document.body.appendChild(filterDialog);
-
-    filterDialog.querySelector("[data-dialog-action=cancel]").addEventListener("click", closeFilterDialog);
-    filterDialog.querySelector(".rpt-av-modal-close").addEventListener("click", closeFilterDialog);
-    filterDialog.querySelector("[data-dialog-action=select]").addEventListener("click", function () {
-      if (!filterDialogInput) return;
-      var input = filterDialogInput;
-      var values = [];
-      filterDialog.querySelectorAll(".rpt-av-modal-list input:checked").forEach(function (box) {
-        values.push(box.value);
-      });
-      input.value = values.join(", ");
-      applyTableFilters();
-      closeFilterDialog();
-      input.focus();
-    });
-    filterDialog.addEventListener("click", function (event) {
-      if (event.target === filterDialog) closeFilterDialog();
-    });
-    return filterDialog;
-  }
-
-  function closeFilterDialog() {
-    if (!filterDialog || filterDialog.hidden) return;
-    filterDialog.hidden = true;
-    if (filterDialogTrigger) {
-      filterDialogTrigger.setAttribute("aria-expanded", "false");
-      if (filterDialogTrigger.offsetParent !== null) filterDialogTrigger.focus();
+  function triggerPickerValues(trigger) {
+    var raw = trigger.getAttribute("data-picker-values");
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(function (value) { return String(value || "").trim(); }).filter(Boolean);
+    } catch (err) {
+      return [];
     }
-    filterDialogInput = null;
-    filterDialogTrigger = null;
   }
 
-  function openFilterDialog(input, attribute, trigger) {
-    var dialog = ensureFilterDialog();
-    var list = dialog.querySelector(".rpt-av-modal-list");
-    var empty = dialog.querySelector(".rpt-av-modal-empty");
-    var selectButton = dialog.querySelector("[data-dialog-action=select]");
+  function parseJson(value, fallback) {
+    if (!value) return fallback;
+    try {
+      var parsed = JSON.parse(value);
+      return parsed == null ? fallback : parsed;
+    } catch (err) {
+      return fallback;
+    }
+  }
+
+  function stringList(raw) {
+    if (!Array.isArray(raw)) return [];
+    var seen = {};
+    var values = [];
+    raw.forEach(function (entry) {
+      var value = String(entry == null ? "" : entry).trim();
+      var key = value.toLowerCase();
+      if (!value || seen[key]) return;
+      seen[key] = true;
+      values.push(value);
+    });
+    return values;
+  }
+
+  function pickerTerms(value) {
+    return (value || "").split(",").map(function (term) { return term.trim().toLowerCase(); }).filter(Boolean);
+  }
+
+  function compareValues(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true });
+  }
+
+  /* Peta "host group" -> daftar host untuk dialog Hosts. Data utama berasal
+     dari atribut tombol (tabel hosts), dilengkapi baris tabel yang tampil. */
+  function triggerHostGroupData(trigger) {
+    var map = {};
+    function add(group, host) {
+      if (!group || !host || group === "—") return;
+      map[group] = map[group] || [];
+      if (map[group].indexOf(host) === -1) map[group].push(host);
+    }
+    if (trigger) {
+      var rawMap = parseJson(trigger.getAttribute("data-picker-map"), {});
+      if (rawMap && typeof rawMap === "object" && !Array.isArray(rawMap)) {
+        Object.keys(rawMap).forEach(function (group) {
+          stringList(rawMap[group]).forEach(function (host) {
+            add(String(group).trim(), host);
+          });
+        });
+      }
+    }
+    if (table) {
+      Array.prototype.forEach.call(table.querySelectorAll("tbody tr[data-category]"), function (row) {
+        add(
+          (row.getAttribute("data-category") || "").trim(),
+          (row.getAttribute("data-host-alias") || row.getAttribute("data-host-ip") || "").trim()
+        );
+      });
+    }
+    var groups = Object.keys(map);
+    if (trigger) groups = groups.concat(stringList(parseJson(trigger.getAttribute("data-picker-groups"), [])));
+    var seen = {};
+    groups = groups.filter(function (group) {
+      var key = group.toLowerCase();
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    }).sort(compareValues);
+    groups.forEach(function (group) {
+      map[group] = (map[group] || []).slice().sort(compareValues);
+    });
+    return { groups: groups, map: map };
+  }
+
+  function hostValuesForGroups(groups, data) {
+    var seen = {};
+    var values = [];
+    groups.forEach(function (group) {
+      (data.map[group] || []).forEach(function (host) {
+        var key = host.toLowerCase();
+        if (seen[key]) return;
+        seen[key] = true;
+        values.push(host);
+      });
+    });
+    return values.sort(compareValues);
+  }
+
+  function fillPickerList(list, values, selected) {
+    if (!list) return 0;
     list.textContent = "";
-    dialog.querySelector(".rpt-av-modal-title").textContent = (trigger && trigger.getAttribute("data-picker-title")) || "Select";
-    var selected = input.value.split(",").map(function (term) { return term.trim().toLowerCase(); }).filter(Boolean);
-    pickerValues(attribute).forEach(function (value) {
+    values.forEach(function (value) {
       var item = document.createElement("label");
-      item.className = "rpt-av-modal-item";
+      item.className = "rpt-picker-item";
       var box = document.createElement("input");
       box.type = "checkbox";
       box.value = value;
@@ -293,15 +604,203 @@
       item.appendChild(text);
       list.appendChild(item);
     });
-    var hasValues = list.childElementCount > 0;
-    empty.hidden = hasValues;
-    selectButton.disabled = !hasValues;
-    filterDialogInput = input;
-    filterDialogTrigger = trigger;
+    return list.childElementCount;
+  }
+
+  function syncPickerAll(allBox, list) {
+    if (!allBox || !list) return;
+    var boxes = list.querySelectorAll("input");
+    var checked = 0;
+    Array.prototype.forEach.call(boxes, function (box) {
+      if (box.checked) checked += 1;
+    });
+    allBox.checked = boxes.length > 0 && checked === boxes.length;
+    allBox.indeterminate = checked > 0 && checked < boxes.length;
+    allBox.disabled = boxes.length === 0;
+  }
+
+  var pickerDialog = document.getElementById("rptPickerDialog");
+  var pickerTitle = document.getElementById("rptPickerTitle");
+  var pickerList = document.getElementById("rptPickerList");
+  var pickerAll = document.getElementById("rptPickerAll");
+  var pickerEmpty = document.getElementById("rptPickerEmpty");
+  var pickerFilterRow = document.getElementById("rptPickerFilter");
+  var pickerFilterInput = document.getElementById("rptPickerFilterInput");
+  var pickerFilterButton = document.getElementById("rptPickerFilterSelect");
+  var pickerPlaceholder = document.getElementById("rptPickerPlaceholder");
+  var groupDialog = document.getElementById("rptGroupDialog");
+  var groupList = document.getElementById("rptGroupList");
+  var groupAll = document.getElementById("rptGroupAll");
+  var groupEmpty = document.getElementById("rptGroupEmpty");
+  var pickerInput = null;
+  var pickerTrigger = null;
+  var pickerMode = "list";
+  var pickerGroups = [];
+  var pickerGroupData = { groups: [], map: {} };
+
+  function closeGroupPicker() {
+    if (groupDialog && groupDialog.open) groupDialog.close();
+  }
+
+  function closePicker() {
+    if (groupDialog && groupDialog.open) {
+      groupDialog.close();
+      return;
+    }
+    if (pickerDialog && pickerDialog.open) pickerDialog.close();
+  }
+
+  function setPickerEmpty(state) {
+    if (pickerPlaceholder) pickerPlaceholder.hidden = state !== "filter";
+    if (pickerEmpty) pickerEmpty.hidden = state !== "data";
+    if (pickerList) pickerList.hidden = Boolean(state);
+  }
+
+  function renderHosts(selected) {
+    if (!pickerList) return;
+    if (!pickerGroups.length) {
+      fillPickerList(pickerList, [], selected);
+      setPickerEmpty("filter");
+    } else {
+      var values = hostValuesForGroups(pickerGroups, pickerGroupData);
+      var count = fillPickerList(pickerList, values, selected);
+      setPickerEmpty(count ? null : "data");
+    }
+    syncPickerAll(pickerAll, pickerList);
+  }
+
+  function openPicker(input, attribute, trigger) {
+    if (!pickerDialog || !pickerList) return;
+    pickerInput = input;
+    pickerTrigger = trigger;
+    pickerMode = (trigger && trigger.getAttribute("data-picker-mode")) || "list";
+    pickerGroupData = triggerHostGroupData(trigger);
+    if (pickerMode === "hosts" && !pickerGroupData.groups.length) pickerMode = "list";
+    pickerGroups = [];
+    if (pickerMode === "hosts") {
+      pickerGroups = stringList(parseJson(input.getAttribute("data-picker-groups"), [])).map(function (group) {
+        var key = group.toLowerCase();
+        for (var i = 0; i < pickerGroupData.groups.length; i += 1) {
+          if (pickerGroupData.groups[i].toLowerCase() === key) return pickerGroupData.groups[i];
+        }
+        return "";
+      }).filter(Boolean);
+    }
+    var showFilter = pickerMode === "hosts";
+    pickerDialog.classList.toggle("rpt-picker--hosts", showFilter);
+    if (pickerFilterRow) pickerFilterRow.hidden = !showFilter;
+    if (pickerFilterInput) pickerFilterInput.value = pickerGroups.join(", ");
+    if (pickerTitle) {
+      pickerTitle.textContent = (trigger && trigger.getAttribute("data-picker-title")) || "Select";
+    }
+    var selected = pickerTerms(input.value);
+    if (showFilter) {
+      renderHosts(selected);
+    } else {
+      var values = pickerValues(attribute);
+      if (!values.length && trigger) values = triggerPickerValues(trigger);
+      var count = fillPickerList(pickerList, values, selected);
+      setPickerEmpty(count ? null : "data");
+      syncPickerAll(pickerAll, pickerList);
+    }
     if (trigger) trigger.setAttribute("aria-expanded", "true");
-    dialog.hidden = false;
-    var first = list.querySelector("input") || dialog.querySelector("[data-dialog-action=cancel]");
-    if (first) first.focus();
+    if (!pickerDialog.open) pickerDialog.showModal();
+    pickerDialog.focus();
+  }
+
+  function openGroupPicker() {
+    if (!groupDialog || !groupList || pickerMode !== "hosts" || !pickerGroupData.groups.length) return;
+    var selected = pickerGroups.map(function (group) { return group.toLowerCase(); });
+    var count = fillPickerList(groupList, pickerGroupData.groups, selected);
+    if (groupEmpty) groupEmpty.hidden = count > 0;
+    if (groupList) groupList.hidden = count === 0;
+    syncPickerAll(groupAll, groupList);
+    if (!groupDialog.open) groupDialog.showModal();
+    groupDialog.focus();
+  }
+
+  function applyGroupPicker() {
+    if (!groupList || !pickerInput) return;
+    pickerGroups = Array.prototype.map.call(groupList.querySelectorAll("input:checked"), function (box) {
+      return box.value;
+    });
+    pickerInput.setAttribute("data-picker-groups", JSON.stringify(pickerGroups));
+    if (pickerFilterInput) pickerFilterInput.value = pickerGroups.join(", ");
+    closeGroupPicker();
+    renderHosts(pickerTerms(pickerInput.value));
+    pickerDialog.focus();
+  }
+
+  if (pickerDialog) {
+    pickerDialog.addEventListener("close", function () {
+      closeGroupPicker();
+      pickerInput = null;
+      pickerMode = "list";
+      pickerGroups = [];
+      if (pickerTrigger) pickerTrigger.setAttribute("aria-expanded", "false");
+      pickerTrigger = null;
+    });
+    pickerDialog.addEventListener("click", function (event) {
+      if (event.target !== pickerDialog) return;
+      var rect = pickerDialog.getBoundingClientRect();
+      var inside = event.clientX >= rect.left && event.clientX <= rect.right &&
+        event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!inside) closePicker();
+    });
+    document.getElementById("rptPickerClose").addEventListener("click", closePicker);
+    document.getElementById("rptPickerCancel").addEventListener("click", closePicker);
+    document.getElementById("rptPickerSelect").addEventListener("click", function () {
+      if (!pickerInput) return;
+      var input = pickerInput;
+      var values = [];
+      Array.prototype.forEach.call(pickerList.querySelectorAll("input:checked"), function (box) {
+        values.push(box.value);
+      });
+      input.value = values.join(", ");
+      closePicker();
+      applyTableFilters();
+    });
+    if (pickerAll) {
+      pickerAll.addEventListener("change", function () {
+        Array.prototype.forEach.call(pickerBoxes(), function (box) {
+          box.checked = pickerAll.checked;
+        });
+        syncPickerAll(pickerAll, pickerList);
+      });
+    }
+    pickerList.addEventListener("change", function () {
+      syncPickerAll(pickerAll, pickerList);
+    });
+    if (pickerFilterInput) pickerFilterInput.addEventListener("click", openGroupPicker);
+    if (pickerFilterButton) pickerFilterButton.addEventListener("click", openGroupPicker);
+  }
+
+  function pickerBoxes() {
+    return pickerList ? pickerList.querySelectorAll("input") : [];
+  }
+
+  if (groupDialog) {
+    groupDialog.addEventListener("click", function (event) {
+      if (event.target !== groupDialog) return;
+      var rect = groupDialog.getBoundingClientRect();
+      var inside = event.clientX >= rect.left && event.clientX <= rect.right &&
+        event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!inside) groupDialog.close();
+    });
+    document.getElementById("rptGroupClose").addEventListener("click", closeGroupPicker);
+    document.getElementById("rptGroupCancel").addEventListener("click", closeGroupPicker);
+    document.getElementById("rptGroupSelect").addEventListener("click", applyGroupPicker);
+    if (groupAll) {
+      groupAll.addEventListener("change", function () {
+        Array.prototype.forEach.call(groupList.querySelectorAll("input"), function (box) {
+          box.checked = groupAll.checked;
+        });
+        syncPickerAll(groupAll, groupList);
+      });
+    }
+    groupList.addEventListener("change", function () {
+      syncPickerAll(groupAll, groupList);
+    });
   }
 
   function filterTerms(id) {
@@ -317,12 +816,18 @@
     });
   }
 
+  function severityGroupValues() {
+    var boxes = document.querySelectorAll("[data-rpt-severity]:checked");
+    return Array.prototype.map.call(boxes, function (box) { return box.value; });
+  }
+
   function applyTableFilters() {
     if (!table) return;
     var hostTerms = filterTerms("availabilityHostFilter");
     var nameTerms = filterTerms("availabilityNameFilter");
     var categoryTerms = filterTerms("availabilityCategoryFilter");
     var severityQuery = filterValue("availabilitySeverityFilter");
+    var severitySet = severityGroupValues();
     var visible = 0;
     var total = 0;
     Array.prototype.forEach.call(table.querySelectorAll("tbody tr[data-host]"), function (row) {
@@ -336,7 +841,8 @@
       var show = matchesTerms(hostTerms, [host, hostIp, hostAlias]);
       if (show && !matchesTerms(nameTerms, [name])) show = false;
       if (show && !matchesTerms(categoryTerms, [category])) show = false;
-      if (show && severityQuery && severity !== severityQuery) show = false;
+      if (show && severitySet.length && severitySet.indexOf(severity) === -1) show = false;
+      if (show && !severitySet.length && severityQuery && severity !== severityQuery) show = false;
       row.hidden = !show;
       if (show) visible += 1;
     });
@@ -345,21 +851,21 @@
     updateFilterEmptyRow(visible, total);
   }
 
+  document.querySelectorAll("[data-rpt-severity]").forEach(function (box) {
+    box.addEventListener("change", applyTableFilters);
+  });
+
   filterIds.forEach(function (id) {
     var field = document.getElementById(id);
     if (!field) return;
     field.addEventListener(field.tagName === "SELECT" ? "change" : "input", applyTableFilters);
   });
 
-  document.querySelectorAll(".rpt-availability-select").forEach(function (button) {
+  document.querySelectorAll(".rpt-availability-select, .rpt-trigger-select").forEach(function (button) {
     button.addEventListener("click", function () {
       var input = document.getElementById(button.getAttribute("data-picker"));
       if (!input) return;
-      if (filterDialog && !filterDialog.hidden && filterDialogInput === input) {
-        closeFilterDialog();
-        return;
-      }
-      openFilterDialog(input, button.getAttribute("data-picker-attr"), button);
+      openPicker(input, button.getAttribute("data-picker-attr"), button);
     });
   });
 
@@ -370,7 +876,10 @@
         var field = document.getElementById(id);
         if (field) field.value = "";
       });
-      closeFilterDialog();
+      document.querySelectorAll("[data-rpt-severity]").forEach(function (box) {
+        box.checked = false;
+      });
+      closePicker();
       applyTableFilters();
     });
   }
@@ -378,9 +887,9 @@
   var filterApply = document.getElementById("availabilityFilterApply");
   if (filterApply) {
     filterApply.addEventListener("click", function () {
-      closeFilterDialog();
+      closePicker();
       applyTableFilters();
-      setFilterPanel(false);
+      if (filterPanel && !filterPanel.hasAttribute("data-persist")) setFilterPanel(false);
     });
   }
 
@@ -448,7 +957,26 @@
       var current = new URL(window.location.href);
       var key = current.searchParams.get("time") || "1h";
       var sequence = ["5m", "15m", "30m", "1h", "3h", "6h", "12h", "1d", "2d", "7d", "30d", "3m", "6m", "1y", "2y"];
-      var index = sequence.indexOf(key);
+      var secondsByKey = {
+        "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "3h": 10800,
+        "6h": 21600, "12h": 43200, "1d": 86400, "2d": 172800, "7d": 604800,
+        "30d": 2592000, "3m": 7776000, "6m": 15552000, "1y": 31536000, "2y": 63072000
+      };
+      var index = -1;
+      var rangeSeconds = Number(toggle.getAttribute("data-time-seconds")) || 0;
+      if (rangeSeconds > 0) {
+        // Rentang kustom (mis. now-2d..now) di-zoom berdasarkan durasi terdekat.
+        var bestDiff = null;
+        sequence.forEach(function (candidate, position) {
+          var diff = Math.abs(secondsByKey[candidate] - rangeSeconds);
+          if (bestDiff === null || diff < bestDiff) {
+            bestDiff = diff;
+            index = position;
+          }
+        });
+      } else {
+        index = sequence.indexOf(key);
+      }
       if (index < 0) index = 3;
       var direction = button.getAttribute("data-zoom") === "in" ? -1 : 1;
       index = Math.max(0, Math.min(sequence.length - 1, index + direction));
@@ -459,13 +987,32 @@
     });
   });
 
+  var panelButtons = [toggle];
+  if (filterButton && !filterPanel && !auditFilterPanel) panelButtons.push(filterButton);
+
   document.addEventListener("click", function (event) {
-    if (!panel.hidden && !panel.contains(event.target) && !toggle.contains(event.target)) setPanel(false);
+    if (panel.hidden) return;
+    if (panel.contains(event.target)) return;
+    var calendar = document.getElementById("availabilityCalendar");
+    if (calendar && calendar.contains(event.target)) return;
+    if (calendar && !calendar.hidden) {
+      // Klik pada hari menggambar ulang kalender, jadi target bisa sudah
+      // terlepas dari DOM; pakai posisi klik agar panel tidak ikut menutup.
+      var rect = calendar.getBoundingClientRect();
+      if (event.clientX >= rect.left && event.clientX <= rect.right &&
+          event.clientY >= rect.top && event.clientY <= rect.bottom) return;
+    }
+    for (var i = 0; i < panelButtons.length; i++) {
+      if (panelButtons[i].contains(event.target)) return;
+    }
+    setPanel(false);
   });
 
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
-    closeFilterDialog();
+    // <dialog> menutup dirinya sendiri; jangan sekaligus menutup panel filter.
+    if (auditUsersDialog && auditUsersDialog.open) return;
+    closePicker();
     if (!panel.hidden) {
       setPanel(false);
       toggle.focus();
@@ -474,5 +1021,51 @@
       setFilterPanel(false);
       filterButton.focus();
     }
+    if (auditFilterPanel && !auditFilterPanel.hidden) {
+      setAuditFilterPanel(false);
+      filterButton.focus();
+    }
   });
+
+  // Problem tags (Top 100 triggers): tambah/hapus baris tag dan mode And/Or.
+  var tagRows = document.getElementById("ttTagRows");
+  var tagAdd = document.getElementById("ttTagAdd");
+  if (tagRows && tagAdd) {
+    function clearTagRow(row) {
+      Array.prototype.forEach.call(row.querySelectorAll("input"), function (input) {
+        input.value = "";
+      });
+      var op = row.querySelector("select");
+      if (op) op.selectedIndex = 0;
+    }
+
+    tagAdd.addEventListener("click", function () {
+      var template = tagRows.querySelector(".rpt-trigger-tag-row");
+      if (!template) return;
+      var row = template.cloneNode(true);
+      clearTagRow(row);
+      tagRows.appendChild(row);
+      var first = row.querySelector("input");
+      if (first) first.focus();
+    });
+
+    tagRows.addEventListener("click", function (event) {
+      var button = event.target.closest(".rpt-trigger-tag-remove");
+      if (!button) return;
+      var row = button.closest(".rpt-trigger-tag-row");
+      if (!row) return;
+      if (tagRows.querySelectorAll(".rpt-trigger-tag-row").length > 1) row.remove();
+      else clearTagRow(row);
+    });
+
+    document.querySelectorAll(".rpt-trigger-andor-btn").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll(".rpt-trigger-andor-btn").forEach(function (other) {
+          var active = other === button;
+          other.classList.toggle("active", active);
+          other.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+      });
+    });
+  }
 })();

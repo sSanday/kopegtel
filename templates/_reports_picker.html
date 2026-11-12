@@ -1,0 +1,46 @@
+{# Dialog "Select" gaya Zabbix untuk filter Host groups / Hosts.
+   Dipakai halaman Availability dan Top 100 triggers; baris daftar diisi
+   oleh static/js/availability_report.js dari data tabel. #}
+<dialog class="rpt-picker" id="rptPickerDialog" aria-labelledby="rptPickerTitle">
+  <button type="button" class="rpt-picker-close" id="rptPickerClose" aria-label="Close">&times;</button>
+  <h2 class="rpt-picker-title" id="rptPickerTitle">Host groups</h2>
+  <div class="rpt-picker-filter" id="rptPickerFilter" hidden>
+    <label class="rpt-picker-filter-label" for="rptPickerFilterInput">Host group</label>
+    <input type="text" class="rpt-picker-filter-input" id="rptPickerFilterInput" placeholder="type here to search" autocomplete="off" readonly>
+    <button type="button" class="rpt-picker-filter-btn" id="rptPickerFilterSelect" aria-haspopup="dialog">Select</button>
+  </div>
+  <div class="rpt-picker-table">
+    <div class="rpt-picker-thead">
+      <input type="checkbox" class="rpt-picker-check" id="rptPickerAll" aria-label="Select all">
+      <span class="rpt-picker-th">Name</span>
+    </div>
+    <div class="rpt-picker-list" id="rptPickerList"></div>
+    <div class="rpt-picker-placeholder" id="rptPickerPlaceholder" hidden>
+      <svg class="rpt-picker-funnel" viewBox="0 0 34 31" width="33" height="30" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1.5 1.5H32.5L22 16.5v9l-10 4.5V16.5z"/></svg>
+      <p class="rpt-picker-placeholder-title">Filter is not set</p>
+      <p class="rpt-picker-placeholder-text">Use the filter to display results</p>
+    </div>
+    <p class="rpt-picker-empty" id="rptPickerEmpty" hidden>No data found</p>
+  </div>
+  <div class="rpt-picker-foot">
+    <button type="button" class="rpt-picker-btn rpt-picker-btn--primary" id="rptPickerSelect">Select</button>
+    <button type="button" class="rpt-picker-btn" id="rptPickerCancel">Cancel</button>
+  </div>
+</dialog>
+
+<dialog class="rpt-picker rpt-picker--groups" id="rptGroupDialog" aria-labelledby="rptGroupTitle">
+  <button type="button" class="rpt-picker-close" id="rptGroupClose" aria-label="Close">&times;</button>
+  <h2 class="rpt-picker-title" id="rptGroupTitle">Host groups</h2>
+  <div class="rpt-picker-table">
+    <div class="rpt-picker-thead">
+      <input type="checkbox" class="rpt-picker-check" id="rptGroupAll" aria-label="Select all">
+      <span class="rpt-picker-th">Name</span>
+    </div>
+    <div class="rpt-picker-list" id="rptGroupList"></div>
+    <p class="rpt-picker-empty" id="rptGroupEmpty" hidden>No data found</p>
+  </div>
+  <div class="rpt-picker-foot">
+    <button type="button" class="rpt-picker-btn rpt-picker-btn--primary" id="rptGroupSelect">Select</button>
+    <button type="button" class="rpt-picker-btn" id="rptGroupCancel">Cancel</button>
+  </div>
+</dialog>

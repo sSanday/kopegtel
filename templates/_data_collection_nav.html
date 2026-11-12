@@ -1,0 +1,16 @@
+<details class="nav-sub-wrap" open>
+  <summary class="nav-sub-head">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 8v6"/><path d="M9 11l3 3 3-3"/></svg>
+    <span>Data collection</span>
+    <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  </summary>
+  <div class="nav-sub">
+    <a href="/data-collection/template-groups" class="nav-link nav-sub-link{% if request.path == '/data-collection/template-groups' %} active{% endif %}" data-nav="data-collection-template-groups"{% if request.path == '/data-collection/template-groups' %} aria-current="page"{% endif %}><span>Template groups</span></a>
+    <a href="/data-collection/host-groups" class="nav-link nav-sub-link{% if request.path == '/data-collection/host-groups' %} active{% endif %}" data-nav="data-collection-host-groups"{% if request.path == '/data-collection/host-groups' %} aria-current="page"{% endif %}><span>Host groups</span></a>
+    <a href="/data-collection/templates" class="nav-link nav-sub-link{% if request.path == '/data-collection/templates' %} active{% endif %}" data-nav="data-collection-templates"{% if request.path == '/data-collection/templates' %} aria-current="page"{% endif %}><span>Templates</span></a>
+    <a href="/data-collection/hosts" class="nav-link nav-sub-link{% if request.path == '/data-collection/hosts' %} active{% endif %}" data-nav="data-collection-hosts"{% if request.path == '/data-collection/hosts' %} aria-current="page"{% endif %}><span>Hosts</span></a>
+    <a href="/data-collection/maintenance" class="nav-link nav-sub-link{% if request.path == '/data-collection/maintenance' %} active{% endif %}" data-nav="data-collection-maintenance"{% if request.path == '/data-collection/maintenance' %} aria-current="page"{% endif %}><span>Maintenance</span></a>
+    <a href="/data-collection/event-correlation" class="nav-link nav-sub-link{% if request.path == '/data-collection/event-correlation' %} active{% endif %}" data-nav="data-collection-event-correlation"{% if request.path == '/data-collection/event-correlation' %} aria-current="page"{% endif %}><span>Event correlation</span></a>
+    <a href="/data-collection/discovery" class="nav-link nav-sub-link{% if request.path == '/data-collection/discovery' %} active{% endif %}" data-nav="data-collection-discovery"{% if request.path == '/data-collection/discovery' %} aria-current="page"{% endif %}><span>Discovery</span></a>
+  </div>
+</details>

@@ -1,6 +1,7 @@
 import csv
 import io
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -11,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import requests
@@ -19,6 +21,7 @@ from flask import (
     Flask,
     Response,
     abort,
+    flash,
     jsonify,
     redirect,
     render_template,
@@ -8583,7 +8586,7 @@ REPORT_PAGES = [
     ("triggers", "Top 100 triggers", "Trigger yang paling sering muncul beserta durasinya."),
     ("audit", "Audit log", "Riwayat perubahan konfigurasi dan aktivitas pengguna."),
     ("actions", "Action log", "Event operasional dan tindakan otomatis sistem."),
-    ("notifications", "Notifications", "Status channel, ambang severity, dan riwayat uji notifikasi."),
+    ("notifications", "Notifications", "Jumlah notifikasi per pengguna pada periode terpilih."),
 ]
 _REPORT_PAGE_MAP = {key: (title, subtitle) for key, title, subtitle in REPORT_PAGES}
 
@@ -9193,49 +9196,55 @@ def _availability_alert_intervals(alerts, window_start, window_end):
     }
 
 
-def _reports_availability_context(mode_override=None):
-    from datetime import timedelta
+_REPORT_TIME_PRESETS = (
+    ("2d", "Last 2 days", 2 * 86400),
+    ("7d", "Last 7 days", 7 * 86400),
+    ("30d", "Last 30 days", 30 * 86400),
+    ("3m", "Last 3 months", 90 * 86400),
+    ("6m", "Last 6 months", 180 * 86400),
+    ("1y", "Last 1 year", 365 * 86400),
+    ("2y", "Last 2 years", 2 * 365 * 86400),
+    ("yesterday", "Yesterday", 86400),
+    ("day_before_yesterday", "Day before yesterday", 86400),
+    ("this_day_last_week", "This day last week", 86400),
+    ("previous_week", "Previous week", 7 * 86400),
+    ("previous_month", "Previous month", 30 * 86400),
+    ("previous_year", "Previous year", 365 * 86400),
+    ("today", "Today", 86400),
+    ("today_so_far", "Today so far", 86400),
+    ("this_week", "This week", 7 * 86400),
+    ("this_week_so_far", "This week so far", 7 * 86400),
+    ("this_month", "This month", 30 * 86400),
+    ("this_month_so_far", "This month so far", 30 * 86400),
+    ("this_year", "This year", 365 * 86400),
+    ("this_year_so_far", "This year so far", 365 * 86400),
+    ("5m", "Last 5 minutes", 5 * 60),
+    ("15m", "Last 15 minutes", 15 * 60),
+    ("30m", "Last 30 minutes", 30 * 60),
+    ("1h", "Last 1 hour", 3600),
+    ("3h", "Last 3 hours", 3 * 3600),
+    ("6h", "Last 6 hours", 6 * 3600),
+    ("12h", "Last 12 hours", 12 * 3600),
+    ("1d", "Last 1 day", 86400),
+)
 
+_REPORT_TIME_CALENDAR_KEYS = frozenset({
+    "yesterday", "day_before_yesterday", "this_day_last_week", "previous_week",
+    "previous_month", "previous_year", "today", "today_so_far", "this_week",
+    "this_week_so_far", "this_month", "this_month_so_far", "this_year",
+    "this_year_so_far",
+})
+
+
+def _report_time_context():
+    """Time-range state (preset, custom from/to, cutoffs) untuk halaman Reports."""
     presets = [
-        {"key": "2d", "label": "Last 2 days", "seconds": 2 * 86400},
-        {"key": "7d", "label": "Last 7 days", "seconds": 7 * 86400},
-        {"key": "30d", "label": "Last 30 days", "seconds": 30 * 86400},
-        {"key": "3m", "label": "Last 3 months", "seconds": 90 * 86400},
-        {"key": "6m", "label": "Last 6 months", "seconds": 180 * 86400},
-        {"key": "1y", "label": "Last 1 year", "seconds": 365 * 86400},
-        {"key": "2y", "label": "Last 2 years", "seconds": 2 * 365 * 86400},
-        {"key": "yesterday", "label": "Yesterday", "seconds": 86400},
-        {"key": "day_before_yesterday", "label": "Day before yesterday", "seconds": 86400},
-        {"key": "this_day_last_week", "label": "This day last week", "seconds": 86400},
-        {"key": "previous_week", "label": "Previous week", "seconds": 7 * 86400},
-        {"key": "previous_month", "label": "Previous month", "seconds": 30 * 86400},
-        {"key": "previous_year", "label": "Previous year", "seconds": 365 * 86400},
-        {"key": "today", "label": "Today", "seconds": 86400},
-        {"key": "today_so_far", "label": "Today so far", "seconds": 86400},
-        {"key": "this_week", "label": "This week", "seconds": 7 * 86400},
-        {"key": "this_week_so_far", "label": "This week so far", "seconds": 7 * 86400},
-        {"key": "this_month", "label": "This month", "seconds": 30 * 86400},
-        {"key": "this_month_so_far", "label": "This month so far", "seconds": 30 * 86400},
-        {"key": "this_year", "label": "This year", "seconds": 365 * 86400},
-        {"key": "this_year_so_far", "label": "This year so far", "seconds": 365 * 86400},
-        {"key": "5m", "label": "Last 5 minutes", "seconds": 5 * 60},
-        {"key": "15m", "label": "Last 15 minutes", "seconds": 15 * 60},
-        {"key": "30m", "label": "Last 30 minutes", "seconds": 30 * 60},
-        {"key": "1h", "label": "Last 1 hour", "seconds": 3600},
-        {"key": "3h", "label": "Last 3 hours", "seconds": 3 * 3600},
-        {"key": "6h", "label": "Last 6 hours", "seconds": 6 * 3600},
-        {"key": "12h", "label": "Last 12 hours", "seconds": 12 * 3600},
-        {"key": "1d", "label": "Last 1 day", "seconds": 86400},
+        {"key": key, "label": label, "seconds": seconds}
+        for key, label, seconds in _REPORT_TIME_PRESETS
     ]
     preset_columns = [presets[0:7], presets[7:13], presets[13:21], presets[21:]]
-    calendar_keys = {
-        "yesterday", "day_before_yesterday", "this_day_last_week", "previous_week",
-        "previous_month", "previous_year", "today", "today_so_far", "this_week",
-        "this_week_so_far", "this_month", "this_month_so_far", "this_year",
-        "this_year_so_far",
-    }
     for item in presets:
-        item["kind"] = "calendar" if item["key"] in calendar_keys else "rolling"
+        item["kind"] = "calendar" if item["key"] in _REPORT_TIME_CALENDAR_KEYS else "rolling"
 
     legacy_range = {"24h": "1d", "7d": "7d", "30d": "30d"}
     selected_key = (request.args.get("time") or legacy_range.get(request.args.get("range"), "1h")).lower()
@@ -9282,16 +9291,35 @@ def _reports_availability_context(mode_override=None):
             % (raw_from, raw_to, selected_label)
         )
 
-    cutoff = start_dt.strftime("%Y-%m-%d %H:%M:%S")
-    end_cutoff = end_dt.strftime("%Y-%m-%d %H:%M:%S")
-
-    selected_time = {
-        "selected_key": selected_key,
-        "label": selected_label,
-        "from_value": from_value,
-        "to_value": to_value,
-        "custom": custom,
+    return {
+        "presets": presets,
+        "preset_columns": preset_columns,
+        "selected_time": {
+            "selected_key": selected_key,
+            "label": selected_label,
+            "from_value": from_value,
+            "to_value": to_value,
+            "custom": custom,
+            "seconds": max(1, int((end_dt - start_dt).total_seconds())),
+        },
+        "start_dt": start_dt,
+        "end_dt": end_dt,
+        "cutoff": start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "end_cutoff": end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "range_error": range_error,
     }
+
+
+def _reports_availability_context(mode_override=None):
+    time_context = _report_time_context()
+    presets = time_context["presets"]
+    preset_columns = time_context["preset_columns"]
+    selected_time = time_context["selected_time"]
+    cutoff = time_context["cutoff"]
+    end_cutoff = time_context["end_cutoff"]
+    start_dt = time_context["start_dt"]
+    end_dt = time_context["end_dt"]
+    range_error = time_context["range_error"]
 
     mode = (mode_override or request.args.get("mode") or "host").lower()
     if mode not in ("host", "trigger"):
@@ -9343,6 +9371,16 @@ def _reports_availability_context(mode_override=None):
 
     alias_by_ip = {h.get("ip"): (h.get("alias") or h.get("ip")) for h in hosts}
     category_by_ip = {h.get("ip"): (h.get("category") or "—") for h in hosts}
+    availability_host_map = {}
+    for host_row in hosts:
+        host_category = (host_row.get("category") or "").strip()
+        host_alias = (host_row.get("alias") or host_row.get("ip") or "").strip()
+        if not host_category or not host_alias:
+            continue
+        availability_host_map.setdefault(host_category, []).append(host_alias)
+    for host_aliases in availability_host_map.values():
+        host_aliases.sort(key=str.lower)
+    availability_host_groups = sorted(availability_host_map, key=str.lower)
 
     rows = []
     window_seconds = max(1.0, (end_dt - start_dt).total_seconds())
@@ -9449,9 +9487,32 @@ def _reports_availability_context(mode_override=None):
         "availability_down_events": down_events,
         "availability_event_count": event_count,
         "availability_cutoff": cutoff,
+        "availability_host_groups": availability_host_groups,
+        "availability_host_map": availability_host_map,
         "availability_range_error": range_error,
         "availability_data_error": data_error,
     }
+
+
+_TRIGGER_SEVERITY_KEYS = {
+    "disaster": "disaster",
+    "high": "high",
+    "average": "average",
+    "warning": "warning",
+    "information": "information",
+    "info": "information",
+    "not classified": "not classified",
+    "not_classified": "not classified",
+}
+
+_TRIGGER_SEVERITY_LABELS = {
+    "disaster": "Disaster",
+    "high": "High",
+    "average": "Average",
+    "warning": "Warning",
+    "information": "Information",
+    "not classified": "Not classified",
+}
 
 
 def _reports_triggers_context():
@@ -9465,6 +9526,7 @@ def _reports_triggers_context():
     active_alerts = 0
     last_24h = 0
     active_total = 0
+    host_meta = {}
     try:
         conn, c = get_db()
         try:
@@ -9486,6 +9548,13 @@ def _reports_triggers_context():
             c.execute("SELECT COUNT(*) AS cnt FROM alert_history WHERE triggered_at >= ? AND triggered_at <= ?", (cutoff, end_cutoff))
             last_24h = int((dict(c.fetchone()).get("cnt") or 0))
             active_total = sum(int(r.get("active") or 0) for r in rows)
+            c.execute("SELECT ip, alias, category FROM hosts")
+            for host_row in c.fetchall():
+                host_item = dict(host_row)
+                host_meta[host_item.get("ip") or ""] = (
+                    host_item.get("alias") or "",
+                    host_item.get("category") or "",
+                )
         finally:
             conn.close()
     except Exception:
@@ -9496,8 +9565,36 @@ def _reports_triggers_context():
         row["total"] = int(row.get("total") or 0)
         row["active"] = int(row.get("active") or 0)
         row["total_duration"] = _report_fmt_duration(row.get("total_duration"))
+        raw_host = (row.get("host") or "").strip()
+        ip_match = re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", raw_host)
+        host_ip = ip_match.group(0) if ip_match else raw_host
+        alias, category = host_meta.get(host_ip, ("", ""))
+        row["host_ip"] = host_ip
+        row["host_alias"] = alias or raw_host
+        row["category"] = category or ""
+        raw_severity = (row.get("severity") or "").strip().lower()
+        severity_key = _TRIGGER_SEVERITY_KEYS.get(raw_severity, raw_severity)
+        row["severity_key"] = severity_key or "information"
+        row["severity_label"] = _TRIGGER_SEVERITY_LABELS.get(
+            severity_key, (raw_severity or "information").capitalize()
+        )
+    trigger_host_map = {}
+    for alias, category in host_meta.values():
+        if not category or not alias:
+            continue
+        trigger_host_map.setdefault(category, []).append(alias)
+    for host_aliases in trigger_host_map.values():
+        host_aliases.sort(key=str.lower)
+    trigger_host_groups = sorted(trigger_host_map, key=str.lower)
+    trigger_host_aliases = sorted(
+        {alias for (alias, _category) in host_meta.values() if alias},
+        key=str.lower,
+    )
     return {
         "trigger_rows": rows,
+        "trigger_host_groups": trigger_host_groups,
+        "trigger_host_map": trigger_host_map,
+        "trigger_host_aliases": trigger_host_aliases,
         "trigger_total_alerts": total_alerts,
         "trigger_active_alerts": active_alerts,
         "trigger_last_24h": last_24h,
@@ -9515,34 +9612,214 @@ def _reports_triggers_context():
     }
 
 
+_AUDIT_RESOURCE_LABELS = {
+    "alert": "Alert",
+    "auth": "User",
+    "backup": "Backup",
+    "events": "Event",
+    "fiber": "Fiber",
+    "host": "Host",
+    "inventory": "Inventory",
+    "logs": "Log",
+    "maintenance": "Maintenance",
+    "map": "Map",
+    "mt": "MikroTik",
+    "notify": "Notification",
+    "odp": "ODP",
+    "olt": "OLT",
+    "report": "Report",
+    "reports": "Report",
+    "service": "Service",
+    "settings": "Settings",
+    "sla": "SLA",
+    "user": "User",
+}
+
+_AUDIT_ACTION_LABELS = {
+    "clear": "Clear",
+    "create": "Create",
+    "delete": "Delete",
+    "disable": "Disable",
+    "discover": "Discover",
+    "enable": "Enable",
+    "export": "Export",
+    "failed": "Failed",
+    "import": "Import",
+    "login": "Login",
+    "logout": "Logout",
+    "password_change": "Password change",
+    "recovery_used": "Recovery used",
+    "role_update": "Role update",
+    "send": "Send",
+    "send_daily": "Send",
+    "setup": "Setup",
+    "success": "Success",
+    "test": "Test",
+    "threshold_delete": "Threshold delete",
+    "update": "Update",
+    "workflow_update": "Workflow update",
+}
+
+
+def _audit_action_labels(action):
+    """Pisahkan action mentah (mis. auth.login) menjadi Resource + Action gaya Zabbix."""
+    action = (action or "").strip()
+    parts = [part for part in action.split(".") if part]
+    if not parts:
+        return "—", "—"
+    prefix = parts[0].lower()
+    resource = _AUDIT_RESOURCE_LABELS.get(prefix, prefix.capitalize())
+    suffix = parts[-1].lower() if len(parts) > 1 else ""
+    label = _AUDIT_ACTION_LABELS.get(suffix)
+    if not label:
+        label = suffix.replace("_", " ").capitalize() if suffix else action.capitalize()
+    return resource, label
+
+
+_AUDIT_FILTER_ACTIONS = (
+    ("add", "Add", ("create", "add")),
+    ("configuration_refresh", "Configuration refresh", ("config_refresh", "configuration_refresh")),
+    ("delete", "Delete", ("delete", "threshold_delete")),
+    ("execute", "Execute", ("execute", "run")),
+    ("failed_login", "Failed login", ("failed_login", "auth_failed", "failed")),
+    ("history_clear", "History clear", ("history_clear", "clear")),
+    ("login", "Login", ("login",)),
+    ("logout", "Logout", ("logout",)),
+    ("push", "Push", ("send", "send_daily", "push", "notify")),
+    ("update", "Update", (
+        "update", "rename", "enable", "disable", "setup", "password_change",
+        "workflow_update", "role_update", "discover", "import", "export",
+        "hostkey_reset",
+    )),
+)
+_AUDIT_FILTER_ACTION_KEYS = {key for key, _label, _suffixes in _AUDIT_FILTER_ACTIONS}
+
+# Popup Users di filter Audit log mengikuti daftar bawaan Zabbix, lalu
+# ditambah akun yang benar-benar ada di database/audit log.
+_AUDIT_PICKER_USERS = (
+    ("Admin", "Zabbix", "Administrator"),
+    ("guest", "", ""),
+    ("System", "", ""),
+)
+
+
+def _audit_user_options(account_names, audit_names, selected_terms):
+    """Opsi popup Users: Admin/guest/System + akun lain, urut seperti Zabbix."""
+    selected = {term.strip().lower() for term in selected_terms if term.strip()}
+    options = []
+    seen = set()
+    for username, name, last_name in _AUDIT_PICKER_USERS:
+        options.append({
+            "username": username,
+            "name": name,
+            "last_name": last_name,
+            "selected": username.lower() in selected,
+        })
+        seen.add(username.lower())
+    extras = set()
+    for raw in list(account_names) + list(audit_names):
+        username = (raw or "").strip()
+        if username and username.lower() not in seen:
+            extras.add(username)
+    for username in sorted(extras, key=str.lower):
+        options.append({
+            "username": username,
+            "name": "",
+            "last_name": "",
+            "selected": username.lower() in selected,
+        })
+    return options
+
+
+def _audit_resource_options(actions):
+    """Daftar Resource untuk dropdown filter, dikelompokkan per label."""
+    grouped = {}
+    for raw in actions:
+        action = (raw or "").strip().lower()
+        if not action:
+            continue
+        prefix = action.split(".", 1)[0]
+        label = _AUDIT_RESOURCE_LABELS.get(prefix, prefix.replace("_", " ").capitalize())
+        grouped.setdefault(label, set()).add(prefix)
+    options = []
+    for label in sorted(grouped):
+        key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") or "resource"
+        options.append({"key": key, "label": label, "prefixes": sorted(grouped[label])})
+    return options
+
+
 def _reports_audit_context():
-    q = (request.args.get("q") or "").strip()
-    action = (request.args.get("action") or "").strip()
+    time_context = _report_time_context()
+    cutoff = time_context["cutoff"]
+    end_cutoff = time_context["end_cutoff"]
     try:
         page_no = int(request.args.get("p", 1))
     except (TypeError, ValueError):
         page_no = 1
     per_page = 50
 
-    where = []
-    params = []
-    if q:
-        like = f"%{q}%"
-        where.append("(username LIKE ? OR action LIKE ? OR target LIKE ? OR detail LIKE ?)")
-        params.extend([like, like, like, like])
-    if action:
-        where.append("action = ?")
-        params.append(action)
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    users = (request.args.get("users") or "").strip()
+    # Popup Users mengisi field dengan "Admin, guest"; setiap nama disaring
+    # sebagai alternatif (OR), bukan satu substring gabungan.
+    user_terms = [part.strip() for part in users.split(",") if part.strip()]
+    resource_key = (request.args.get("resource") or "").strip().lower()
+    # resource_id/recordset_id tetap dibawa agar nilai filter tidak hilang saat
+    # berpindah halaman; audit_logs belum punya kolom dengan makna yang sama.
+    resource_id = (request.args.get("resource_id") or "").strip()
+    recordset_id = (request.args.get("recordset_id") or "").strip()
+    ip = (request.args.get("ip") or "").strip()
+    action_keys = []
+    for raw_key in request.args.getlist("actions"):
+        key = (raw_key or "").strip().lower()
+        if key in _AUDIT_FILTER_ACTION_KEYS and key not in action_keys:
+            action_keys.append(key)
+
+    where = ["timestamp >= ?", "timestamp <= ?"]
+    params = [cutoff, end_cutoff]
+    if user_terms:
+        user_conds = []
+        for term in user_terms:
+            user_conds.append("LOWER(username) LIKE ?")
+            params.append("%" + term.lower() + "%")
+        where.append("(" + " OR ".join(user_conds) + ")")
+    if ip:
+        where.append("LOWER(ip_address) LIKE ?")
+        params.append("%" + ip.lower() + "%")
 
     rows = []
-    actions = []
     total = 0
+    pages = 1
+    offset = 0
+    resource_options = []
+    usernames = []
+    account_names = []
     try:
         conn, c = get_db()
         try:
-            c.execute("SELECT DISTINCT action FROM audit_logs ORDER BY action")
-            actions = [dict(r)["action"] for r in c.fetchall() if dict(r).get("action")]
+            c.execute("SELECT DISTINCT action FROM audit_logs")
+            resource_options = _audit_resource_options([dict(r).get("action") for r in c.fetchall()])
+            resource_group = next((o for o in resource_options if o["key"] == resource_key), None)
+            if resource_group is None:
+                resource_key = ""
+            else:
+                prefix_conds = []
+                for prefix in resource_group["prefixes"]:
+                    prefix_conds.append("LOWER(action) LIKE ?")
+                    params.append(prefix + ".%")
+                where.append("(" + " OR ".join(prefix_conds) + ")")
+
+            if action_keys:
+                action_conds = []
+                for key in action_keys:
+                    suffixes = next(s for k, _label, s in _AUDIT_FILTER_ACTIONS if k == key)
+                    for suffix in suffixes:
+                        action_conds.append("LOWER(action) = ?")
+                        params.append(suffix)
+                        action_conds.append("LOWER(action) LIKE ?")
+                        params.append("%." + suffix)
+                where.append("(" + " OR ".join(action_conds) + ")")
+
+            where_sql = " WHERE " + " AND ".join(where)
             c.execute("SELECT COUNT(*) AS cnt FROM audit_logs" + where_sql, params)
             total = int((dict(c.fetchone()).get("cnt") or 0))
             pages = max(1, (total + per_page - 1) // per_page)
@@ -9554,159 +9831,1835 @@ def _reports_audit_context():
                 params + [per_page, offset],
             )
             rows = [dict(r) for r in c.fetchall()]
+            c.execute(
+                "SELECT DISTINCT username FROM audit_logs "
+                "WHERE username IS NOT NULL AND username <> '' ORDER BY LOWER(username)"
+            )
+            usernames = [dict(r).get("username") for r in c.fetchall()]
+            c.execute("SELECT username FROM users ORDER BY LOWER(username)")
+            account_names = [dict(r).get("username") for r in c.fetchall()]
         finally:
             conn.close()
     except Exception:
+        app.logger.exception("Gagal memuat audit log report")
         page_no = 1
         pages = 1
         offset = 0
-    else:
-        pages = max(1, (total + per_page - 1) // per_page)
-        offset = (page_no - 1) * per_page
+        total = 0
+        rows = []
+
+    for row in rows:
+        row["resource_label"], row["action_label"] = _audit_action_labels(row.get("action"))
+        row["details_text"] = (
+            (row.get("detail") or "").strip()
+            or (row.get("target") or "").strip()
+            or "—"
+        )
+
+    selected = time_context["selected_time"]
+    filter_pairs = []
+    if users:
+        filter_pairs.append(("users", users))
+    if resource_key:
+        filter_pairs.append(("resource", resource_key))
+    for key in action_keys:
+        filter_pairs.append(("actions", key))
+    if resource_id:
+        filter_pairs.append(("resource_id", resource_id))
+    if recordset_id:
+        filter_pairs.append(("recordset_id", recordset_id))
+    if ip:
+        filter_pairs.append(("ip", ip))
+    filter_active = bool(filter_pairs)
+
+    def audit_url(time_key=None, time_from=None, time_to=None, extra=None, with_filters=True):
+        pairs = []
+        if time_from is not None and time_to is not None:
+            pairs.extend((("from", time_from), ("to", time_to)))
+        elif time_key:
+            pairs.append(("time", time_key))
+        elif selected["custom"]:
+            pairs.extend((("from", selected["from_value"]), ("to", selected["to_value"])))
+        else:
+            pairs.append(("time", selected["selected_key"]))
+        if with_filters:
+            pairs.extend(filter_pairs)
+        if extra:
+            pairs.extend(extra)
+        query = urlencode(pairs)
+        return url_for("reports_page", page="audit") + ("?" + query if query else "")
+
+    audit_prev_url = audit_url(extra=[("p", page_no - 1)]) if page_no > 1 else ""
+    audit_next_url = audit_url(extra=[("p", page_no + 1)]) if page_no < pages else ""
+
+    audit_preset_columns = []
+    for column in time_context["preset_columns"]:
+        rendered_column = []
+        for item in column:
+            rendered_column.append({
+                "key": item["key"],
+                "label": item["label"],
+                "url": audit_url(time_key=item["key"]),
+            })
+        audit_preset_columns.append(rendered_column)
 
     return {
         "audit_rows": rows,
         "audit_total": total,
         "audit_page": page_no,
         "audit_pages": pages,
-        "audit_q": q,
-        "audit_action": action,
-        "audit_actions": actions,
         "audit_per_page": per_page,
         "audit_from": offset + 1 if rows else 0,
         "audit_to": offset + len(rows),
+        "audit_prev_url": audit_prev_url,
+        "audit_next_url": audit_next_url,
+        "audit_time": time_context["selected_time"],
+        "audit_presets": time_context["presets"],
+        "audit_preset_columns": audit_preset_columns,
+        "audit_range_error": time_context["range_error"],
+        "audit_filter": {
+            "users": users,
+            "resource": resource_key,
+            "actions": action_keys,
+            "resource_id": resource_id,
+            "recordset_id": recordset_id,
+            "ip": ip,
+        },
+        "audit_filter_active": filter_active,
+        "audit_action_options": [
+            {"key": key, "label": label} for key, label, _suffixes in _AUDIT_FILTER_ACTIONS
+        ],
+        "audit_resources": resource_options,
+        "audit_user_options": _audit_user_options(account_names, usernames, user_terms),
+        "audit_filter_reset_url": audit_url(with_filters=False),
     }
 
 
+_ACTION_LOG_STATUS_VALUES = ("in_progress", "sent", "failed")
+
+
+def _action_log_filters():
+    """Filter Action log dari query string (nama field mengikuti Zabbix)."""
+    statuses = [
+        value
+        for value in request.args.getlist("status")
+        if value in _ACTION_LOG_STATUS_VALUES
+    ]
+    return {
+        "recipients": (request.args.get("recipients") or "").strip(),
+        "actions": (request.args.get("actions") or "").strip(),
+        "media": (request.args.get("media") or "").strip(),
+        "statuses": statuses,
+        "search": (request.args.get("search") or "").strip(),
+    }
+
+
+def _action_log_filter_pairs(filters):
+    """Pasangan query string filter agar preset/pager/export tidak menghilangkannya."""
+    pairs = []
+    if filters["recipients"]:
+        pairs.append(("recipients", filters["recipients"]))
+    if filters["actions"]:
+        pairs.append(("actions", filters["actions"]))
+    if filters["media"]:
+        pairs.append(("media", filters["media"]))
+    for status in filters["statuses"]:
+        pairs.append(("status", status))
+    if filters["search"]:
+        pairs.append(("search", filters["search"]))
+    return pairs
+
+
+def _action_log_filter_active(filters):
+    return bool(
+        filters["recipients"]
+        or filters["actions"]
+        or filters["media"]
+        or filters["statuses"]
+        or filters["search"]
+    )
+
+
+def _action_log_where(time_context, filters=None):
+    """WHERE beserta parameter untuk rentang waktu dan filter Action log."""
+    clauses = ["timestamp >= ?", "timestamp <= ?"]
+    params = [time_context["cutoff"], time_context["end_cutoff"]]
+    if not filters:
+        return " AND ".join(clauses), params
+
+    terms = [term.strip() for term in filters["actions"].split(",") if term.strip()]
+    if terms:
+        clauses.append(
+            "(" + " OR ".join("event_type LIKE ? ESCAPE '\\'" for _term in terms) + ")"
+        )
+        params.extend("%" + _like_escape(term) + "%" for term in terms)
+
+    if filters["search"]:
+        pattern = "%" + _like_escape(filters["search"]) + "%"
+        clauses.append(
+            "(message LIKE ? ESCAPE '\\' OR host LIKE ? ESCAPE '\\' "
+            "OR event_type LIKE ? ESCAPE '\\')"
+        )
+        params.extend([pattern, pattern, pattern])
+
+    if filters["recipients"] or filters["media"] or filters["statuses"]:
+        # system_logs tidak menyimpan recipient/media/status notifikasi, jadi
+        # filter tersebut tidak mungkin cocok dengan kolom yang ditampilkan.
+        clauses.append("1 = 0")
+
+    return " AND ".join(clauses), params
+
+
+def _action_log_count(time_context, filters=None):
+    """Jumlah event sistem pada rentang waktu dan filter Action log terpilih."""
+    try:
+        where, params = _action_log_where(time_context, filters)
+        conn, c = get_db()
+        try:
+            c.execute(
+                f"SELECT COUNT(*) AS cnt FROM system_logs WHERE {where}",
+                params,
+            )
+            return int((dict(c.fetchone()).get("cnt") or 0))
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal menghitung action log report")
+        return 0
+
+
+def _action_log_data(time_context, limit=None, offset=0, filters=None):
+    """Ambil event sistem sebagai baris Action log pada rentang/filter terpilih."""
+    rows = []
+    try:
+        where, params = _action_log_where(time_context, filters)
+        conn, c = get_db()
+        try:
+            sql = (
+                "SELECT id, timestamp, event_type, host, message FROM system_logs "
+                f"WHERE {where} ORDER BY id DESC"
+            )
+            params = list(params)
+            if limit is not None:
+                sql += " LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+            c.execute(sql, params)
+            rows = [dict(r) for r in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat action log report")
+        rows = []
+
+    for row in rows:
+        # Kolom mengikuti Action log Zabbix; event sistem dipetakan ke kolom
+        # yang tersedia tanpa mengarang isi media/status.
+        row["action"] = row.get("event_type") or "—"
+        row["media_type"] = "—"
+        row["recipient"] = "—"
+        row["message"] = row.get("message") or "—"
+        row["status"] = "—"
+        row["info"] = row.get("host") or "—"
+    return rows
+
+
+def _action_log_action_options():
+    """Pilihan Actions pada dialog Select (event_type yang ada di database)."""
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT DISTINCT event_type FROM system_logs "
+                "WHERE event_type IS NOT NULL AND event_type <> '' "
+                "ORDER BY event_type COLLATE NOCASE"
+            )
+            return [row[0] for row in c.fetchall() if row[0]]
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat pilihan Actions action log")
+        return []
+
+
 def _reports_actions_context():
-    q = (request.args.get("q") or "").strip()
-    event = (request.args.get("event") or "").strip()
+    time_context = _report_time_context()
+    selected = time_context["selected_time"]
+    filters = _action_log_filters()
     try:
         page_no = int(request.args.get("p", 1))
     except (TypeError, ValueError):
         page_no = 1
     per_page = 50
 
-    where = []
-    params = []
-    if q:
-        like = f"%{q}%"
-        where.append("(event_type LIKE ? OR host LIKE ? OR message LIKE ?)")
-        params.extend([like, like, like])
-    if event:
-        where.append("event_type = ?")
-        params.append(event)
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    # Hitung total dulu agar nomor halaman bisa dijepit ke rentang yang ada.
+    total = _action_log_count(time_context, filters)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page_no = min(max(page_no, 1), pages)
+    offset = (page_no - 1) * per_page
+    rows = _action_log_data(time_context, per_page, offset, filters)
 
-    rows = []
-    event_counts = []
-    total = 0
-    pages = 1
-    offset = 0
-    try:
-        conn, c = get_db()
-        try:
-            c.execute(
-                "SELECT event_type, COUNT(*) AS cnt FROM system_logs "
-                "GROUP BY event_type ORDER BY cnt DESC, event_type"
-            )
-            event_counts = [dict(r) for r in c.fetchall()]
-            c.execute("SELECT COUNT(*) AS cnt FROM system_logs" + where_sql, params)
-            total = int((dict(c.fetchone()).get("cnt") or 0))
-            pages = max(1, (total + per_page - 1) // per_page)
-            page_no = min(max(page_no, 1), pages)
-            offset = (page_no - 1) * per_page
-            c.execute(
-                "SELECT id, timestamp, event_type, host, message FROM system_logs"
-                + where_sql
-                + " ORDER BY id DESC LIMIT ? OFFSET ?",
-                params + [per_page, offset],
-            )
-            rows = [dict(r) for r in c.fetchall()]
-        finally:
-            conn.close()
-    except Exception:
-        pass
+    def action_url(time_key=None, time_from=None, time_to=None, extra=None, keep_filters=True):
+        pairs = []
+        if time_from is not None and time_to is not None:
+            pairs.extend((("from", time_from), ("to", time_to)))
+        elif time_key:
+            pairs.append(("time", time_key))
+        elif selected["custom"]:
+            pairs.extend((("from", selected["from_value"]), ("to", selected["to_value"])))
+        else:
+            pairs.append(("time", selected["selected_key"]))
+        if keep_filters:
+            pairs.extend(_action_log_filter_pairs(filters))
+        if extra:
+            pairs.extend(extra)
+        query = urlencode(pairs)
+        return url_for("reports_page", page="actions") + ("?" + query if query else "")
+
+    action_preset_columns = []
+    for column in time_context["preset_columns"]:
+        action_preset_columns.append(
+            [
+                {"key": item["key"], "label": item["label"], "url": action_url(time_key=item["key"])}
+                for item in column
+            ]
+        )
+
+    export_pairs = (
+        [("from", selected["from_value"]), ("to", selected["to_value"])]
+        if selected["custom"]
+        else [("time", selected["selected_key"])]
+    )
+    export_pairs.extend(_action_log_filter_pairs(filters))
+    action_export_url = url_for("reports_actions_export")
+    if export_pairs:
+        action_export_url += "?" + urlencode(export_pairs)
 
     return {
         "action_rows": rows,
         "action_total": total,
         "action_page": page_no,
         "action_pages": pages,
-        "action_q": q,
-        "action_event": event,
-        "action_events": event_counts,
+        "action_per_page": per_page,
         "action_from": offset + 1 if rows else 0,
         "action_to": offset + len(rows),
+        "action_prev_url": action_url(extra=[("p", page_no - 1)]) if page_no > 1 else "",
+        "action_next_url": action_url(extra=[("p", page_no + 1)]) if page_no < pages else "",
+        "action_time": selected,
+        "action_preset_columns": action_preset_columns,
+        "action_range_error": time_context["range_error"],
+        "action_filter": filters,
+        "action_filter_active": _action_log_filter_active(filters),
+        "action_filter_options": {
+            "recipients": [],
+            "actions": _action_log_action_options(),
+            "media": [],
+        },
+        "action_filter_reset_url": action_url(keep_filters=False),
+        "action_export_url": action_export_url,
     }
 
 
-def _reports_notifications_context():
-    status = channel_status()
-    channels = [
+_NOTIFICATION_MEDIA_OPTIONS = (
+    ("all", "All"),
+    ("email", "Email"),
+    ("telegram", "Telegram"),
+    ("webhook", "Webhook"),
+)
+_NOTIFICATION_PERIOD_OPTIONS = (
+    ("daily", "Daily"),
+    ("weekly", "Weekly"),
+    ("monthly", "Monthly"),
+    ("yearly", "Yearly"),
+)
+_NOTIFICATION_REPORT_USERS = (
+    {"key": "admin", "label": "Admin (Zabbix Administrator)"},
+    {"key": "guest", "label": "guest"},
+)
+
+
+def _notification_report_users():
+    """Kolom pengguna laporan notifikasi: Admin/guest + akun lain."""
+    users = [dict(user) for user in _NOTIFICATION_REPORT_USERS]
+    seen = {user["key"] for user in users}
+    try:
+        conn, c = get_db()
+        try:
+            c.execute("SELECT username FROM users ORDER BY username")
+            usernames = [row[0] for row in c.fetchall() if row[0]]
+        finally:
+            conn.close()
+    except Exception:
+        usernames = []
+    for username in usernames:
+        key = username.strip().lower()
+        if key and key not in seen:
+            users.append({"key": key, "label": username})
+            seen.add(key)
+    return users
+
+
+def _notification_period_rows(year, period):
+    """Baris From/Till laporan notifikasi untuk periode dan tahun terpilih."""
+    intervals = []
+    if period == "yearly":
+        intervals.append((datetime(year, 1, 1), datetime(year + 1, 1, 1)))
+    elif period == "monthly":
+        for month in range(1, 13):
+            start = datetime(year, month, 1)
+            end = (
+                datetime(year + 1, 1, 1)
+                if month == 12
+                else datetime(year, month + 1, 1)
+            )
+            intervals.append((start, end))
+    elif period == "daily":
+        day = datetime(year, 1, 1)
+        while day.year == year:
+            intervals.append((day, day + timedelta(days=1)))
+            day += timedelta(days=1)
+    else:
+        # Weekly: mulai Senin dari minggu ISO yang memuat 1 Januari.
+        day = datetime(year, 1, 1)
+        day -= timedelta(days=day.weekday())
+        while day.year < year + 1:
+            intervals.append((day, day + timedelta(days=7)))
+            day += timedelta(days=7)
+
+    return [
         {
-            "key": "telegram",
-            "label": "Telegram",
-            "active": bool(status.get("telegram")),
-            "min_sev": get_setting("notify_telegram_min_sev", "info", type_cast=str),
-            "detail": "Bot token + chat ID terkonfigurasi"
-            if status.get("telegram")
-            else "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID belum lengkap",
-        },
-        {
-            "key": "email",
-            "label": "Email (SMTP)",
-            "active": bool(status.get("email")),
-            "min_sev": get_setting("notify_email_min_sev", "critical", type_cast=str),
-            "detail": "SMTP dan penerima terkonfigurasi"
-            if status.get("email")
-            else "SMTP_HOST / SMTP_FROM / ALERT_EMAIL_TO belum lengkap",
-        },
-        {
-            "key": "webhook",
-            "label": "Webhook",
-            "active": bool(status.get("webhook")),
-            "min_sev": get_setting("notify_webhook_min_sev", "warning", type_cast=str),
-            "detail": "URL webhook terkonfigurasi" if status.get("webhook") else "WEBHOOK_URL belum diisi",
-        },
+            "start": start,
+            "end": end,
+            "from_label": start.strftime("%Y-%m-%d %I:%M %p"),
+            "till_label": end.strftime("%Y-%m-%d %I:%M %p"),
+            "cells": [],
+        }
+        for start, end in intervals
     ]
 
-    recent_tests = []
-    latest_alerts = []
-    alert_counts = []
+
+def _notification_matrix(year, period, media, users):
+    """Hitung notifikasi per pengguna pada setiap baris periode."""
+    rows = _notification_period_rows(year, period)
+    counts = {}
+    start = datetime(year, 1, 1)
+    end = datetime(year + 1, 1, 1)
     try:
         conn, c = get_db()
         try:
             c.execute(
                 "SELECT timestamp, username, detail FROM audit_logs "
-                "WHERE action = 'notify.test' ORDER BY id DESC LIMIT 10"
+                "WHERE action = 'notify.test' AND timestamp >= ? AND timestamp < ?",
+                (
+                    start.strftime("%Y-%m-%d %H:%M:%S"),
+                    end.strftime("%Y-%m-%d %H:%M:%S"),
+                ),
             )
-            recent_tests = [dict(r) for r in c.fetchall()]
-            c.execute(
-                "SELECT severity, COUNT(*) AS cnt FROM alert_history "
-                "WHERE triggered_at >= ? GROUP BY severity ORDER BY cnt DESC",
-                (_report_cutoff(24),),
-            )
-            alert_counts = [dict(r) for r in c.fetchall()]
-            c.execute(
-                "SELECT host, alert_type, severity, message, triggered_at, resolved_at "
-                "FROM alert_history ORDER BY id DESC LIMIT 8"
-            )
-            latest_alerts = [dict(r) for r in c.fetchall()]
+            events = [dict(row) for row in c.fetchall()]
         finally:
             conn.close()
     except Exception:
-        pass
+        events = []
+
+    media_key = media.lower()
+    for event in events:
+        detail = (event.get("detail") or "").lower()
+        if media_key != "all" and f"{media_key}=ok" not in detail:
+            continue
+        user_key = (event.get("username") or "").strip().lower()
+        if not any(user["key"] == user_key for user in users):
+            continue
+        try:
+            when = datetime.strptime(str(event.get("timestamp"))[:19], "%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+        for index, row in enumerate(rows):
+            if row["start"] <= when < row["end"]:
+                counts[(index, user_key)] = counts.get((index, user_key), 0) + 1
+                break
+
+    for index, row in enumerate(rows):
+        row["cells"] = [counts.get((index, user["key"]), 0) for user in users]
+    return rows
+
+
+def _reports_notifications_context():
+    now = datetime.now()
+    media_keys = {key for key, _label in _NOTIFICATION_MEDIA_OPTIONS}
+    media = (request.args.get("media") or "all").strip().lower()
+    if media not in media_keys:
+        media = "all"
+
+    period_keys = {key for key, _label in _NOTIFICATION_PERIOD_OPTIONS}
+    period = (request.args.get("period") or "weekly").strip().lower()
+    if period not in period_keys:
+        period = "weekly"
+
+    try:
+        year = int(request.args.get("year") or now.year)
+    except (TypeError, ValueError):
+        year = now.year
+    if year < 2000 or year > 2100:
+        year = now.year
+
+    years = sorted(
+        {selected for selected in (year, now.year, now.year - 1, now.year - 2, now.year + 1)},
+        reverse=True,
+    )
+    users = _notification_report_users()
+    rows = _notification_matrix(year, period, media, users)
 
     return {
-        "notification_channels": channels,
-        "notification_active": sum(1 for ch in channels if ch["active"]),
-        "notification_tests": recent_tests,
-        "notification_alerts": latest_alerts,
-        "notification_alert_counts": alert_counts,
-        "notification_last_test": recent_tests[0]["timestamp"] if recent_tests else None,
-        "notification_total_24h": sum(int(r.get("cnt") or 0) for r in alert_counts),
+        "notification_users": users,
+        "notification_rows": rows,
+        "notification_media_options": [
+            {"key": key, "label": label} for key, label in _NOTIFICATION_MEDIA_OPTIONS
+        ],
+        "notification_media": media,
+        "notification_period_options": [
+            {"key": key, "label": label} for key, label in _NOTIFICATION_PERIOD_OPTIONS
+        ],
+        "notification_period": period,
+        "notification_years": years,
+        "notification_year": year,
     }
+
+
+_DATA_COLLECTION_TABS = (
+    ("template-groups", "Template groups"),
+    ("host-groups", "Host groups"),
+    ("templates", "Templates"),
+    ("hosts", "Hosts"),
+    ("maintenance", "Maintenance"),
+    ("event-correlation", "Event correlation"),
+    ("discovery", "Discovery"),
+)
+
+_DATA_COLLECTION_PAGE_MAP = {
+    "template-groups": (
+        "Template groups",
+        "Groups that organise the monitoring templates used by hosts.",
+    ),
+    "host-groups": (
+        "Host groups",
+        "Host categories and their current monitoring state.",
+    ),
+    "templates": (
+        "Templates",
+        "SNMP monitoring profiles available on this instance.",
+    ),
+    "maintenance": (
+        "Maintenance",
+        "Scheduled maintenance windows for monitored hosts.",
+    ),
+    "event-correlation": (
+        "Event correlation",
+        "Rules that correlate related events into incidents.",
+    ),
+}
+
+# Profil SNMP yang dipakai halaman Hosts. Dijadikan template agar halaman
+# Data collection menampilkan sumber data yang sama dengan form Create host.
+# Jumlah item/trigger/graph mengikuti objek yang benar-benar dipantau oleh
+# tiap profil; kolom lain mengikuti metadata template Zabbix.
+_DATA_COLLECTION_TEMPLATES = (
+    {
+        "key": "auto",
+        "name": "Auto-detect",
+        "group": "Discovery templates",
+        "description": "Detects CPU, memory, storage, and temperature OIDs automatically.",
+        "items": 4,
+        "triggers": 4,
+        "graphs": 4,
+        "dashboards": 0,
+        "discovery": 1,
+        "web": 0,
+        "vendor": "Zabbix",
+        "version": "7.4.15",
+        "tags": (("class", "network"), ("target", "auto-detect")),
+        "linked": (),
+    },
+    {
+        "key": "mikrotik",
+        "name": "MikroTik",
+        "group": "Network device templates",
+        "description": "RouterOS health and interface monitoring profile.",
+        "items": 5,
+        "triggers": 4,
+        "graphs": 3,
+        "dashboards": 0,
+        "discovery": 0,
+        "web": 0,
+        "vendor": "Zabbix",
+        "version": "7.4.15",
+        "tags": (("class", "network"), ("target", "mikrotik")),
+        "linked": ("generic",),
+    },
+    {
+        "key": "generic",
+        "name": "Generic",
+        "group": "Network device templates",
+        "description": "Generic SNMP interface monitoring without health OIDs.",
+        "items": 2,
+        "triggers": 0,
+        "graphs": 1,
+        "dashboards": 0,
+        "discovery": 0,
+        "web": 0,
+        "vendor": "Zabbix",
+        "version": "7.4.15",
+        "tags": (("class", "network"), ("target", "generic")),
+        "linked": (),
+    },
+)
+
+_TEMPLATE_VENDOR = "Zabbix"
+_TEMPLATE_VERSION = "7.4.15"
+_TEMPLATE_TAG_OPERATORS = (
+    ("contains", "Contains"),
+    ("equals", "Equals"),
+    ("not_contains", "Does not contain"),
+    ("not_equals", "Does not equal"),
+    ("exists", "Exists"),
+    ("not_exists", "Does not exist"),
+)
+
+
+def _data_collection_problem_counts():
+    """Jumlah masalah aktif per host untuk ringkasan host group."""
+    counts = {}
+    try:
+        for alert in get_active_alerts():
+            host = str(alert.get("host") or "").strip()
+            if host:
+                counts[host] = counts.get(host, 0) + 1
+    except Exception:
+        app.logger.exception("Gagal memuat masalah aktif untuk Data collection")
+    return counts
+
+
+def _template_group_rows(template_rows, custom_rows):
+    """Gabungkan grup dari profil SNMP dengan grup tambahan di database."""
+    groups = {}
+    for template in template_rows:
+        name = template["group"]
+        entry = groups.setdefault(
+            name,
+            {
+                "name": name,
+                "templates": 0,
+                "hosts": 0,
+                "template_names": [],
+                "custom": False,
+                "id": None,
+                "checkbox_value": f"builtin:{name}",
+            },
+        )
+        entry["templates"] += 1
+        entry["hosts"] += int(template.get("hosts") or 0)
+        entry["template_names"].append(template["name"])
+
+    known = {name.casefold() for name in groups}
+    for row in custom_rows:
+        name = (row.get("name") or "").strip()
+        if not name or name.casefold() in known:
+            continue
+        known.add(name.casefold())
+        groups[name] = {
+            "name": name,
+            "templates": 0,
+            "hosts": 0,
+            "template_names": [],
+            "custom": True,
+            "id": row.get("id"),
+            "checkbox_value": f"custom:{row.get('id')}",
+        }
+    return list(groups.values())
+
+
+def _template_tag_list(raw):
+    """Normalisasi tag template dari JSON, dict, atau list pasangan."""
+    tags = raw
+    if isinstance(tags, str):
+        try:
+            tags = json.loads(tags)
+        except (TypeError, ValueError):
+            tags = []
+    if isinstance(tags, dict):
+        tags = [{"name": key, "value": value} for key, value in tags.items()]
+    if not isinstance(tags, (list, tuple)):
+        return []
+    result = []
+    for tag in tags:
+        if isinstance(tag, (list, tuple)) and len(tag) >= 2:
+            name, value = tag[0], tag[1]
+        elif isinstance(tag, dict):
+            name = tag.get("name") or tag.get("tag") or ""
+            value = tag.get("value") or ""
+        else:
+            name, value = tag, ""
+        name = str(name).strip()
+        value = str(value).strip()
+        if name:
+            result.append({"name": name, "value": value})
+    return result
+
+
+def _parse_template_tags_input(raw):
+    """Parse input ``class: network, target: x`` menjadi daftar tag."""
+    if isinstance(raw, (list, tuple)):
+        return _template_tag_list(raw)
+    tags = []
+    for chunk in re.split(r"[,;\n]+", str(raw or "")):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if ":" in chunk:
+            name, value = chunk.split(":", 1)
+        else:
+            name, value = chunk, ""
+        name = name.strip()
+        value = value.strip()
+        if name:
+            tags.append({"name": name, "value": value})
+    return tags
+
+
+def _template_linked_list(raw):
+    """Normalisasi daftar template terkait dari JSON atau teks dipisah koma."""
+    linked = raw
+    if isinstance(linked, str):
+        try:
+            linked = json.loads(linked)
+        except (TypeError, ValueError):
+            linked = [item.strip() for item in re.split(r"[,;\n]+", linked)]
+    if not isinstance(linked, (list, tuple)):
+        linked = [linked]
+    result = []
+    for item in linked:
+        token = str(item).strip()
+        if token and token not in result:
+            result.append(token)
+    return result
+
+
+def _data_collection_template_rows(profile_counts, custom_rows):
+    """Bangun daftar template bawaan + template kustom untuk halaman Templates."""
+    rows = []
+    known_profiles = set()
+    key_to_name = {}
+    for template in _DATA_COLLECTION_TEMPLATES:
+        key = template["key"]
+        known_profiles.add(key)
+        key_to_name[key] = template["name"]
+        rows.append(
+            {
+                "key": key,
+                "name": template["name"],
+                "group": template["group"],
+                "groups": [template["group"]],
+                "description": template["description"],
+                "hosts": int(profile_counts.get(key, 0) or 0),
+                "items": int(template.get("items", 0) or 0),
+                "triggers": int(template.get("triggers", 0) or 0),
+                "graphs": int(template.get("graphs", 0) or 0),
+                "dashboards": int(template.get("dashboards", 0) or 0),
+                "discovery": int(template.get("discovery", 0) or 0),
+                "web": int(template.get("web", 0) or 0),
+                "vendor": template.get("vendor") or _TEMPLATE_VENDOR,
+                "version": template.get("version") or _TEMPLATE_VERSION,
+                "tags": _template_tag_list(template.get("tags")),
+                "linked": _template_linked_list(template.get("linked")),
+                "custom": False,
+                "id": None,
+                "checkbox_value": f"builtin:{key}",
+            }
+        )
+
+    for profile, count in sorted(profile_counts.items()):
+        if profile in known_profiles:
+            continue
+        rows.append(
+            {
+                "key": profile,
+                "name": f"Custom: {profile}",
+                "group": "Custom templates",
+                "groups": ["Custom templates"],
+                "description": "Profile configured manually on hosts.",
+                "hosts": int(count or 0),
+                "items": 0,
+                "triggers": 0,
+                "graphs": 0,
+                "dashboards": 0,
+                "discovery": 0,
+                "web": 0,
+                "vendor": _TEMPLATE_VENDOR,
+                "version": _TEMPLATE_VERSION,
+                "tags": [{"name": "class", "value": "custom"}],
+                "linked": [],
+                "custom": False,
+                "id": None,
+                "checkbox_value": f"builtin:{profile}",
+            }
+        )
+
+    known_names = {row["name"].casefold() for row in rows}
+    for raw in custom_rows or []:
+        name = (raw.get("name") or "").strip()
+        if not name or name.casefold() in known_names:
+            continue
+        known_names.add(name.casefold())
+        group = (raw.get("template_group") or "Custom templates").strip()
+        rows.append(
+            {
+                "key": None,
+                "name": name,
+                "group": group or "Custom templates",
+                "groups": [group or "Custom templates"],
+                "description": raw.get("description") or "",
+                "hosts": 0,
+                "items": 0,
+                "triggers": 0,
+                "graphs": 0,
+                "dashboards": 0,
+                "discovery": 0,
+                "web": 0,
+                "vendor": (raw.get("vendor") or _TEMPLATE_VENDOR).strip() or _TEMPLATE_VENDOR,
+                "version": (raw.get("version") or "").strip(),
+                "tags": _template_tag_list(raw.get("tags")),
+                "linked": _template_linked_list(raw.get("linked")),
+                "custom": True,
+                "id": raw.get("id"),
+                "checkbox_value": f"custom:{raw.get('id')}",
+            }
+        )
+
+    by_name = {row["name"].casefold(): row for row in rows}
+    by_key = {row["key"]: row for row in rows if row.get("key")}
+
+    for row in rows:
+        linked_names = []
+        for item in row["linked"]:
+            token = str(item).strip()
+            match = by_key.get(token) or by_name.get(token.casefold())
+            linked_name = match["name"] if match else token
+            if linked_name and linked_name not in linked_names:
+                linked_names.append(linked_name)
+        row["linked_names"] = linked_names
+        row["linked_to"] = []
+
+    for row in rows:
+        for other in rows:
+            if row is other:
+                continue
+            if row["name"] in other["linked_names"]:
+                row["linked_to"].append(other["name"])
+
+    return rows
+
+
+def _template_tag_matches(row, tag_filter):
+    """Cocokkan satu filter tag terhadap tag milik template."""
+    name = (tag_filter.get("name") or "").strip().casefold()
+    value = (tag_filter.get("value") or "").strip().casefold()
+    op = tag_filter.get("op") or "contains"
+    if not name:
+        return True
+    matches = [
+        tag for tag in row.get("tags", []) if tag["name"].strip().casefold() == name
+    ]
+    if op == "exists":
+        return bool(matches)
+    if op == "not_exists":
+        return not matches
+    values = [str(tag.get("value") or "").casefold() for tag in matches]
+    if op == "equals":
+        return any(item == value for item in values)
+    if op == "not_equals":
+        return all(item != value for item in values)
+    if op == "not_contains":
+        return all(value not in item for item in values)
+    return any(value in item for item in values)
+
+
+def _data_collection_context(page):
+    problem_counts = _data_collection_problem_counts()
+    profile_counts = {}
+    host_rows = []
+    maintenance_rows = []
+    custom_template_groups = []
+    custom_template_rows = []
+    custom_host_groups = []
+
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT ip, COALESCE(NULLIF(TRIM(alias), ''), ip) AS name, "
+                "COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS category, "
+                "COALESCE(NULLIF(TRIM(snmp_profile), ''), 'auto') AS profile "
+                "FROM hosts ORDER BY category COLLATE NOCASE, name COLLATE NOCASE"
+            )
+            host_rows = [dict(row) for row in c.fetchall()]
+            for row in host_rows:
+                profile = (row.get("profile") or "auto").strip().lower()
+                profile_counts[profile] = profile_counts.get(profile, 0) + 1
+
+            if page in {"template-groups", "templates"}:
+                c.execute("SELECT id, name FROM template_groups ORDER BY name")
+                custom_template_groups = [dict(row) for row in c.fetchall()]
+
+            if page == "templates":
+                c.execute(
+                    "SELECT id, name, template_group, vendor, version, description, "
+                    "tags, linked FROM templates ORDER BY name COLLATE NOCASE"
+                )
+                custom_template_rows = [dict(row) for row in c.fetchall()]
+
+            if page == "host-groups":
+                c.execute("SELECT id, name FROM host_groups ORDER BY name")
+                custom_host_groups = [dict(row) for row in c.fetchall()]
+
+            if page == "maintenance":
+                c.execute(
+                    "SELECT host, start_at, end_at, reason FROM maintenance_windows "
+                    "ORDER BY start_at DESC, id DESC"
+                )
+                now = datetime.now()
+                for raw in c.fetchall():
+                    row = dict(raw)
+                    try:
+                        start_dt = datetime.strptime(str(row["start_at"])[:19], "%Y-%m-%d %H:%M:%S")
+                    except (TypeError, ValueError):
+                        start_dt = None
+                    try:
+                        end_dt = datetime.strptime(str(row["end_at"])[:19], "%Y-%m-%d %H:%M:%S")
+                    except (TypeError, ValueError):
+                        end_dt = None
+                    if start_dt and end_dt and start_dt <= now <= end_dt:
+                        status_class, status_label = "active", "Active"
+                    elif start_dt and start_dt > now:
+                        status_class, status_label = "upcoming", "Upcoming"
+                    else:
+                        status_class, status_label = "expired", "Expired"
+                    maintenance_rows.append(
+                        {
+                            "host": row.get("host") or "-",
+                            "start_at": row.get("start_at") or "-",
+                            "end_at": row.get("end_at") or "-",
+                            "reason": row.get("reason") or "",
+                            "status_class": status_class,
+                            "status_label": status_label,
+                        }
+                    )
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat data Data collection untuk halaman %s", page)
+
+    template_rows = []
+    known_profiles = set()
+    for template in _DATA_COLLECTION_TEMPLATES:
+        key = template["key"]
+        known_profiles.add(key)
+        template_rows.append(
+            {
+                "name": template["name"],
+                "group": template["group"],
+                "description": template["description"],
+                "hosts": profile_counts.get(key, 0),
+            }
+        )
+    for profile, count in sorted(profile_counts.items()):
+        if profile in known_profiles:
+            continue
+        template_rows.append(
+            {
+                "name": f"Custom: {profile}",
+                "group": "Custom templates",
+                "description": "Profile configured manually on hosts.",
+                "hosts": count,
+            }
+        )
+
+    all_template_groups = _template_group_rows(template_rows, custom_template_groups)
+    all_template_rows = _data_collection_template_rows(
+        profile_counts, custom_template_rows
+    )
+
+    host_groups = {}
+    for row in host_rows:
+        group = row.get("category") or "Uncategorized"
+        entry = host_groups.setdefault(
+            group,
+            {
+                "name": group,
+                "hosts": 0,
+                "problems": 0,
+                "host_names": [],
+                "custom": False,
+                "id": None,
+                "checkbox_value": f"builtin:{group}",
+            },
+        )
+        entry["hosts"] += 1
+        entry["problems"] += problem_counts.get(row.get("ip") or "", 0)
+        entry["host_names"].append(row.get("name") or row.get("ip") or "")
+
+    known_host_groups = {name.casefold() for name in host_groups}
+    for row in custom_host_groups:
+        name = (row.get("name") or "").strip()
+        if not name or name.casefold() in known_host_groups:
+            continue
+        known_host_groups.add(name.casefold())
+        host_groups[name] = {
+            "name": name,
+            "hosts": 0,
+            "problems": 0,
+            "host_names": [],
+            "custom": True,
+            "id": row.get("id"),
+            "checkbox_value": f"custom:{row.get('id')}",
+        }
+
+    filter_name = ""
+    sort_key = "name"
+    sort_order = "asc"
+    page_number = 1
+    page_count = 1
+    total_count = 0
+    visible_template_groups = all_template_groups
+    visible_host_groups = sorted(
+        host_groups.values(), key=lambda item: item["name"].lower()
+    )
+    visible_templates = all_template_rows
+    template_name_filter = ""
+    template_group_filter = ""
+    linked_filter = ""
+    vendor_filter = ""
+    version_filter = ""
+    tag_filters = []
+    tag_eval = "and"
+    template_group_options = []
+    template_names = []
+    range_start = 0
+    range_end = 0
+    has_next = False
+    next_url = ""
+    pager = []
+    sort_name_url = ""
+    filter_action = ""
+    reset_url = ""
+
+    if page == "templates":
+        template_name_filter = (request.args.get("name") or "").strip()
+        template_group_filter = (request.args.get("template_group") or "").strip()
+        linked_filter = (request.args.get("linked") or "").strip()
+        vendor_filter = (request.args.get("vendor") or "").strip()
+        version_filter = (request.args.get("version") or "").strip()
+        tag_eval = (
+            "or" if (request.args.get("tag_eval") or "").strip().lower() == "or" else "and"
+        )
+
+        raw_tag_names = request.args.getlist("tag")
+        raw_tag_ops = request.args.getlist("tag_op")
+        raw_tag_values = request.args.getlist("tag_value")
+        allowed_tag_ops = {key for key, _label in _TEMPLATE_TAG_OPERATORS}
+        for index, raw_name in enumerate(raw_tag_names):
+            name = (raw_name or "").strip()
+            if not name:
+                continue
+            op = (
+                (raw_tag_ops[index] if index < len(raw_tag_ops) else "")
+                .strip()
+                .lower()
+            )
+            if op not in allowed_tag_ops:
+                op = "contains"
+            value = raw_tag_values[index] if index < len(raw_tag_values) else ""
+            tag_filters.append(
+                {"name": name, "op": op, "value": (value or "").strip()}
+            )
+
+        template_group_options = sorted(
+            {group for row in all_template_rows for group in row["groups"]}
+            | {
+                (row.get("name") or "").strip()
+                for row in custom_template_groups
+                if (row.get("name") or "").strip()
+            },
+            key=str.casefold,
+        )
+        template_names = sorted(
+            {row["name"] for row in all_template_rows}, key=str.casefold
+        )
+
+        filtered_templates = all_template_rows
+        if template_name_filter:
+            needle = template_name_filter.casefold()
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if needle in row["name"].casefold()
+            ]
+        if template_group_filter:
+            needle = template_group_filter.casefold()
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if any(needle in group.casefold() for group in row["groups"])
+            ]
+        if linked_filter:
+            needle = linked_filter.casefold()
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if any(needle in name.casefold() for name in row["linked_names"])
+            ]
+        if vendor_filter:
+            needle = vendor_filter.casefold()
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if needle in row["vendor"].casefold()
+            ]
+        if version_filter:
+            needle = version_filter.casefold()
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if needle in row["version"].casefold()
+            ]
+        if tag_filters:
+            filtered_templates = [
+                row
+                for row in filtered_templates
+                if (
+                    all(_template_tag_matches(row, item) for item in tag_filters)
+                    if tag_eval == "and"
+                    else any(_template_tag_matches(row, item) for item in tag_filters)
+                )
+            ]
+
+        sort_key = (request.args.get("sort") or "name").strip().lower()
+        if sort_key != "name":
+            sort_key = "name"
+        sort_order = (request.args.get("order") or "asc").strip().lower()
+        if sort_order not in {"asc", "desc"}:
+            sort_order = "asc"
+        filtered_templates = sorted(
+            filtered_templates,
+            key=lambda item: item["name"].casefold(),
+            reverse=sort_order == "desc",
+        )
+
+        total_count = len(filtered_templates)
+        per_page = 50
+        page_count = max(1, (total_count + per_page - 1) // per_page)
+        try:
+            page_number = int(request.args.get("page_no", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+        page_number = max(1, min(page_number, page_count))
+        start = (page_number - 1) * per_page
+        visible_templates = filtered_templates[start : start + per_page]
+        range_start = start + 1 if visible_templates else 0
+        range_end = start + len(visible_templates)
+        has_next = page_number < page_count
+        next_url = ""
+
+        def _template_url(**overrides):
+            params = []
+            if template_name_filter:
+                params.append(("name", template_name_filter))
+            if template_group_filter:
+                params.append(("template_group", template_group_filter))
+            if linked_filter:
+                params.append(("linked", linked_filter))
+            if vendor_filter:
+                params.append(("vendor", vendor_filter))
+            if version_filter:
+                params.append(("version", version_filter))
+            for item in tag_filters:
+                params.append(("tag", item["name"]))
+                params.append(("tag_op", item["op"]))
+                params.append(("tag_value", item["value"]))
+            if tag_filters and tag_eval != "and":
+                params.append(("tag_eval", tag_eval))
+            if sort_order != "asc":
+                params.append(("sort", "name"))
+                params.append(("order", sort_order))
+            for key, value in overrides.items():
+                if value is not None:
+                    params.append((key, str(value)))
+            query = urlencode(params)
+            url = url_for("data_collection_page", page="templates")
+            return url + (("?" + query) if query else "")
+
+        next_name_order = "desc" if sort_order == "asc" else "asc"
+        sort_name_url = _template_url(sort="name", order=next_name_order)
+        filter_action = url_for("data_collection_page", page="templates")
+        reset_url = filter_action
+        pager = (
+            [
+                {
+                    "number": number,
+                    "current": number == page_number,
+                    "url": _template_url(page_no=number),
+                }
+                for number in range(1, page_count + 1)
+            ]
+            if total_count
+            else []
+        )
+        next_url = _template_url(page_no=page_number + 1) if has_next else ""
+
+    if page in {"template-groups", "host-groups"}:
+        filter_name = (request.args.get("name") or "").strip()
+        sort_key = (request.args.get("sort") or "name").strip().lower()
+        allowed_sort = {"name", "templates"} if page == "template-groups" else {"name"}
+        if sort_key not in allowed_sort:
+            sort_key = "name"
+        sort_order = (request.args.get("order") or "asc").strip().lower()
+        if sort_order not in {"asc", "desc"}:
+            sort_order = "asc"
+
+        source_groups = (
+            all_template_groups if page == "template-groups" else visible_host_groups
+        )
+        filtered_groups = source_groups
+        if filter_name:
+            needle = filter_name.casefold()
+            filtered_groups = [
+                group
+                for group in filtered_groups
+                if needle in group["name"].casefold()
+            ]
+
+        def _group_sort_key(group):
+            if sort_key == "templates":
+                return (group["templates"], group["name"].casefold())
+            return (group["name"].casefold(), group.get("templates", 0))
+
+        filtered_groups = sorted(
+            filtered_groups,
+            key=_group_sort_key,
+            reverse=sort_order == "desc",
+        )
+        total_count = len(filtered_groups)
+        per_page = 20
+        page_count = max(1, (total_count + per_page - 1) // per_page)
+        try:
+            page_number = int(request.args.get("page_no", 1))
+        except (TypeError, ValueError):
+            page_number = 1
+        page_number = max(1, min(page_number, page_count))
+        start = (page_number - 1) * per_page
+        if page == "template-groups":
+            visible_template_groups = filtered_groups[start : start + per_page]
+        else:
+            visible_host_groups = filtered_groups[start : start + per_page]
+
+        def _dc_url(**overrides):
+            params = {"page": page}
+            if filter_name:
+                params["name"] = filter_name
+            if sort_key != "name" or sort_order != "asc":
+                params["sort"] = sort_key
+                params["order"] = sort_order
+            params.update(overrides)
+            return url_for("data_collection_page", **params)
+
+        next_name_order = "desc" if sort_key == "name" and sort_order == "asc" else "asc"
+        sort_name_url = _dc_url(sort="name", order=next_name_order)
+        filter_action = url_for("data_collection_page", page=page)
+        reset_url = filter_action
+        if total_count:
+            pager = [
+                {
+                    "number": number,
+                    "current": number == page_number,
+                    "url": _dc_url(page_no=number),
+                }
+                for number in range(1, page_count + 1)
+            ]
+
+    row_count = {
+        "template-groups": len(visible_template_groups),
+        "host-groups": len(visible_host_groups),
+        "templates": len(visible_templates),
+        "maintenance": len(maintenance_rows),
+        "event-correlation": 0,
+    }.get(page, 0)
+    if page in {"template-groups", "host-groups", "templates"}:
+        total_rows = total_count
+    else:
+        total_rows = row_count
+
+    return {
+        "dc_title": _DATA_COLLECTION_PAGE_MAP[page][0],
+        "dc_subtitle": _DATA_COLLECTION_PAGE_MAP[page][1],
+        "dc_template_groups": visible_template_groups,
+        "dc_host_groups": visible_host_groups,
+        "dc_templates": visible_templates,
+        "dc_maintenance": maintenance_rows,
+        "dc_row_count": row_count,
+        "dc_total_count": total_rows,
+        "dc_filter_name": filter_name,
+        "dc_sort": sort_key,
+        "dc_sort_order": sort_order,
+        "dc_sort_name_url": sort_name_url,
+        "dc_filter_action": filter_action,
+        "dc_reset_url": reset_url,
+        "dc_pager": pager,
+        "dc_page_number": page_number,
+        "dc_range_start": range_start,
+        "dc_range_end": range_end,
+        "dc_has_next": has_next,
+        "dc_next_url": next_url,
+        "dc_template_name_filter": template_name_filter,
+        "dc_template_group_filter": template_group_filter,
+        "dc_template_linked_filter": linked_filter,
+        "dc_template_vendor_filter": vendor_filter,
+        "dc_template_version_filter": version_filter,
+        "dc_template_tag_filters": tag_filters,
+        "dc_template_tag_eval": tag_eval,
+        "dc_template_tag_operators": _TEMPLATE_TAG_OPERATORS,
+        "dc_template_group_options": template_group_options,
+        "dc_template_names": template_names,
+    }
+
+
+def _builtin_template_group_names():
+    return {template["group"].casefold() for template in _DATA_COLLECTION_TEMPLATES}
+
+
+@app.route("/data-collection/template-groups/create", methods=["POST"])
+@login_required
+def data_collection_template_group_create():
+    redirect_url = url_for("data_collection_page", page="template-groups")
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Template group name is required.", "error")
+        return redirect(redirect_url)
+    if len(name) > 128:
+        flash("Template group name must be 128 characters or fewer.", "error")
+        return redirect(redirect_url)
+    if name.casefold() in _builtin_template_group_names():
+        flash(f'Template group "{name}" already exists.', "error")
+        return redirect(redirect_url)
+
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name FROM template_groups")
+        if any(
+            (row["name"] or "").casefold() == name.casefold()
+            for row in c.fetchall()
+        ):
+            flash(f'Template group "{name}" already exists.', "error")
+            return redirect(redirect_url)
+        c.execute(
+            "INSERT INTO template_groups (name, created_at) VALUES (?, ?)",
+            (name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("Gagal membuat template group")
+        flash("Could not create the template group.", "error")
+        return redirect(redirect_url)
+    finally:
+        conn.close()
+
+    flash(f'Template group "{name}" created.', "success")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/template-groups/delete", methods=["POST"])
+@login_required
+def data_collection_template_group_delete():
+    redirect_url = url_for("data_collection_page", page="template-groups")
+    selected = request.form.getlist("selected")
+    if not selected:
+        flash("Select at least one template group to delete.", "error")
+        return redirect(redirect_url)
+
+    custom_ids = []
+    builtin_count = 0
+    for value in selected:
+        if value.startswith("custom:"):
+            try:
+                custom_ids.append(int(value.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                continue
+        elif value.startswith("builtin:"):
+            builtin_count += 1
+
+    deleted = 0
+    if custom_ids:
+        conn, c = get_db()
+        try:
+            placeholders = ",".join("?" for _ in custom_ids)
+            c.execute(
+                f"DELETE FROM template_groups WHERE id IN ({placeholders})",
+                tuple(custom_ids),
+            )
+            deleted = max(0, c.rowcount or 0)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            app.logger.exception("Gagal menghapus template group")
+            flash("Could not delete the selected template groups.", "error")
+            return redirect(redirect_url)
+        finally:
+            conn.close()
+
+    if deleted:
+        suffix = "" if deleted == 1 else "s"
+        flash(f"{deleted} template group{suffix} deleted.", "success")
+    if builtin_count:
+        flash("Built-in template groups cannot be deleted.", "error")
+    if not deleted and not builtin_count:
+        flash("No deletable template groups were selected.", "error")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/host-groups/create", methods=["POST"])
+@login_required
+def data_collection_host_group_create():
+    redirect_url = url_for("data_collection_page", page="host-groups")
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Host group name is required.", "error")
+        return redirect(redirect_url)
+    if len(name) > 128:
+        flash("Host group name must be 128 characters or fewer.", "error")
+        return redirect(redirect_url)
+
+    conn, c = get_db()
+    try:
+        c.execute(
+            "SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS category "
+            "FROM hosts"
+        )
+        existing = {(row["category"] or "").casefold() for row in c.fetchall()}
+        c.execute("SELECT name FROM host_groups")
+        existing.update((row["name"] or "").casefold() for row in c.fetchall())
+        if name.casefold() in existing:
+            flash(f'Host group "{name}" already exists.', "error")
+            return redirect(redirect_url)
+        c.execute(
+            "INSERT INTO host_groups (name, created_at) VALUES (?, ?)",
+            (name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("Gagal membuat host group")
+        flash("Could not create the host group.", "error")
+        return redirect(redirect_url)
+    finally:
+        conn.close()
+
+    flash(f'Host group "{name}" created.', "success")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/host-groups/delete", methods=["POST"])
+@login_required
+def data_collection_host_group_delete():
+    redirect_url = url_for("data_collection_page", page="host-groups")
+    selected = request.form.getlist("selected")
+    if not selected:
+        flash("Select at least one host group to delete.", "error")
+        return redirect(redirect_url)
+
+    custom_ids = []
+    builtin_count = 0
+    for value in selected:
+        if value.startswith("custom:"):
+            try:
+                custom_ids.append(int(value.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                continue
+        elif value.startswith("builtin:"):
+            builtin_count += 1
+
+    deleted = 0
+    if custom_ids:
+        conn, c = get_db()
+        try:
+            placeholders = ",".join("?" for _ in custom_ids)
+            c.execute(
+                f"DELETE FROM host_groups WHERE id IN ({placeholders})",
+                tuple(custom_ids),
+            )
+            deleted = max(0, c.rowcount or 0)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            app.logger.exception("Gagal menghapus host group")
+            flash("Could not delete the selected host groups.", "error")
+            return redirect(redirect_url)
+        finally:
+            conn.close()
+
+    if deleted:
+        suffix = "" if deleted == 1 else "s"
+        flash(f"{deleted} host group{suffix} deleted.", "success")
+    if builtin_count:
+        flash("Host groups derived from host categories cannot be deleted.", "error")
+    if not deleted and not builtin_count:
+        flash("No deletable host groups were selected.", "error")
+    return redirect(redirect_url)
+
+
+def _builtin_template_names():
+    return {template["name"].casefold() for template in _DATA_COLLECTION_TEMPLATES}
+
+
+def _load_template_profile_counts():
+    """Jumlah host per profil SNMP untuk halaman/ekspor template."""
+    counts = {}
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT COALESCE(NULLIF(TRIM(snmp_profile), ''), 'auto') AS profile, "
+                "COUNT(*) AS total FROM hosts GROUP BY profile"
+            )
+            for row in c.fetchall():
+                profile = (row["profile"] or "auto").strip().lower()
+                counts[profile] = int(row["total"] or 0)
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat jumlah host per template")
+    return counts
+
+
+def _load_custom_template_rows():
+    rows = []
+    try:
+        conn, c = get_db()
+        try:
+            c.execute(
+                "SELECT id, name, template_group, vendor, version, description, "
+                "tags, linked FROM templates ORDER BY name COLLATE NOCASE"
+            )
+            rows = [dict(row) for row in c.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        app.logger.exception("Gagal memuat template kustom")
+    return rows
+
+
+def _template_rows_for_export():
+    return _data_collection_template_rows(
+        _load_template_profile_counts(), _load_custom_template_rows()
+    )
+
+
+def _template_tags_to_text(row):
+    parts = []
+    for tag in row.get("tags", []):
+        name = tag.get("name") or ""
+        value = tag.get("value") or ""
+        parts.append(f"{name}: {value}" if value else name)
+    return ", ".join(parts)
+
+
+@app.route("/data-collection/templates/create", methods=["POST"])
+@login_required
+def data_collection_template_create():
+    redirect_url = url_for("data_collection_page", page="templates")
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Template name is required.", "error")
+        return redirect(redirect_url)
+    if len(name) > 128:
+        flash("Template name must be 128 characters or fewer.", "error")
+        return redirect(redirect_url)
+    if name.casefold() in _builtin_template_names():
+        flash(f'Template "{name}" already exists.', "error")
+        return redirect(redirect_url)
+
+    template_group = (request.form.get("template_group") or "Custom templates").strip()
+    vendor = (request.form.get("vendor") or _TEMPLATE_VENDOR).strip() or _TEMPLATE_VENDOR
+    version = (request.form.get("version") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    tags = _parse_template_tags_input(request.form.get("tags") or "")
+    linked = _template_linked_list(request.form.get("linked") or "")
+
+    conn, c = get_db()
+    try:
+        c.execute("SELECT name FROM templates")
+        if any(
+            (row["name"] or "").casefold() == name.casefold() for row in c.fetchall()
+        ):
+            flash(f'Template "{name}" already exists.', "error")
+            return redirect(redirect_url)
+        c.execute(
+            "INSERT INTO templates (name, template_group, vendor, version, description, "
+            "tags, linked, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                name,
+                template_group or "Custom templates",
+                vendor,
+                version,
+                description,
+                json.dumps(tags),
+                json.dumps(linked),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("Gagal membuat template")
+        flash("Could not create the template.", "error")
+        return redirect(redirect_url)
+    finally:
+        conn.close()
+
+    flash(f'Template "{name}" created.', "success")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/templates/import", methods=["POST"])
+@login_required
+def data_collection_template_import():
+    redirect_url = url_for("data_collection_page", page="templates")
+    raw = request.form.get("payload") or ""
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        flash("Import failed: the payload is not valid JSON.", "error")
+        return redirect(redirect_url)
+
+    if isinstance(payload, dict):
+        entries = payload.get("templates", [payload])
+    else:
+        entries = payload
+    if isinstance(entries, dict):
+        entries = [entries]
+    if not isinstance(entries, list):
+        flash("Import failed: expected a JSON object or array of templates.", "error")
+        return redirect(redirect_url)
+
+    existing = set(_builtin_template_names())
+    conn, c = get_db()
+    imported = 0
+    skipped = 0
+    try:
+        c.execute("SELECT name FROM templates")
+        existing.update((row["name"] or "").casefold() for row in c.fetchall())
+        for item in entries:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name or len(name) > 128 or name.casefold() in existing:
+                skipped += 1
+                continue
+            template_group = (
+                item.get("template_group")
+                or item.get("group")
+                or "Custom templates"
+            )
+            template_group = str(template_group).strip() or "Custom templates"
+            vendor = str(item.get("vendor") or _TEMPLATE_VENDOR).strip() or _TEMPLATE_VENDOR
+            version = str(item.get("version") or "").strip()
+            description = str(item.get("description") or "").strip()
+            raw_tags = item.get("tags") or []
+            if isinstance(raw_tags, str):
+                tags = _parse_template_tags_input(raw_tags)
+            else:
+                tags = _template_tag_list(raw_tags)
+            linked = _template_linked_list(item.get("linked") or [])
+            c.execute(
+                "INSERT INTO templates (name, template_group, vendor, version, "
+                "description, tags, linked, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    name,
+                    template_group,
+                    vendor,
+                    version,
+                    description,
+                    json.dumps(tags),
+                    json.dumps(linked),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+            )
+            existing.add(name.casefold())
+            imported += 1
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("Gagal mengimpor template")
+        flash("Could not import the templates.", "error")
+        return redirect(redirect_url)
+    finally:
+        conn.close()
+
+    if imported:
+        suffix = "" if imported == 1 else "s"
+        flash(f"{imported} template{suffix} imported.", "success")
+    if skipped:
+        suffix = "" if skipped == 1 else "s"
+        flash(
+            f"{skipped} template{suffix} skipped because the name is missing, "
+            "too long, or already exists.",
+            "error",
+        )
+    if not imported and not skipped:
+        flash("No templates were found in the import payload.", "error")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/templates/delete", methods=["POST"])
+@login_required
+def data_collection_template_delete():
+    redirect_url = url_for("data_collection_page", page="templates")
+    selected = request.form.getlist("selected")
+    if not selected:
+        flash("Select at least one template to delete.", "error")
+        return redirect(redirect_url)
+
+    custom_ids = []
+    builtin_count = 0
+    for value in selected:
+        if value.startswith("custom:"):
+            try:
+                custom_ids.append(int(value.split(":", 1)[1]))
+            except (TypeError, ValueError):
+                continue
+        elif value.startswith("builtin:"):
+            builtin_count += 1
+
+    deleted = 0
+    if custom_ids:
+        conn, c = get_db()
+        try:
+            placeholders = ",".join("?" for _ in custom_ids)
+            c.execute(
+                f"DELETE FROM templates WHERE id IN ({placeholders})",
+                tuple(custom_ids),
+            )
+            deleted = max(0, c.rowcount or 0)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            app.logger.exception("Gagal menghapus template")
+            flash("Could not delete the selected templates.", "error")
+            return redirect(redirect_url)
+        finally:
+            conn.close()
+
+    if deleted:
+        suffix = "" if deleted == 1 else "s"
+        flash(f"{deleted} template{suffix} deleted.", "success")
+    if builtin_count:
+        flash("Built-in templates cannot be deleted.", "error")
+    if not deleted and not builtin_count:
+        flash("No deletable templates were selected.", "error")
+    return redirect(redirect_url)
+
+
+@app.route("/data-collection/templates/export")
+@login_required
+def data_collection_template_export():
+    fmt = (request.args.get("format") or "csv").strip().lower()
+    if fmt not in {"csv", "json"}:
+        fmt = "csv"
+    selected = set(request.args.getlist("selected"))
+    rows = _template_rows_for_export()
+    if selected:
+        rows = [row for row in rows if row["checkbox_value"] in selected]
+
+    columns = (
+        "Name",
+        "Template groups",
+        "Hosts",
+        "Items",
+        "Triggers",
+        "Graphs",
+        "Dashboards",
+        "Discovery",
+        "Web",
+        "Vendor",
+        "Version",
+        "Linked templates",
+        "Linked to templates",
+        "Tags",
+    )
+
+    def _row_values(row):
+        return [
+            row["name"],
+            ", ".join(row["groups"]),
+            row["hosts"],
+            row["items"],
+            row["triggers"],
+            row["graphs"],
+            row["dashboards"],
+            row["discovery"],
+            row["web"],
+            row["vendor"],
+            row["version"],
+            ", ".join(row["linked_names"]),
+            ", ".join(row["linked_to"]),
+            _template_tags_to_text(row),
+        ]
+
+    if fmt == "json":
+        payload = [
+            dict(zip(columns, _row_values(row)))
+            for row in rows
+        ]
+        return Response(
+            json.dumps(payload, indent=2),
+            mimetype="application/json",
+            headers={
+                "Content-Disposition": 'attachment; filename="templates.json"'
+            },
+        )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(columns)
+    for row in rows:
+        writer.writerow(_row_values(row))
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="templates.csv"'},
+    )
+
+
+@app.route("/data-collection")
+@login_required
+def data_collection_index():
+    return redirect(url_for("data_collection_page", page="template-groups"))
+
+
+@app.route("/data-collection/<page>")
+@login_required
+def data_collection_page(page):
+    page = (page or "").lower()
+    if page == "hosts":
+        return render_template("hosts.html")
+    if page == "discovery":
+        return render_template("discovery.html")
+    if page not in _DATA_COLLECTION_PAGE_MAP:
+        abort(404)
+    context = _data_collection_context(page)
+    return render_template(
+        "data_collection.html",
+        dc_page=page,
+        dc_tabs=_DATA_COLLECTION_TABS,
+        **context,
+    )
 
 
 @app.route("/reports")
@@ -9876,6 +11829,36 @@ def reports_page(page):
         report_pages=REPORT_PAGES,
         is_admin=getattr(current_user, "role", None) == "admin",
         **context,
+    )
+
+
+@app.route("/reports/actions/export")
+@login_required
+def reports_actions_export():
+    time_context = _report_time_context()
+    rows = _action_log_data(time_context, filters=_action_log_filters())
+
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(["Time", "Action", "Media type", "Recipient", "Message", "Status", "Info"])
+    for row in rows:
+        writer.writerow(
+            [
+                _csv_safe(row.get("timestamp")),
+                _csv_safe(row.get("action")),
+                _csv_safe(row.get("media_type")),
+                _csv_safe(row.get("recipient")),
+                _csv_safe(row.get("message")),
+                _csv_safe(row.get("status")),
+                _csv_safe(row.get("info")),
+            ]
+        )
+
+    fname = f"action_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
 
 

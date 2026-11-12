@@ -520,6 +520,38 @@ def init_db():
     c.execute(
         "CREATE INDEX IF NOT EXISTS idx_maint_host_window ON maintenance_windows(host, start_at, end_at)"
     )
+
+    # Grup template tambahan yang dibuat operator. Grup bawaan tetap diturunkan
+    # dari profil SNMP agar konsisten dengan halaman Templates.
+    c.execute("""CREATE TABLE IF NOT EXISTS template_groups(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    )""")
+
+    # Grup host tambahan yang dibuat operator. Grup bawaan tetap diturunkan
+    # dari kategori host agar konsisten dengan halaman Hosts.
+    c.execute("""CREATE TABLE IF NOT EXISTS host_groups(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    )""")
+
+    # Template tambahan di luar profil SNMP bawaan. Profil bawaan tetap
+    # diturunkan dari _DATA_COLLECTION_TEMPLATES agar host dan template
+    # memakai sumber data yang sama.
+    c.execute("""CREATE TABLE IF NOT EXISTS templates(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      template_group TEXT NOT NULL DEFAULT 'Custom templates',
+      vendor TEXT NOT NULL DEFAULT 'Zabbix',
+      version TEXT NOT NULL DEFAULT '',
+      description TEXT DEFAULT '',
+      tags TEXT DEFAULT '[]',
+      linked TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL
+    )""")
+
     try:
         c.execute(
             "ALTER TABLE down_events ADD COLUMN is_maintenance INTEGER NOT NULL DEFAULT 0"

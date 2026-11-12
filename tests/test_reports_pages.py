@@ -1,6 +1,7 @@
 """Tes halaman Reports: menu sidebar, route, dan data tiap sub-halaman."""
 
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -61,6 +62,7 @@ class ReportsPagesTest(unittest.TestCase):
             c.execute("DELETE FROM down_events")
             c.execute("DELETE FROM system_logs")
             c.execute("DELETE FROM hosts")
+            c.execute("DELETE FROM audit_logs")
             conn.commit()
         finally:
             conn.close()
@@ -109,9 +111,9 @@ class ReportsPagesTest(unittest.TestCase):
             "/reports/scheduled": "Last sent",
             "/reports/availability": "Availability report",
             "/reports/triggers": "Top 100 triggers",
-            "/reports/audit": "Audit viewer lengkap",
-            "/reports/actions": "event operasional dari system_logs",
-            "/reports/notifications": "Status channel notifikasi",
+            "/reports/audit": "Recordset ID",
+            "/reports/actions": "rpt-action-table",
+            "/reports/notifications": "notif-table",
         }
         for url, needle in expected.items():
             html = self._page(url)
@@ -283,11 +285,158 @@ class ReportsPagesTest(unittest.TestCase):
         html = self._page("/reports/triggers")
         self.assertIn("Link down", html)
         self.assertIn("Utilization high", html)
-        self.assertIn("DISASTER", html)
+        self.assertIn("Disaster", html)
         self.assertIn("Number of problems", html)
+        self.assertIn("Host groups", html)
+        self.assertIn("Problem tags", html)
         self.assertNotIn("Total alert", html)
+        # Dialog "Select" gaya Zabbix: header Name + checkbox pilih semua,
+        # tombol Select (solid) dan Cancel (outline).
+        self.assertIn('id="rptPickerDialog"', html)
+        self.assertIn('class="rpt-picker-thead"', html)
+        self.assertIn(">Name</span>", html)
+        self.assertIn('id="rptPickerAll"', html)
+        self.assertIn('id="rptPickerSelect"', html)
+        self.assertIn('id="rptPickerCancel"', html)
+        self.assertIn("data-picker-values=", html)
+        # Popup Hosts punya baris filter Host group + keadaan "Filter is not set".
+        self.assertIn('id="rptPickerFilter"', html)
+        self.assertIn(">Host group</label>", html)
+        self.assertIn('id="rptPickerFilterInput"', html)
+        self.assertIn('placeholder="type here to search"', html)
+        self.assertIn('id="rptPickerFilterSelect"', html)
+        self.assertIn("Filter is not set", html)
+        self.assertIn("Use the filter to display results", html)
+        self.assertIn('id="rptGroupDialog"', html)
+        self.assertIn('data-picker-mode="hosts"', html)
+        self.assertIn("data-picker-map=", html)
+        # Filter disembunyikan di balik tombol "Filter" (gaya Zabbix 7.4).
+        self.assertRegex(html, r'id="availabilityFilterButton"[^>]*aria-expanded="false"')
+        self.assertRegex(html, r'id="availabilityFilterPanel"[^>]*hidden')
 
-    def test_audit_filter(self):
+    def test_hosts_picker_filter_host_group(self):
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO alert_history (host, alert_type, severity, message, triggered_at, duration_s) "
+                "VALUES (?,?,?,?,?,?)",
+                ("10.20.30.40", "availability", "high", "Link down", _now(-2), 60),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        html = self._page("/reports/triggers?time=30d")
+        self.assertIn('data-picker-mode="hosts"', html)
+        self.assertIn("data-picker-map=", html)
+        # Peta host group -> host dikirim ke halaman supaya popup Hosts bisa
+        # menampilkan daftar host setelah filter Host group dipilih.
+        self.assertRegex(html, r'data-picker-map=\'[^\']+\'')
+        self.assertRegex(html, r'data-picker-groups=\'\[[^\]]*\]\'')
+
+    def test_audit_log_tampilan_zabbix(self):
+        html = self._page("/reports/audit")
+        # Panel waktu terbuka seperti screenshot lama; panel filter tertutup.
+        self.assertRegex(html, r'id="availabilityFilterButton"[^>]*aria-expanded="false"')
+        self.assertRegex(html, r'id="availabilityFilterButton"[^>]*aria-controls="auditFilterPanel"')
+        self.assertNotRegex(html, r'id="availabilityTimePanel"[^>]*hidden')
+        self.assertRegex(html, r'id="auditFilterPanel"[^>]*hidden')
+        self.assertIn(">From</label>", html)
+        self.assertIn(">To</label>", html)
+        self.assertIn('value="now-1h"', html)
+        self.assertIn('value="now"', html)
+        self.assertIn("Last 1 hour", html)
+        self.assertIn("rpt-audit-presets", html)
+        # Isi panel filter mengikuti Audit log Zabbix 7.4.
+        for label in ("Users", "Resource", "Resource ID", "Recordset ID", "IP"):
+            self.assertIn(f">{label}</label>", html, label)
+        self.assertIn(">Actions</span>", html)
+        for action in (
+            "Add", "Configuration refresh", "Delete", "Execute", "Failed login",
+            "History clear", "Login", "Logout", "Push", "Update",
+        ):
+            self.assertIn(f">{action}</span>", html, action)
+        self.assertIn('name="actions"', html)
+        self.assertIn('name="users"', html)
+        self.assertIn('<option value="">All</option>', html)
+        self.assertIn("rpt-audit-filter-apply", html)
+        self.assertIn("rpt-audit-filter-reset", html)
+        # Popup Users mengikuti screenshot Zabbix: checkbox, 3 kolom, Select/Cancel.
+        self.assertIn('id="auditUsersDialog"', html)
+        self.assertIn('id="auditUsersAll"', html)
+        self.assertIn(">Username</span>", html)
+        self.assertIn(">Name</span>", html)
+        self.assertIn(">Last name</span>", html)
+        for username in ("Admin", "guest", "System"):
+            self.assertIn(f">{username}</span>", html, username)
+        self.assertIn(">Zabbix</span>", html)
+        self.assertIn(">Administrator</span>", html)
+        self.assertIn('id="auditUsersDialogSelect"', html)
+        self.assertIn('id="auditUsersDialogCancel"', html)
+        # Kolom tabel mengikuti Audit log Zabbix 7.4.
+        for label in ("Time", "User", "IP", "Resource", "ID", "Action", "Recordset ID", "Details"):
+            self.assertIn(f">{label}</th>", html)
+        self.assertIn("No data found", html)
+
+    def test_audit_filter_panel_menyaring_data(self):
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO audit_logs (timestamp, username, action, target, detail, ip_address) "
+                "VALUES (?,?,?,?,?,?)",
+                (_now(-2), "tester", "host.create", "SW-Baru", "tambah host", "10.9.8.7"),
+            )
+            c.execute(
+                "INSERT INTO audit_logs (timestamp, username, action, target, detail, ip_address) "
+                "VALUES (?,?,?,?,?,?)",
+                (_now(-3), "admin", "auth.login", "", "login admin", "127.0.0.1"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        html = self._page("/reports/audit?users=tester&actions=add")
+        self.assertIn("tambah host", html)
+        self.assertNotIn("login admin", html)
+        # Panel filter terbuka dan nilai filter tetap terisi.
+        self.assertRegex(html, r'id="availabilityFilterButton"[^>]*aria-expanded="true"')
+        self.assertNotRegex(html, r'id="auditFilterPanel"[^>]*hidden')
+        self.assertIn('value="tester"', html)
+        self.assertRegex(html, r'name="actions" value="add" checked')
+        self.assertRegex(html, r'id="availabilityTimePanel"[^>]*hidden')
+
+        html = self._page("/reports/audit?resource=host")
+        self.assertIn("tambah host", html)
+        self.assertNotIn("login admin", html)
+
+        html = self._page("/reports/audit?ip=10.9.8.7")
+        self.assertIn("tambah host", html)
+        self.assertNotIn("login admin", html)
+
+        html = self._page("/reports/audit?actions=login")
+        self.assertIn("login admin", html)
+        self.assertNotIn("tambah host", html)
+
+        # Popup Users mengisi beberapa nama; filter menyaring salah satunya (OR).
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO audit_logs (timestamp, username, action, target, detail, ip_address) "
+                "VALUES (?,?,?,?,?,?)",
+                (_now(-4), "operator", "host.delete", "SW-Lama", "hapus host lain", "10.9.8.8"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        html = self._page("/reports/audit?users=Admin%2C%20tester")
+        self.assertIn("login admin", html)
+        self.assertIn("tambah host", html)
+        self.assertNotIn("hapus host lain", html)
+        self.assertIn('value="Admin, tester"', html)
+        self.assertRegex(html, r'value="Admin" checked')
+        self.assertRegex(html, r'value="tester" checked')
+
+    def test_audit_log_filter_waktu(self):
         conn, c = m.get_db()
         try:
             c.execute(
@@ -295,40 +444,206 @@ class ReportsPagesTest(unittest.TestCase):
                 "VALUES (?,?,?,?,?,?)",
                 (_now(-1), "tester", "unit.test.action", "target-a", "detail unik", "127.0.0.1"),
             )
+            c.execute(
+                "INSERT INTO audit_logs (timestamp, username, action, target, detail, ip_address) "
+                "VALUES (?,?,?,?,?,?)",
+                (_now(-120), "tester", "unit.test.old", "", "baris lama", "127.0.0.1"),
+            )
             conn.commit()
         finally:
             conn.close()
 
-        html = self._page("/reports/audit?q=unit.test.action")
-        self.assertIn("unit.test.action", html)
-        self.assertIn("target-a", html)
+        html = self._page("/reports/audit")
         self.assertIn("detail unik", html)
+        self.assertIn(">User</th>", html)
+        self.assertNotIn("baris lama", html)
+        # Action mentah tetap tersedia sebagai tooltip.
+        self.assertIn('title="unit.test.action"', html)
 
-    def test_action_log_filter_event(self):
+        html = self._page("/reports/audit?time=30d")
+        self.assertIn("baris lama", html)
+
+    def test_action_log_tampilan_zabbix(self):
+        html = self._page("/reports/actions")
+        for marker in (
+            'id="actionExport"',
+            "Export to CSV",
+            'id="availabilityTimeToggle"',
+            'id="availabilityFilterButton"',
+            'id="availabilityTimePanel"',
+            "data-action-panel",
+            "Zoom out",
+            "Last 1 hour",
+            "From",
+            "To",
+            "Apply",
+            "rpt-action-table",
+            "No data found",
+        ):
+            self.assertIn(marker, html, marker)
+
+        headers = [">Time</th>", ">Action</th>", ">Media type</th>", ">Recipient</th>",
+                   ">Message</th>", ">Status</th>", ">Info</th>"]
+        positions = [html.index(marker) for marker in headers]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("event operasional dari system_logs", html)
+
+    def test_action_log_menyaring_rentang_waktu(self):
         conn, c = m.get_db()
         try:
             c.execute(
                 "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
-                (_now(-2), "UNIT_TEST", "10.20.30.40", "Pesan event uji"),
+                (_now(-2), "EVENT_RECENT", "10.20.30.40", "Pesan baru"),
             )
             c.execute(
                 "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
-                (_now(-1), "NETWORK_UP", "10.20.30.41", "Host pulih"),
+                (_now(-60 * 48), "EVENT_OLD", "10.20.30.41", "Pesan lama"),
             )
             conn.commit()
         finally:
             conn.close()
 
-        html = self._page("/reports/actions?event=UNIT_TEST")
-        self.assertIn("Pesan event uji", html)
-        self.assertNotIn("Host pulih", html)
+        html = self._page("/reports/actions")
+        self.assertIn("Pesan baru", html)
+        self.assertIn("10.20.30.40", html)
+        self.assertNotIn("Pesan lama", html)
 
-    def test_notifikasi_menampilkan_channel(self):
+        html = self._page("/reports/actions?time=30d")
+        self.assertIn("Pesan baru", html)
+        self.assertIn("Pesan lama", html)
+
+    def test_action_log_export_csv(self):
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
+                (_now(-1), "UNIT_TEST", "10.20.30.40", "Pesan ekspor"),
+            )
+            c.execute(
+                "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
+                (_now(-60 * 48), "UNIT_OLD", "10.20.30.41", "Pesan lama"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        r = self.client.get("/reports/actions/export?time=1h")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/csv", r.headers["Content-Type"])
+        self.assertIn("attachment; filename=action_log_", r.headers["Content-Disposition"])
+        body = r.get_data(as_text=True)
+        self.assertIn("Time,Action,Media type,Recipient,Message,Status,Info", body)
+        self.assertIn("Pesan ekspor", body)
+        self.assertNotIn("Pesan lama", body)
+
+    def test_action_log_panel_filter_zabbix(self):
+        html = self._page("/reports/actions")
+        for marker in (
+            'id="actionFilterPanel"',
+            "data-action-filter-panel",
+            'id="actionFilterRecipients"',
+            'id="actionFilterActions"',
+            'id="actionFilterMedia"',
+            'id="actionFilterSearch"',
+            'name="status" value="in_progress"',
+            'name="status" value="sent"',
+            'name="status" value="failed"',
+            "Recipients",
+            "Media types",
+            "Search string",
+            "Sent/Executed",
+            'class="rpt-action-select"',
+            'id="actionFilterReset"',
+        ):
+            self.assertIn(marker, html, marker)
+
+    def test_action_log_filter_search_actions_dan_status(self):
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
+                (_now(-2), "EVENT_FILTER_A", "10.10.10.10", "Pesan filter unik"),
+            )
+            c.execute(
+                "INSERT INTO system_logs (timestamp, event_type, host, message) VALUES (?,?,?,?)",
+                (_now(-2), "EVENT_FILTER_B", "10.10.10.11", "Pesan lain"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        html = self._page("/reports/actions?search=filter+unik")
+        self.assertIn("Pesan filter unik", html)
+        self.assertNotIn("Pesan lain", html)
+
+        html = self._page("/reports/actions?actions=EVENT_FILTER_B")
+        self.assertIn("Pesan lain", html)
+        self.assertNotIn("Pesan filter unik", html)
+
+        html = self._page("/reports/actions?search=filter+unik&time=30d")
+        self.assertIn("Pesan filter unik", html)
+
+        html = self._page("/reports/actions?status=failed")
+        self.assertIn("No data found", html)
+        self.assertNotIn("Pesan filter unik", html)
+
+        r = self.client.get("/reports/actions/export?time=1h&search=filter+unik")
+        body = r.get_data(as_text=True)
+        self.assertIn("Pesan filter unik", body)
+        self.assertNotIn("Pesan lain", body)
+
+    def test_notifikasi_tampilan_zabbix(self):
         html = self._page("/reports/notifications")
-        self.assertIn("Telegram", html)
-        self.assertIn("Email (SMTP)", html)
-        self.assertIn("Webhook", html)
-        self.assertIn("Ambang minimum", html)
+        for marker in (
+            "Notifications",
+            "Media type",
+            "Period",
+            "Year",
+            "Weekly",
+            "2026",
+            "From",
+            "Till",
+            "notif-table",
+            "notif-user-label",
+            "Admin (Zabbix Administrator)",
+            "guest",
+            "2025-12-29 12:00 AM",
+            "2026-01-05 12:00 AM",
+        ):
+            self.assertIn(marker, html, marker)
+
+        self.assertIn('<option value="weekly" selected>Weekly</option>', html)
+        self.assertIn('<option value="2026" selected>2026</option>', html)
+
+    def test_notifikasi_menghitung_tes_per_minggu(self):
+        conn, c = m.get_db()
+        try:
+            c.execute(
+                "INSERT INTO audit_logs (timestamp, username, action, target, detail, ip_address) "
+                "VALUES (?,?,?,?,?,?)",
+                ("2026-01-07 10:00:00", "admin", "notify.test", "", "telegram=ok email=skipped", "127.0.0.1"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        html = self._page("/reports/notifications?period=weekly&year=2026&media=all")
+        row = re.search(
+            r"2026-01-05 12:00 AM.*?2026-01-12 12:00 AM.*?<td class=\"notif-cell\">(\d*)</td>",
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(row)
+        self.assertEqual(row.group(1), "1")
+
+        html = self._page("/reports/notifications?period=weekly&year=2026&media=email")
+        row = re.search(
+            r"2026-01-05 12:00 AM.*?2026-01-12 12:00 AM.*?<td class=\"notif-cell\">(\d*)</td>",
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(row)
+        self.assertEqual(row.group(1), "")
 
     def test_system_information_menampilkan_tabel_parameter(self):
         html = self._page("/reports/system")

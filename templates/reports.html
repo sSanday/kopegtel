@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/services.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/reports.css') }}">
-{% if report_page == "availability" %}<link rel="stylesheet" href="{{ url_for('static', filename='css/availability_report.css') }}">{% endif %}
+{% if report_page in ("availability", "triggers", "audit", "actions", "notifications") %}<link rel="stylesheet" href="{{ url_for('static', filename='css/availability_report.css') }}">{% endif %}
 <script>
 // Terapkan tema tersimpan sebelum render untuk menghindari kedip.
 (function () {
@@ -28,7 +28,7 @@
 <script src="{{ url_for('static', filename='js/services_common.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/nav.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/reports.js') }}" defer></script>
-{% if report_page == "availability" %}<script src="{{ url_for('static', filename='js/availability_report.js') }}" defer></script>{% endif %}
+{% if report_page in ("availability", "triggers", "audit", "actions") %}<script src="{{ url_for('static', filename='js/availability_report.js') }}" defer></script>{% endif %}
 </head>
 <body>
 <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -163,25 +163,19 @@
           </select>
         </div>
       </div>
+      {% elif report_page == "triggers" %}
+      {# Judul, toolbar, dan filter Top 100 triggers dirender di blok konten di bawah. #}
+      {% elif report_page == "audit" %}
+      {# Judul, toolbar, dan filter Audit log dirender di blok konten di bawah. #}
+      {% elif report_page == "actions" %}
+      {# Judul, toolbar, dan tabel Action log dirender di blok konten di bawah. #}
+      {% elif report_page == "notifications" %}
+      {# Judul, filter, dan tabel Notifications dirender di blok konten di bawah. #}
       {% else %}
       <div class="rpt-head">
         <div>
           <h2 class="rpt-title">{{ report_title }}</h2>
           <p class="rpt-sub">{{ report_subtitle }}</p>
-        </div>
-        <div class="rpt-head-actions">
-          {% if report_page == "notifications" and is_admin %}
-          <button class="rpt-btn primary" type="button" id="btnNotifyTest">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-            Kirim pesan uji
-          </button>
-          {% endif %}
-          {% if report_page == "audit" %}
-          <a class="rpt-btn" href="/api/audit/export?format=csv&days=30">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
-            Export CSV
-          </a>
-          {% endif %}
         </div>
       </div>
       {% endif %}
@@ -768,7 +762,7 @@
               <label for="availabilityHostFilter">Hosts</label>
               <div class="rpt-availability-filter-field">
                 <input type="search" id="availabilityHostFilter" placeholder="type here to search" autocomplete="off">
-                <button type="button" class="rpt-availability-select" data-picker="availabilityHostFilter" data-picker-attr="data-host-alias" data-picker-title="Hosts" aria-haspopup="dialog" aria-expanded="false">Select</button>
+                <button type="button" class="rpt-availability-select" data-picker="availabilityHostFilter" data-picker-attr="data-host-alias" data-picker-title="Hosts" data-picker-mode="hosts" data-picker-groups='{{ availability_host_groups|tojson }}' data-picker-map='{{ availability_host_map|tojson }}' aria-haspopup="dialog" aria-expanded="false">Select</button>
               </div>
             </div>
           </div>
@@ -834,19 +828,24 @@
       <footer class="rpt-sched-footer rpt-availability-footer">
         <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
       </footer>
+      {% include "_reports_picker.html" %}
 
       {% elif report_page == "triggers" %}
+      <div class="tt-page">
       <div class="rpt-availability-heading rpt-trigger-heading">
         <h1 class="rpt-availability-title">Top 100 triggers</h1>
         <a href="https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/reports/top_triggers" target="_blank" rel="noopener" class="rpt-sched-help" title="Help" aria-label="Help">?</a>
       </div>
       <section class="rpt-availability-toolbar rpt-trigger-toolbar" aria-label="Time selector">
         <div class="rpt-availability-toolbar-top">
-          <button type="button" class="rpt-availability-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
-          <button type="button" class="rpt-availability-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
-          <button type="button" class="rpt-availability-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
-          <button type="button" class="rpt-availability-selected-time" id="availabilityTimeToggle" aria-expanded="false" aria-controls="availabilityTimePanel"><span aria-hidden="true">◷</span> {{ trigger_time.label }}</button>
-          <button type="button" class="rpt-availability-filter-button" id="availabilityFilterButton" aria-expanded="false" aria-controls="availabilityFilterPanel"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg> Filter</button>
+          <button type="button" class="rpt-availability-zoom rpt-trigger-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
+          <button type="button" class="rpt-availability-zoom-label rpt-trigger-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
+          <button type="button" class="rpt-availability-zoom rpt-trigger-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
+          <button type="button" class="rpt-availability-selected-time rpt-trigger-time" id="availabilityTimeToggle" aria-expanded="false" aria-controls="availabilityTimePanel">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M8 4.5V8l2.3 1.5"/></svg>
+            {{ trigger_time.label }}
+          </button>
+          <button type="button" class="rpt-availability-filter-button rpt-trigger-filter-btn" id="availabilityFilterButton" aria-expanded="false" aria-controls="availabilityFilterPanel"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg> Filter</button>
         </div>
         <div class="rpt-availability-time-panel" id="availabilityTimePanel" hidden>
           <form method="get" action="{{ url_for('reports_page', page='triggers') }}" class="rpt-availability-custom-time">
@@ -860,263 +859,548 @@
             {% for col in trigger_preset_columns %}<div class="rpt-availability-preset-column">{% for item in col %}<a href="{{ url_for('reports_page', page='triggers', time=item.key) }}" class="rpt-availability-preset{% if item.key == trigger_time.selected_key %} active{% endif %}">{{ item.label }}</a>{% endfor %}</div>{% endfor %}
           </div>
         </div>
-        <div class="rpt-availability-filter-panel rpt-trigger-filter-panel" id="availabilityFilterPanel" hidden>
-          <strong>Filter</strong><label for="availabilityHostFilter">Host</label><input type="search" id="availabilityHostFilter" placeholder="type here to search" autocomplete="off">
-          <label for="availabilityNameFilter">Trigger</label><input type="search" id="availabilityNameFilter" placeholder="type here to search" autocomplete="off">
-          <label for="availabilitySeverityFilter">Severity</label><select id="availabilitySeverityFilter"><option value="">All</option><option value="disaster">Disaster</option><option value="high">High</option><option value="warning">Warning</option><option value="info">Info</option><option value="low">Low</option></select>
-          <div class="rpt-availability-filter-actions"><button type="button" class="rpt-availability-filter-reset" id="availabilityFilterReset">Reset</button></div>
+        <div class="rpt-trigger-filter" id="availabilityFilterPanel" data-persist hidden>
+          <div class="rpt-trigger-form">
+            <div class="rpt-trigger-col">
+              <label class="rpt-trigger-label" for="availabilityCategoryFilter">Host groups</label>
+              <div class="rpt-trigger-field">
+                <input type="search" id="availabilityCategoryFilter" class="rpt-trigger-input" placeholder="type here to search" autocomplete="off">
+                <button type="button" class="rpt-trigger-select" data-picker="availabilityCategoryFilter" data-picker-attr="data-category" data-picker-title="Host groups" data-picker-values='{{ trigger_host_groups|tojson }}' aria-haspopup="dialog" aria-expanded="false">Select</button>
+              </div>
+
+              <label class="rpt-trigger-label" for="availabilityHostFilter">Hosts</label>
+              <div class="rpt-trigger-field">
+                <input type="search" id="availabilityHostFilter" class="rpt-trigger-input" placeholder="type here to search" autocomplete="off">
+                <button type="button" class="rpt-trigger-select" data-picker="availabilityHostFilter" data-picker-attr="data-host-alias" data-picker-title="Hosts" data-picker-mode="hosts" data-picker-groups='{{ trigger_host_groups|tojson }}' data-picker-map='{{ trigger_host_map|tojson }}' data-picker-values='{{ trigger_host_aliases|tojson }}' aria-haspopup="dialog" aria-expanded="false">Select</button>
+              </div>
+
+              <label class="rpt-trigger-label" for="availabilityNameFilter">Problem</label>
+              <div class="rpt-trigger-field">
+                <input type="search" id="availabilityNameFilter" class="rpt-trigger-input" placeholder="type here to search" autocomplete="off">
+              </div>
+
+              <span class="rpt-trigger-label" id="ttSeverityLabel">Severity</span>
+              <div class="rpt-trigger-severity" role="group" aria-labelledby="ttSeverityLabel">
+                <label><input type="checkbox" data-rpt-severity value="not classified"><span>Not classified</span></label>
+                <label><input type="checkbox" data-rpt-severity value="warning"><span>Warning</span></label>
+                <label><input type="checkbox" data-rpt-severity value="high"><span>High</span></label>
+                <label><input type="checkbox" data-rpt-severity value="information"><span>Information</span></label>
+                <label><input type="checkbox" data-rpt-severity value="average"><span>Average</span></label>
+                <label><input type="checkbox" data-rpt-severity value="disaster"><span>Disaster</span></label>
+              </div>
+            </div>
+
+            <div class="rpt-trigger-tags">
+              <div class="rpt-trigger-tags-head">
+                <span class="rpt-trigger-label" id="ttTagsLabel">Problem tags</span>
+                <div class="rpt-trigger-andor" role="group" aria-labelledby="ttTagsLabel">
+                  <button type="button" class="rpt-trigger-andor-btn active" data-tag-mode="and" aria-pressed="true">And/Or</button>
+                  <button type="button" class="rpt-trigger-andor-btn" data-tag-mode="or" aria-pressed="false">Or</button>
+                </div>
+              </div>
+              <div class="rpt-trigger-tag-rows" id="ttTagRows">
+                <div class="rpt-trigger-tag-row">
+                  <input type="text" class="rpt-trigger-tag-name" placeholder="tag" aria-label="Tag name" autocomplete="off">
+                  <select class="rpt-trigger-tag-op" aria-label="Tag operator">
+                    <option>Contains</option>
+                    <option>Equals</option>
+                    <option>Does not contain</option>
+                    <option>Does not equal</option>
+                    <option>Exists</option>
+                    <option>Does not exist</option>
+                  </select>
+                  <input type="text" class="rpt-trigger-tag-value" placeholder="value" aria-label="Tag value" autocomplete="off">
+                  <button type="button" class="rpt-trigger-link rpt-trigger-tag-remove">Remove</button>
+                </div>
+              </div>
+              <button type="button" class="rpt-trigger-link rpt-trigger-tag-add" id="ttTagAdd">Add</button>
+            </div>
+
+            <div class="rpt-trigger-divider" aria-hidden="true"></div>
+            <div class="rpt-trigger-actions">
+              <button type="button" class="rpt-trigger-apply" id="availabilityFilterApply">Apply</button>
+              <button type="button" class="rpt-trigger-reset" id="availabilityFilterReset">Reset</button>
+            </div>
+          </div>
         </div>
       </section>
       {% if trigger_range_error %}<div class="rpt-availability-notice" role="alert">{{ trigger_range_error }}</div>{% endif %}
       {% if trigger_data_error %}<div class="rpt-availability-notice rpt-availability-notice-error" role="alert">Data trigger gagal dimuat.</div>{% endif %}
-      <div class="rpt-availability-table-wrap rpt-trigger-table-wrap">
-        <table class="rpt-table rpt-availability-table rpt-trigger-table" id="availabilityTable">
-          <thead><tr><th scope="col">Host</th><th scope="col">Trigger</th><th scope="col">Severity</th><th scope="col" class="rpt-availability-problems">Number of problems</th></tr></thead>
-          <tbody>
-            {% for row in trigger_rows %}{% set sev = (row.severity or "info")|lower %}
-            <tr data-host="{{ row.host or '' }}" data-name="{{ row.alert_type or '' }}" data-severity="{{ sev }}" data-problems="{{ row.total }}">
-              <td><a href="{{ url_for('host_detail', ip=row.host) }}" class="rpt-availability-host">{{ row.host or "—" }}</a></td>
-              <td><span class="rpt-availability-trigger">{{ row.alert_type or "—" }}</span>{% if row.message %}<div class="rpt-trigger-message" title="{{ row.message }}">{{ row.message }}</div>{% endif %}</td>
-              <td><span class="rpt-badge {% if sev in ('disaster', 'high') %}bad{% elif sev == 'warning' %}warn{% else %}info{% endif %}">{{ sev|upper }}</span></td>
-              <td class="rpt-availability-problems">{{ row.total }}</td>
+      <div class="rpt-trigger-table-wrap">
+        <table class="rpt-trigger-table" id="availabilityTable">
+          <thead>
+            <tr>
+              <th scope="col" class="rpt-trigger-th-host">Host</th>
+              <th scope="col" class="rpt-trigger-th-trigger">Trigger</th>
+              <th scope="col" class="rpt-trigger-th-severity">Severity</th>
+              <th scope="col" class="rpt-trigger-th-count">Number of problems</th>
             </tr>
-            {% else %}{{ empty_row(4, "No data found", "No trigger problems matched this time period.") }}{% endfor %}
+          </thead>
+          <tbody>
+            {% for row in trigger_rows %}{% set sev = (row.severity_key or "information")|lower %}
+            <tr data-host="{{ row.host or '' }}" data-host-ip="{{ row.host_ip or '' }}" data-host-alias="{{ row.host_alias or row.host or '' }}" data-category="{{ row.category or '' }}" data-name="{{ (row.alert_type or '') ~ ' ' ~ (row.message or '') }}" data-severity="{{ sev }}" data-problems="{{ row.total }}">
+              <td class="rpt-trigger-host"><a href="{{ url_for('host_detail', ip=row.host_ip or row.host) }}">{{ row.host_alias or row.host or "—" }}</a></td>
+              <td class="rpt-trigger-name"><a href="{{ url_for('problems_page', host=row.host_ip or row.host) }}" title="Problems for {{ row.host_alias or row.host }}">{{ row.alert_type or "—" }}</a>{% if row.message %}<div class="rpt-trigger-message" title="{{ row.message }}">{{ row.message }}</div>{% endif %}</td>
+              <td><span class="rpt-trigger-sev rpt-trigger-sev--{{ sev|replace(' ', '-') }}">{{ row.severity_label or "Information" }}</span></td>
+              <td class="rpt-trigger-count">{{ row.total }}</td>
+            </tr>
+            {% else %}
+            <tr class="rpt-trigger-empty">
+              <td colspan="4">
+                <span class="rpt-trigger-empty-icon" aria-hidden="true"><svg viewBox="0 0 38 38" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="16" cy="16" r="13.2"/><path d="M26 26 36.4 36.4"/></svg></span>
+                <span class="rpt-trigger-empty-text">No data found</span>
+              </td>
+            </tr>
+            {% endfor %}
           </tbody>
         </table>
       </div>
-      <div class="rpt-availability-foot"><span id="availabilityDisplayCount">Displaying {{ trigger_rows|length }} of {{ trigger_rows|length }} found</span></div>
-      <footer class="rpt-sched-footer rpt-availability-footer"><a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a></footer>
+      {% if trigger_rows %}<div class="rpt-trigger-foot"><span id="availabilityDisplayCount">Displaying {{ trigger_rows|length }} of {{ trigger_rows|length }} found</span></div>{% endif %}
+      <footer class="rpt-sched-footer rpt-trigger-footer"><a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a></footer>
+      </div>
+      {% include "_reports_picker.html" %}
 
       {% elif report_page == "audit" %}
-      <section class="rpt-card">
-        <div class="rpt-card-head">
-          <h2>Audit log</h2>
-          <a class="rpt-link" href="/audit_logs">Audit viewer lengkap</a>
-        </div>
-        <form class="rpt-filter" method="get" action="{{ url_for('reports_page', page='audit') }}">
-          <label class="rpt-field rpt-field-grow">
-            <span>Cari</span>
-            <input class="rpt-input" type="search" name="q" value="{{ audit_q }}" placeholder="username, aksi, target, detail…" autocomplete="off">
-          </label>
-          <label class="rpt-field">
-            <span>Aksi</span>
-            <select class="rpt-select" name="action">
-              <option value="">Semua aksi</option>
-              {% for item in audit_actions %}
-              <option value="{{ item }}"{% if item == audit_action %} selected{% endif %}>{{ item }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <div class="rpt-filter-actions">
-            <button class="rpt-btn primary" type="submit">Terapkan</button>
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit') }}">Reset</a>
-          </div>
-        </form>
-        <div class="rpt-table-wrap">
-          <table class="rpt-table">
-            <thead>
-              <tr><th scope="col">Waktu</th><th scope="col">Pengguna</th><th scope="col">Aksi</th><th scope="col">Target</th><th scope="col">Detail</th><th scope="col">IP</th></tr>
-            </thead>
-            <tbody>
-              {% for row in audit_rows %}
-              <tr>
-                <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
-                <td>{{ row.username or "—" }}</td>
-                <td><span class="rpt-badge info">{{ row.action }}</span></td>
-                <td>{{ row.target or "—" }}</td>
-                <td class="rpt-muted">{{ row.detail or "—" }}</td>
-                <td class="rpt-mono rpt-muted">{{ row.ip_address or "—" }}</td>
-              </tr>
-              {% else %}
-              {{ empty_row(6, "Tidak ada hasil", "Coba ubah kata kunci atau filter aksi.") }}
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div class="rpt-pager">
-          <span class="rpt-muted">Menampilkan {{ audit_from }}–{{ audit_to }} dari {{ "{:,}".format(audit_total) }} baris</span>
-          <div class="rpt-pager-btns">
-            {% if audit_page > 1 %}
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit', p=audit_page - 1, q=audit_q, action=audit_action) }}">&larr; Sebelumnya</a>
-            {% else %}
-            <span class="rpt-btn" aria-disabled="true">&larr; Sebelumnya</span>
-            {% endif %}
-            <span class="rpt-pager-pos">{{ audit_page }} / {{ audit_pages }}</span>
-            {% if audit_page < audit_pages %}
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='audit', p=audit_page + 1, q=audit_q, action=audit_action) }}">Berikutnya &rarr;</a>
-            {% else %}
-            <span class="rpt-btn" aria-disabled="true">Berikutnya &rarr;</span>
-            {% endif %}
-          </div>
-        </div>
-      </section>
-
-      {% elif report_page == "actions" %}
-      <section class="rpt-card">
-        <div class="rpt-card-head">
-          <h2>Action log</h2>
-          <span class="rpt-muted">event operasional dari system_logs</span>
-        </div>
-        <form class="rpt-filter" method="get" action="{{ url_for('reports_page', page='actions') }}">
-          <label class="rpt-field rpt-field-grow">
-            <span>Cari</span>
-            <input class="rpt-input" type="search" name="q" value="{{ action_q }}" placeholder="event, host, pesan…" autocomplete="off">
-          </label>
-          <label class="rpt-field">
-            <span>Event</span>
-            <select class="rpt-select" name="event">
-              <option value="">Semua event</option>
-              {% for item in action_events %}
-              <option value="{{ item.event_type }}"{% if item.event_type == action_event %} selected{% endif %}>{{ item.event_type }} ({{ item.cnt }})</option>
-              {% endfor %}
-            </select>
-          </label>
-          <div class="rpt-filter-actions">
-            <button class="rpt-btn primary" type="submit">Terapkan</button>
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions') }}">Reset</a>
-          </div>
-        </form>
-        <div class="rpt-chips">
-          {% for item in action_events %}
-          <a class="rpt-chip{% if item.event_type == action_event %} active{% endif %}" href="{{ url_for('reports_page', page='actions', event=item.event_type) }}">{{ item.event_type }} <b>{{ item.cnt }}</b></a>
-          {% endfor %}
-        </div>
-        <div class="rpt-table-wrap">
-          <table class="rpt-table">
-            <thead><tr><th scope="col">Waktu</th><th scope="col">Event</th><th scope="col">Host</th><th scope="col">Pesan</th></tr></thead>
-            <tbody>
-              {% for row in action_rows %}
-              <tr>
-                <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
-                <td><span class="rpt-badge {% if 'DOWN' in row.event_type %}bad{% elif 'UP' in row.event_type %}ok{% elif 'TRAP' in row.event_type %}warn{% else %}info{% endif %}">{{ row.event_type }}</span></td>
-                <td class="rpt-mono">{{ row.host or "—" }}</td>
-                <td>{{ row.message or "—" }}</td>
-              </tr>
-              {% else %}
-              {{ empty_row(4, "Tidak ada event", "Event operasional akan tampil di sini setelah sistem berjalan.") }}
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div class="rpt-pager">
-          <span class="rpt-muted">Menampilkan {{ action_from }}–{{ action_to }} dari {{ "{:,}".format(action_total) }} baris</span>
-          <div class="rpt-pager-btns">
-            {% if action_page > 1 %}
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions', p=action_page - 1, q=action_q, event=action_event) }}">&larr; Sebelumnya</a>
-            {% else %}
-            <span class="rpt-btn" aria-disabled="true">&larr; Sebelumnya</span>
-            {% endif %}
-            <span class="rpt-pager-pos">{{ action_page }} / {{ action_pages }}</span>
-            {% if action_page < action_pages %}
-            <a class="rpt-btn" href="{{ url_for('reports_page', page='actions', p=action_page + 1, q=action_q, event=action_event) }}">Berikutnya &rarr;</a>
-            {% else %}
-            <span class="rpt-btn" aria-disabled="true">Berikutnya &rarr;</span>
-            {% endif %}
-          </div>
-        </div>
-      </section>
-
-      {% elif report_page == "notifications" %}
-      <section class="rpt-kpis" aria-label="Ringkasan notifikasi">
-        <div class="rpt-kpi {% if notification_active %}good{% endif %}">
-          <div class="k">Channel aktif</div>
-          <div class="v">{{ notification_active }}<small>/{{ notification_channels|length }}</small></div>
-          <div class="h">Telegram, Email, Webhook</div>
-        </div>
-        <div class="rpt-kpi">
-          <div class="k">Alert 24 jam</div>
-          <div class="v">{{ notification_total_24h }}</div>
-          <div class="h">alert yang memicu notifikasi</div>
-        </div>
-        <div class="rpt-kpi">
-          <div class="k">Tes terakhir</div>
-          <div class="v rpt-kpi-text">{{ notification_last_test or "—" }}</div>
-          <div class="h">pesan uji manual</div>
-        </div>
-        <div class="rpt-kpi">
-          <div class="k">Ambang minimum</div>
-          <div class="v rpt-kpi-text">per channel</div>
-          <div class="h">diatur pada settings</div>
-        </div>
-      </section>
-
-      <section class="rpt-channel-grid" aria-label="Status channel notifikasi">
-        {% for ch in notification_channels %}
-        <div class="rpt-channel">
-          <div class="rpt-channel-top">
-            <span class="rpt-channel-name">{{ ch.label }}</span>
-            <span class="rpt-badge {% if ch.active %}ok{% else %}muted{% endif %}">{{ "Aktif" if ch.active else "Nonaktif" }}</span>
-          </div>
-          <div class="rpt-channel-meta">
-            <div><span class="k">Ambang minimum</span><span class="v">{{ ch.min_sev }}</span></div>
-            <div><span class="k">Konfigurasi</span><span class="v rpt-muted">{{ ch.detail }}</span></div>
-          </div>
-        </div>
-        {% endfor %}
-      </section>
-
-      <div class="rpt-grid-2">
-        <section class="rpt-card">
-          <div class="rpt-card-head">
-            <h2>Riwayat pesan uji</h2>
-            <span class="rpt-muted">10 terakhir</span>
-          </div>
-          <div class="rpt-table-wrap">
-            <table class="rpt-table">
-              <thead><tr><th scope="col">Waktu</th><th scope="col">Pengguna</th><th scope="col">Hasil</th></tr></thead>
-              <tbody>
-                {% for row in notification_tests %}
-                <tr>
-                  <td class="rpt-mono rpt-nowrap">{{ row.timestamp }}</td>
-                  <td>{{ row.username or "—" }}</td>
-                  <td class="rpt-muted">{{ row.detail or "—" }}</td>
-                </tr>
-                {% else %}
-                {{ empty_row(3, "Belum ada tes", "Gunakan tombol Kirim pesan uji untuk memverifikasi channel.") }}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section class="rpt-card">
-          <div class="rpt-card-head">
-            <h2>Alert terbaru</h2>
-            <a class="rpt-link" href="/problems">Lihat semua</a>
-          </div>
-          <div class="rpt-table-wrap">
-            <table class="rpt-table">
-              <thead><tr><th scope="col">Waktu</th><th scope="col">Host</th><th scope="col">Severity</th><th scope="col">Status</th></tr></thead>
-              <tbody>
-                {% for row in notification_alerts %}
-                {% set sev = (row.severity or "info")|lower %}
-                <tr>
-                  <td class="rpt-mono rpt-nowrap">{{ row.triggered_at }}</td>
-                  <td><span class="rpt-name">{{ row.host or "—" }}</span><br><span class="rpt-muted">{{ row.alert_type or "—" }}</span></td>
-                  <td><span class="rpt-badge {% if sev in ('disaster', 'high') %}bad{% elif sev == 'warning' %}warn{% else %}info{% endif %}">{{ sev|upper }}</span></td>
-                  <td>{% if row.resolved_at %}<span class="rpt-badge ok">RESOLVED</span>{% else %}<span class="rpt-badge bad">PROBLEM</span>{% endif %}</td>
-                </tr>
-                {% else %}
-                {{ empty_row(4, "Belum ada alert", "Belum ada alert yang tercatat.") }}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <div class="tt-page audit-page">
+      <div class="rpt-availability-heading rpt-trigger-heading rpt-audit-heading">
+        <h1 class="rpt-availability-title">Audit log</h1>
+        <a href="https://www.zabbix.com/documentation/7.4/en/manual/web_interface/frontend_sections/reports/audit_log" target="_blank" rel="noopener" class="rpt-sched-help" title="Help" aria-label="Help">?</a>
       </div>
 
-      <section class="rpt-card">
-        <div class="rpt-card-head">
-          <h2>Severity alert 24 jam</h2>
-          <span class="rpt-muted">jumlah alert per severity</span>
+      <section class="rpt-availability-toolbar rpt-trigger-toolbar rpt-audit-toolbar" aria-label="Time and filter">
+        <div class="rpt-availability-toolbar-top">
+          <button type="button" class="rpt-availability-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
+          <button type="button" class="rpt-availability-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
+          <button type="button" class="rpt-availability-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
+          <button type="button" class="rpt-availability-selected-time rpt-audit-time{% if not audit_filter_active %} active{% endif %}" id="availabilityTimeToggle" aria-expanded="{{ 'false' if audit_filter_active else 'true' }}" aria-controls="availabilityTimePanel" data-time-seconds="{{ audit_time.seconds }}">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M8 4.5V8l2.3 1.5"/></svg>
+            {{ audit_time.label }}
+          </button>
+          <button type="button" class="rpt-availability-filter-button rpt-audit-filter" id="availabilityFilterButton" aria-expanded="{{ 'true' if audit_filter_active else 'false' }}" aria-controls="auditFilterPanel"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg> Filter</button>
         </div>
-        <div class="rpt-chips rpt-card-body">
-          {% for item in notification_alert_counts %}
-          <span class="rpt-chip">{{ item.severity }} <b>{{ item.cnt }}</b></span>
-          {% else %}
-          <span class="rpt-muted">Belum ada alert dalam 24 jam terakhir.</span>
-          {% endfor %}
+        <div class="rpt-availability-time-panel rpt-audit-panel" id="availabilityTimePanel"{% if audit_filter_active %} hidden{% endif %}>
+          <form method="get" action="{{ url_for('reports_page', page='audit') }}" class="rpt-availability-custom-time rpt-audit-custom-time">
+            <label for="availabilityFrom">From</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="availabilityFrom" name="from" value="{{ audit_time.from_value }}" autocomplete="off" aria-label="From date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select From date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <label for="availabilityTo">To</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="availabilityTo" name="to" value="{{ audit_time.to_value }}" autocomplete="off" aria-label="To date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select To date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <button type="submit" class="rpt-availability-apply rpt-audit-apply">Apply</button>
+          </form>
+          <div class="rpt-availability-presets rpt-audit-presets" aria-label="Quick time ranges">
+            {% for col in audit_preset_columns %}
+            <div class="rpt-availability-preset-column">
+              {% for item in col %}
+              <a href="{{ item.url }}" class="rpt-availability-preset{% if item.key == audit_time.selected_key %} active{% endif %}">{{ item.label }}</a>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rpt-audit-filter-panel" id="auditFilterPanel"{% if not audit_filter_active %} hidden{% endif %}>
+          <form method="get" action="{{ url_for('reports_page', page='audit') }}" class="rpt-audit-filter-form" id="auditFilterForm">
+            {% if audit_time.custom %}
+            <input type="hidden" name="from" value="{{ audit_time.from_value }}">
+            <input type="hidden" name="to" value="{{ audit_time.to_value }}">
+            {% else %}
+            <input type="hidden" name="time" value="{{ audit_time.selected_key }}">
+            {% endif %}
+            <div class="rpt-audit-filter-grid">
+              <div class="rpt-audit-filter-col">
+                <div class="rpt-audit-field rpt-audit-field--users">
+                  <label for="auditFilterUsers">Users</label>
+                  <div class="rpt-audit-field-control rpt-audit-user-field">
+                    <input type="text" id="auditFilterUsers" name="users" value="{{ audit_filter.users }}" autocomplete="off">
+                    <button type="button" class="rpt-audit-select" id="auditUsersSelect" aria-haspopup="dialog" aria-expanded="false" aria-controls="auditUsersDialog">Select</button>
+                  </div>
+                </div>
+                <div class="rpt-audit-field rpt-audit-field--actions">
+                  <span class="rpt-audit-field-label" id="auditActionsLabel">Actions</span>
+                  <div class="rpt-audit-actions" role="group" aria-labelledby="auditActionsLabel">
+                    {% for action in audit_action_options %}
+                    <label class="rpt-audit-check"><input type="checkbox" name="actions" value="{{ action.key }}"{% if action.key in audit_filter.actions %} checked{% endif %}><span>{{ action.label }}</span></label>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              <div class="rpt-audit-filter-col rpt-audit-filter-col--right">
+                <div class="rpt-audit-field rpt-audit-field--resource">
+                  <label for="auditFilterResource">Resource</label>
+                  <div class="rpt-audit-field-control">
+                    <select id="auditFilterResource" name="resource">
+                      <option value="">All</option>
+                      {% for resource in audit_resources %}
+                      <option value="{{ resource.key }}"{% if resource.key == audit_filter.resource %} selected{% endif %}>{{ resource.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="rpt-audit-field">
+                  <label for="auditFilterResourceId">Resource ID</label>
+                  <div class="rpt-audit-field-control"><input type="text" id="auditFilterResourceId" name="resource_id" value="{{ audit_filter.resource_id }}" autocomplete="off"></div>
+                </div>
+                <div class="rpt-audit-field">
+                  <label for="auditFilterRecordsetId">Recordset ID</label>
+                  <div class="rpt-audit-field-control"><input type="text" id="auditFilterRecordsetId" name="recordset_id" value="{{ audit_filter.recordset_id }}" autocomplete="off"></div>
+                </div>
+                <div class="rpt-audit-field">
+                  <label for="auditFilterIp">IP</label>
+                  <div class="rpt-audit-field-control"><input type="text" id="auditFilterIp" name="ip" value="{{ audit_filter.ip }}" autocomplete="off"></div>
+                </div>
+              </div>
+            </div>
+            <div class="rpt-audit-filter-divider" aria-hidden="true"></div>
+            <div class="rpt-audit-filter-actions">
+              <button type="submit" class="rpt-audit-filter-apply">Apply</button>
+              <a href="{{ audit_filter_reset_url }}" class="rpt-audit-filter-reset">Reset</a>
+            </div>
+          </form>
         </div>
       </section>
+
+      {% if audit_range_error %}<div class="rpt-availability-notice" role="alert">{{ audit_range_error }}</div>{% endif %}
+
+      <div class="rpt-audit-table-wrap">
+        <table class="rpt-audit-table" id="auditTable">
+          <thead>
+            <tr>
+              <th scope="col" class="rpt-audit-th-time">Time</th>
+              <th scope="col" class="rpt-audit-th-user">User</th>
+              <th scope="col" class="rpt-audit-th-ip">IP</th>
+              <th scope="col" class="rpt-audit-th-resource">Resource</th>
+              <th scope="col" class="rpt-audit-th-id">ID</th>
+              <th scope="col" class="rpt-audit-th-action">Action</th>
+              <th scope="col" class="rpt-audit-th-recordset">Recordset ID</th>
+              <th scope="col" class="rpt-audit-th-details">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in audit_rows %}
+            <tr>
+              <td class="rpt-audit-time-cell">{{ row.timestamp }}</td>
+              <td>{{ row.username or "—" }}</td>
+              <td>{{ row.ip_address or "—" }}</td>
+              <td>{{ row.resource_label }}</td>
+              <td>{{ row.id }}</td>
+              <td title="{{ row.action }}">{{ row.action_label }}</td>
+              <td></td>
+              <td class="rpt-audit-details" title="{{ row.target or row.detail }}">{{ row.details_text }}</td>
+            </tr>
+            {% else %}
+            <tr class="rpt-trigger-empty">
+              <td colspan="8">
+                <span class="rpt-trigger-empty-icon" aria-hidden="true"><svg viewBox="0 0 38 38" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="16" cy="16" r="13.2"/><path d="M26 26 36.4 36.4"/></svg></span>
+                <span class="rpt-trigger-empty-text">No data found</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if audit_rows %}
+      <div class="rpt-trigger-foot rpt-audit-foot">
+        <span>Displaying {{ audit_from }} to {{ audit_to }} of {{ audit_total }} found</span>
+        {% if audit_pages > 1 %}
+        <span class="rpt-audit-pager">
+          {% if audit_prev_url %}<a href="{{ audit_prev_url }}">‹ Prev</a>{% endif %}
+          <span class="rpt-audit-pager-pos">{{ audit_page }} / {{ audit_pages }}</span>
+          {% if audit_next_url %}<a href="{{ audit_next_url }}">Next ›</a>{% endif %}
+        </span>
+        {% endif %}
+      </div>
+      {% endif %}
+      <footer class="rpt-sched-footer rpt-trigger-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+      </div>
+
+      {# Popup Users pada filter Audit log: checkbox, tiga kolom, Select/Cancel. #}
+      <dialog class="rpt-picker rpt-picker--users" id="auditUsersDialog" aria-labelledby="auditUsersDialogTitle">
+        <button type="button" class="rpt-picker-close" id="auditUsersDialogClose" aria-label="Close">&times;</button>
+        <h2 class="rpt-picker-title" id="auditUsersDialogTitle">Users</h2>
+        <div class="rpt-picker-users-table">
+          <div class="rpt-picker-users-head">
+            <span class="rpt-picker-users-cell"><input type="checkbox" class="rpt-picker-check" id="auditUsersAll" aria-label="Select all users"></span>
+            <span>Username</span>
+            <span>Name</span>
+            <span>Last name</span>
+          </div>
+          <div class="rpt-picker-users-list" id="auditUsersList">
+            {% for user in audit_user_options %}
+            <label class="rpt-picker-users-row">
+              <span class="rpt-picker-users-cell"><input type="checkbox" class="rpt-picker-check" value="{{ user.username }}"{% if user.selected %} checked{% endif %}></span>
+              <span class="rpt-picker-users-name">{{ user.username }}</span>
+              <span class="rpt-picker-users-text">{{ user.name }}</span>
+              <span class="rpt-picker-users-text">{{ user.last_name }}</span>
+            </label>
+            {% else %}
+            <p class="rpt-picker-empty">No data found</p>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rpt-picker-foot">
+          <button type="button" class="rpt-picker-btn rpt-picker-btn--primary" id="auditUsersDialogSelect">Select</button>
+          <button type="button" class="rpt-picker-btn" id="auditUsersDialogCancel">Cancel</button>
+        </div>
+      </dialog>
+
+      {% elif report_page == "actions" %}
+      <div class="tt-page action-page">
+      <div class="rpt-availability-heading rpt-trigger-heading rpt-action-heading">
+        <h1 class="rpt-availability-title">Action log</h1>
+        <div class="rpt-action-heading-actions">
+          <a href="https://www.zabbix.com/documentation/7.4/en/manual/web_interface/frontend_sections/reports/action_log" target="_blank" rel="noopener" class="rpt-sched-help" title="Help" aria-label="Help">?</a>
+          <a href="{{ action_export_url }}" class="rpt-action-export" id="actionExport">Export to CSV</a>
+        </div>
+      </div>
+
+      <section class="rpt-availability-toolbar rpt-trigger-toolbar rpt-audit-toolbar rpt-action-toolbar" aria-label="Time and filter">
+        <div class="rpt-availability-toolbar-top">
+          <button type="button" class="rpt-availability-zoom" data-zoom="out" title="Zoom out" aria-label="Zoom out">‹</button>
+          <button type="button" class="rpt-availability-zoom-label" data-zoom="out" title="Zoom out">Zoom out</button>
+          <button type="button" class="rpt-availability-zoom" data-zoom="in" title="Zoom in" aria-label="Zoom in">›</button>
+          <button type="button" class="rpt-availability-selected-time rpt-audit-time rpt-action-time" id="availabilityTimeToggle" aria-expanded="false" aria-controls="availabilityTimePanel" data-time-seconds="{{ action_time.seconds }}">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.1"/><path d="M8 4.5V8l2.3 1.5"/></svg>
+            {{ action_time.label }}
+          </button>
+          <button type="button" class="rpt-availability-filter-button rpt-audit-filter rpt-action-filter" id="availabilityFilterButton" aria-expanded="true" aria-controls="actionFilterPanel"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M1 2.5a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .37.834L9.5 8.78v4.72a.5.5 0 0 1-.724.447l-2.5-1.25A.5.5 0 0 1 6 12.25V8.78L1.13 2.834A.5.5 0 0 1 1 2.5z"/></svg> Filter</button>
+        </div>
+        <div class="rpt-availability-time-panel rpt-audit-panel rpt-action-panel" id="availabilityTimePanel" data-action-panel="true" hidden>
+          <form method="get" action="{{ url_for('reports_page', page='actions') }}" class="rpt-availability-custom-time rpt-audit-custom-time rpt-action-custom-time">
+            <label for="actionFrom">From</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="actionFrom" name="from" value="{{ action_time.from_value }}" autocomplete="off" aria-label="From date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select From date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <label for="actionTo">To</label>
+            <div class="rpt-availability-date-field">
+              <input type="text" id="actionTo" name="to" value="{{ action_time.to_value }}" autocomplete="off" aria-label="To date and time">
+              <button type="button" class="rpt-availability-calendar" aria-label="Select To date" aria-haspopup="dialog"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx=".6"/><path d="M2.2 6.4h11.6M5.4 1.8v2.4M10.6 1.8v2.4"/><path d="M5 9h1.2M7.5 9h1.2M10 9h1.2M5 11.3h1.2M7.5 11.3h1.2"/></svg></button>
+            </div>
+            <button type="submit" class="rpt-availability-apply rpt-audit-apply">Apply</button>
+          </form>
+          <div class="rpt-availability-presets rpt-audit-presets rpt-action-presets" aria-label="Quick time ranges">
+            {% for col in action_preset_columns %}
+            <div class="rpt-availability-preset-column">
+              {% for item in col %}
+              <a href="{{ item.url }}" class="rpt-availability-preset{% if item.key == action_time.selected_key %} active{% endif %}">{{ item.label }}</a>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rpt-action-filter-panel" id="actionFilterPanel" data-action-filter-panel="true">
+          <form method="get" action="{{ url_for('reports_page', page='actions') }}" class="rpt-action-filter-form" id="actionFilterForm">
+            {% if action_time.custom %}
+            <input type="hidden" name="from" value="{{ action_time.from_value }}">
+            <input type="hidden" name="to" value="{{ action_time.to_value }}">
+            {% else %}
+            <input type="hidden" name="time" value="{{ action_time.selected_key }}">
+            {% endif %}
+            <div class="rpt-action-filter-grid">
+              <div class="rpt-action-filter-col">
+                <div class="rpt-action-field">
+                  <label for="actionFilterRecipients">Recipients</label>
+                  <div class="rpt-action-field-control">
+                    <input type="text" id="actionFilterRecipients" name="recipients" value="{{ action_filter.recipients }}" autocomplete="off">
+                    <button type="button" class="rpt-action-select" data-action-picker="recipients" aria-haspopup="dialog" aria-expanded="false" aria-controls="actionFilterPicker">Select</button>
+                  </div>
+                </div>
+                <div class="rpt-action-field">
+                  <label for="actionFilterActions">Actions</label>
+                  <div class="rpt-action-field-control">
+                    <input type="text" id="actionFilterActions" name="actions" value="{{ action_filter.actions }}" autocomplete="off">
+                    <button type="button" class="rpt-action-select" data-action-picker="actions" aria-haspopup="dialog" aria-expanded="false" aria-controls="actionFilterPicker">Select</button>
+                  </div>
+                </div>
+                <div class="rpt-action-field">
+                  <label for="actionFilterMedia">Media types</label>
+                  <div class="rpt-action-field-control">
+                    <input type="text" id="actionFilterMedia" name="media" value="{{ action_filter.media }}" autocomplete="off">
+                    <button type="button" class="rpt-action-select" data-action-picker="media" aria-haspopup="dialog" aria-expanded="false" aria-controls="actionFilterPicker">Select</button>
+                  </div>
+                </div>
+              </div>
+              <div class="rpt-action-filter-col rpt-action-filter-col--right">
+                <div class="rpt-action-field rpt-action-field--status">
+                  <span class="rpt-action-field-label" id="actionStatusLabel">Status</span>
+                  <div class="rpt-action-status" role="group" aria-labelledby="actionStatusLabel">
+                    <label class="rpt-audit-check rpt-action-check"><input type="checkbox" name="status" value="in_progress"{% if "in_progress" in action_filter.statuses %} checked{% endif %}><span>In progress</span></label>
+                    <label class="rpt-audit-check rpt-action-check"><input type="checkbox" name="status" value="sent"{% if "sent" in action_filter.statuses %} checked{% endif %}><span>Sent/Executed</span></label>
+                    <label class="rpt-audit-check rpt-action-check"><input type="checkbox" name="status" value="failed"{% if "failed" in action_filter.statuses %} checked{% endif %}><span>Failed</span></label>
+                  </div>
+                </div>
+                <div class="rpt-action-field rpt-action-field--search">
+                  <label for="actionFilterSearch">Search string</label>
+                  <input type="text" id="actionFilterSearch" name="search" value="{{ action_filter.search }}" autocomplete="off">
+                </div>
+              </div>
+            </div>
+            <div class="rpt-action-filter-divider" aria-hidden="true"></div>
+            <div class="rpt-action-filter-actions">
+              <button type="submit" class="rpt-action-apply" id="actionFilterApply">Apply</button>
+              <a href="{{ action_filter_reset_url }}" class="rpt-action-reset" id="actionFilterReset">Reset</a>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <dialog class="rpt-picker rpt-picker--users rpt-action-picker" id="actionFilterPicker" aria-labelledby="actionFilterPickerTitle">
+        <button type="button" class="rpt-picker-close" id="actionFilterPickerClose" aria-label="Close">&times;</button>
+        <h2 class="rpt-picker-title" id="actionFilterPickerTitle">Select</h2>
+        <div class="rpt-picker-users-table">
+          <div class="rpt-picker-users-head">
+            <span class="rpt-picker-users-cell"></span>
+            <span>Name</span>
+          </div>
+          <div class="rpt-picker-users-list" id="actionFilterPickerList"></div>
+        </div>
+        <div class="rpt-picker-foot">
+          <button type="button" class="rpt-picker-btn rpt-picker-btn--primary" id="actionFilterPickerSelect">Select</button>
+          <button type="button" class="rpt-picker-btn" id="actionFilterPickerCancel">Cancel</button>
+        </div>
+      </dialog>
+      <script type="application/json" id="actionFilterOptions">{{ action_filter_options|tojson }}</script>
+
+      {% if action_range_error %}<div class="rpt-availability-notice" role="alert">{{ action_range_error }}</div>{% endif %}
+
+      <div class="rpt-audit-table-wrap rpt-action-table-wrap">
+        <table class="rpt-audit-table rpt-action-table" id="actionLogTable">
+          <colgroup>
+            <col class="rpt-action-col rpt-action-col--time">
+            <col class="rpt-action-col rpt-action-col--action">
+            <col class="rpt-action-col rpt-action-col--media">
+            <col class="rpt-action-col rpt-action-col--recipient">
+            <col class="rpt-action-col rpt-action-col--message">
+            <col class="rpt-action-col rpt-action-col--status">
+            <col class="rpt-action-col rpt-action-col--info">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Action</th>
+              <th scope="col">Media type</th>
+              <th scope="col">Recipient</th>
+              <th scope="col">Message</th>
+              <th scope="col">Status</th>
+              <th scope="col">Info</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in action_rows %}
+            <tr>
+              <td class="rpt-action-time-cell" title="{{ row.timestamp }}">{{ row.timestamp }}</td>
+              <td>{{ row.action }}</td>
+              <td>{{ row.media_type }}</td>
+              <td>{{ row.recipient }}</td>
+              <td class="rpt-action-message" title="{{ row.message }}">{{ row.message }}</td>
+              <td>{{ row.status }}</td>
+              <td class="rpt-action-info" title="{{ row.info }}">{{ row.info }}</td>
+            </tr>
+            {% else %}
+            <tr class="rpt-trigger-empty rpt-action-empty">
+              <td colspan="7">
+                <span class="rpt-trigger-empty-icon" aria-hidden="true"><svg viewBox="0 0 38 38" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="16" cy="16" r="13"/><path d="M25.8 25.8 36 36"/></svg></span>
+                <span class="rpt-trigger-empty-text">No data found</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if action_rows %}
+      <div class="rpt-trigger-foot rpt-audit-foot">
+        <span>Displaying {{ action_from }} to {{ action_to }} of {{ action_total }} found</span>
+        {% if action_pages > 1 %}
+        <span class="rpt-audit-pager">
+          {% if action_prev_url %}<a href="{{ action_prev_url }}">‹ Prev</a>{% endif %}
+          <span class="rpt-audit-pager-pos">{{ action_page }} / {{ action_pages }}</span>
+          {% if action_next_url %}<a href="{{ action_next_url }}">Next ›</a>{% endif %}
+        </span>
+        {% endif %}
+      </div>
+      {% endif %}
+      <footer class="rpt-sched-footer rpt-trigger-footer">
+        <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+      </footer>
+      </div>
+
+      {% elif report_page == "notifications" %}
+      <div class="tt-page notification-page">
+        <div class="rpt-availability-heading rpt-trigger-heading notif-heading">
+          <h1 class="rpt-availability-title">Notifications</h1>
+          <form class="notif-filters" id="notifFilterForm" method="get" action="{{ url_for('reports_page', page='notifications') }}">
+            <a href="https://www.zabbix.com/documentation/7.4/en/manual/web_interface/frontend_sections/reports/notifications" target="_blank" rel="noopener" class="rpt-sched-help notif-help" title="Help" aria-label="Help">?</a>
+            <label for="notifMedia">Media type</label>
+            <select id="notifMedia" name="media" aria-label="Media type">
+              {% for option in notification_media_options %}
+              <option value="{{ option.key }}"{% if option.key == notification_media %} selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+            <label for="notifPeriod">Period</label>
+            <select id="notifPeriod" name="period" aria-label="Period">
+              {% for option in notification_period_options %}
+              <option value="{{ option.key }}"{% if option.key == notification_period %} selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+            <label for="notifYear">Year</label>
+            <select id="notifYear" name="year" aria-label="Year">
+              {% for year in notification_years %}
+              <option value="{{ year }}"{% if year == notification_year %} selected{% endif %}>{{ year }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+        <div class="notif-band" aria-hidden="true"></div>
+        <div class="notif-table-wrap">
+          <table class="notif-table" id="notifTable" aria-label="Notifications report">
+            <colgroup>
+              <col class="notif-col-from">
+              <col class="notif-col-till">
+              {% for user in notification_users %}<col class="notif-col-user">{% endfor %}
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" class="notif-th-date">From</th>
+                <th scope="col" class="notif-th-date">Till</th>
+                {% for user in notification_users %}
+                <th scope="col" class="notif-th-user"><span class="notif-user-label" title="{{ user.label }}">{{ user.label }}</span></th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in notification_rows %}
+              <tr>
+                <td class="notif-date">{{ row.from_label }}</td>
+                <td class="notif-date">{{ row.till_label }}</td>
+                {% for cell in row.cells %}
+                <td class="notif-cell">{% if cell %}{{ cell }}{% endif %}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <footer class="rpt-sched-footer rpt-trigger-footer">
+          <a href="https://www.zabbix.com/" target="_blank" rel="noopener">Zabbix 7.4.15</a>. © 2001–2026, <a href="https://www.zabbix.com/sia" target="_blank" rel="noopener">Zabbix SIA</a>
+        </footer>
+      </div>
+      <script>
+      (function () {
+        var form = document.getElementById("notifFilterForm");
+        if (!form) return;
+        Array.prototype.forEach.call(form.querySelectorAll("select"), function (select) {
+          select.addEventListener("change", function () { form.submit(); });
+        });
+      })();
+      </script>
       {% endif %}
     </main>
   </div>
