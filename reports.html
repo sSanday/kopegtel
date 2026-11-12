@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reports · NMS Kopegtel</title>
+  <meta name="description" content="Laporan sistem, ketersediaan, masalah terlaris, audit log, dan action log NMS Kopegtel." />
+  <meta name="theme-color" content="#060a14" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/dashboard.css" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Laporan</p>
+          <h1 class="topbar__title" id="view-title">System information</h1>
+          <p class="topbar__sub"><span id="view-desc">Versi, uptime, ukuran basis data, dan status poller.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           System information
+           ===================================================== -->
+      <section class="view" data-view="system-information" aria-labelledby="sysinfo-title">
+        <section class="panel" aria-labelledby="sysinfo-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="sysinfo-title">Informasi sistem</h2>
+              <p class="panel__sub">Kondisi aplikasi NMS saat ini</p>
+            </div>
+          </div>
+          <dl class="def-list" id="sysinfo-list"></dl>
+        </section>
+
+        <section class="panel" aria-labelledby="table-counts-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="table-counts-title">Ukuran basis data</h2>
+              <p class="panel__sub">Jumlah baris per tabel</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr><th scope="col">Tabel</th><th scope="col">Baris</th></tr>
+              </thead>
+              <tbody id="table-counts-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Availability report
+           ===================================================== -->
+      <section class="view" data-view="availability-report" aria-labelledby="avail-title" hidden>
+        <section class="panel" aria-labelledby="avail-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="avail-title">Laporan ketersediaan</h2>
+              <p class="panel__sub">Dari pemeriksaan tiap perangkat (pemeliharaan dikecualikan)</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Periode</span>
+                <select id="avail-period">
+                  <option value="1">24 jam</option>
+                  <option value="7" selected>7 hari</option>
+                  <option value="30">30 hari</option>
+                </select>
+              </label>
+              <a class="btn btn--ghost" id="avail-csv" href="/api/reports/availability.csv?period=7">Unduh CSV</a>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Grup</th>
+                  <th scope="col">Pemeriksaan</th>
+                  <th scope="col">Up</th>
+                  <th scope="col">Ketersediaan</th>
+                </tr>
+              </thead>
+              <tbody id="avail-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Top problems
+           ===================================================== -->
+      <section class="view" data-view="top-problems" aria-labelledby="top-problems-title" hidden>
+        <section class="panel" aria-labelledby="top-problems-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="top-problems-title">Masalah terlaris</h2>
+              <p class="panel__sub">Jenis masalah yang paling sering terbuka dalam periode terpilih</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Periode</span>
+                <select id="top-period">
+                  <option value="7" selected>7 hari</option>
+                  <option value="30">30 hari</option>
+                  <option value="90">90 hari</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Jenis masalah</th>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Jumlah</th>
+                  <th scope="col">Terakhir muncul</th>
+                </tr>
+              </thead>
+              <tbody id="top-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Laporan redaman fiber
+           ===================================================== -->
+      <section class="view" data-view="fiber-attenuation" aria-labelledby="fiber-report-title" hidden>
+        <section class="panel" aria-labelledby="fiber-report-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="fiber-report-title">Laporan redaman fiber</h2>
+              <p class="panel__sub">Link dengan margin terendah dan link yang memburuk · redaman = Tx − Rx (rata-rata 3 pembacaan terakhir)</p>
+            </div>
+            <div class="filters">
+              <a class="btn btn--ghost" id="fiber-report-csv" href="/api/reports/fiber-attenuation.csv">Unduh CSV</a>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Link</th>
+                  <th scope="col">Ujung A → Ujung B</th>
+                  <th scope="col">Panjang</th>
+                  <th scope="col">A→B</th>
+                  <th scope="col">B→A</th>
+                  <th scope="col">Rancangan</th>
+                  <th scope="col">Deviasi</th>
+                  <th scope="col">Margin min</th>
+                  <th scope="col">Tren</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody id="fiber-report-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Laporan armada MikroTik
+           ===================================================== -->
+      <section class="view" data-view="mikrotik-fleet" aria-labelledby="mt-fleet-report-title" hidden>
+        <section class="panel" aria-labelledby="mt-fleet-report-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="mt-fleet-report-title">Laporan armada MikroTik</h2>
+              <p class="panel__sub" id="mt-fleet-report-count">Versi RouterOS, firmware, uptime, dan temuan keamanan terbuka</p>
+            </div>
+            <div class="filters">
+              <a class="btn btn--ghost" id="mt-fleet-report-csv" href="/api/mikrotik/reports/fleet.csv">Unduh CSV</a>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">RouterOS</th>
+                  <th scope="col">Firmware</th>
+                  <th scope="col">Status firmware</th>
+                  <th scope="col">Uptime</th>
+                  <th scope="col">CPU</th>
+                  <th scope="col">Memori</th>
+                  <th scope="col">Interface</th>
+                  <th scope="col">Sesi aktif</th>
+                  <th scope="col">Temuan</th>
+                  <th scope="col">Masalah</th>
+                  <th scope="col">Poll terakhir</th>
+                </tr>
+              </thead>
+              <tbody id="mt-fleet-report-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Audit log (admin)
+           ===================================================== -->
+      <section class="view" data-view="audit-log" aria-labelledby="audit-title" hidden data-admin-only>
+        <section class="panel" aria-labelledby="audit-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="audit-title">Audit log</h2>
+              <p class="panel__sub" id="audit-count">Jejak aksi pengguna (tanpa secret)</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari di audit log</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="audit-search" type="search" placeholder="Cari pengguna, objek, atau ringkasan…" autocomplete="off" />
+              </label>
+              <a class="btn btn--ghost" id="audit-csv" href="/api/audit-log.csv">Unduh CSV</a>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Waktu (WIB)</th>
+                  <th scope="col">Pengguna</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Aksi</th>
+                  <th scope="col">Objek</th>
+                  <th scope="col">Ringkasan</th>
+                </tr>
+              </thead>
+              <tbody id="audit-rows"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <button class="btn btn--ghost" id="audit-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="audit-page-info">Halaman —</span>
+            <button class="btn btn--ghost" id="audit-next" type="button">Berikutnya</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Action log
+           ===================================================== -->
+      <section class="view" data-view="action-log" aria-labelledby="action-log-title" hidden>
+        <section class="panel" aria-labelledby="action-log-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="action-log-title">Action log</h2>
+              <p class="panel__sub">Hasil pengiriman notifikasi (terkirim / gagal / dilewati), dengan retry 3×</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Status</span>
+                <select id="action-log-status">
+                  <option value="">Semua status</option>
+                  <option value="sent">Terkirim</option>
+                  <option value="failed">Gagal</option>
+                  <option value="skipped">Dilewati</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Waktu (WIB)</th>
+                  <th scope="col">Aturan</th>
+                  <th scope="col">Kanal</th>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Detail</th>
+                </tr>
+              </thead>
+              <tbody id="action-log-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=1" defer></script>
+  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/store.js?v=1" defer></script>
+  <script src="assets/js/nav.js?v=8" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/device-form.js?v=1" defer></script>
+  <script src="assets/js/reports.js?v=3" defer></script>
+</body>
+</html>

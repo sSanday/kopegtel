@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiber Optik · NMS Kopegtel</title>
+  <meta name="description" content="Monitoring fiber optik NMS Kopegtel: port optik DDM, link & redaman, pengukuran OTDR/power meter, kalkulator anggaran link, dan pengaturan fiber." />
+  <meta name="theme-color" content="#060a14" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/dashboard.css" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Fiber Optik</p>
+          <h1 class="topbar__title" id="view-title">Ringkasan</h1>
+          <p class="topbar__sub"><span id="view-desc">Kondisi link fiber dari daya optik transceiver (DDM).</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           Ringkasan
+           ===================================================== -->
+      <section class="view" data-view="ringkasan" aria-labelledby="ringkasan-title">
+        <p class="note-info" role="note">
+          Sistem <b>tidak mengukur redaman fiber secara langsung</b> — nilai redaman <b>diturunkan</b> dari daya optik transceiver (DDM/DOM) di kedua ujung link:
+          <b>Redaman A→B = Tx (ujung A) − Rx (ujung B)</b>. Hasil pengukuran lapangan (OTDR / power meter) dicatat pada tab
+          <b>Pengukuran manual</b> sebagai pembanding. Angka yang tampil selalu dari pembacaan nyata; tanpa data tampil “—”.
+        </p>
+        <div class="stats stats--five" aria-label="Ringkasan fiber">
+          <article class="stat">
+            <p class="stat__label">Port Optik</p>
+            <p class="stat__value" id="fib-ports">—</p>
+            <p class="stat__meta" id="fib-ports-meta">Terdeteksi di perangkat terpantau</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Link Normal</p>
+            <p class="stat__value" id="fib-normal">—</p>
+            <p class="stat__meta">Semua ambang terpenuhi</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Waspada</p>
+            <p class="stat__value" id="fib-warn">—</p>
+            <p class="stat__meta">Melewati ambang peringatan</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Kritis</p>
+            <p class="stat__value" id="fib-crit">—</p>
+            <p class="stat__meta"><span class="is-warn">Perlu tindakan</span></p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Rata-rata Rx</p>
+            <p class="stat__value" id="fib-avg-rx">—</p>
+            <p class="stat__meta">Seluruh port optik DDM</p>
+          </article>
+        </div>
+        <div class="stats" aria-label="Redaman">
+          <article class="stat">
+            <p class="stat__label">Redaman Terbesar</p>
+            <p class="stat__value" id="fib-max-att">—</p>
+            <p class="stat__meta">Lintas A→B atau B→A</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Link Terdaftar</p>
+            <p class="stat__value" id="fib-total">—</p>
+            <p class="stat__meta">Rentang fiber antar perangkat</p>
+          </article>
+        </div>
+
+        <section class="panel" aria-labelledby="fib-problem-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="fib-problem-title">Link bermasalah</h2>
+              <p class="panel__sub" id="fib-problem-count">Memuat…</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Link</th>
+                  <th scope="col">Ujung A</th>
+                  <th scope="col">Ujung B</th>
+                  <th scope="col">Redaman A→B</th>
+                  <th scope="col">Margin B</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody id="fib-problem-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Port optik
+           ===================================================== -->
+      <section class="view" data-view="ports" aria-labelledby="ports-title" hidden>
+        <section class="panel" aria-labelledby="ports-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="ports-title">Port optik</h2>
+              <p class="panel__sub"><span id="port-count">Memuat…</span> · pembacaan DDM terakhir; “DDM tidak didukung” / “Tidak ada modul” ditampilkan apa adanya</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Filter perangkat</span>
+                <select id="port-device"><option value="">Semua perangkat</option></select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Filter status</span>
+                <select id="port-status">
+                  <option value="">Semua status</option>
+                  <option value="ok">Normal</option>
+                  <option value="warn">Waspada</option>
+                  <option value="crit">Kritis</option>
+                  <option value="los">LOS</option>
+                  <option value="no_module">Tidak ada modul</option>
+                  <option value="no_ddm">DDM tidak didukung</option>
+                  <option value="unknown">Tanpa profil</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Port</th>
+                  <th scope="col">Modul</th>
+                  <th scope="col">Rx</th>
+                  <th scope="col">Tx</th>
+                  <th scope="col">Suhu</th>
+                  <th scope="col">Voltase</th>
+                  <th scope="col">Bias</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Detail</th>
+                </tr>
+              </thead>
+              <tbody id="port-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="panel port-detail" id="port-detail" aria-labelledby="port-detail-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="port-detail-title">Riwayat port</h2>
+              <p class="panel__sub" id="port-detail-sub">—</p>
+            </div>
+            <div class="seg" role="group" aria-label="Rentang waktu" id="port-range">
+              <button class="seg__btn is-active" type="button" data-range="24h" aria-pressed="true">24 jam</button>
+              <button class="seg__btn" type="button" data-range="7d" aria-pressed="false">7 hari</button>
+              <button class="seg__btn" type="button" data-range="30d" aria-pressed="false">30 hari</button>
+              <button class="seg__btn" type="button" data-range="90d" aria-pressed="false">90 hari</button>
+            </div>
+          </div>
+          <div class="port-detail__body">
+            <svg id="port-chart" class="chart" role="img" aria-label="Grafik riwayat Rx perangkat port optik" xmlns="http://www.w3.org/2000/svg"></svg>
+            <p class="chart__meta" id="port-chart-summary">—</p>
+            <p class="note-info note-info--sm" id="port-thresholds">Garis ambang mengikuti profil optik link (bila port tergabung link).</p>
+            <div class="admin-actions">
+              <button class="btn btn--ghost" id="port-detail-close" type="button">Tutup</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <!-- =====================================================
+           Link & redaman
+           ===================================================== -->
+      <section class="view" data-view="links" aria-labelledby="links-title" hidden>
+        <section class="panel" aria-labelledby="links-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="links-title">Link &amp; redaman</h2>
+              <p class="panel__sub"><span id="link-count">Memuat…</span> · redaman = Tx − Rx, rata-rata 3 pembacaan terakhir</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari link</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="link-search" type="search" placeholder="Cari link, port, atau perangkat…" autocomplete="off" />
+              </label>
+              <button class="btn btn--primary" id="link-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah link</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Link</th>
+                  <th scope="col">Ujung A → Ujung B</th>
+                  <th scope="col">Panjang</th>
+                  <th scope="col">Redaman A→B</th>
+                  <th scope="col">Redaman B→A</th>
+                  <th scope="col">Rancangan</th>
+                  <th scope="col">Deviasi</th>
+                  <th scope="col">Margin</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="link-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <form class="panel" id="link-form-panel" aria-labelledby="link-form-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="link-form-title">Tambah link fiber</h2>
+              <p class="panel__sub">Ujung B boleh berupa label teks bila bukan perangkat terpantau (redaman B→A tampil “—”, beserta alasannya).</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field">
+                <span>Nama link *</span>
+                <input id="link-name" type="text" placeholder="mis. Trunk Gedung A ↔ ONT lantai 3" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Panjang serat (km) *</span>
+                <input id="link-length" type="number" min="0.001" max="10000" step="0.001" placeholder="mis. 2.5" inputmode="decimal" />
+              </label>
+              <label class="admin-field">
+                <span>Perangkat ujung A *</span>
+                <select id="link-device-a"><option value="">Pilih perangkat…</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Port ujung A *</span>
+                <input id="link-port-a" type="text" list="link-ports-a" placeholder="mis. sfp-sfpplus1" autocomplete="off" />
+                <datalist id="link-ports-a"></datalist>
+              </label>
+              <label class="admin-field">
+                <span>Perangkat ujung B</span>
+                <select id="link-device-b"><option value="">Bukan perangkat terpantau (isi label)</option></select>
+              </label>
+              <label class="admin-field" id="link-port-b-field">
+                <span>Port ujung B</span>
+                <input id="link-port-b" type="text" list="link-ports-b" placeholder="mis. sfp-sfpplus2" autocomplete="off" />
+                <datalist id="link-ports-b"></datalist>
+              </label>
+              <label class="admin-field" id="link-end-b-field" hidden>
+                <span>Label ujung B</span>
+                <input id="link-end-b-label" type="text" placeholder="mis. ODC pilar 12 / ONT#A-017" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Jenis serat</span>
+                <input id="link-fiber-type" type="text" value="SM G.652D" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Panjang gelombang A→B (nm)</span>
+                <input id="link-wavelength" type="number" min="800" max="1700" step="1" value="1310" inputmode="numeric" />
+              </label>
+              <label class="admin-field">
+                <span>Panjang gelombang B→A (nm) — untuk BiDi</span>
+                <input id="link-wavelength-b" type="number" min="800" max="1700" step="1" placeholder="Kosong = sama dengan A→B" inputmode="numeric" />
+              </label>
+              <label class="admin-field">
+                <span>Jumlah splice</span>
+                <input id="link-splices" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric" />
+              </label>
+              <label class="admin-field">
+                <span>Jumlah konektor</span>
+                <input id="link-connectors" type="number" min="0" max="10000" step="1" value="2" inputmode="numeric" />
+              </label>
+              <label class="admin-field">
+                <span>Splitter</span>
+                <select id="link-splitter">
+                  <option value="">Tanpa splitter</option>
+                  <option value="1:2">1:2</option>
+                  <option value="1:4">1:4</option>
+                  <option value="1:8">1:8</option>
+                  <option value="1:16">1:16</option>
+                  <option value="1:32">1:32</option>
+                  <option value="1:64">1:64</option>
+                </select>
+              </label>
+              <label class="admin-field">
+                <span>Profil optik</span>
+                <select id="link-profile"><option value="">Tanpa profil (ambang tidak dihitung)</option></select>
+              </label>
+            </div>
+            <label class="admin-field admin-field--full">
+              <span>Catatan</span>
+              <input id="link-notes" type="text" placeholder="Opsional" autocomplete="off" />
+            </label>
+            <p class="form-note is-error" id="link-form-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="link-save" type="submit">Simpan link</button>
+              <button class="btn btn--ghost" id="link-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+
+        <aside class="panel port-detail" id="link-detail" aria-labelledby="link-detail-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="link-detail-title">Detail link</h2>
+              <p class="panel__sub" id="link-detail-sub">—</p>
+            </div>
+            <div class="seg" role="group" aria-label="Rentang riwayat" id="link-range">
+              <button class="seg__btn is-active" type="button" data-range="30d" aria-pressed="true">30 hari</button>
+              <button class="seg__btn" type="button" data-range="7d" aria-pressed="false">7 hari</button>
+              <button class="seg__btn" type="button" data-range="90d" aria-pressed="false">90 hari</button>
+            </div>
+          </div>
+          <div class="port-detail__body">
+            <div class="link-verdict" id="link-verdict"></div>
+            <h3 class="detail-subhead">Perhitungan langkah demi langkah</h3>
+            <ol class="calc-steps" id="link-steps"></ol>
+            <h3 class="detail-subhead">Riwayat redaman (per jam)</h3>
+            <svg id="link-chart" class="chart" role="img" aria-label="Grafik riwayat redaman link fiber" xmlns="http://www.w3.org/2000/svg"></svg>
+            <p class="chart__meta" id="link-chart-summary">—</p>
+            <p class="note-info note-info--sm" id="link-baseline">—</p>
+            <div class="admin-actions">
+              <button class="btn btn--ghost" id="link-detail-close" type="button">Tutup</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <!-- =====================================================
+           Pengukuran manual
+           ===================================================== -->
+      <section class="view" data-view="measurements" aria-labelledby="meas-title" hidden>
+        <section class="panel" aria-labelledby="meas-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="meas-title">Pengukuran lapangan (OTDR / power meter)</h2>
+              <p class="panel__sub">Catatan teknisi — dibandingkan dengan nilai terpantau saat ini (A→B <b id="meas-live-ab">—</b> · B→A <b id="meas-live-ba">—</b>)</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Pilih link</span>
+                <select id="meas-link"><option value="">Pilih link…</option></select>
+              </label>
+              <button class="btn btn--primary" id="meas-add" type="button" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Catat pengukuran</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Tanggal</th>
+                  <th scope="col">Teknisi</th>
+                  <th scope="col">Titik ukur</th>
+                  <th scope="col">Metode</th>
+                  <th scope="col">Redaman (dB)</th>
+                  <th scope="col">Daya terima (dBm)</th>
+                  <th scope="col">Catatan</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="meas-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <form class="panel" id="meas-form-panel" aria-labelledby="meas-form-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="meas-form-title">Catat pengukuran</h2>
+              <p class="panel__sub">Isi minimal satu nilai: redaman (dB) atau daya terima (dBm).</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field">
+                <span>Tanggal pengukuran *</span>
+                <input id="meas-measured-at" type="date" />
+              </label>
+              <label class="admin-field">
+                <span>Teknisi</span>
+                <input id="meas-technician" type="text" placeholder="Nama teknisi" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Titik ukur</span>
+                <input id="meas-point" type="text" placeholder="mis. Patch core rack A / ODC pilar 12" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Metode</span>
+                <select id="meas-method">
+                  <option value="otdr">OTDR</option>
+                  <option value="power_meter">Power meter</option>
+                </select>
+              </label>
+              <label class="admin-field">
+                <span>Redaman (dB)</span>
+                <input id="meas-value-db" type="number" step="0.01" placeholder="mis. 3.2" inputmode="decimal" />
+              </label>
+              <label class="admin-field">
+                <span>Daya terima (dBm)</span>
+                <input id="meas-value-dbm" type="number" step="0.01" placeholder="mis. -8.4" inputmode="decimal" />
+              </label>
+            </div>
+            <label class="admin-field admin-field--full">
+              <span>Catatan</span>
+              <input id="meas-notes" type="text" placeholder="Opsional" autocomplete="off" />
+            </label>
+            <p class="form-note is-error" id="meas-form-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="meas-save" type="submit">Simpan pengukuran</button>
+              <button class="btn btn--ghost" id="meas-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <!-- =====================================================
+           Kalkulator anggaran link
+           ===================================================== -->
+      <section class="view" data-view="calculator" aria-labelledby="calc-title" hidden>
+        <div class="calc-layout">
+          <form class="panel" id="calc-form" aria-labelledby="calc-title">
+            <div class="panel__head">
+              <div>
+                <h2 class="panel__title" id="calc-title">Kalkulator link budget</h2>
+                <p class="panel__sub">Parameter redaman diambil dari Pengaturan fiber (dapat diubah admin): α(1310) &amp; α(1550), redaman splice/konektor/splitter.</p>
+              </div>
+            </div>
+            <div class="admin-form">
+              <div class="admin-form__grid">
+                <label class="admin-field">
+                  <span>Panjang serat (km) *</span>
+                  <input id="calc-length" type="number" min="0.001" max="10000" step="0.001" placeholder="mis. 5" inputmode="decimal" />
+                </label>
+                <label class="admin-field">
+                  <span>Panjang gelombang (nm)</span>
+                  <select id="calc-wavelength">
+                    <option value="1310" selected>1310 nm (α₀)</option>
+                    <option value="1490">1490 nm</option>
+                    <option value="1550">1550 nm (α₁)</option>
+                    <option value="1625">1625 nm</option>
+                  </select>
+                </label>
+                <label class="admin-field">
+                  <span>Jumlah splice</span>
+                  <input id="calc-splices" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric" />
+                </label>
+                <label class="admin-field">
+                  <span>Jumlah konektor</span>
+                  <input id="calc-connectors" type="number" min="0" max="10000" step="1" value="2" inputmode="numeric" />
+                </label>
+                <label class="admin-field">
+                  <span>Splitter</span>
+                  <select id="calc-splitter">
+                    <option value="">Tanpa splitter</option>
+                    <option value="1:2">1:2</option>
+                    <option value="1:4">1:4</option>
+                    <option value="1:8">1:8</option>
+                    <option value="1:16">1:16</option>
+                    <option value="1:32">1:32</option>
+                    <option value="1:64">1:64</option>
+                  </select>
+                </label>
+                <label class="admin-field">
+                  <span>Daya Tx (dBm) — opsional</span>
+                  <input id="calc-tx" type="number" min="-100" max="100" step="0.1" placeholder="mis. -1.5" inputmode="decimal" />
+                </label>
+                <label class="admin-field">
+                  <span>Sensitivitas penerima (dBm) — opsional</span>
+                  <input id="calc-sensitivity" type="number" min="-100" max="100" step="0.1" placeholder="mis. -24" inputmode="decimal" />
+                </label>
+              </div>
+              <p class="form-note is-error" id="calc-note" role="alert" hidden></p>
+              <div class="admin-actions">
+                <button class="btn btn--primary" id="calc-run" type="submit">Hitung</button>
+                <button class="btn btn--ghost" id="calc-save-link" type="button" disabled>Simpan sebagai rancangan link</button>
+              </div>
+            </div>
+          </form>
+
+          <section class="panel" aria-labelledby="calc-result-title">
+            <div class="panel__head">
+              <div>
+                <h2 class="panel__title" id="calc-result-title">Hasil perhitungan</h2>
+                <p class="panel__sub">Muncul setelah tombol “Hitung” ditekan.</p>
+              </div>
+            </div>
+            <div class="port-detail__body" id="calc-result">
+              <p class="empty-state" id="calc-empty">Belum ada perhitungan. Isi panjang serat lalu tekan Hitung.</p>
+              <div id="calc-output" hidden>
+                <dl class="detail-list detail-list--calc">
+                  <div><dt>Redaman rancangan</dt><dd id="calc-total">—</dd></div>
+                  <div><dt>α(λ) yang dipakai</dt><dd id="calc-alpha">—</dd></div>
+                  <div><dt>Rx perkiraan</dt><dd id="calc-rx">—</dd></div>
+                  <div><dt>Margin perkiraan</dt><dd id="calc-margin">—</dd></div>
+                </dl>
+                <h3 class="detail-subhead">Rincian</h3>
+                <ul class="calc-steps calc-steps--flat" id="calc-steps"></ul>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           Pengaturan fiber (admin)
+           ===================================================== -->
+      <section class="view" data-view="settings" aria-labelledby="settings-title" hidden>
+        <form class="panel" id="settings-form" aria-labelledby="settings-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="settings-title">Pengaturan fiber</h2>
+              <p class="panel__sub">Parameter redaman, ambang deviasi/margin/asimetri, penurunan &amp; tren. Nilai contoh adalah awalan — sesuaikan dengan datasheet SFP Anda.</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <h3 class="detail-subhead">Serat &amp; komponen</h3>
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>α 1310 nm (dB/km)</span><input id="set-fiber-alpha_1310" type="number" step="0.01" min="0.01" max="5" inputmode="decimal" /></label>
+              <label class="admin-field"><span>α 1550 nm (dB/km)</span><input id="set-fiber-alpha_1550" type="number" step="0.01" min="0.01" max="5" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Redaman splice (dB)</span><input id="set-fiber-splice_loss" type="number" step="0.01" min="0" max="5" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Redaman konektor (dB)</span><input id="set-fiber-connector_loss" type="number" step="0.01" min="0" max="5" inputmode="decimal" /></label>
+            </div>
+            <h3 class="detail-subhead">Redaman splitter (dB)</h3>
+            <div class="admin-form__grid admin-form__grid--splitter" id="splitter-inputs"></div>
+            <h3 class="detail-subhead">Ambang peringatan &amp; kritis</h3>
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>Deviasi waspada (dB)</span><input id="set-fiber-deviation_warn" type="number" step="0.1" min="0.5" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Deviasi kritis (dB)</span><input id="set-fiber-deviation_crit" type="number" step="0.1" min="0.5" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Margin waspada (dB)</span><input id="set-fiber-margin_warn" type="number" step="0.1" min="0.5" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Margin kritis (dB)</span><input id="set-fiber-margin_crit" type="number" step="0.1" min="0" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Asimetri waspada (dB)</span><input id="set-fiber-asymmetry_warn" type="number" step="0.1" min="0.5" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Penurunan mendadak (dB)</span><input id="set-fiber-drop_db" type="number" step="0.1" min="0.5" max="30" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Tren memburuk (dB/minggu)</span><input id="set-fiber-trend_db_per_week" type="number" step="0.05" min="0.05" max="20" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Histeresis pemulihan (dB)</span><input id="set-fiber-hysteresis_db" type="number" step="0.1" min="0" max="6" inputmode="decimal" /></label>
+            </div>
+            <h3 class="detail-subhead">Baseline &amp; tren</h3>
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>Jendela baseline penurunan (hari)</span><input id="set-fiber-drop_baseline_days" type="number" step="1" min="1" max="90" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Jendela tren (hari)</span><input id="set-fiber-trend_days" type="number" step="1" min="3" max="90" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Pembacaan berturut-turut untuk membuka masalah</span><input id="set-fiber-consec_required" type="number" step="1" min="1" max="10" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Jumlah pembacaan untuk rata-rata</span><input id="set-fiber-avg_readings" type="number" step="1" min="1" max="10" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Retensi rata-rata per jam (hari)</span><input id="set-retention_optical_hourly_days" type="number" step="1" min="1" max="3650" inputmode="numeric" /></label>
+            </div>
+            <p class="form-note is-error" id="settings-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="settings-save" type="submit">Simpan pengaturan</button>
+            </div>
+          </div>
+        </form>
+
+        <section class="panel" aria-labelledby="profiles-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="profiles-title">Profil optik</h2>
+              <p class="panel__sub">Ambang Rx, suhu, sensitivitas penerima &amp; overload per jenis SFP. Profil bawaan adalah <b>nilai awal umum</b> — sesuaikan dengan datasheet.</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="profile-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah profil</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Profil</th>
+                  <th scope="col">Rx waspada (rendah)</th>
+                  <th scope="col">Rx kritis (rendah)</th>
+                  <th scope="col">Rx waspada (tinggi)</th>
+                  <th scope="col">Rx kritis (tinggi)</th>
+                  <th scope="col">Sensitivitas</th>
+                  <th scope="col">Overload</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="profile-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <form class="panel" id="profile-form-panel" aria-labelledby="profile-form-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="profile-form-title">Tambah profil optik</h2>
+              <p class="panel__sub">Kosongkan ambang yang tidak ingin dipakai (tetap tampil “—” di evaluasi).</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>Nama profil *</span><input id="profile-name" type="text" placeholder="mis. SFP-10G-LR" autocomplete="off" /></label>
+              <label class="admin-field"><span>Deskripsi</span><input id="profile-description" type="text" placeholder="Opsional" autocomplete="off" /></label>
+              <label class="admin-field"><span>Rx waspada rendah (dBm)</span><input id="profile-rx_warn_low" type="number" step="0.1" placeholder="mis. -15" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Rx kritis rendah (dBm)</span><input id="profile-rx_crit_low" type="number" step="0.1" placeholder="mis. -19" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Rx waspada tinggi (dBm)</span><input id="profile-rx_warn_high" type="number" step="0.1" placeholder="mis. -1" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Rx kritis tinggi (dBm)</span><input id="profile-rx_crit_high" type="number" step="0.1" placeholder="mis. 1" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Suhu waspada (°C)</span><input id="profile-temp_warn_c" type="number" step="0.5" placeholder="mis. 70" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Suhu kritis (°C)</span><input id="profile-temp_crit_c" type="number" step="0.5" placeholder="mis. 75" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Sensitivitas penerima (dBm)</span><input id="profile-rx_sensitivity_dbm" type="number" step="0.1" placeholder="mis. -24" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Batas overload (dBm)</span><input id="profile-rx_overload_dbm" type="number" step="0.1" placeholder="mis. 0" inputmode="decimal" /></label>
+            </div>
+            <p class="form-note is-error" id="profile-form-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="profile-save" type="submit">Simpan profil</button>
+              <button class="btn btn--ghost" id="profile-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=1" defer></script>
+  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/store.js?v=1" defer></script>
+  <script src="assets/js/nav.js?v=8" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/fiber.js?v=1" defer></script>
+</body>
+</html>

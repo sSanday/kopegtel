@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inventory · NMS Kopegtel</title>
+  <meta name="description" content="Inventaris aset perangkat, host, dan infrastruktur NMS Kopegtel." />
+  <meta name="theme-color" content="#060a14" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/dashboard.css" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Inventaris Jaringan</p>
+          <h1 class="topbar__title" id="view-title">Inventory</h1>
+          <p class="topbar__sub"><span id="view-desc">Ringkasan aset perangkat dan infrastruktur.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           Overview
+           ===================================================== -->
+      <section class="view" data-view="overview" aria-labelledby="overview-title">
+        <div class="stats" aria-label="Ringkasan inventaris">
+          <article class="stat">
+            <p class="stat__label">Total Perangkat</p>
+            <p class="stat__value" id="inv-total">—</p>
+            <p class="stat__meta" id="inv-total-meta">Terdaftar di NMS</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Online</p>
+            <p class="stat__value" id="inv-online">—</p>
+            <p class="stat__meta"><b id="inv-online-pct">—</b> dari total</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Perlu Perhatian</p>
+            <p class="stat__value" id="inv-attention">—</p>
+            <p class="stat__meta"><span class="is-warn">Offline / degradasi / tidak diketahui</span></p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Pemeliharaan</p>
+            <p class="stat__value" id="inv-maintenance">—</p>
+            <p class="stat__meta">Dalam jendela pemeliharaan</p>
+          </article>
+        </div>
+
+        <section class="panel" aria-labelledby="bytype-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="bytype-title">Ringkasan per tipe</h2>
+              <p class="panel__sub">Sebaran perangkat berdasarkan tipe dan status</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Tipe</th>
+                  <th scope="col">Total</th>
+                  <th scope="col">Online</th>
+                  <th scope="col">Degradasi</th>
+                  <th scope="col">Offline</th>
+                  <th scope="col">Tidak diketahui</th>
+                  <th scope="col">Pemeliharaan</th>
+                </tr>
+              </thead>
+              <tbody id="bytype-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="attention-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="attention-title">Aset perlu perhatian</h2>
+              <p class="panel__sub">Perangkat yang tidak online saat ini</p>
+            </div>
+            <span class="panel__hint" id="attention-count">—</span>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Tipe</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Lokasi</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Terakhir diperiksa</th>
+                </tr>
+              </thead>
+              <tbody id="attention-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="modules-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="modules-title">Modul optik (SFP)</h2>
+              <p class="panel__sub">Modul transceiver yang terdeteksi di port optik perangkat terpantau</p>
+            </div>
+            <span class="panel__hint" id="modules-count">—</span>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Port</th>
+                  <th scope="col">Vendor</th>
+                  <th scope="col">Part number</th>
+                  <th scope="col">Serial</th>
+                  <th scope="col">λ</th>
+                  <th scope="col">Tipe</th>
+                  <th scope="col">Terakhir terlihat</th>
+                </tr>
+              </thead>
+              <tbody id="module-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Hosts
+           ===================================================== -->
+      <section class="view" data-view="hosts" aria-labelledby="hosts-title" hidden>
+        <section class="stats" aria-label="Ringkasan host">
+          <article class="stat">
+            <p class="stat__label">Total Host</p>
+            <p class="stat__value" id="hosts-stat-total">—</p>
+            <p class="stat__meta">Perangkat terdaftar di NMS</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Online</p>
+            <p class="stat__value" id="hosts-stat-online">—</p>
+            <p class="stat__meta">Terjangkau saat ini</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Offline</p>
+            <p class="stat__value" id="hosts-stat-offline">—</p>
+            <p class="stat__meta">Tidak merespons ping</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Degraded</p>
+            <p class="stat__value" id="hosts-stat-degraded">—</p>
+            <p class="stat__meta"><span class="is-warn">Latensi tinggi / CPU &gt; 90%</span></p>
+          </article>
+        </section>
+
+        <section class="panel" aria-labelledby="hosts-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="hosts-title">Daftar host</h2>
+              <p class="panel__sub" id="host-count">Memuat perangkat…</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari perangkat, IP, atau lokasi</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="host-search" type="search" placeholder="Cari perangkat, IP, atau lokasi…" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span class="sr-only">Status perangkat</span>
+                <select id="host-status">
+                  <option value="">Semua status</option>
+                  <option value="online">Online</option>
+                  <option value="degraded">Degradasi</option>
+                  <option value="offline">Offline</option>
+                  <option value="maintenance">Pemeliharaan</option>
+                  <option value="unknown">Belum diperiksa</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Grup</span>
+                <select id="host-group"><option value="">Semua grup</option></select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Tipe</span>
+                <select id="host-type">
+                  <option value="">Semua tipe</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Versi RouterOS</span>
+                <select id="host-routeros"><option value="">Semua RouterOS</option></select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Model MikroTik</span>
+                <select id="host-model"><option value="">Semua model</option></select>
+              </label>
+              <button class="btn btn--primary" id="add-device-btn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah perangkat</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-error" id="host-error" role="alert" hidden>
+            <p class="table-error__text">Data perangkat gagal dimuat dari server.</p>
+            <button class="btn btn--ghost" id="host-retry" type="button">Coba lagi</button>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Alamat IP</th>
+                  <th scope="col">Tipe</th>
+                  <th scope="col">RouterOS</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">Grup</th>
+                  <th scope="col">Lokasi</th>
+                  <th scope="col">Latency</th>
+                  <th scope="col">CPU</th>
+                  <th scope="col">Memori</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="host-rows"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <button class="btn btn--ghost" id="host-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="host-page-info">Halaman —</span>
+            <button class="btn btn--ghost" id="host-next" type="button">Berikutnya</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Detail perangkat: #host/<id>
+           ===================================================== -->
+      <section class="view" data-view="host" hidden aria-labelledby="host-detail-title">
+        <a class="back-link" href="inventory.html#hosts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+          Kembali ke daftar host
+        </a>
+
+        <section class="panel" aria-labelledby="host-detail-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="host-detail-title">Detail perangkat</h2>
+              <p class="panel__sub" id="detail-sub">Memuat informasi perangkat…</p>
+            </div>
+            <div class="detail-head__actions">
+              <span class="status status--warn" id="detail-status">Belum diperiksa</span>
+              <button class="btn btn--ghost" id="detail-refresh" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+                <span>Refresh sekarang</span>
+              </button>
+            </div>
+          </div>
+          <p class="detail-updated" id="detail-updated" aria-live="polite">Terakhir diperbarui —</p>
+          <p class="detail-updated detail-availability" id="detail-availability">Ketersediaan — 24 jam: — · 7 hari: — · 30 hari: —</p>
+
+          <div class="table-error" id="detail-error" role="alert" hidden>
+            <p class="table-error__text" id="detail-error-text">Gagal memuat metrik perangkat.</p>
+            <button class="btn btn--ghost" id="detail-retry" type="button">Coba lagi</button>
+          </div>
+
+          <div class="detail-empty" id="detail-empty" hidden>
+            <p class="detail-empty__title">Belum ada data, menunggu poll pertama.</p>
+            <p class="detail-empty__desc" id="detail-empty-desc">Metrik akan tampil setelah poller berhasil menghubungi perangkat minimal satu kali.</p>
+          </div>
+
+          <div class="detail-body" id="detail-body">
+            <div class="detail-grid" aria-label="Metrik sumber daya">
+              <article class="metric-card" id="card-cpu">
+                <p class="metric-card__label">CPU</p>
+                <p class="metric-card__value"><span id="d-cpu">—</span><small> %</small></p>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-cpu" style="width: 0%"></span></div>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-cpu">Normal</span> <span id="d-cpu-sub" class="metric-card__detail">—</span></p>
+              </article>
+              <article class="metric-card" id="card-mem">
+                <p class="metric-card__label">Memori</p>
+                <p class="metric-card__value"><span id="d-mem">—</span><small> %</small></p>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-mem" style="width: 0%"></span></div>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-mem">Normal</span> <span id="d-mem-sub" class="metric-card__detail">—</span></p>
+              </article>
+              <article class="metric-card" id="card-storage">
+                <p class="metric-card__label">Storage</p>
+                <p class="metric-card__value"><span id="d-storage">—</span><small> %</small></p>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-storage" style="width: 0%"></span></div>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-storage">Normal</span> <span id="d-storage-sub" class="metric-card__detail">—</span></p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-card__label">Suhu</p>
+                <p class="metric-card__value"><span id="d-temp">—</span><small> °C</small></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-temp">Normal</span> <span id="d-temp-sub" class="metric-card__detail">Suhu CPU —</span></p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-card__label">Voltase</p>
+                <p class="metric-card__value"><span id="d-voltage">—</span><small> V</small></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-voltage-sub" class="metric-card__detail">Tegangan masuk</span></p>
+              </article>
+              <article class="metric-card">
+                <p class="metric-card__label">Uptime</p>
+                <p class="metric-card__value metric-card__value--text"><span id="d-uptime">—</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak terakhir boot</span></p>
+              </article>
+            </div>
+
+            <section class="panel panel--nested" aria-labelledby="charts-title">
+              <div class="panel__head">
+                <div>
+                  <h3 class="panel__title" id="charts-title">Riwayat</h3>
+                  <p class="panel__sub">CPU, memori, dan trafik interface</p>
+                </div>
+                <div class="seg" role="group" aria-label="Rentang waktu grafik">
+                  <button class="seg__btn is-active" type="button" data-range="1h" aria-pressed="true">1 jam</button>
+                  <button class="seg__btn" type="button" data-range="24h" aria-pressed="false">24 jam</button>
+                  <button class="seg__btn" type="button" data-range="7d" aria-pressed="false">7 hari</button>
+                </div>
+              </div>
+              <div class="charts">
+                <figure class="chart-box">
+                  <figcaption class="chart-box__title">CPU</figcaption>
+                  <svg class="chart" id="chart-cpu" viewBox="0 0 600 170" role="img" aria-labelledby="chart-cpu-title"><title id="chart-cpu-title">Grafik riwayat CPU</title></svg>
+                  <p class="chart-summary" id="chart-cpu-summary">Memuat…</p>
+                </figure>
+                <figure class="chart-box">
+                  <figcaption class="chart-box__title">Memori</figcaption>
+                  <svg class="chart" id="chart-mem" viewBox="0 0 600 170" role="img" aria-labelledby="chart-mem-title"><title id="chart-mem-title">Grafik riwayat memori</title></svg>
+                  <p class="chart-summary" id="chart-mem-summary">Memuat…</p>
+                </figure>
+                <figure class="chart-box chart-box--wide">
+                  <div class="chart-box__head">
+                    <figcaption class="chart-box__title">Trafik interface</figcaption>
+                    <label class="field chart-box__select">
+                      <span class="sr-only">Pilih interface</span>
+                      <select id="traffic-if"></select>
+                    </label>
+                  </div>
+                  <svg class="chart" id="chart-traffic" viewBox="0 0 600 170" role="img" aria-labelledby="chart-traffic-title"><title id="chart-traffic-title">Grafik riwayat trafik (RX/TX)</title></svg>
+                  <p class="chart-summary" id="chart-traffic-summary"><span class="chart-legend chart-legend--rx">RX</span> <span id="traffic-rx-summary">—</span> · <span class="chart-legend chart-legend--tx">TX</span> <span id="traffic-tx-summary">—</span></p>
+                </figure>
+              </div>
+            </section>
+
+            <section class="panel panel--nested" aria-labelledby="iface-title">
+              <div class="panel__head">
+                <div>
+                  <h3 class="panel__title" id="iface-title">Interface</h3>
+                  <p class="panel__sub">Status dan trafik terakhir per interface</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="mon-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Interface</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">RX</th>
+                      <th scope="col">TX</th>
+                      <th scope="col">Total RX</th>
+                      <th scope="col">Total TX</th>
+                    </tr>
+                  </thead>
+                  <tbody id="detail-interfaces"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel panel--nested" aria-labelledby="thresholds-title">
+              <div class="panel__head">
+                <div>
+                  <h3 class="panel__title" id="thresholds-title">Ambang peringatan</h3>
+                  <p class="panel__sub">Memicu event "Ambang:" saat terlewati. Berlaku hanya untuk perangkat ini.</p>
+                </div>
+              </div>
+              <form class="admin-form" id="thresholds-form" novalidate>
+                <div class="admin-form__grid admin-form__grid--4">
+                  <label class="admin-field"><span>CPU peringatan %</span><input id="th-cpu-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>CPU kritis %</span><input id="th-cpu-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Memori peringatan %</span><input id="th-mem-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Memori kritis %</span><input id="th-mem-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Storage peringatan %</span><input id="th-storage-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Storage kritis %</span><input id="th-storage-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Suhu peringatan °C</span><input id="th-temp-warn" type="number" min="1" max="150" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Suhu kritis °C</span><input id="th-temp-crit" type="number" min="1" max="150" step="1" inputmode="numeric" /></label>
+                </div>
+                <div class="admin-actions">
+                  <button class="btn btn--primary" id="thresholds-save" type="submit">Simpan ambang</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=1" defer></script>
+  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/store.js?v=1" defer></script>
+  <script src="assets/js/nav.js?v=8" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/device-form.js?v=1" defer></script>
+  <script src="assets/js/inventory.js?v=3" defer></script>
+</body>
+</html>

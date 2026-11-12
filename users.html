@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Users · NMS Kopegtel</title>
+  <meta name="description" content="Kelola akun dan peran pengguna NMS Kopegtel." />
+  <meta name="theme-color" content="#060a14" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/dashboard.css" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Pengguna &amp; Akses</p>
+          <h1 class="topbar__title" id="view-title">Users</h1>
+          <p class="topbar__sub"><span id="view-desc">Akun pengguna dan perannya.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           Users
+           ===================================================== -->
+      <section class="view" data-view="users" aria-labelledby="users-title">
+        <p class="hint-bar" role="status">Kata sandi minimal 10 karakter. Akun baru wajib mengganti kata sandi pada login pertama. Minimal satu akun admin harus tetap ada. Kontak (email / Telegram chat id) dipakai eskalasi — admin saja yang melihat.</p>
+        <section class="panel" aria-labelledby="users-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="users-title">Daftar pengguna</h2>
+              <p class="panel__sub" id="user-count">Memuat pengguna…</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="user-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah pengguna</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Pengguna</th>
+                  <th scope="col">Peran</th>
+                  <th scope="col">Dibuat</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Kontak (eskalasi)</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <form class="panel" id="user-form" aria-labelledby="user-form-title" hidden>
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="user-form-title">Tambah pengguna</h2>
+              <p class="panel__sub">Pengguna wajib mengganti kata sandi saat login pertama. Kontak dipakai eskalasi bila aturan mengarah ke pengguna.</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field" id="usr-username-wrap">
+                <span>Nama pengguna *</span>
+                <input id="usr-username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="mis. operator1" />
+              </label>
+              <label class="admin-field" id="usr-role-wrap">
+                <span>Peran *</span>
+                <select id="usr-role">
+                  <option value="viewer">Viewer - baca saja</option>
+                  <option value="operator" selected>Operator - kelola perangkat &amp; notifikasi</option>
+                  <option value="admin">Administrator - semua akses</option>
+                </select>
+              </label>
+              <label class="admin-field" id="usr-password-wrap">
+                <span>Kata sandi awal * (min. 10)</span>
+                <input id="usr-password" type="password" autocomplete="new-password" />
+              </label>
+              <label class="admin-field">
+                <span>Email (eskalasi)</span>
+                <input id="usr-email" type="email" autocomplete="off" placeholder="nama@kopegtel.co.id" />
+              </label>
+              <label class="admin-field">
+                <span>Telegram chat id (eskalasi)</span>
+                <input id="usr-telegram-chat-id" type="text" autocomplete="off" inputmode="numeric" placeholder="mis. 123456789" />
+              </label>
+            </div>
+            <p class="form-note is-error" id="usr-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="usr-save" type="submit">Simpan pengguna</button>
+              <button class="btn btn--ghost" id="usr-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <!-- =====================================================
+           User roles (read-only)
+           ===================================================== -->
+      <section class="view" data-view="user-roles" aria-labelledby="roles-title" hidden>
+        <section class="panel" aria-labelledby="roles-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="roles-title">Matriks peran</h2>
+              <p class="panel__sub">Ringkasan hak akses tiap peran (ditegakkan di server)</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Kemampuan</th>
+                  <th scope="col">Administrator</th>
+                  <th scope="col">Operator</th>
+                  <th scope="col">Viewer</th>
+                </tr>
+              </thead>
+              <tbody id="roles-matrix"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=1" defer></script>
+  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/store.js?v=1" defer></script>
+  <script src="assets/js/nav.js?v=8" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/device-form.js?v=1" defer></script>
+  <script src="assets/js/users.js?v=3" defer></script>
+</body>
+</html>

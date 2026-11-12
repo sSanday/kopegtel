@@ -1,0 +1,178 @@
+# TEMUAN — hal yang ditemukan selama perapihan (T0–T6)
+
+Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sini.
+
+## T0
+- Route map baseline: 116 route (`docs/route-map.baseline.txt`). Metode yang dihitung: GET/POST/PUT/PATCH/DELETE.
+- `DATABASE_PATH` sudah didukung di `backend/db.py`; variabel baku `NMS_DB_PATH` ditambahkan sebagai preferensi (DATABASE_PATH tetap diterima).
+- Semua tes pytest memakai database sementara (`tests/conftest.py`); tidak ada tes menyentuh `backend/nms.db`.
+
+## T1
+- Repo git baru — tidak ada riwayat yang memuat `.env`, `*.db`, atau `*.bak` (import awal bersih; `.gitignore` menutup sejak commit pertama).
+- `backend/nms.db.bak-mikrotik-20261110-112510`: disalin ke `backups/` dengan verifikasi SHA256 + `integrity_check: ok`, lalu dihapus dari `backend/` atas konfirmasi pemilik.
+- `pip-audit`: awalnya 2 advisory untuk `pip 26.1.2` (PYSEC-2026-3721); pip divenv diperbarui ke 26.3 → bersih.
+- `requirements-test.txt` awal menyebut `pytest-xdist` namun tidak terpasang di venv; tetap dicantumkan (opsional) dan pytest dipatok `==9.2.0`.
+
+## T4
+- Perbaikan yang diizinkan dilakukan: (1) hilangkan N+1 di `query_mt_devices` (laporan armada 4757→83 ms @ 50 perangkat); (2) indeks baru `idx_if_stats_device_name_id (device_id, if_name, id)` (laporan armada 443→344 ms @ 200); (3) pengalibit dalam harness `tools/loadtest.py` (batch `executemany` + 1 commit/tick; pada mesin 3,8 GB RAM perulangan per perangkat terlalu lambat).
+- Indeks ditambah lewat blok migrasi idempotent di `init_db()` (aman untuk DB yang sudah berjalan).
+- Baseline route map tidak berubah (117 route). `docs/SKALA.md` berisi hasil terukur untuk 50/200/500/1000 (1000 memakai tick 15 menit — mesin uji 3,8 GB RAM tidak sanggup 5 menit; diperingatkan di dokumen).
+- Pengukuran poll: estimasi siklus masih jauh di atas interval 60 dtk pada skala ≥200 (bottleneck = API MikroTik per perangkat, bukan SQLite). Target 80% TIDAK tercapai dan didokumentasikan apa adanya; tidak ada "perbaikan sekalian" yang dilakukan.
+- `PRAGMA synchronous=OFF` hanya untuk DB uji di harness; produksi tetap WAL + NORMAL.
+
+## T2
+- `docs/route-map.baseline.txt` diperbarui setelah `/healthz` ditambahkan (117 route). Diff hanya satu baris.
+- Fail-fast konfigurasi sekarang juga menolak start bila `ADMIN_PASSWORD` tidak memenuhi kebijakan (baru). Lingkungan dev/tes harus punya nilai yang sah (tes sudah menyediakan).
+- `python backend/app.py` sekarang mendelegasikan ke `serve.py --dev` (perilaku sama); produksi: `python backend/serve.py` (waitress, `WAITRESS_THREADS`).
+- Lease instance (`instance_lease`, heartbeat 10 detik, basi > 30 detik boleh diambil alih) ditambahkan; start kedua terhadap DB yang sama ditolak dengan pesan Indonesia dan exit code 1. Jika instance mati mendadak, lease kedaluwarsa sendiri; tidak perlu pembersihan manual.
+- `print()` di backend diganti `logging` (kecuali `manage.py`, yang outputnya memang UX CLI di stdout; pesan error fatal konfigurasi tetap ke stderr).
+- Logging: `logs/nms.log` berputar 5 × 10 MB, `LOG_LEVEL` (default INFO), redaksi nilai SECRET_KEY/ENCRYPTION_KEY/ADMIN_PASSWORD/token/password + blok private key, logger `apscheduler` diturunkan ke WARNING.
+- `/healthz`: 200 hanya bila DB terbaca DAN heartbeat poller < 90 detik; tanpa poller → 503 (by design; diproduksi poller hidup dalam proses yang sama).
+- `TRUSTED_PROXIES` (jumlah proxy, default 0) memasang `ProxyFix`; IP klien untuk batas login & audit_log dari `X-Forwarded-For`. `COOKIE_SECURE=1` → cookie sesi `Secure`. `HSTS_ENABLED=1` → tambah `Strict-Transport-Security` (default mati; aktifkan hanya di belakang HTTPS). CSP tidak diubah.
+- Temuan keamanan yang TIDAK diperbaiki (di luar lingkup): CSP memakai `style-src 'unsafe-inline'` (diperlukan oleh markup saat ini).
+- Catatan: lease tidak mencegah kecelakaan dua proses non-lease (mis. dua gunicorn) — serve.py adalah satu-satunya pintu masuk produksi, dan keduanya memakai tabel `instance_lease` yang sama.
+
+## T3
+- Bug ditemukan & diperbaiki: `SELECT rowid` pada tabel dengan `INTEGER PRIMARY KEY` mengembalikan kolom dengan nama alias (`id`, `device_id`), bukan `rowid` → akses `row["rowid"]` gagal. Diperbaiki dengan `rowid AS _rid`; rotasi enkripsi diuji ulang (6/6 nilai, transaksi tunggal, rollback bila ada kegagalan).
+- `rotate-encryption-key`: backup otomatis dulu (selalu, termasuk mode `--dry-run` — sengaja, kecuali disebutkan dapat dimatikan), satu transaksi untuk SEMUA kolom terenkripsi (devices.snmp_community, snmp_v3_auth_password, snmp_v3_priv_password, mikrotik_password, notification_channels.config, mt_device_settings.write_password/ssh_password, mt_backups.content). Kunci baru ditampilkan SEKALI; verifikasi memakai kunci baru sebelum kunci dikembalikan ke pemakai. Tidak ada nilai yang dicetak.
+- `check-keys` melaporkan jumlah nilai yang gagal dekripsi per kolom tanpa nilai; exit code 1 bila > 0.
+- `restore-db` menolak jalan bila lease instance segar (layanan masih hidup); membuat salinan pengaman lewat online backup API (bukan salin file — aman untuk WAL); verifikasi `integrity_check` + keberadaan tabel inti sebelum DAN sesudah menimpa; tidak pernah mencetak nilai secret.
+- Salinan pengaman restore & folder backup default: `backups/` (git-ignored), dapat diatur via env `DB_BACKUP_DIR`/`DB_BACKUP_KEEP`/`DB_BACKUP_ENABLED` atau pengaturan `db_backup_dir`/`db_backup_keep`/`db_backup_enabled` (default keep=14, harian 02:45, audit ke audit_log).
+- `db` module memeriksa lease lewat tabel `instance_lease`; pada restore, koneksi lama ditutup dan diganti setelah file ditimpa.
+- Catatan penting (dokumentasikan di README): backup database TIDAK berisi ENCRYPTION_KEY. Tanpa kunci, kredensial di dalam backup tidak dapat didekripsi setelah restore. Kunci harus disimpan terpisah (password manager). Kunci SECRET_KEY/ENCRYPTION_KEY yang tampil sekali saat rotasi tidak dicatat di logs/.
+- `rotate-secret-key` hanya membuat nilai; tidak ada yang dirotasi otomatis di .env (dengan sengaja agar operator yang mengontrol).
+- `rotate-encryption-key --dry-run` tetap membuat backup otomatis. Jika tidak diinginkan, jangan gunakan perintah ini; tidak ada opsi untuk mematikan backup.
+- Baseline route map tidak berubah (tidak ada endpoint baru).
+
+## T5
+- `backend/db.py` (≈4.250 baris) dipecah menjadi paket `backend/db/` (connection, schema, devices, fiber, mikrotik, mtbackup, discovery, alerts, services, problems, users, settings, audit); `__init__.py` me-re-export 248 nama publik sehingga `import db` dan pemakaian lama tetap sama.
+- `backend/app.py` (≈4.300 baris) dipecah menjadi `backend/routes/` (auth, devices, mikrotik, fiber, alerts, services, discovery, problems, admin) + `backend/core/` (guard, validation, metrics, constants, net, env); `app.py` kini 191 baris (setup app, `/healthz`, HTML/statis, error handler).
+- Route map: **117 rute, URL+metode identik**. Nama endpoint blueprint berubah menjadi berprefiks (mis. `api_login` → `auth.api_login`) karena keterbatasan Flask; tidak ada pemakaian `url_for`/nama endpoint di HTML/JS, jadi perilaku HTTP tidak berubah. `docs/route-map.baseline.txt` diregenerasi sekali dan dicatat di sini.
+- Bug ditemukan saat restart produksi: setelah `db.py` menjadi paket, `BASE_DIR` di `db/connection.py` menunjuk `backend/` (bukan root proyek), sehingga default DB menjadi `backend/backend/nms.db` dan start gagal `unable to open database file`. Diperbaiki (`dirname` tiga level) + tes regresi `tests/test_layout.py`. Tes sebelumnya tidak menangkap karena selalu mengeset `DATABASE_PATH`.
+- Penyesuaian tes (semantik tidak berubah): `conftest.py` mereset `DB_PATH`/koneksi pada `db` dan `db.connection`; `test_data.py` memakai timestamp eksplisit agar tidak flaky saat melewati batas detik; `test_mikrotik_backups.py` menargetkan `routes.mikrotik.MT_BACKUP_COOLDOWN` dan `backups.run_due_backups`.
+- Tes: 84 → **87** (3 tes regresi struktur/paket). Produksi direstart dengan `backend/serve.py`; `/healthz` 200, `/api/public-config` 200, halaman utama 200.
+
+## E1 — Penerima syslog & SNMP trap (sedang berjalan)
+
+- Route map: 117 → **129** rute (+12 endpoint E1 di blueprint `events`).
+  `docs/route-map.baseline.txt` diregenerasi.
+- Decode trap memakai skema pysnmp 7.1.32 + pyasn1 BER (bukan engine
+  asyncio) — engine asyncio tidak cocok dengan thread penerima. SNMPv2c
+  (inform dibalas Response PDU), v1 opsional, **v3 USM belum diimplementasi**
+  (dicatat; tidak ditunda diam-diam — status "belum" di PROGRES).
+- Perintah RouterOS untuk syslog/trap **belum diuji pada perangkat nyata**
+  (MikroTik Utama API 8728 nonaktif; perangkat asli tidak dapat diakses saat
+  pengerjaan). Empty state di halaman Kejadian/Administrasi menandai
+  "Verifikasi di versi RouterOS-mu."
+- Collector `/interface/print` kini menarik `if-index` (field SNMP). Pemetaan
+  ifIndex → nama interface bekerja lewat snapshot `mt_interfaces.data`
+  (JSON berisi `if_index`). **Belum diverifikasi pada RouterOS nyata** —
+  pada RouterOS < 7, `if-index` mungkin tidak tersedia; jatuh ke `None` dan
+  pesan trap memakai ifIndex angka.
+- RateLimiter default 200 pesan/detik/jendela 10 detik per sumber (diatur lewat
+  `ingest_rate_limit_per_sec` / `ingest_rate_window_seconds`). Mekanisme parser
+  3 format syslog (RFC 3164 / 5424 / polos RouterOS) sudah diuji otomatis
+  (`tests/test_events.py`), bukan di perangkat asli.
+- Penerima default MATI, port 5514 (syslog UDP) / 5514 (syslog TCP) / 1162
+  (trap); bind address dapat diatur; hanya IP perangkat terdaftar yang
+  diterima; pesan dibuang dihitung (`unknown` / `rate` / `auth` / `queue` /
+  `invalid`) dan tampil di tab Status penerima.
+- Loadtest ingest (`--ingest 20000 --ingest-devices 20`): ~763 msg/s dengan
+  thread penulis batch aktif, 20.000/20.000 baris tertulis, 0 dibuang,
+  p95 `/api/events/syslog` = **3,5 ms** (baris terakhir diukur; lihat
+  docs/SKALA.md).
+- Perbaikan test: `test_data.py::test_service_sla_any_mode` tidak lagi bergantung
+  pada batas detik waktu (timestamp eksplisit) — flaky, hanya perbaikan tes,
+  bukan perubahan semantik.
+- Perbaikan bug saat pengembangan E1: (1) hitungan batch/flush ganda pada
+  batcher (flush manual vs thread penulis) — tidak ada baris tertulis ganda
+  karena antrean hanya dikonsumsi sekali; (2) dedup `mt_logs` vs syslog
+  memecah query `IN (...)` menjadi 500 parameter per query (batas SQLite
+  999 variabel).
+
+## E2 — Webhook, eskalasi, MFA (sedang berjalan)
+
+- Route map: 129 → **140** rute (+5 escalation, +6 mfa).
+  `docs/route-map.baseline.txt` diregenerasi.
+- Webhook dikirim dengan proxy dinonaktifkan (`ProxyHandler({})`) supaya keputusan
+  anti-SSRF tidak bisa dialihkan lewat proxy kampus ke alamat internal. Batasan
+  TOCTOU DNS: validasi & koneksi memakai resolusi berbeda — diterima sebagai risiko
+  (didokumentasikan di kode), sama seperti implementasi webhook umum.
+- Inform (SNMP v2c inform) membalas Response PDU — diimplementasikan & diuji;
+  trap v1 opsional; **v3 USM belum**.
+- Eskalasi target pengguna memakai kanal Telegram/SMTP pertama yang aktif sebagai
+  transport (bukan kanal terpisah per pengguna) — didokumentasikan di UI/PROGRES.
+- **Jadwal jaga (oncall) belum diimplementasikan** (opsional, langkah terakhir).
+- Penggabungan badai notifikasi: amplifikasi ringkasan satu pesan per 60 detik per
+  burst; state disimpan di memori (tidak tahan restart untuk badai itu saja —
+  langkah individual tidak terpengaruh, tetap idempoten).
+- QR MFA memakai **segno 1.6.6** (dependency baru, dipin di `requirements.lock`;
+  pure-Python, tanpa dependensi). SVG disisipkan sebagai data URI `<img>` di UI.
+- Anti-replay MFA: kode TOTP pada langkah waktu yang sama/lebih lama ditolak;
+  verifikasi pendaftaran TIDAK mengonsumsi langkah login pertama (spesifikasi
+  memilih kenyamanan pemakaian pertama + keamanan pasca-login).
+- Kebijakan MFA per peran dengan masa tenggang (`mfa_required_roles`,
+  `mfa_grace_days`, `mfa_policy_started_at`); di luar tenggang login ditolak 403.
+- Kode pemulihan MFA disimpan sebagai hash SHA-256 (sekali tampil).
+- SNMP v3 & jadwal jaga = item yang BELUM ada, sengaja.
+
+## E3 — Traffic Flow (selesai)
+
+- Route map: 140 → **149** rute (+9: `flow/summary`, `flow/talkers`,
+  `flow/apps`, `flow/conversations`, `flow/interfaces`, `flow/status`,
+  +CSV per endpoint).
+- Library **netflow 0.12.2** (MIT, tanpa dependensi) dipakai untuk v1/v5/v9/IPFIX.
+  Dipilih dibanding parser sendiri: template v9/IPFIX bersifat stateful per
+  (eksporter, observation domain) dengan TTL dan LRU-500 — parser tangan akan
+  mudah salah pada template withdrawal dan IPFIX enterprise fields.
+- **Tidak diuji di perangkat nyata**: perintah RouterOS untuk mengaktifkan
+  Traffic Flow belum diuji (MikroTik Utama tidak dapat diakses); ditandai
+  "Verifikasi di versi RouterOS-mu" di UI. Field sampling v5 (`sampling_interval`)
+  ditangani dengan mask `& 0x3FFF` — perilaku pasti pada MikroTik belum terverifikasi.
+- Flow mentah TIDAK disimpan; agregasi di memori (bucket 5 menit), flush tiap
+  60 detik dalam satu transaksi dengan top-100 per kunci (lainnya digabung ke
+  "lainnya"); rollup ke jam (idempoten lewat `flow_hourly_rolled_until`);
+  retensi: 7 hari bucket 5 menit / 90 hari per jam (dapat diatur).
+- ifIndex → nama interface memakai snapshot `mt_interfaces.data` (if-index,
+  ditambahkan di E1); DHCP lease → nama host dipakai untuk IP internal
+  (tanpa reverse DNS).
+- v9/IPFIX memakai cache template per (eksporter, jenis, observation domain)
+  dengan TTL 2 jam dan batas 500 (LRU); data sebelum template dihitung lalu dibuang.
+- **Reverse DNS OFF** (spec default); pemetaan host via lease DHCP MikroTik saja.
+- Privasi: halaman Traffic dibatasi peran (viewer hanya total), export CSV login
+  + peran, pengaturan lewat audit_log.
+- **flow_top_talker problem (opsional, default mati) TIDAK diimplementasikan** —
+  butuh kapasitas link per eksporter yang belum tersedia dari snapshot; dicatat.
+
+## E4 — /metrics Prometheus + Token API (sedang berjalan)
+
+- Route map: 149 → **153** rute (+4: `/metrics`, `/api/metrics/tokens` GET/POST/DELETE).
+- Dependensi baru: **prometheus_client==0.26.0** (Apache-2.0, resmi Prometheus,
+  tanpa dependensi). Render format teks lewat custom collector — escaping label
+  ditangani pustaka resmi.
+- Scrape TIDAK menanyai perangkat (semua dari snapshot DB/memori); cache 10 detik;
+  gagal 404 bila `metrics_enabled` tidak diaktifkan (default MATI).
+- Token 32-byte acak (`nms_` + base64url), hash SHA-256, constant-time compare,
+  `last_used_at` di-update, allowlist IP opsional, kedaluwarsa opsional, cabut
+  kapan pun. Token hanya berlaku untuk /metrics — tidak bisa dipakai endpoint `/api/*`.
+- Perangkat basi (>3 interval tanpa poll, gabungan `metrics_ts`/`last_seen`)
+  TIDAK diterbitkan sebagai seri per-perangkat (Prometheus menandainya stale).
+- Batas kardinalitas `metrics_series_limit` (default 20.000); keluaran terpotong
+  menerbitkan `nms_metrics_series_truncated 1`.
+- Label tidak berisi secret/IP klien; escaping diuji dengan nama perangkat
+  berisi `evil"><script>` — output tetap valid & terparse Prometheus.
+- Dashboard `grafana/dashboards/nms-overview.json` (19 panel, variabel
+  `datasource`, `device`, `group`), provisioning + datasource contoh di
+  `grafana/provisioning/`, dokumen `docs/INTEGRASI.md` dengan scrape_config,
+  4 aturan alert contoh (perangkat down, poller macet, margin fiber rendah,
+  ingest drop). **Dashboard belum diuji di Grafana nyata.**
+- Ingest/poller metrics (`nms_ingest_messages_total`, `nms_poller_*`) adalah
+  counter sejak proses berjalan — reset saat restart; bukan ukuran absolut
+  yang tahan restart.
+- Benchmark scrape: payload ~19 KB; repeat ~0 ms (cache 10 dtk); fresh build
+  p50 ~12 ms · p95 ~51 ms · max ~77 ms @ 20 perangkat (docs/SKALA.md).
+
+## Temuan bug (perbaikan, ditemukan lewat tes)
+- `backups.py run_due_backups`: `int(settings.get("backup_hour") or 2)` — jam backup `0` (00:00) diperlakukan falsy dan menjadi `2`. Diperbaiki dengan pengecekan `is None` eksplisit. Akar sebenarnya ada di `get_mt_device_settings` (`int(row["backup_hour"] or 2)` dan jalur save) dengan pola yang sama — juga diperbaiki. Tes `test_scheduled_backup_runs_once_a_day` hanya gagal pada rentang 00:00–00:59 WIB.
+- `alerts.py send_telegram`: middlebox jaringan kampus ini me-reset sebagian koneksi TLS 1.3 ke api.telegram.org (uji 10 koneksi: TLS 1.2 = 10/10, default = 10/10, TLS 1.3 eksplisit = 8/10). Pengirim Telegram dipersempit ke TLS 1.2 (URL/payload/retry tidak berubah). Ini BUKAN bypass filter; tetap melintasi gateway dengan CA yang asli (Go Daddy); hanya versi TLS yang dipilih agar cocok dengan middlebox yang ada.
+- Yang TIDAK saya lakukan: mem-bypass/menonaktifkan verifikasi sertifikat atau menambah root CA kampus ke trust store; perilaku itu tidak diperlukan dan tidak aman.

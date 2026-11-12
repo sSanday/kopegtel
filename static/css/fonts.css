@@ -1,3 +1,0 @@
-/* Self-hosted fonts: Inter (UI) + JetBrains Mono (mono) */
-@font-face { font-family:'Inter'; src:url('../fonts/Inter-var-latin.woff2') format('woff2'); font-weight:100 900; font-style:normal; font-display:swap; }
-@font-face { font-family:'JetBrains Mono'; src:url('../fonts/JetBrainsMono-var-latin.woff2') format('woff2'); font-weight:100 900; font-style:normal; font-display:swap; }
