@@ -275,24 +275,77 @@ def api_test_device():
         return jsonify({"error": "Terlalu banyak uji koneksi, coba lagi sebentar lagi."}), 429
 
     data = request.get_json(silent=True) or {}
-    addr = _parse_ip(data.get("ip"))
-    if addr is None:
+
+    existing_id = data.get("id")
+    existing = None
+    if existing_id not in (None, ""):
+        try:
+            existing_id = int(existing_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "ID perangkat tidak valid."}), 400
+        existing = db.get_device(existing_id, include_secrets=True)
+        if existing is None:
+            return jsonify({"error": "Perangkat tidak ditemukan."}), 404
+
+    raw_ip = data.get("ip")
+    addr = _parse_ip(raw_ip) if raw_ip not in (None, "") else None
+    if existing is not None:
+        # Kredensial tersimpan hanya boleh dipakai untuk perangkat tersimpan.
+        # Tujuan uji tidak boleh ditentukan bebas oleh klien.
+        stored_addr = _parse_ip(existing.get("ip"))
+        if addr is None and raw_ip not in (None, ""):
+            return jsonify({"error": "Alamat IP tidak valid."}), 400
+        if stored_addr is None:
+            return jsonify({"error": "IP perangkat tersimpan tidak valid."}), 500
+        if addr is not None and addr != stored_addr:
+            return jsonify(
+                {"error": "IP uji harus sama dengan IP perangkat tersimpan. Simpan perubahan IP terlebih dahulu."}
+            ), 400
+        addr = stored_addr
+    elif addr is None:
         return jsonify({"error": "Alamat IP tidak valid."}), 400
     if not _ip_allowed(addr):
         return jsonify({"error": "IP berada di luar ALLOWED_NETWORKS yang diizinkan."}), 400
     ip = str(addr)
 
-    existing_id = data.get("id")
-    existing = db.get_device(int(existing_id), include_secrets=True) if existing_id else None
+    snmp_enabled = bool(data.get("snmp_enabled"))
+    mikrotik_enabled = bool(data.get("mikrotik_enabled"))
+
+    if existing is not None:
+        snmp_port = int(existing.get("snmp_port") or 161)
+        mikrotik_port = int(existing.get("mikrotik_port") or 8728)
+        if snmp_enabled and data.get("snmp_port") not in (None, ""):
+            requested_port, error = _parse_port(data.get("snmp_port"), "Port SNMP")
+            if error:
+                return jsonify({"error": error}), 400
+            if requested_port != snmp_port:
+                return jsonify(
+                    {"error": "Port SNMP uji harus sama dengan port perangkat tersimpan."}
+                ), 400
+        if mikrotik_enabled and data.get("mikrotik_port") not in (None, ""):
+            requested_port, error = _parse_port(data.get("mikrotik_port"), "Port MikroTik API")
+            if error:
+                return jsonify({"error": error}), 400
+            if requested_port != mikrotik_port:
+                return jsonify(
+                    {"error": "Port MikroTik API uji harus sama dengan port perangkat tersimpan."}
+                ), 400
+    else:
+        snmp_port, mikrotik_port = 161, 8728
+        if snmp_enabled:
+            snmp_port, error = _parse_port(data.get("snmp_port", 161), "Port SNMP")
+            if error:
+                return jsonify({"error": error}), 400
+        if mikrotik_enabled:
+            mikrotik_port, error = _parse_port(data.get("mikrotik_port", 8728), "Port MikroTik API")
+            if error:
+                return jsonify({"error": error}), 400
 
     result = {"ping": None, "snmp": None, "mikrotik": None}
 
     result["ping"] = ping_collector.check_ping(ip)
 
-    if bool(data.get("snmp_enabled")):
-        snmp_port, error = _parse_port(data.get("snmp_port", 161), "Port SNMP")
-        if error:
-            return jsonify({"error": error}), 400
+    if snmp_enabled:
         community = data.get("snmp_community")
         if not community and existing:
             community = db.decrypt_secret(existing.get("snmp_community"))
@@ -311,10 +364,7 @@ def api_test_device():
         }
         result["snmp"] = snmp_collector.check_snmp(snmp_config)
 
-    if bool(data.get("mikrotik_enabled")):
-        mikrotik_port, error = _parse_port(data.get("mikrotik_port", 8728), "Port MikroTik API")
-        if error:
-            return jsonify({"error": error}), 400
+    if mikrotik_enabled:
         password = data.get("mikrotik_password")
         if not password and existing:
             password = db.decrypt_secret(existing.get("mikrotik_password"))
