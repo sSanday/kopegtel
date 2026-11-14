@@ -176,3 +176,23 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - `backups.py run_due_backups`: `int(settings.get("backup_hour") or 2)` — jam backup `0` (00:00) diperlakukan falsy dan menjadi `2`. Diperbaiki dengan pengecekan `is None` eksplisit. Akar sebenarnya ada di `get_mt_device_settings` (`int(row["backup_hour"] or 2)` dan jalur save) dengan pola yang sama — juga diperbaiki. Tes `test_scheduled_backup_runs_once_a_day` hanya gagal pada rentang 00:00–00:59 WIB.
 - `alerts.py send_telegram`: middlebox jaringan kampus ini me-reset sebagian koneksi TLS 1.3 ke api.telegram.org (uji 10 koneksi: TLS 1.2 = 10/10, default = 10/10, TLS 1.3 eksplisit = 8/10). Pengirim Telegram dipersempit ke TLS 1.2 (URL/payload/retry tidak berubah). Ini BUKAN bypass filter; tetap melintasi gateway dengan CA yang asli (Go Daddy); hanya versi TLS yang dipilih agar cocok dengan middlebox yang ada.
 - Yang TIDAK saya lakukan: mem-bypass/menonaktifkan verifikasi sertifikat atau menambah root CA kampus ke trust store; perilaku itu tidak diperlukan dan tidak aman.
+
+## H-3 - Kredensial scan tidak boleh disimpan (selesai)
+
+- `scan_jobs` tidak lagi memiliki kolom `community`, `mikrotik_user`, atau
+  `mikrotik_password`. Kredensial scan hanya hidup di memori thread
+  pemindaian dan tidak pernah ditulis ke database.
+- Database lama dimigrasikan otomatis saat `init_db()`: tabel dibuat ulang
+  tanpa kolom kredensial, data aman dipertahankan, lalu `PRAGMA secure_delete=ON`,
+  `VACUUM`, dan `wal_checkpoint(TRUNCATE)` agar sisa plaintext tidak tertinggal
+  di `nms.db` maupun `nms.db-wal`.
+- Backup historis dibersihkan dengan
+  `python backend/manage.py purge-scan-secrets --include-backups`. Perintah ini
+  juga memverifikasi `integrity_check` dan tidak pernah mencetak nilai secret.
+- UI Discovery menegaskan kredensial hanya dipakai di memori dan tidak disimpan.
+- Tes regresi `tests/test_discovery_security.py` (4 tes): skema tanpa kolom
+  kredensial, kredensial tetap sampai ke thread tetapi tidak masuk DB/WAL,
+  migrasi DB lama menghapus byte plaintext, dan pembersihan backup.
+- Verifikasi live: `scan_jobs` tinggal 10 kolom aman; dua backup pra-migrasi
+  sudah dibersihkan (`integrity_check: ok`); API daftar/detail scan tidak
+  mengembalikan field kredensial. Suite: **203 passed**.

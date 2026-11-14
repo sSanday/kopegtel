@@ -1,23 +1,50 @@
 """Pemindaian CIDR (Data Collection): pekerjaan scan & hasil."""
 
 import json
+import sqlite3
 
 from .connection import (
     _lock,
     _now,
     get_conn,
 )
+from .schema import rebuild_scan_jobs_without_secrets
 
-def create_scan_job(cidr, total, created_by, community, mikrotik_user, mikrotik_password):
+
+def create_scan_job(cidr, total, created_by):
+    """Buat pekerjaan scan tanpa menyimpan kredensial apa pun.
+
+    Community SNMP / kredensial RouterOS hanya diteruskan ke thread pemindaian
+    di memori; setelah proses selesai tidak ada salinan yang tersisa di DB.
+    """
     with _lock:
         conn = get_conn()
         cursor = conn.execute(
-            "INSERT INTO scan_jobs (cidr, status, total, completed, found, community, mikrotik_user, mikrotik_password, created_by, created_at, results)"
-            " VALUES (?, 'running', ?, 0, 0, ?, ?, ?, ?, ?, '[]')",
-            (cidr, int(total), community, mikrotik_user, mikrotik_password, created_by, _now()),
+            "INSERT INTO scan_jobs (cidr, status, total, completed, found, created_by, created_at, results)"
+            " VALUES (?, 'running', ?, 0, 0, ?, ?, '[]')",
+            (cidr, int(total), created_by, _now()),
         )
         conn.commit()
         return cursor.lastrowid
+
+
+def scrub_scan_credentials_file(path):
+    """Bersihkan kolom kredensial scan lama dari satu berkas SQLite.
+
+    Dipakai untuk backup historis (yang tidak dibuka oleh aplikasi saat start).
+    Return True bila tabel scan_jobs diubah. Tidak pernah mencetak nilai secret.
+    """
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        changed = rebuild_scan_jobs_without_secrets(conn)
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise RuntimeError(f"integrity_check gagal setelah pembersihan: {integrity}")
+        return changed
+    finally:
+        conn.close()
+
 
 def update_scan_job(job_id, completed, results):
     with _lock:
@@ -37,7 +64,7 @@ def finish_scan_job(job_id):
         )
         conn.commit()
 
-def get_scan_job(job_id, include_secrets=False):
+def get_scan_job(job_id):
     with _lock:
         row = get_conn().execute("SELECT * FROM scan_jobs WHERE id = ?", (job_id,)).fetchone()
     if row is None:
@@ -47,9 +74,6 @@ def get_scan_job(job_id, include_secrets=False):
         job["results"] = json.loads(job.get("results") or "[]")
     except json.JSONDecodeError:
         job["results"] = []
-    if not include_secrets:
-        job.pop("mikrotik_password", None)
-        job.pop("community", None)
     return job
 
 def list_scan_jobs(limit=20):

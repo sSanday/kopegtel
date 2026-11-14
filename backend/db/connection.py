@@ -57,6 +57,9 @@ def get_conn():
         if _conn is None:
             _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             _conn.row_factory = sqlite3.Row
+            # Timpa isi halaman yang dihapus agar sisa kredensial tidak tertinggal
+            # di ruang bebas SQLite/WAL setelah rotasi atau pembersihan data.
+            _conn.execute("PRAGMA secure_delete=ON")
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.execute("PRAGMA foreign_keys=ON")
             _conn.execute("PRAGMA busy_timeout=5000")

@@ -1,11 +1,90 @@
 """Skema basis data (DDL) + migrasi idempotent saat init_db()."""
 
+import sqlite3
 
 from .connection import (
     _lock,
     _now,
     get_conn,
 )
+
+# H-3: pekerjaan scan TIDAK menyimpan kredensial. Kredensial hidup hanya di
+# memori selama thread pemindaian berjalan.
+SCAN_JOB_COLUMNS = (
+    "id",
+    "cidr",
+    "status",
+    "total",
+    "completed",
+    "found",
+    "created_by",
+    "created_at",
+    "finished_at",
+    "results",
+)
+SCAN_JOB_SECRET_COLUMNS = ("community", "mikrotik_user", "mikrotik_password")
+
+
+def _scan_jobs_table_columns(conn):
+    return {row["name"] for row in conn.execute("PRAGMA table_info(scan_jobs)").fetchall()}
+
+
+def rebuild_scan_jobs_without_secrets(conn):
+    """Buang kolom kredensial scan lama dan hapus fisik sisa nilainya.
+
+    Database lama (sebelum H-3) menyimpan community SNMP, user, dan password
+    MikroTik di scan_jobs. Fungsi ini membuat ulang tabel tanpa kolom tersebut,
+    menyalin data yang aman, lalu VACUUM + checkpoint WAL agar byte lama tidak
+    tertinggal di nms.db, nms.db-wal, atau salinan backup yang diproses.
+
+    Return True bila tabel diubah. Aman dipanggil berulang.
+    """
+    columns = _scan_jobs_table_columns(conn)
+    if not (columns & set(SCAN_JOB_SECRET_COLUMNS)):
+        return False
+    missing = [name for name in SCAN_JOB_COLUMNS if name not in columns]
+    if missing:
+        raise RuntimeError(
+            "Skema scan_jobs lama tidak dikenali; kolom aman tidak ditemukan: "
+            + ", ".join(missing)
+        )
+
+    # secure_delete membuat SQLite menimpa isi halaman yang dihapus dengan nol,
+    # bukan hanya menandainya bebas. VACUUM kemudian membangun ulang berkas DB.
+    conn.execute("PRAGMA secure_delete = ON")
+    conn.execute("DROP TABLE IF EXISTS scan_jobs_clean")
+    conn.execute(
+        """
+        CREATE TABLE scan_jobs_clean (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cidr TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            total INTEGER NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            found INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT NOT NULL DEFAULT '-',
+            created_at TEXT NOT NULL,
+            finished_at TEXT,
+            results TEXT NOT NULL DEFAULT '[]'
+        )
+        """
+    )
+    ordered = ", ".join(SCAN_JOB_COLUMNS)
+    conn.execute(
+        f"INSERT INTO scan_jobs_clean ({ordered}) SELECT {ordered} FROM scan_jobs"
+    )
+    conn.execute("DROP TABLE scan_jobs")
+    conn.execute("ALTER TABLE scan_jobs_clean RENAME TO scan_jobs")
+    conn.commit()
+    conn.execute("VACUUM")
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.Error:
+        # Bukan mode WAL / ada pembaca lain: VACUUM tetap sudah membangun ulang DB.
+        pass
+    conn.commit()
+    return True
+
 
 def init_db():
     with _lock:
@@ -175,9 +254,6 @@ def init_db():
                 total INTEGER NOT NULL DEFAULT 0,
                 completed INTEGER NOT NULL DEFAULT 0,
                 found INTEGER NOT NULL DEFAULT 0,
-                community TEXT,
-                mikrotik_user TEXT,
-                mikrotik_password TEXT,
                 created_by TEXT NOT NULL DEFAULT '-',
                 created_at TEXT NOT NULL,
                 finished_at TEXT,
@@ -1044,5 +1120,9 @@ def init_db():
                     f" WHERE {column} IS NOT NULL AND instr({column}, 'Z') = 0"
                 )
             conn.execute("PRAGMA user_version = 1")
+
+        # H-3: hapus kolom kredensial scan dari database lama + bersihkan byte-nya.
+        if rebuild_scan_jobs_without_secrets(conn):
+            conn.execute("PRAGMA user_version = 2")
         conn.commit()
 

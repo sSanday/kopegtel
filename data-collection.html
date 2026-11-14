@@ -249,7 +249,7 @@
            Discovery
            ===================================================== -->
       <section class="view" data-view="discovery" aria-labelledby="discovery-title" hidden>
-        <p class="hint-bar" role="status">Pemindaian dibatasi 1024 alamat per rentang, hanya rentang privat (atau dalam ALLOWED_NETWORKS), dan dijalankan di latar belakang. Kredensial bersifat opsional, hanya dipakai selama pemindaian, dan tidak ditampilkan kembali.</p>
+        <p class="hint-bar" role="status">Pemindaian dibatasi 1024 alamat per rentang, hanya rentang privat (atau dalam ALLOWED_NETWORKS), dan dijalankan di latar belakang. Kredensial bersifat opsional, hanya dipakai di memori selama pemindaian, dan tidak disimpan ke database.</p>
         <section class="panel" aria-labelledby="discovery-title">
           <div class="panel__head">
             <div>
@@ -265,7 +265,7 @@
               </label>
               <label class="admin-field">
                 <span>Community SNMP (opsional)</span>
-                <input id="scan-community" type="password" autocomplete="off" placeholder="Kosongkan bila tidak dipakai" />
+                <input id="scan-community" type="password" autocomplete="off" placeholder="Tidak disimpan - kosongkan bila tidak dipakai" />
               </label>
               <label class="admin-field">
                 <span>User RouterOS API (opsional)</span>

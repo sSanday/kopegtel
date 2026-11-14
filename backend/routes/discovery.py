@@ -97,7 +97,6 @@ def api_get_scan(job_id):
     job = db.get_scan_job(job_id)
     if job is None:
         return jsonify({"error": "Pekerjaan pemindaian tidak ditemukan."}), 404
-    job.pop("mikrotik_user", None)
     return jsonify({"scan": job})
 
 
@@ -128,7 +127,9 @@ def api_start_scan():
     mikrotik_password = str(data.get("mikrotik_password") or "").strip() or None
 
     total = len(list(network.hosts())) or network.num_addresses
-    job_id = db.create_scan_job(str(network), total, g.user["username"], community, mikrotik_user, mikrotik_password)
+    # Kredensial hanya diteruskan ke thread di memori; jangan pernah menulisnya
+    # ke scan_jobs (H-3).
+    job_id = db.create_scan_job(str(network), total, g.user["username"])
     audit("discovery.scan", f"scan:{job_id}", f"Memindai {network}")
 
     thread = threading.Thread(

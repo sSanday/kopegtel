@@ -7,6 +7,7 @@ Pemakaian:
     python backend/manage.py check-config
     python backend/manage.py backup-db [--out DIR] [--keep N]
     python backend/manage.py restore-db <file.db>
+    python backend/manage.py purge-scan-secrets [--include-backups] [file.db ...]
     python backend/manage.py check-keys
     python backend/manage.py rotate-encryption-key [--dry-run]
     python backend/manage.py rotate-secret-key
@@ -14,6 +15,7 @@ Pemakaian:
 
 import argparse
 import getpass
+import glob
 import os
 import shutil
 import sqlite3
@@ -212,6 +214,47 @@ def cmd_restore_db(args):
     return 0
 
 
+def cmd_purge_scan_secrets(args):
+    """Hapus kolom kredensial scan lama dari DB aktif dan (opsional) backup.
+
+    Database aktif juga dimigrasikan otomatis oleh init_db(); perintah ini
+    berguna untuk membersihkan berkas backup historis yang tidak dibuka app.
+    """
+    db.init_db()
+    targets = [db.DB_PATH]
+    if args.include_backups:
+        _enabled, out_dir, _keep = dbbackup.backup_settings()
+        targets.extend(sorted(glob.glob(os.path.join(out_dir, "*.db"))))
+    targets.extend(args.files or [])
+
+    seen = set()
+    failed = False
+    for raw_path in targets:
+        path = os.path.abspath(raw_path)
+        if path in seen:
+            continue
+        seen.add(path)
+        if not os.path.isfile(path):
+            print(f"LEWATI (tidak ada): {path}", file=sys.stderr)
+            failed = True
+            continue
+        try:
+            changed = db.scrub_scan_credentials_file(path)
+        except Exception as exc:  # noqa: BLE001 - laporkan berkas yang gagal, lanjutkan
+            print(f"ERROR {path}: {exc}", file=sys.stderr)
+            failed = True
+            continue
+        if changed:
+            print(f"DIBERSIHKAN: {path} (kolom kredensial scan dihapus, VACUUM + checkpoint selesai)")
+        else:
+            print(f"AMAN: {path} (tidak ada kolom kredensial scan)")
+
+    if failed:
+        return 1
+    print("Selesai. Tidak ada nilai kredensial yang dicetak.")
+    return 0
+
+
 def cmd_check_keys(_args):
     db.init_db()
     stats = db.encrypted_value_stats()
@@ -326,6 +369,18 @@ def main():
     p_restore = sub.add_parser("restore-db", help="Restore basis data dari berkas backup (layanan harus berhenti)")
     p_restore.add_argument("file", help="Berkas .db hasil backup-db")
     p_restore.set_defaults(func=cmd_restore_db)
+
+    p_purge = sub.add_parser(
+        "purge-scan-secrets",
+        help="Hapus kolom kredensial scan lama dari DB aktif dan backup (VACUUM + checkpoint)",
+    )
+    p_purge.add_argument(
+        "--include-backups",
+        action="store_true",
+        help="Ikut bersihkan semua berkas *.db di folder backup",
+    )
+    p_purge.add_argument("files", nargs="*", help="Berkas DB tambahan (opsional)")
+    p_purge.set_defaults(func=cmd_purge_scan_secrets)
 
     p_keys = sub.add_parser("check-keys", help="Periksa semua nilai terenkripsi dapat didekripsi dengan ENCRYPTION_KEY saat ini")
     p_keys.set_defaults(func=cmd_check_keys)
