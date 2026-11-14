@@ -17,36 +17,51 @@ def _webhook_config_from_raw(raw, existing_id=None):
     """Validasi konfigurasi kanal webhook. Return (config, error)."""
     import webhook
 
+    old = (db.channel_config(existing_id) or {}) if existing_id else {}
+
     url = str(raw.get("url") or "").strip()
+    if not url and existing_id:
+        url = str(old.get("url") or "").strip()  # kosong = pertahankan URL tersimpan
     if len(url) > 2048:
         return None, "URL webhook maksimal 2048 karakter."
-    preset = str(raw.get("preset") or "generic").strip().lower()
+    if not url:
+        return None, "URL webhook wajib diisi."
+    preset = str(raw.get("preset", old.get("preset", "generic")) or "generic").strip().lower()
     if preset not in ("slack", "discord", "generic"):
         return None, "Preset webhook harus slack, discord, atau generic."
-    allow_http = bool(raw.get("allow_http", False))
-    allow_private = bool(raw.get("allow_private", False))
+    allow_http = bool(raw.get("allow_http", old.get("allow_http", False)))
+    allow_private = bool(raw.get("allow_private", old.get("allow_private", False)))
     secret = str(raw.get("secret") or "").strip()
+    if not secret:
+        secret = str(old.get("secret") or "").strip()  # kosong = pertahankan secret tersimpan
     if len(secret) > 200:
         return None, "Secret webhook maksimal 200 karakter."
-    if not secret:
-        if existing_id:
-            secret = ""  # kosong = pertahankan yang tersimpan (merge di bawah)
-        else:
-            return None, "Secret webhook wajib diisi (dipakai untuk tandatangan HMAC)."
+    if not secret and not existing_id:
+        return None, "Secret webhook wajib diisi (dipakai untuk tandatangan HMAC)."
     headers = raw.get("headers") if isinstance(raw.get("headers"), dict) else {}
     headers = webhook._sanitize_headers(headers)
     try:
-        max_response = int(raw.get("max_response_bytes") or webhook.MAX_RESPONSE_BYTES)
+        max_response = int(
+            raw.get("max_response_bytes") or old.get("max_response_bytes") or webhook.MAX_RESPONSE_BYTES
+        )
     except (TypeError, ValueError):
         return None, "max_response_bytes harus berupa angka."
     max_response = min(webhook.MAX_RESPONSE_BYTES, max(256, max_response))
     allow_http_flag = allow_http or (urlsplit(url).scheme or "").lower() == "http"
     if allow_http_flag and not allow_http:
         return None, "http hanya boleh bila izin eksplisit diaktifkan."
-    try:
-        webhook.validate_webhook_target(url, allow_private=allow_private, allow_http=allow_http)
-    except ValueError as exc:
-        return None, f"URL ditolak: {exc}"
+    # URL baru wajib divalidasi; URL lama tidak perlu resolve DNS ulang kecuali
+    # kebijakan allow_http/allow_private berubah.
+    new_url = str(raw.get("url") or "").strip()
+    policy_changed = (
+        allow_http != bool(old.get("allow_http", False))
+        or allow_private != bool(old.get("allow_private", False))
+    )
+    if new_url or not existing_id or policy_changed:
+        try:
+            webhook.validate_webhook_target(url, allow_private=allow_private, allow_http=allow_http)
+        except ValueError as exc:
+            return None, f"URL ditolak: {exc}"
     config = {
         "url": url, "preset": preset, "allow_http": allow_http,
         "allow_private": allow_private,
@@ -71,11 +86,16 @@ def _channel_config_from_payload(data, existing_id=None):
     if not isinstance(raw, dict):
         return None, None, "Konfigurasi kanal tidak valid."
 
+    old = (db.channel_config(existing_id) or {}) if existing_id else {}
+
     if channel_type == "telegram":
-        config = {
-            "bot_token": str(raw.get("bot_token") or "").strip(),
-            "chat_id": str(raw.get("chat_id") or "").strip(),
-        }
+        bot_token = str(raw.get("bot_token") or "").strip()
+        chat_id = str(raw.get("chat_id") or "").strip()
+        if not bot_token and existing_id:
+            bot_token = str(old.get("bot_token") or "").strip()
+        if not chat_id and existing_id:
+            chat_id = str(old.get("chat_id") or "").strip()
+        config = {"bot_token": bot_token, "chat_id": chat_id}
         if not config["chat_id"]:
             return None, None, "Chat ID Telegram wajib diisi."
         if not existing_id and not config["bot_token"]:
@@ -84,21 +104,26 @@ def _channel_config_from_payload(data, existing_id=None):
         config, error = _webhook_config_from_raw(raw, existing_id=existing_id)
         if error:
             return None, None, error
-        if not config.get("secret") and existing_id:
-            old = db.channel_config(existing_id) or {}
-            if old.get("secret"):
-                config["secret"] = old["secret"]  # pertahankan secret tersimpan bila kosong
     else:  # smtp
         try:
-            port = int(raw.get("port") or 587)
+            port = int(raw.get("port", old.get("port", 587)) or 587)
         except (TypeError, ValueError):
             return None, None, "Port SMTP harus berupa angka."
+        host = str(raw.get("host") or "").strip()
+        username = str(raw.get("username") or "").strip()
+        password = str(raw.get("password") or "").strip()
+        if not host and existing_id:
+            host = str(old.get("host") or "").strip()
+        if not username and existing_id:
+            username = str(old.get("username") or "").strip()
+        if not password and existing_id:
+            password = str(old.get("password") or "").strip()
         config = {
-            "host": str(raw.get("host") or "").strip(),
+            "host": host,
             "port": port,
-            "use_tls": bool(raw.get("use_tls", True)),
-            "username": str(raw.get("username") or "").strip(),
-            "password": str(raw.get("password") or "").strip(),
+            "use_tls": bool(raw.get("use_tls", old.get("use_tls", True))),
+            "username": username,
+            "password": password,
             "from_addr": str(raw.get("from_addr") or "").strip(),
             "to_addr": str(raw.get("to_addr") or "").strip(),
         }
@@ -108,6 +133,7 @@ def _channel_config_from_payload(data, existing_id=None):
 
 
 @bp.get("/api/channels")
+@roles("admin", "operator")
 def api_list_channels():
     return jsonify({"channels": db.list_channels()})
 

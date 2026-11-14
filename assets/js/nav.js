@@ -172,7 +172,7 @@
       children: [
         { label: "Actions", href: "alerts.html#actions" },
         { label: "Message templates", href: "alerts.html#message-templates" },
-        { label: "Media types", href: "alerts.html#media-types" },
+        { label: "Media types", href: "alerts.html#media-types", roles: ["admin", "operator"] },
         { label: "Eskalasi", href: "alerts.html#escalation", roles: ["admin", "operator"] },
       ],
     },

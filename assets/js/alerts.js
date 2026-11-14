@@ -97,7 +97,7 @@
     const jobs = [];
     if (!groupsCache.length) jobs.push(window.apiFetch("/api/groups").then((d) => (groupsCache = d.groups || [])));
     if (!devicesCache.length) jobs.push(window.apiFetch("/api/devices?per_page=100").then((d) => (devicesCache = d.devices || [])));
-    if (!channelsCache.length) jobs.push(window.apiFetch("/api/channels").then((d) => (channelsCache = d.channels || [])));
+    if (!channelsCache.length && canEdit()) jobs.push(window.apiFetch("/api/channels").then((d) => (channelsCache = d.channels || [])));
     if (!templatesCache.length) jobs.push(window.apiFetch("/api/templates").then((d) => (templatesCache = d.templates || [])));
     if (!policiesCache.length) jobs.push(window.apiFetch("/api/escalation-policies").then((d) => (policiesCache = d.policies || [])));
     await Promise.allSettled(jobs);
@@ -347,8 +347,8 @@
 
   function channelTarget(channel) {
     const cfg = channel.config || {};
-    if (channel.type === "telegram") return cfg.chat_id ? `Chat ${cfg.chat_id}` : "-";
-    if (channel.type === "webhook") return cfg.url || "-";
+    if (channel.type === "telegram") return cfg.has_chat_id ? "Chat tersimpan" : "-";
+    if (channel.type === "webhook") return cfg.has_url ? "URL tersimpan" : "-";
     return cfg.to_addr || "-";
   }
 
@@ -374,6 +374,12 @@
   }
 
   async function loadChannels() {
+    if (!canEdit()) {
+      channelsState = [];
+      channelCount.textContent = "Kanal hanya untuk admin/operator.";
+      channelRows.innerHTML = '<tr class="empty-row"><td colspan="6">Hanya admin dan operator yang dapat melihat kanal notifikasi.</td></tr>';
+      return;
+    }
     try {
       const data = await window.apiFetch("/api/channels");
       channelsState = data.channels || [];
@@ -391,21 +397,48 @@
     chName.value = channel ? channel.name : "";
     chEnabled.checked = channel ? !!channel.enabled : true;
     chType.disabled = !!channel; // tipe tidak diubah setelah dibuat
-    document.getElementById("ch-bot-token").value = "";
-    document.getElementById("ch-chat-id").value = channel && channel.config ? channel.config.chat_id || "" : "";
-    document.getElementById("ch-smtp-host").value = channel && channel.config ? channel.config.host || "" : "";
-    document.getElementById("ch-smtp-port").value = channel && channel.config && channel.config.port ? String(channel.config.port) : "587";
-    document.getElementById("ch-smtp-tls").checked = channel && channel.config ? channel.config.use_tls !== false : true;
-    document.getElementById("ch-smtp-username").value = channel && channel.config ? channel.config.username || "" : "";
-    document.getElementById("ch-smtp-password").value = "";
-    document.getElementById("ch-smtp-from").value = channel && channel.config ? channel.config.from_addr || "" : "";
-    document.getElementById("ch-smtp-to").value = channel && channel.config ? channel.config.to_addr || "" : "";
-    document.getElementById("ch-webhook-url").value = channel && channel.config ? channel.config.url || "" : "";
-    document.getElementById("ch-webhook-preset").value = channel && channel.config ? channel.config.preset || "generic" : "generic";
-    document.getElementById("ch-webhook-secret").value = "";
-    document.getElementById("ch-webhook-headers").value = "";
-    document.getElementById("ch-webhook-http").checked = channel && channel.config ? !!channel.config.allow_http : false;
-    document.getElementById("ch-webhook-private").checked = channel && channel.config ? !!channel.config.allow_private : false;
+    const cfg = channel && channel.config ? channel.config : {};
+    const editing = !!channel;
+    const keepPlaceholder = (present, fallback) =>
+      (editing && present ? "Tersimpan — kosongkan untuk mempertahankan" : fallback);
+
+    const chBotToken = document.getElementById("ch-bot-token");
+    chBotToken.value = "";
+    chBotToken.placeholder = keepPlaceholder(cfg.has_bot_token, "123456:ABC-DEF…");
+    const chChatId = document.getElementById("ch-chat-id");
+    chChatId.value = "";
+    chChatId.placeholder = keepPlaceholder(cfg.has_chat_id, "-1001234567890");
+
+    const chSmtpHost = document.getElementById("ch-smtp-host");
+    chSmtpHost.value = "";
+    chSmtpHost.placeholder = keepPlaceholder(cfg.has_host, "smtp.office365.com");
+    document.getElementById("ch-smtp-port").value = cfg.port ? String(cfg.port) : "587";
+    document.getElementById("ch-smtp-tls").checked = cfg.use_tls !== false;
+    const chSmtpUsername = document.getElementById("ch-smtp-username");
+    chSmtpUsername.value = "";
+    chSmtpUsername.placeholder = keepPlaceholder(cfg.has_username, "opsional");
+    const chSmtpPassword = document.getElementById("ch-smtp-password");
+    chSmtpPassword.value = "";
+    chSmtpPassword.placeholder = keepPlaceholder(cfg.has_password, "opsional");
+    document.getElementById("ch-smtp-from").value = cfg.from_addr || "";
+    document.getElementById("ch-smtp-to").value = cfg.to_addr || "";
+
+    const chWebhookUrl = document.getElementById("ch-webhook-url");
+    chWebhookUrl.value = "";
+    chWebhookUrl.placeholder = keepPlaceholder(cfg.has_url, "https://hooks.slack.com/services/T...");
+    document.getElementById("ch-webhook-preset").value = cfg.preset || "generic";
+    const chWebhookSecret = document.getElementById("ch-webhook-secret");
+    chWebhookSecret.value = "";
+    chWebhookSecret.placeholder = editing
+      ? "kosongkan agar mempertahankan yang tersimpan"
+      : "wajib diisi";
+    const chWebhookHeaders = document.getElementById("ch-webhook-headers");
+    chWebhookHeaders.value = "";
+    chWebhookHeaders.placeholder = editing && cfg.has_headers
+      ? "Header tersimpan — kosongkan untuk mempertahankan"
+      : '{"Authorization": "Bearer ..."}';
+    document.getElementById("ch-webhook-http").checked = !!cfg.allow_http;
+    document.getElementById("ch-webhook-private").checked = !!cfg.allow_private;
     chNote.hidden = true;
     chTestResult.hidden = true;
     syncChannelTypeFields();

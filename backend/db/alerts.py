@@ -10,6 +10,50 @@ from .connection import (
     get_conn,
 )
 
+_KEEP_IF_EMPTY = (
+    "bot_token", "password", "auth_password", "secret",
+    "url", "host", "username", "chat_id",
+)
+
+
+def _public_channel_config(channel_type, config):
+    """Konfigurasi kanal untuk API — hanya field non-rahasia yang dikirim.
+
+    URL webhook adalah kredensial (dapat dipakai memposting alert), begitu pula
+    bot token/password/secret. Host, username SMTP, dan chat ID juga tidak
+    dikembalikan; klien hanya menerima penanda ``has_*``.
+    """
+    config = config or {}
+    public = {}
+    if channel_type == "telegram":
+        public["has_bot_token"] = bool(config.get("bot_token"))
+        public["has_chat_id"] = bool(config.get("chat_id"))
+    elif channel_type == "smtp":
+        public["port"] = config.get("port", 587)
+        public["use_tls"] = bool(config.get("use_tls", True))
+        public["from_addr"] = config.get("from_addr") or ""
+        public["to_addr"] = config.get("to_addr") or ""
+        public["has_host"] = bool(config.get("host"))
+        public["has_username"] = bool(config.get("username"))
+        public["has_password"] = bool(config.get("password"))
+    elif channel_type == "webhook":
+        public["preset"] = config.get("preset") or "generic"
+        public["allow_http"] = bool(config.get("allow_http"))
+        public["allow_private"] = bool(config.get("allow_private"))
+        public["max_response_bytes"] = config.get("max_response_bytes")
+        public["has_url"] = bool(config.get("url"))
+        public["has_secret"] = bool(config.get("secret"))
+        headers = config.get("headers")
+        if isinstance(headers, dict):
+            public["headers"] = {str(name): None for name in headers}
+        else:
+            public["headers"] = {}
+        public["has_headers"] = bool(headers)
+    else:
+        public["has_config"] = bool(config)
+    return public
+
+
 def list_channels():
     with _lock:
         rows = get_conn().execute("SELECT * FROM notification_channels ORDER BY name COLLATE NOCASE").fetchall()
@@ -19,21 +63,11 @@ def list_channels():
             config = json.loads(decrypt_secret(row["config"])) if row["config"] else {}
         except Exception:
             config = {}
-        public = {}
-        for key, value in config.items():
-            if key == "headers":
-                public["headers"] = {k: None for k in (value or {})} if isinstance(value, dict) else {}
-                public["has_headers"] = bool(value)
-                continue
-            public[key] = None if key in ("bot_token", "password", "auth_password", "secret") else value
-            public[f"has_{key}"] = bool(value)
-        public.pop("bot_token", None)
-        public.pop("password", None)
-        public.pop("secret", None)
         channels.append(
             {
                 "id": row["id"], "name": row["name"], "type": row["type"],
-                "enabled": bool(row["enabled"]), "config": public,
+                "enabled": bool(row["enabled"]),
+                "config": _public_channel_config(row["type"], config),
                 "created_at": row["created_at"], "updated_at": row["updated_at"],
             }
         )
@@ -73,9 +107,9 @@ def update_channel(channel_id, name, type_, config, enabled):
         merged = channel_config(channel_id) or {}
     else:
         merged = dict(config)
-        # Kosongkan secret yang dibiarkan kosong → pertahankan yang tersimpan.
+        # Field yang tidak ditampilkan ke klien: kosong berarti pertahankan.
         old = channel_config(channel_id) or {}
-        for key in ("bot_token", "password", "auth_password", "secret"):
+        for key in _KEEP_IF_EMPTY:
             if not merged.get(key) and old.get(key):
                 merged[key] = old[key]
         # Daftar header dibiarkan apa adanya bila kanal diedit tanpa mengisinya.
