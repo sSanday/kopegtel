@@ -14,7 +14,9 @@ Modul MikroTik (M1–M6) — baca-dulu, tulis-hanya-bila-diaktifkan secara sadar
   `backend/db/`. Migrasi skema otomatis saat start (`db.init_db()`).
 - **Pemantauan berkala**: APScheduler dalam proses yang sama (`backend/poller.py`).
 - **Autentikasi**: sesi cookie HttpOnly + SameSite=Lax + token CSRF untuk semua
-  metode tulis. Batas percobaan login (5 gagal / 10 menit per akun+IP).
+  metode tulis. Batas percobaan login (5 gagal / 10 menit per akun+IP dan
+  50 gagal / 10 menit per IP), serta batas ukuran body request (default 1 MiB;
+  login/MFA 8 KiB).
 - **Peran**: admin (semua), operator (aksi termasuk tulis MikroTik bila
   diaktifkan), viewer (hanya baca; detail pelanggan disamarkan).
 - **Produksi**: `backend/serve.py` memakai waitress (default 8 thread),
@@ -89,6 +91,7 @@ berpengaruh. Skrip pengembangan lain ada di `tools/dev/`.
 | `COOKIE_SECURE` | tidak | `1` bila diakses lewat HTTPS (cookie sesi menjadi Secure) |
 | `HSTS_ENABLED` | tidak | `1` hanya bila aplikasi berada di belakang HTTPS |
 | `TRUSTED_PROXIES` | tidak | Jumlah proxy tepercaya (IP klien dari `X-Forwarded-For`) |
+| `MAX_REQUEST_BYTES` | tidak | Batas ukuran body request API/form (default 1048576 = 1 MiB) |
 | `DB_BACKUP_ENABLED` | tidak | Backup online harian (default aktif) |
 | `DB_BACKUP_DIR` | tidak | Folder backup (default `backups/`) |
 | `DB_BACKUP_KEEP` | tidak | Jumlah backup yang disimpan (default 14) |
@@ -276,7 +279,7 @@ Kembalikan dari backup jika gagal: `python backend/manage.py restore-db`.
 | `snmp_no_response` | SNMP mati/diblokir | Cek `snmp` di router, ACL, UDP 161 |
 | `database is locked` | Dua proses menulis DB | Ada satu instance saja; cek `instance_lease` |
 | `/healthz` 503 | Poller mati/DB rusak | Lihat `logs/nms.log`; restart service; restore bila perlu |
-| Login gagal berulang | Akun terblokir sementara | Tunggu 10 menit atau hubungi admin |
+| Login gagal berulang | Akun atau IP terblokir sementara | Tunggu 10 menit atau hubungi admin |
 | Fleet report lambat | Tabel metrik besar | Lihat docs/SKALA.md; `ANALYZE`/`VACUUM` |
 | `Uji kirim` Telegram gagal berulang | Jaringan memfilter api.telegram.org (reset acak) | Aplikasi sudah memakai TLS 1.2; minta IT mengizinkan server ini ke api.telegram.org; atau pakai SMTP internal |
 

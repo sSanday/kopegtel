@@ -253,3 +253,34 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   ditolak, `fec0::/10` diblokir, semua alamat SMTP hasil validasi dicoba, dan
   galat SMTP disanitasi. Pesan penolakan tidak memuat IP hasil resolusi
   internal. Suite: **226 passed**.
+
+## M-3 - Flooding login tanpa autentikasi & batas ukuran request (selesai)
+
+- `auth.login_blocked` memeriksa dua ambang: **5 gagal / 10 menit per
+  akun+IP** dan **50 gagal / 10 menit per IP tanpa melihat username**.
+  Mengganti username tidak lagi menghindari blokir; respons `429` menyertakan
+  `Retry-After: 600`.
+- `login_attempts` menjadi sumber hitungan semua percobaan (bukan hanya
+  audit). Username dipotong 64 karakter, catatan lebih tua dari 60 menit
+  dibersihkan, dan indeks `(ip, failed_at)` serta `(username, ip, failed_at)`
+  ditambahkan agar pemeriksaan tetap murah saat dibanjiri.
+- `audit_log` tidak lagi menerima satu baris per kegagalan login. Hanya
+  kegagalan pertama per IP dalam jendela dan saat ambang akun+IP/IP tercapai
+  yang dicatat (jumlahnya terbatas, bukan satu baris per percobaan), ditambah
+  cap global 500 baris `auth.login_failed` per 10 menit.
+- Semua field audit dipotong di `db.add_audit_log`: username 64, IP 64, aksi
+  64, objek 200, ringkasan 400 karakter. Jadi pemanggil mana pun tidak bisa
+  menulis string raksasa meskipun melewati validasi route.
+- Input login >64 karakter dan password >1024 karakter selalu gagal tanpa
+  memicu pemeriksaan hash; kebijakan password baru juga menolak >1024
+  karakter.
+- `MAX_CONTENT_LENGTH` default **1 MiB** (dapat diubah lewat
+  `MAX_REQUEST_BYTES`), `MAX_FORM_MEMORY_SIZE` mengikuti, dan
+  `MAX_FORM_PARTS=1000`. `/api/login` dan `/api/mfa/verify-login` memakai
+  batas **8 KiB**. Body berlebih menghasilkan `413` JSON
+  `request_too_large`, bukan error HTML.
+- Tes regresi `tests/test_login_flood.py` (8 tes): rotasi username tetap
+  diblokir per IP, IP lain tidak ikut terblokir, audit terbatas dan memiliki
+  cap global, username/field audit dipotong sebelum masuk DB, catatan login
+  lama dibersihkan, serta body login dan API besar ditolak `413`. Suite:
+  **234 passed**.

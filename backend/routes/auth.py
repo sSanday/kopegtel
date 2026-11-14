@@ -51,23 +51,48 @@ def api_public_config():
 @bp.post("/api/login")
 def api_login():
     data = request.get_json(silent=True) or {}
-    username = str(data.get("username") or "").strip()
+    raw_username = str(data.get("username") or "").strip()
     password = str(data.get("password") or "")
     remember = bool(data.get("remember"))
 
-    if not username or not password:
+    if not raw_username or not password:
         return jsonify({"error": "Nama pengguna dan kata sandi wajib diisi."}), 400
+
+    # Username/password raksasa tidak boleh masuk DB atau memicu hash mahal.
+    # Nilai tetap dipotong untuk penghitung kegagalan dan audit; login dengan
+    # input melebihi batas selalu gagal.
+    username = raw_username[: auth.USERNAME_MAX_LENGTH]
+    oversized = (
+        len(raw_username) > auth.USERNAME_MAX_LENGTH
+        or len(password) > auth.PASSWORD_MAX_LENGTH
+    )
 
     ip = client_ip()
     if auth.login_blocked(username, ip):
-        return jsonify({"error": "Terlalu banyak percobaan gagal. Coba lagi dalam 10 menit.", "code": "login_blocked"}), 429
+        return (
+            jsonify(
+                {
+                    "error": "Terlalu banyak percobaan gagal. Coba lagi dalam 10 menit.",
+                    "code": "login_blocked",
+                }
+            ),
+            429,
+            {"Retry-After": str(auth.LOGIN_WINDOW_MINUTES * 60)},
+        )
+
+    if oversized:
+        counts = auth.record_login_failure(username, ip)
+        auth.log_login_failure({"username": username}, ip, counts)
+        return jsonify({"error": "Nama pengguna atau kata sandi salah."}), 401
 
     user = db.find_user(username)
     ok = user is not None and check_password_hash(user["password_hash"], password)
     if not ok:
-        auth.record_login_failure(username, ip)
+        counts = auth.record_login_failure(username, ip)
         user_id = user["id"] if user else None
-        auth.log_audit({"id": user_id, "username": username}, "auth.login_failed", "login", "Gagal login", ip=ip)
+        auth.log_login_failure(
+            {"id": user_id, "username": username}, ip, counts
+        )
         return jsonify({"error": "Nama pengguna atau kata sandi salah."}), 401
 
     import mfa

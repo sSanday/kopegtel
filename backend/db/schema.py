@@ -205,6 +205,8 @@ def init_db():
                 summary TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log (ts);
+            CREATE INDEX IF NOT EXISTS idx_audit_action_time
+                ON audit_log (action, ts);
 
             CREATE TABLE IF NOT EXISTS login_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,6 +215,10 @@ def init_db():
                 failed_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_login_attempts_time ON login_attempts (failed_at);
+            CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_time
+                ON login_attempts (ip, failed_at);
+            CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip_time
+                ON login_attempts (username, ip, failed_at);
 
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,

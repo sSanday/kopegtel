@@ -24,6 +24,19 @@ ROLE_LABELS = {
 PASSWORD_MIN_LENGTH = 10
 LOGIN_MAX_FAILED = 5
 LOGIN_WINDOW_MINUTES = 10
+# Batas per-IP melengkapi batas per akun+IP. Tanpa ini, penyerang cukup
+# mengganti username untuk menghindari blokir 5 percobaan.
+LOGIN_IP_MAX_FAILED = 50
+# Audit kegagalan login tidak ditulis untuk setiap percobaan (bisa membanjiri
+# audit_log yang disimpan 365 hari). Hanya kejadian pertama per IP dan saat
+# ambang blokir tercapai yang dicatat, dengan cap global sebagai pengaman.
+LOGIN_AUDIT_MAX_PER_WINDOW = 500
+# Batas panjang input login. Username akun aplikasi maksimal 32 karakter;
+# 64 memberi ruang untuk data lama tanpa menerima string tak terbatas.
+USERNAME_MAX_LENGTH = 64
+PASSWORD_MAX_LENGTH = 1024
+# Body login/MFA tidak perlu besar; batas global tetap berlaku untuk endpoint lain.
+LOGIN_MAX_BODY_BYTES = 8 * 1024
 
 SESSION_CSRF_KEY = "csrf_token"
 
@@ -45,20 +58,55 @@ def password_problem(password):
         return "Kata sandi wajib diisi."
     if len(password) < PASSWORD_MIN_LENGTH:
         return f"Kata sandi minimal {PASSWORD_MIN_LENGTH} karakter."
+    if len(password) > PASSWORD_MAX_LENGTH:
+        return f"Kata sandi maksimal {PASSWORD_MAX_LENGTH} karakter."
     return None
 
 
 def login_blocked(username, ip):
-    """True bila gagal login >= LOGIN_MAX_FAILED dalam LOGIN_WINDOW_MINUTES terakhir."""
-    return db.count_recent_login_failures(username, ip, LOGIN_WINDOW_MINUTES) >= LOGIN_MAX_FAILED
+    """True bila batas akun+IP atau batas IP (tanpa melihat username) tercapai."""
+    counts = db.count_recent_login_failures(username, ip, LOGIN_WINDOW_MINUTES)
+    return counts["ip"] >= LOGIN_IP_MAX_FAILED or counts["pair"] >= LOGIN_MAX_FAILED
 
 
 def record_login_failure(username, ip):
-    db.record_login_failure(username, ip)
+    """Simpan satu kegagalan; kembalikan jumlah per IP dan per akun+IP."""
+    return db.record_login_failure(username, ip, LOGIN_WINDOW_MINUTES)
 
 
 def clear_login_failures(username, ip):
     db.clear_login_failures(username, ip)
+
+
+def _login_failure_audit(counts):
+    """Pilih momen audit yang jarang tetapi cukup untuk investigasi.
+
+    Semua percobaan tetap tersimpan singkat di ``login_attempts``; audit_log
+    hanya menerima sinyal awal dan saat ambang blokir tercapai.
+    """
+    if counts["ip"] == 1:
+        return (
+            "Gagal login (percobaan pertama dari IP ini dalam "
+            f"{LOGIN_WINDOW_MINUTES} menit)"
+        )
+    if counts["pair"] == LOGIN_MAX_FAILED:
+        return f"Akun+IP diblokir sementara setelah {LOGIN_MAX_FAILED} kegagalan"
+    if counts["ip"] == LOGIN_IP_MAX_FAILED:
+        return f"IP diblokir sementara setelah {LOGIN_IP_MAX_FAILED} kegagalan"
+    return None
+
+
+def log_login_failure(user, ip, counts):
+    """Catat kegagalan login secara terbatas (bukan satu baris per percobaan)."""
+    summary = _login_failure_audit(counts)
+    if summary is None:
+        return
+    if (
+        db.count_recent_audit("auth.login_failed", LOGIN_WINDOW_MINUTES)
+        >= LOGIN_AUDIT_MAX_PER_WINDOW
+    ):
+        return
+    log_audit(user, "auth.login_failed", "login", summary, ip=ip)
 
 
 def log_audit(user, action, obj, summary="", ip=None):

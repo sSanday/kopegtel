@@ -53,11 +53,26 @@ _PUBLIC_API = {"/api/login", "/api/public-config", "/api/mfa/verify-login"}
 _CSRF_EXEMPT = {"/api/login"}
 _MUST_CHANGE_ALLOW = {"/api/me", "/api/logout", "/api/users/me/password"}
 _MUTATING = {"POST", "PUT", "DELETE", "PATCH"}
+_SMALL_BODY_API = {"/api/login", "/api/mfa/verify-login"}
 
 
 def guard_api():
     if not request.path.startswith("/api"):
         return None
+
+    if request.path in _SMALL_BODY_API:
+        # Endpoint autentikasi hanya butuh JSON kecil; batas global 1 MiB tetap
+        # berlaku untuk endpoint lain. Diterapkan sebelum body dibaca.
+        request.max_content_length = auth.LOGIN_MAX_BODY_BYTES
+
+    limit = request.max_content_length
+    if limit is not None and (request.content_length or 0) > limit:
+        return jsonify(
+            {
+                "error": "Ukuran permintaan terlalu besar.",
+                "code": "request_too_large",
+            }
+        ), 413
 
     if request.method in _MUTATING and request.path not in _CSRF_EXEMPT:
         if not auth.csrf_valid(session, request.headers.get("X-CSRF-Token")):

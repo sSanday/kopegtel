@@ -1,5 +1,6 @@
 """Jejak audit (audit_log) + umpan aktivitas."""
 
+from datetime import datetime, timedelta, timezone
 
 from .connection import (
     _lock,
@@ -10,14 +11,52 @@ from .devices import (
     summary,
 )
 
+# Batas panjang field audit. SQLite tidak menegakkan VARCHAR, jadi nilai dari
+# pemanggil (termasuk username login yang tidak terautentikasi) harus dipotong
+# di sini agar satu request tidak bisa menulis data raksasa.
+AUDIT_USERNAME_MAX = 64
+AUDIT_IP_MAX = 64
+AUDIT_ACTION_MAX = 64
+AUDIT_OBJECT_MAX = 200
+AUDIT_SUMMARY_MAX = 400
+
+
+def _clip(value, limit, default=""):
+    text = "" if value is None else str(value)
+    if not text:
+        text = default
+    return text[:limit]
+
+
 def add_audit_log(user_id, username, ip, action, obj, summary):
     with _lock:
         conn = get_conn()
         conn.execute(
             "INSERT INTO audit_log (ts, user_id, username, ip, action, object, summary) VALUES (?,?,?,?,?,?,?)",
-            (_now(), user_id, username, ip, action, obj, (summary or "")[:400]),
+            (
+                _now(),
+                user_id,
+                _clip(username, AUDIT_USERNAME_MAX, "-"),
+                _clip(ip, AUDIT_IP_MAX, "-"),
+                _clip(action, AUDIT_ACTION_MAX, "unknown"),
+                _clip(obj, AUDIT_OBJECT_MAX),
+                _clip(summary, AUDIT_SUMMARY_MAX),
+            ),
         )
         conn.commit()
+
+
+def count_recent_audit(action, minutes):
+    """Jumlah baris audit untuk aksi tertentu dalam jendela waktu terakhir."""
+    threshold = (
+        datetime.now(timezone.utc) - timedelta(minutes=max(1, int(minutes)))
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with _lock:
+        row = get_conn().execute(
+            "SELECT COUNT(*) AS n FROM audit_log WHERE action = ? AND ts >= ?",
+            (_clip(action, AUDIT_ACTION_MAX, "unknown"), threshold),
+        ).fetchone()
+    return int(row["n"] or 0)
 
 def list_audit_log(search=None, action=None, limit=100, offset=0):
     limit = min(500, max(1, int(limit or 100)))

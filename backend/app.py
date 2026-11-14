@@ -4,9 +4,10 @@ Menyajikan HANYA file *.html di root proyek dan folder assets/,
 serta API JSON di bawah /api/* (kecuali /api/login & /api/public-config).
 
 Keamanan: sesi cookie HttpOnly + SameSite=Lax, token CSRF untuk semua
-POST/PUT/DELETE, batas percobaan login (5 gagal / 10 menit per akun+IP),
-idle timeout (default 30 menit, bisa diubah di Administration), izin per
-peran (admin/operator/viewer) ditegakkan di server, header keamanan, dan
+POST/PUT/DELETE, batas percobaan login (5 gagal / 10 menit per akun+IP dan
+50 gagal / 10 menit per IP), batas ukuran body request, idle timeout (default
+30 menit, bisa diubah di Administration), izin per peran
+(admin/operator/viewer) ditegakkan di server, header keamanan, dan
 FLASK hanya menyajikan file yang memang milik aplikasi.
 """
 
@@ -97,6 +98,23 @@ def _env_flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _positive_int_env(name, default, minimum=1):
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        _fail_fast(f"{name} harus berupa angka.")
+    if value < minimum:
+        _fail_fast(f"{name} minimal {minimum}.")
+    return value
+
+
+# Batas ukuran body request. Endpoint login/MFA memakai batas lebih kecil di
+# core.guard; nilai ini berlaku untuk seluruh API dan form.
+MAX_REQUEST_BYTES = _positive_int_env("MAX_REQUEST_BYTES", 1024 * 1024)
+
 app = Flask(__name__, static_folder=None)
 app.secret_key = SECRET_KEY
 app.config.update(
@@ -104,6 +122,9 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=_env_flag("COOKIE_SECURE"),  # lokal: HTTP. Set 1 bila di belakang HTTPS.
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+    MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
+    MAX_FORM_MEMORY_SIZE=MAX_REQUEST_BYTES,
+    MAX_FORM_PARTS=1000,
 )
 
 try:
@@ -186,6 +207,18 @@ def not_found(_error):
 @app.errorhandler(405)
 def method_not_allowed(_error):
     return jsonify({"error": "Metode tidak diizinkan."}), 405
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    if request.path.startswith("/api"):
+        return jsonify(
+            {
+                "error": "Ukuran permintaan terlalu besar.",
+                "code": "request_too_large",
+            }
+        ), 413
+    return "413 — Permintaan terlalu besar", 413
 
 
 @app.errorhandler(500)

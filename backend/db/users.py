@@ -93,34 +93,64 @@ def user_count():
         return get_conn().execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
 
 def count_recent_login_failures(username, ip, window_minutes):
+    """Hitung kegagalan per IP dan per akun+IP dalam jendela waktu.
+
+    ``username`` boleh None untuk menghitung seluruh kegagalan dari IP.
+    Kolom username memakai COLLATE NOCASE sehingga perbandingan tetap
+    case-insensitive tanpa fungsi lower() yang menghalangi indeks.
+    """
     threshold = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ip = str(ip or "-")[:64]
+    where = "ip = ? AND failed_at >= ?"
+    if username is not None:
+        where_pair = "username = ?"
+        pair_value = str(username or "")[:64]
+    else:
+        where_pair = "0"
+        pair_value = None
     with _lock:
         row = get_conn().execute(
-            "SELECT COUNT(*) AS n FROM login_attempts WHERE lower(username) = lower(?) AND ip = ? AND failed_at >= ?",
-            (username, ip, threshold),
+            f"SELECT COUNT(*) AS total,"
+            f" SUM(CASE WHEN {where_pair} THEN 1 ELSE 0 END) AS pair"
+            f" FROM login_attempts WHERE {where}",
+            (pair_value, ip, threshold) if pair_value is not None else (ip, threshold),
         ).fetchone()
-    return row["n"]
+    return {"ip": int(row["total"] or 0), "pair": int(row["pair"] or 0)}
 
-def record_login_failure(username, ip):
+def record_login_failure(username, ip, window_minutes=10):
+    """Simpan kegagalan lalu kembalikan jumlah terbaru untuk keputusan audit.
+
+    Catatan dipangkas setelah beberapa jendela sehingga tabel tidak menumpuk
+    selama sehari penuh ketika seseorang membanjiri endpoint login.
+    """
+    username = str(username or "")[:64]
+    ip = str(ip or "-")[:64]
+    now = _now()
+    retention_minutes = max(60, int(window_minutes) * 6)
+    retention = (datetime.now(timezone.utc) - timedelta(minutes=retention_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    threshold = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
     with _lock:
         conn = get_conn()
         conn.execute(
             "INSERT INTO login_attempts (username, ip, failed_at) VALUES (?,?,?)",
-            (username, ip, _now()),
+            (username, ip, now),
         )
-        # Sapu catatan lebih dari 1 hari.
-        conn.execute(
-            "DELETE FROM login_attempts WHERE failed_at < ?",
-            ((datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),),
-        )
+        conn.execute("DELETE FROM login_attempts WHERE failed_at < ?", (retention,))
+        row = conn.execute(
+            "SELECT COUNT(*) AS total,"
+            " SUM(CASE WHEN username = ? THEN 1 ELSE 0 END) AS pair"
+            " FROM login_attempts WHERE ip = ? AND failed_at >= ?",
+            (username, ip, threshold),
+        ).fetchone()
         conn.commit()
+    return {"ip": int(row["total"] or 0), "pair": int(row["pair"] or 0)}
 
 def clear_login_failures(username, ip):
     with _lock:
         conn = get_conn()
         conn.execute(
-            "DELETE FROM login_attempts WHERE lower(username) = lower(?) AND ip = ?",
-            (username, ip),
+            "DELETE FROM login_attempts WHERE username = ? AND ip = ?",
+            (str(username or "")[:64], str(ip or "-")[:64]),
         )
         conn.commit()
 
