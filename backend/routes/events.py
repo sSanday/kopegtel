@@ -8,6 +8,7 @@ import re
 from flask import Blueprint, Response, jsonify, request
 
 import db
+from core.csvsafe import csv_cell
 from core.guard import audit, roles
 from ingest import INGEST
 from ingest import rules as ingest_rules
@@ -41,19 +42,12 @@ def _csv_response(filename, header, rows):
     writer = csv.writer(buffer)
     writer.writerow(header)
     for row in rows:
-        writer.writerow([_csv_safe(value) for value in row])
+        writer.writerow([csv_cell(value) for value in row])
     return Response(
         "\ufeff" + buffer.getvalue(),
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-def _csv_safe(value):
-    text = "" if value is None else str(value)
-    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
-        return "'" + text
-    return text
 
 
 @bp.get("/api/events/summary")

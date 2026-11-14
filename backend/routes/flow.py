@@ -6,6 +6,7 @@ import io
 from flask import Blueprint, Response, jsonify, request
 
 import db
+from core.csvsafe import csv_cell
 from core.guard import roles
 from flow import FLOW
 
@@ -36,19 +37,12 @@ def _limit(default=10, cap=1000):
         return default
 
 
-def _csv_safe(value):
-    text = "" if value is None else str(value)
-    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
-        return "'" + text
-    return text
-
-
 def _csv_response(filename, header, rows):
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(header)
     for row in rows:
-        writer.writerow([_csv_safe(value) for value in row])
+        writer.writerow([csv_cell(value) for value in row])
     return Response(
         "\ufeff" + buffer.getvalue(),
         mimetype="text/csv; charset=utf-8",

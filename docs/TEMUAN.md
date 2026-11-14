@@ -303,3 +303,20 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   sekali dan pengguna diminta login ulang.
 - Tes regresi `tests/test_session_revocation.py` (7 tes). Suite:
   **241 passed**.
+
+## M-5 - Formula injection pada ekspor CSV audit dan ketersediaan (selesai)
+
+- `backend/core/csvsafe.py` menjadi satu-satunya netralisator sel CSV. Sel teks
+  yang diawali `=`, `+`, `-`, `@`, atau karakter kontrol (`\t`, `\r`, `\n`)
+  diberi awalan apostrof. Spasi/tab di depan formula juga diperiksa agar tidak
+  menjadi bypass; angka asli dibiarkan agar tetap terbaca sebagai angka.
+- `api_audit_log_csv` dan `api_report_availability_csv` memakai `csv_row`,
+  sehingga username login gagal yang diisi anonim, objek/ringkasan audit, serta
+  nama perangkat/grup tidak lagi dieksekusi sebagai formula saat CSV dibuka.
+- Ekspor CSV lain (SLA layanan, armada MikroTik, redaman fiber, syslog/trap,
+  flow) memakai helper yang sama; dua salinan `_csv_safe` lokal dihapus agar
+  tidak ada jalur ekspor yang tertinggal.
+- Tes regresi `tests/test_csv_injection.py` (11 tes): semua prefiks formula,
+  karakter kontrol/spasi di depan, angka tetap angka, username gagal login
+  anonim, dan nama perangkat/grup pada laporan ketersediaan. Suite:
+  **252 passed**.

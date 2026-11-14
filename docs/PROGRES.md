@@ -171,3 +171,6 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
 - M-4: sesi dicabut lewat epoch saat password diganti/direset (termasuk cookie
   "remember" dan login MFA yang tertunda); 241 tes lolos; produksi hidup
   (healthz 200).
+- M-5: sel CSV dinetralkan dari formula (`=`, `+`, `-`, `@`, karakter kontrol,
+  termasuk yang didahului spasi) di audit, ketersediaan, dan semua ekspor CSV
+  lain; 252 tes lolos; produksi hidup (healthz 200).

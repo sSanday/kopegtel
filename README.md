@@ -18,6 +18,8 @@ Modul MikroTik (M1–M6) — baca-dulu, tulis-hanya-bila-diaktifkan secara sadar
   50 gagal / 10 menit per IP), batas ukuran body request (default 1 MiB;
   login/MFA 8 KiB), dan sesi lama otomatis dicabut setelah password
   diganti/direset.
+- **Ekspor CSV**: sel yang berpotensi menjadi formula (`=`, `+`, `-`, `@`)
+  dinetralkan sebelum ditulis, termasuk nilai dari input anonim.
 - **Peran**: admin (semua), operator (aksi termasuk tulis MikroTik bila
   diaktifkan), viewer (hanya baca; detail pelanggan disamarkan).
 - **Produksi**: `backend/serve.py` memakai waitress (default 8 thread),

@@ -5,6 +5,7 @@ import io
 from flask import Blueprint, Response, jsonify, request
 
 import db
+from core.csvsafe import csv_row
 from core.guard import audit, roles
 from core.constants import SLA_PERIODS
 
@@ -161,13 +162,13 @@ def api_sla_report_csv():
     writer = csv.writer(output)
     writer.writerow(["Layanan", "Divisi", "Mode", "Perangkat", "Target SLA %", "Ketersediaan %", "Tercapai", "Downtime (menit)"])
     for row in rows:
-        writer.writerow([
+        writer.writerow(csv_row([
             row["service"], row["division"], row["mode"], row["devices"],
             row["sla_target"],
             row["availability_pct"] if row["availability_pct"] is not None else "—",
             ("Ya" if row["met"] else "Tidak") if row["met"] is not None else "—",
             row["downtime_minutes"] if row["downtime_minutes"] is not None else "—",
-        ])
+        ]))
     return Response(
         "﻿" + output.getvalue(),
         mimetype="text/csv",

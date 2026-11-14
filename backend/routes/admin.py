@@ -15,6 +15,7 @@ import auth
 import db
 import poller
 from core.constants import SLA_PERIODS
+from core.csvsafe import csv_row
 from core.env import APP_VERSION, SERVER_STARTED
 from core.guard import audit, roles
 
@@ -48,7 +49,10 @@ def api_audit_log_csv():
     writer = csv.writer(output)
     writer.writerow(["Waktu (UTC)", "Pengguna", "IP", "Aksi", "Objek", "Ringkasan"])
     for entry in data["entries"]:
-        writer.writerow([entry["ts"], entry["username"], entry["ip"], entry["action"], entry["object"], entry["summary"]])
+        writer.writerow(csv_row([
+            entry["ts"], entry["username"], entry["ip"],
+            entry["action"], entry["object"], entry["summary"],
+        ]))
     return Response(
         "﻿" + output.getvalue(),
         mimetype="text/csv",
@@ -95,10 +99,10 @@ def api_report_availability_csv():
     writer = csv.writer(output)
     writer.writerow(["Perangkat", "IP", "Tipe", "Grup", "Pemeriksaan", "Up", "Ketersediaan %"])
     for device, stats in rows:
-        writer.writerow([
+        writer.writerow(csv_row([
             device["name"], device["ip"], device["type"], device.get("group_name") or "",
             stats["checks"], stats["up"], stats["pct"] if stats["pct"] is not None else "—",
-        ])
+        ]))
     return Response(
         "﻿" + output.getvalue(),
         mimetype="text/csv",

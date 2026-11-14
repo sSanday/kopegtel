@@ -12,6 +12,7 @@ import backups
 import db
 import poller
 from collectors import mikrotik_modules
+from core.csvsafe import csv_row
 from core.guard import audit, client_ip, roles
 from core.metrics import downsample as _downsample, range_since as _range_since
 
@@ -954,7 +955,7 @@ def api_mt_report_fleet_csv():
     ])
     for row in rows:
         system = row.get("system") or {}
-        writer.writerow([
+        writer.writerow(csv_row([
             row.get("name"), row.get("ip"),
             system.get("model") or row.get("mikrotik_model") or "—",
             system.get("version") or row.get("routeros_version") or "—",
@@ -968,7 +969,7 @@ def api_mt_report_fleet_csv():
             row.get("security_open") or 0,
             row.get("open_problems") or 0,
             row.get("metrics_ts") or "—",
-        ])
+        ]))
     return Response(
         "﻿" + output.getvalue(),
         mimetype="text/csv",

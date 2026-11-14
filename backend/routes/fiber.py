@@ -9,6 +9,7 @@ import json
 import db
 import fiber as fiber_calc
 import optical as optical_logic
+from core.csvsafe import csv_row
 from core.guard import audit, roles
 from core.validation import _parse_optional_id
 
@@ -912,7 +913,7 @@ def api_report_fiber_attenuation_csv():
         return ("—" if value is None else f"{value:.2f}{unit}")
 
     for row in rows:
-        writer.writerow([
+        writer.writerow(csv_row([
             row["link"],
             f"{row['device_a_name']} / {row['port_a']}",
             row["end_b"],
@@ -924,7 +925,7 @@ def api_report_fiber_attenuation_csv():
             _cell(row["margin_a_db"]), _cell(row["margin_b_db"]),
             _cell(row["trend_rx_a_db_per_week"]), _cell(row["trend_rx_b_db_per_week"]),
             row["status"],
-        ])
+        ]))
     return Response("\uFEFF" + output.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=laporan-redaman-fiber.csv"},
