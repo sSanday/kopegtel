@@ -18,6 +18,9 @@ def _establish_session(user, remember=False):
     session["user_id"] = user["id"]
     session["username"] = user["username"]
     session["role"] = user["role"]
+    # M-4: guard membandingkan nilai ini dengan users.session_epoch. Cookie
+    # lama otomatis tidak berlaku setelah password diganti/direset.
+    session["session_epoch"] = int(user["session_epoch"] or 0)
     session["last_activity_at"] = time.time()
     session[auth.SESSION_CSRF_KEY] = auth.new_csrf_token()
     session.permanent = remember
@@ -101,6 +104,7 @@ def api_login():
         # Password benar tetapi MFA aktif: sesi belum diterbitkan.
         session.clear()
         session["mfa_pending_user"] = user["id"]
+        session["mfa_pending_epoch"] = int(user["session_epoch"] or 0)
         session["mfa_pending_at"] = time.time()
         session["mfa_pending_remember"] = bool(remember)
         session[auth.SESSION_CSRF_KEY] = auth.new_csrf_token()
@@ -175,6 +179,11 @@ def api_change_own_password():
         return jsonify({"error": problem}), 400
 
     db.update_user(user["id"], password_hash=generate_password_hash(new_password), must_change_password=0)
+    # Sesi lain gugur karena epoch naik; sesi yang sedang dipakai ikut nilai
+    # epoch baru agar pengguna tidak terlempar ke halaman login.
+    refreshed = db.find_user_by_id(user["id"])
+    if refreshed is not None:
+        session["session_epoch"] = int(refreshed["session_epoch"] or 0)
     session["must_change_password"] = "0"
     audit("auth.password_changed", "user", "Kata sandi diganti")
     return jsonify({"ok": True})

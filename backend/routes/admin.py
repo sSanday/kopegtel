@@ -8,7 +8,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, Response, g, jsonify, request
+from flask import Blueprint, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 import auth
@@ -402,6 +402,12 @@ def api_update_user(user_id):
 
     if updates:
         db.update_user(user_id, **updates)
+        if "password_hash" in updates and user_id == g.user["id"]:
+            # Admin mereset password sendiri: sesi ini tetap dipakai, tetapi
+            # semua sesi lain miliknya ikut gugur karena epoch berubah.
+            refreshed = db.find_user_by_id(user_id)
+            if refreshed is not None:
+                session["session_epoch"] = int(refreshed["session_epoch"] or 0)
     if contacts:
         db.update_user_contacts(user_id, **contacts)
     summary = []

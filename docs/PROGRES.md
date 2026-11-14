@@ -168,3 +168,6 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
 - M-3: login dibatasi per IP (bukan hanya akun+IP), audit gagal login dibatasi
   dan dipotong, body request dibatasi 1 MiB (login/MFA 8 KiB); 234 tes lolos;
   produksi hidup (healthz 200).
+- M-4: sesi dicabut lewat epoch saat password diganti/direset (termasuk cookie
+  "remember" dan login MFA yang tertunda); 241 tes lolos; produksi hidup
+  (healthz 200).

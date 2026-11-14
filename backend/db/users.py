@@ -37,6 +37,10 @@ def update_user(user_id, *, role=None, password_hash=None, must_change_password=
     if password_hash is not None:
         assignments.append("password_hash=?")
         values.append(password_hash)
+        # M-4: setiap perubahan password (ganti sendiri, reset admin, atau
+        # manage.py) menaikkan epoch sesi sehingga semua cookie lama gugur.
+        # Ditempatkan di lapisan DB agar tidak bisa terlewat oleh pemanggil baru.
+        assignments.append("session_epoch = COALESCE(session_epoch, 0) + 1")
     if must_change_password is not None:
         assignments.append("must_change_password=?")
         values.append(int(must_change_password))

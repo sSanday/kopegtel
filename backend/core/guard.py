@@ -22,12 +22,27 @@ def audit(action, obj, summary=""):
     auth.log_audit(user, action, obj, summary, ip=client_ip())
 
 
+def _session_epoch(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
 def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
     user = db.find_user_by_id(uid)
     if user is None:
+        session.clear()
+        return None
+    # M-4: cookie hanya boleh dipakai selama epoch sesinya sama dengan DB.
+    # Ganti/reset password menaikkan epoch sehingga sesi yang dicuri gugur,
+    # termasuk cookie "remember" yang masih berlaku hingga 14 hari.
+    if _session_epoch(session.get("session_epoch")) != _session_epoch(
+        user["session_epoch"] or 0
+    ):
         session.clear()
         return None
     return user
@@ -81,8 +96,16 @@ def guard_api():
     if request.path in _PUBLIC_API:
         return None
 
+    had_session = bool(session.get("user_id"))
     user = current_user()
     if user is None:
+        if had_session:
+            return jsonify(
+                {
+                    "error": "Sesi tidak lagi valid karena kredensial berubah. Silakan login ulang.",
+                    "code": "session_revoked",
+                }
+            ), 401
         return jsonify({"error": "Belum login.", "code": "unauthorized"}), 401
 
     now = time.time()

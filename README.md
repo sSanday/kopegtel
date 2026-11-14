@@ -15,8 +15,9 @@ Modul MikroTik (M1–M6) — baca-dulu, tulis-hanya-bila-diaktifkan secara sadar
 - **Pemantauan berkala**: APScheduler dalam proses yang sama (`backend/poller.py`).
 - **Autentikasi**: sesi cookie HttpOnly + SameSite=Lax + token CSRF untuk semua
   metode tulis. Batas percobaan login (5 gagal / 10 menit per akun+IP dan
-  50 gagal / 10 menit per IP), serta batas ukuran body request (default 1 MiB;
-  login/MFA 8 KiB).
+  50 gagal / 10 menit per IP), batas ukuran body request (default 1 MiB;
+  login/MFA 8 KiB), dan sesi lama otomatis dicabut setelah password
+  diganti/direset.
 - **Peran**: admin (semua), operator (aksi termasuk tulis MikroTik bila
   diaktifkan), viewer (hanya baca; detail pelanggan disamarkan).
 - **Produksi**: `backend/serve.py` memakai waitress (default 8 thread),

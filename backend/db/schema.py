@@ -95,7 +95,8 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE COLLATE NOCASE,
                 password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                session_epoch INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS devices (
@@ -979,6 +980,9 @@ def init_db():
             ("role", "TEXT NOT NULL DEFAULT 'admin'"),
             ("must_change_password", "INTEGER NOT NULL DEFAULT 0"),
             ("updated_at", "TEXT"),
+            # M-4: versi sesi. Dinaikkan setiap password berubah agar cookie
+            # lama (termasuk yang "remember" hingga 14 hari) langsung gugur.
+            ("session_epoch", "INTEGER NOT NULL DEFAULT 0"),
         ]
         for name, ddl in user_adds:
             if name not in user_columns:

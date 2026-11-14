@@ -284,3 +284,22 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   cap global, username/field audit dipotong sebelum masuk DB, catatan login
   lama dibersihkan, serta body login dan API besar ditolak `413`. Suite:
   **234 passed**.
+
+## M-4 - Sesi tidak dicabut setelah ganti/reset password (selesai)
+
+- `users.session_epoch` (migrasi otomatis, default 0) disalin ke cookie saat
+  login. `core.guard.current_user` menolak cookie yang epoch-nya berbeda,
+  menghapus sesi, dan mengembalikan `401 session_revoked`.
+- `db.update_user` menaikkan epoch secara otomatis setiap `password_hash`
+  berubah, sehingga ganti password sendiri, reset oleh admin, dan
+  `manage.py reset-password` semuanya mencabut sesi lama. Perubahan peran
+  atau kontak tidak mencabut sesi.
+- Sesi yang dipakai mengganti password (sendiri, atau admin mereset dirinya)
+  diperbarui ke epoch baru dan tetap hidup; sesi lain milik akun itu gugur,
+  termasuk cookie "remember" yang berlaku hingga 14 hari.
+- Login MFA yang belum selesai juga dibatalkan bila password direset di
+  tengah langkah kedua.
+- Cookie lama tanpa `session_epoch` (dari versi sebelum perbaikan) ditolak
+  sekali dan pengguna diminta login ulang.
+- Tes regresi `tests/test_session_revocation.py` (7 tes). Suite:
+  **241 passed**.

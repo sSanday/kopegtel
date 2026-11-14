@@ -23,6 +23,18 @@ def _pending_user():
         session.clear()
         return None
     user = db.find_user_by_id(int(user_id))
+    if user is None:
+        session.clear()
+        return None
+    # M-4: reset password di tengah langkah MFA membatalkan login yang belum
+    # selesai; epoch di sesi sementara harus sama dengan epoch akun.
+    try:
+        pending_epoch = int(session.get("mfa_pending_epoch"))
+    except (TypeError, ValueError):
+        pending_epoch = -1
+    if pending_epoch != int(user["session_epoch"] or 0):
+        session.clear()
+        return None
     return user
 
 
