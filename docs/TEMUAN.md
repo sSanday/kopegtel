@@ -245,10 +245,11 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   menjadi izin tersimpan saat admin menyimpan kanal yang targetnya benar-benar
   privat dan admin tidak menyatakan penolakan eksplisit. Operator tidak bisa
   memakainya untuk membuat target internal.
-- Tes regresi `tests/test_channel_ssrf.py` (16 tes): izin operator ditolak,
+- Tes regresi `tests/test_channel_ssrf.py` (18 tes): izin operator ditolak,
   kanal lama permisif tidak bisa diarahkan ulang, `/test` operator 403, admin
   dapat memilih target privat (termasuk `localhost`), pengiriman privat
-  ditolak, DNS rebinding memakai IP pertama, campuran DNS publik/privat
+  ditolak, pemindaian `127.0.0.1:5500` lewat webhook/SMTP ditolak, DNS
+  rebinding pada `/test` tidak melakukan koneksi, campuran DNS publik/privat
   ditolak, `fec0::/10` diblokir, semua alamat SMTP hasil validasi dicoba, dan
   galat SMTP disanitasi. Pesan penolakan tidak memuat IP hasil resolusi
-  internal. Suite: **224 passed**.
+  internal. Suite: **226 passed**.

@@ -827,6 +827,158 @@ def test_env_private_escape_hatch_is_admin_only(client, fresh_db, monkeypatch):
     assert calls == []
 
 
+def test_operator_cannot_scan_internal_port_5500(client, fresh_db, monkeypatch):
+    _no_connect(monkeypatch)
+    csrf = _as_operator(client, fresh_db)
+
+    webhook_cases = (
+        (
+            {
+                "url": "http://127.0.0.1:5500/scan",
+                "preset": "generic",
+                "secret": "x",
+                "allow_private": True,
+                "allow_http": True,
+            },
+            "Hanya admin",
+        ),
+        (
+            {
+                "url": "https://127.0.0.1:5500/scan",
+                "preset": "generic",
+                "secret": "x",
+            },
+            "URL ditolak",
+        ),
+        (
+            {
+                "url": "https://[::1]:5500/scan",
+                "preset": "generic",
+                "secret": "x",
+            },
+            "URL ditolak",
+        ),
+    )
+    for index, (config, expected) in enumerate(webhook_cases):
+        response = client.post(
+            "/api/channels",
+            json={
+                "name": f"webhook-port-5500-{index}",
+                "type": "webhook",
+                "config": config,
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert response.status_code == 400, (index, response.get_json())
+        assert expected in response.get_json()["error"]
+        assert "127.0.0.1" not in response.get_data(as_text=True)
+        assert "::1" not in response.get_data(as_text=True)
+
+    smtp_base = {
+        "port": 5500,
+        "use_tls": False,
+        "from_addr": "nms@contoh.test",
+        "to_addr": "noc@contoh.test",
+    }
+    smtp_cases = (
+        ({"host": "127.0.0.1"}, "Host SMTP ditolak"),
+        ({"host": "127.0.0.1", "allow_private": True}, "Hanya admin"),
+        ({"host": "10.20.30.40"}, "Host SMTP ditolak"),
+        ({"host": "169.254.169.254"}, "Host SMTP ditolak"),
+        ({"host": "::1"}, "Host SMTP ditolak"),
+    )
+    for index, (config, expected) in enumerate(smtp_cases):
+        response = client.post(
+            "/api/channels",
+            json={
+                "name": f"smtp-port-5500-{index}",
+                "type": "smtp",
+                "config": {**smtp_base, **config},
+            },
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert response.status_code == 400, (index, response.get_json())
+        assert expected in response.get_json()["error"]
+        body = response.get_data(as_text=True)
+        for leaked in ("127.0.0.1", "10.20.30.40", "169.254.169.254", "::1"):
+            assert leaked not in body
+
+    assert fresh_db.list_channels() == []
+
+
+def test_operator_test_endpoint_blocks_dns_rebinding_to_internal(
+    client, fresh_db, monkeypatch
+):
+    # Dua penyimpanan awal (webhook & SMTP) melihat DNS publik; saat /test,
+    # DNS berubah ke loopback. Tidak boleh ada koneksi dan detail tidak boleh
+    # membocorkan alamat internal.
+    dns_calls = _fake_dns(
+        monkeypatch,
+        lambda index: PUBLIC_IP if index in (1, 2) else "127.0.0.1",
+    )
+    connects = _record_failed_connect(monkeypatch)
+    monkeypatch.setattr(alerts, "RETRY_DELAY_SECONDS", 0)
+    csrf = _as_operator(client, fresh_db)
+
+    webhook_response = client.post(
+        "/api/channels",
+        json={
+            "name": "webhook-rebind",
+            "type": "webhook",
+            "config": {
+                "url": "https://rebind-web.test/hook",
+                "preset": "generic",
+                "secret": "x",
+            },
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert webhook_response.status_code == 201, webhook_response.get_json()
+    webhook_id = webhook_response.get_json()["id"]
+
+    smtp_response = client.post(
+        "/api/channels",
+        json={
+            "name": "smtp-rebind",
+            "type": "smtp",
+            "config": {
+                "host": "smtp.rebind.test",
+                "port": 587,
+                "use_tls": False,
+                "from_addr": "nms@contoh.test",
+                "to_addr": "noc@contoh.test",
+            },
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert smtp_response.status_code == 201, smtp_response.get_json()
+    smtp_id = smtp_response.get_json()["id"]
+
+    webhook_test = client.post(
+        f"/api/channels/{webhook_id}/test",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert webhook_test.status_code == 200, webhook_test.get_json()
+    assert webhook_test.get_json()["ok"] is False
+    assert "Target bukan IP publik" in webhook_test.get_json()["detail"]
+    assert "127.0.0.1" not in webhook_test.get_data(as_text=True)
+
+    smtp_test = client.post(
+        f"/api/channels/{smtp_id}/test",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert smtp_test.status_code == 200, smtp_test.get_json()
+    assert smtp_test.get_json()["ok"] is False
+    assert "Target SMTP ditolak" in smtp_test.get_json()["detail"]
+    assert "Target bukan IP publik" in smtp_test.get_json()["detail"]
+    assert "127.0.0.1" not in smtp_test.get_data(as_text=True)
+
+    assert connects == []
+    assert len(dns_calls) >= 4
+    assert dns_calls[0][0] == "rebind-web.test"
+    assert dns_calls[1][0] == "smtp.rebind.test"
+
+
 def test_netguard_blocks_internal_ranges_and_bad_hosts():
     for address in (
         "127.0.0.1",

@@ -163,4 +163,5 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
 - M-1: job retensi membaca pengaturan UI (termasuk retensi pemeriksaan baru);
   pratinjau memakai resolver yang sama; 208 tes lolos; produksi hidup (healthz 200).
 - M-2: SSRF webhook/SMTP ditutup (izin privat/http hanya admin, DNS dipin sekali,
-  galat SMTP disanitasi); 224 tes lolos; produksi hidup (healthz 200).
+  galat SMTP disanitasi, port internal 5500 & DNS rebinding diuji); 226 tes
+  lolos; produksi hidup (healthz 200).
