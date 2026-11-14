@@ -18,6 +18,10 @@
     const role = window.__nmsMe && window.__nmsMe.role;
     return role === "admin" || role === "operator";
   };
+  const isAdmin = () => {
+    const role = window.__nmsMe && window.__nmsMe.role;
+    return role === "admin";
+  };
 
   function currentView() {
     const raw = window.location.hash.replace(/^#/, "");
@@ -352,13 +356,23 @@
     return cfg.to_addr || "-";
   }
 
+  function channelRequiresAdmin(channel) {
+    const cfg = channel.config || {};
+    if (channel.type === "webhook") return !!cfg.allow_private || !!cfg.allow_http;
+    if (channel.type === "smtp") return !!cfg.allow_private;
+    return false;
+  }
+
+  function canTestChannel(channel) {
+    return canEdit() && (isAdmin() || !channelRequiresAdmin(channel));
+  }
+
   function renderChannels() {
     channelCount.textContent = `${channelsState.length} kanal terdaftar`;
     if (channelsState.length === 0) {
       channelRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada kanal. Tambahkan kanal Telegram, SMTP, atau Webhook pertama.</td></tr>';
       return;
     }
-    const editable = canEdit();
     channelRows.innerHTML = channelsState
       .map((channel) => (
         `<tr>` +
@@ -366,7 +380,7 @@
         `<td>${escapeHtml(channel.type === "telegram" ? "Telegram" : channel.type === "webhook" ? "Webhook" : "Email (SMTP)")}</td>` +
         `<td class="mono">${escapeHtml(channelTarget(channel))}</td>` +
         `<td>${channel.enabled ? '<span class="status status--ok">Aktif</span>' : '<span class="status status--idle">Nonaktif</span>'}</td>` +
-        `<td>${editable ? `<button class="ack-toggle" type="button" data-action="test" data-id="${channel.id}">Uji kirim</button>` : "—"}</td>` +
+        `<td>${canTestChannel(channel) ? `<button class="ack-toggle" type="button" data-action="test" data-id="${channel.id}">Uji kirim</button>` : "-"}</td>` +
         `<td>${actionButtons("channel", channel.id)}</td>` +
         `</tr>`
       ))
@@ -437,8 +451,18 @@
     chWebhookHeaders.placeholder = editing && cfg.has_headers
       ? "Header tersimpan — kosongkan untuk mempertahankan"
       : '{"Authorization": "Bearer ..."}';
-    document.getElementById("ch-webhook-http").checked = !!cfg.allow_http;
-    document.getElementById("ch-webhook-private").checked = !!cfg.allow_private;
+    const chSmtpPrivate = document.getElementById("ch-smtp-private");
+    chSmtpPrivate.checked = !!cfg.allow_private;
+    chSmtpPrivate.disabled = !isAdmin();
+    chSmtpPrivate.title = isAdmin() ? "" : "Hanya admin yang dapat mengubah izin target privat.";
+    const chWebhookHttp = document.getElementById("ch-webhook-http");
+    chWebhookHttp.checked = !!cfg.allow_http;
+    chWebhookHttp.disabled = !isAdmin();
+    chWebhookHttp.title = isAdmin() ? "" : "Hanya admin yang dapat mengizinkan http.";
+    const chWebhookPrivate = document.getElementById("ch-webhook-private");
+    chWebhookPrivate.checked = !!cfg.allow_private;
+    chWebhookPrivate.disabled = !isAdmin();
+    chWebhookPrivate.title = isAdmin() ? "" : "Hanya admin yang dapat mengizinkan target privat.";
     chNote.hidden = true;
     chTestResult.hidden = true;
     syncChannelTypeFields();
@@ -479,9 +503,11 @@
           url: document.getElementById("ch-webhook-url").value.trim(),
           preset: document.getElementById("ch-webhook-preset").value,
           secret: document.getElementById("ch-webhook-secret").value.trim(),
-          allow_http: document.getElementById("ch-webhook-http").checked,
-          allow_private: document.getElementById("ch-webhook-private").checked,
         };
+        if (isAdmin()) {
+          config.allow_http = document.getElementById("ch-webhook-http").checked;
+          config.allow_private = document.getElementById("ch-webhook-private").checked;
+        }
         const headersRaw = document.getElementById("ch-webhook-headers").value.trim();
         if (headersRaw) {
           try {
@@ -505,6 +531,9 @@
           from_addr: document.getElementById("ch-smtp-from").value.trim(),
           to_addr: document.getElementById("ch-smtp-to").value.trim(),
         };
+        if (isAdmin()) {
+          config.allow_private = document.getElementById("ch-smtp-private").checked;
+        }
       }
       if (editingChannelId) {
         await window.apiFetch(`/api/channels/${editingChannelId}`, { method: "PUT", body: { ...common, config } });

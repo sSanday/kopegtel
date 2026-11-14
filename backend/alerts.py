@@ -8,6 +8,7 @@
 import json
 import logging
 import smtplib
+import socket
 import ssl
 import time
 from collections import deque
@@ -17,6 +18,7 @@ from urllib import request as urlrequest
 from urllib import error as urlerror
 
 import db
+import netguard
 
 log = logging.getLogger("nms.alerts")
 
@@ -86,9 +88,66 @@ def send_telegram(config, text):
     return True, "Terkirim ke Telegram."
 
 
+class _PinnedSMTP(smtplib.SMTP):
+    """SMTP yang terhubung ke IP hasil validasi, tetapi memakai nama asli
+    untuk EHLO/SNI sehingga verifikasi sertifikat STARTTLS tetap benar.
+
+    Semua IP hasil resolusi dicoba berurutan; bila satu alamat tidak dapat
+    dihubungi, alamat publik berikutnya dipakai tanpa resolve DNS ulang.
+    """
+
+    def __init__(self, host, port, addresses, **kwargs):
+        self._pinned_addresses = list(addresses)
+        self._pinned_address = None
+        super().__init__(host, port, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        last_error = None
+        for address in self._pinned_addresses:
+            try:
+                sock = socket.create_connection(
+                    (address, port), timeout, self.source_address
+                )
+            except OSError as exc:
+                last_error = exc
+                continue
+            self._pinned_address = address
+            return sock
+        raise last_error or OSError("Tidak ada alamat SMTP yang dapat dihubungi.")
+
+
+def _smtp_failure_detail(exc):
+    """Pesan galat SMTP yang aman ditampilkan ke API (tanpa banner server)."""
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return "Autentikasi SMTP ditolak."
+    if isinstance(exc, smtplib.SMTPRecipientsRefused):
+        return "Server SMTP menolak alamat tujuan."
+    if isinstance(exc, smtplib.SMTPSenderRefused):
+        return "Server SMTP menolak alamat pengirim."
+    if isinstance(exc, smtplib.SMTPDataError):
+        return "Server SMTP menolak isi pesan."
+    if isinstance(exc, smtplib.SMTPHeloError):
+        return "Sapaan SMTP ditolak server."
+    if isinstance(exc, smtplib.SMTPNotSupportedError):
+        return "Server SMTP tidak mendukung fitur yang diminta."
+    if isinstance(exc, smtplib.SMTPServerDisconnected):
+        return "Server SMTP memutus koneksi."
+    if isinstance(exc, smtplib.SMTPConnectError):
+        return "Koneksi SMTP ditolak server."
+    if isinstance(exc, smtplib.SMTPResponseException):
+        return "Server SMTP menolak permintaan."
+    if isinstance(exc, TimeoutError):
+        return "Koneksi SMTP timeout."
+    if isinstance(exc, ssl.SSLError):
+        return "Negosiasi TLS SMTP gagal."
+    if isinstance(exc, OSError):
+        return "Koneksi SMTP gagal."
+    return "Gagal mengirim lewat SMTP."
+
+
 def send_smtp(config, subject, body):
     cfg = config or {}
-    host = cfg.get("host") or ""
+    host = str(cfg.get("host") or "").strip()
     try:
         port = int(cfg.get("port") or 587)
     except (TypeError, ValueError):
@@ -98,17 +157,26 @@ def send_smtp(config, subject, body):
     if not host or not from_addr or not to_addr:
         return False, "host, from_addr, atau to_addr SMTP belum diisi."
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = from_addr
-    message["To"] = to_addr
-    message.set_content(body)
+    try:
+        host = netguard.normalize_host(host)
+        addresses = netguard.resolve_addresses(
+            host,
+            port,
+            allow_private=netguard.as_bool(cfg.get("allow_private")),
+        )
+    except ValueError as exc:
+        return False, f"Target SMTP ditolak: {exc}"
 
-    use_tls = bool(cfg.get("use_tls", True))
+    use_tls = netguard.as_bool(cfg.get("use_tls", True))
     username = cfg.get("username") or ""
     password = cfg.get("password") or ""
     try:
-        with smtplib.SMTP(host, port, timeout=TIMEOUT_SECONDS) as server:
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = from_addr
+        message["To"] = to_addr
+        message.set_content(body)
+        with _PinnedSMTP(host, port, addresses, timeout=TIMEOUT_SECONDS) as server:
             server.ehlo()
             if use_tls:
                 context = ssl.create_default_context()
@@ -117,8 +185,16 @@ def send_smtp(config, subject, body):
             if username:
                 server.login(username, password)
             server.send_message(message)
-    except Exception as exc:
-        return False, f"Gagal mengirim lewat SMTP: {exc}"
+    except ValueError:
+        return False, "Alamat email tidak valid."
+    except Exception as exc:  # noqa: BLE001 - detail mentah tidak dikirim ke klien
+        log.warning(
+            "SMTP gagal (%s) host=%s port=%s",
+            type(exc).__name__,
+            host,
+            port,
+        )
+        return False, _smtp_failure_detail(exc)
     return True, f"Terkirim ke {to_addr}."
 
 

@@ -218,3 +218,37 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   nilai tidak valid, kecocokan pratinjau dengan hasil purge, override eksplisit
   untuk pemanggil lama, dan job scheduler tanpa kwargs hardcoded. Suite:
   **208 passed**.
+
+## M-2 - SSRF lewat kanal webhook dan SMTP (selesai)
+
+- `backend/netguard.py` menjadi validator tunggal target keluar: normalisasi
+  host (menolak kredensial, path, port, spasi), resolusi DNS, dan blokir
+  loopback/privat/link-local/CGNAT/multicast/reserved untuk IPv4 dan IPv6
+  (termasuk IPv4-mapped dan NAT64). Bila satu nama menghasilkan campuran IP
+  publik dan privat, seluruh target ditolak.
+- Webhook: host di-resolve sekali per pengiriman, lalu setiap percobaan koneksi
+  memakai IP hasil resolusi tersebut (`_PinnedHTTP(S)Connection`). SNI dan
+  verifikasi sertifikat tetap memakai hostname asli. Redirect tidak diikuti dan
+  proxy dimatikan, sehingga DNS rebinding maupun redirect ke jaringan internal
+  tidak bisa dipakai.
+- SMTP: `_PinnedSMTP` terhubung ke IP hasil validasi, tetapi EHLO/STARTTLS tetap
+  memakai hostname asli agar verifikasi sertifikat benar. Port dibatasi 1..65535.
+- `allow_private`/`allow_http` webhook dan `allow_private` SMTP hanya dapat
+  diaktifkan admin. Operator tidak boleh mengaktifkan maupun mewarisinya dari
+  kanal lama saat mengedit; target baru operator selalu divalidasi ketat.
+- `POST /api/channels/<id>/test` mengembalikan 403 untuk operator bila kanal
+  memakai target privat/http. Penolakan dicatat ke audit log.
+- Galat SMTP dipetakan ke pesan tetap (autentikasi, koneksi, TLS, dan
+  sebagainya). Banner/detail mentah hanya masuk log server, tidak pernah ke
+  respons API.
+- Escape hatch `ALLOW_PRIVATE_WEBHOOKS`/`ALLOW_PRIVATE_SMTP` hanya dipromosikan
+  menjadi izin tersimpan saat admin menyimpan kanal yang targetnya benar-benar
+  privat dan admin tidak menyatakan penolakan eksplisit. Operator tidak bisa
+  memakainya untuk membuat target internal.
+- Tes regresi `tests/test_channel_ssrf.py` (16 tes): izin operator ditolak,
+  kanal lama permisif tidak bisa diarahkan ulang, `/test` operator 403, admin
+  dapat memilih target privat (termasuk `localhost`), pengiriman privat
+  ditolak, DNS rebinding memakai IP pertama, campuran DNS publik/privat
+  ditolak, `fec0::/10` diblokir, semua alamat SMTP hasil validasi dicoba, dan
+  galat SMTP disanitasi. Pesan penolakan tidak memuat IP hasil resolusi
+  internal. Suite: **224 passed**.

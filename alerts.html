@@ -358,7 +358,9 @@
                   <span>Tujuan (pisahkan dengan koma) *</span>
                   <input id="ch-smtp-to" type="text" autocomplete="off" placeholder="noc@kopegtel.co.id, oncall@kopegtel.co.id" />
                 </label>
+                <label class="check admin-field--full"><input id="ch-smtp-private" type="checkbox" /> Izinkan target SMTP privat/loopback (khusus admin)</label>
               </div>
+              <p class="form-note admin-hint">Host SMTP harus alamat publik. Target privat/loopback hanya dapat diaktifkan admin dan tetap divalidasi setiap kali dikirim.</p>
             </div>
 
             <div class="form-sub" id="ch-webhook-fields" hidden>
@@ -384,9 +386,10 @@
                   <textarea id="ch-webhook-headers" rows="2" autocomplete="off" placeholder='{"Authorization": "Bearer ..."}'></textarea>
                   <span class="admin-hint">Header sensitif tersimpan terenkripsi. <code>Host</code>, <code>X-NMS-*</code>, dan <code>Content-Type</code> diabaikan.</span>
                 </label>
-                <label class="check admin-field--full"><input id="ch-webhook-http" type="checkbox" /> Izinkan http (tidak disarankan — tanpa TLS)</label>
-                <label class="check admin-field--full"><input id="ch-webhook-private" type="checkbox" /> Izinkan target IP privat/loopback (default ditolak)</label>
+                <label class="check admin-field--full"><input id="ch-webhook-http" type="checkbox" /> Izinkan http (tidak disarankan - tanpa TLS, khusus admin)</label>
+                <label class="check admin-field--full"><input id="ch-webhook-private" type="checkbox" /> Izinkan target IP privat/loopback (khusus admin)</label>
               </div>
+              <p class="form-note admin-hint">Target privat/http hanya dapat diaktifkan admin. Operator tetap dapat mengelola kanal publik, dan setiap target divalidasi ulang saat dikirim.</p>
               <p class="form-note admin-hint">Tanda tangan: <code>X-NMS-Timestamp</code> dan <code>X-NMS-Signature</code> (HMAC-SHA256 dari secret + timestamp + body). Penerima memverifikasi dan menolak replay.</p>
             </div>
 
@@ -410,6 +413,6 @@
   <script src="assets/js/nav.js?v=9" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/device-form.js?v=1" defer></script>
-  <script src="assets/js/alerts.js?v=4" defer></script>
+  <script src="assets/js/alerts.js?v=5" defer></script>
 </body>
 </html>

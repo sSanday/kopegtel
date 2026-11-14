@@ -31,6 +31,7 @@ def _public_channel_config(channel_type, config):
     elif channel_type == "smtp":
         public["port"] = config.get("port", 587)
         public["use_tls"] = bool(config.get("use_tls", True))
+        public["allow_private"] = bool(config.get("allow_private"))
         public["from_addr"] = config.get("from_addr") or ""
         public["to_addr"] = config.get("to_addr") or ""
         public["has_host"] = bool(config.get("host"))

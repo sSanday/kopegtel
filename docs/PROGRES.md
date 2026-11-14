@@ -1,6 +1,6 @@
 # PROGRES.md — E1–E4
 
-Diperbarui: 2026-11-11
+Diperbarui: 2026-11-15
 
 ## Ringkasan tahap
 
@@ -31,7 +31,8 @@ Diperbarui: 2026-11-11
 - Header kustom (disimpan dalam config terenkripsi; Host/X-NMS-*/Content-Type diabaikan).
 - Tanda tangan `X-NMS-Timestamp` + `X-NMS-Signature` = `sha256=<hex(HMAC-SHA256(secret, "<ts>.<body>"))>`.
 - Anti-SSRF: resolusi DNS ditolak untuk loopback/link-local/privat/reserved kecuali
-  `ALLOW_PRIVATE_WEBHOOKS=1` atau `allow_private` pada kanal; proxy dinonaktifkan;
+  `ALLOW_PRIVATE_WEBHOOKS=1` atau `allow_private` pada kanal (khusus admin; env
+  dipromosikan menjadi izin kanal saat disimpan); proxy dinonaktifkan;
   redirect tidak diikuti; timeout 5 dtk; respons dibatasi (default 1 KB, maks 4 KB).
 - Retry 3x dengan backoff 1s/2s; hasil (status/durasi/galat tanpa secret/header) ke `action_log`.
 - Preset `generic`, `slack`, `discord`; body lewat `json.dumps`.
@@ -161,3 +162,5 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   `VACUUM`/checkpoint; 203 tes lolos; produksi hidup (healthz 200).
 - M-1: job retensi membaca pengaturan UI (termasuk retensi pemeriksaan baru);
   pratinjau memakai resolver yang sama; 208 tes lolos; produksi hidup (healthz 200).
+- M-2: SSRF webhook/SMTP ditutup (izin privat/http hanya admin, DNS dipin sekali,
+  galat SMTP disanitasi); 224 tes lolos; produksi hidup (healthz 200).

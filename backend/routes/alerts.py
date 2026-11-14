@@ -1,10 +1,10 @@
 """Blueprint Alerting: kanal, template, aturan aksi, action_log."""
-from urllib.parse import urlsplit
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 import alerts
 import db
+import netguard
 from core.guard import audit, roles
 from core.validation import _parse_optional_id
 
@@ -13,7 +13,52 @@ bp = Blueprint("alerts", __name__)
 _CHANNEL_TYPES = {"telegram", "smtp", "webhook"}
 
 
-def _webhook_config_from_raw(raw, existing_id=None):
+def _user_role(user):
+    """Ambil peran dari sqlite3.Row maupun dict tanpa melempar AttributeError."""
+    if not user:
+        return None
+    try:
+        return user["role"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _is_admin():
+    return _user_role(getattr(g, "user", None)) == "admin"
+
+
+def _channel_requires_admin(channel_type, config):
+    """True bila kanal memakai kebijakan target yang hanya boleh dipakai admin."""
+    config = config or {}
+    if channel_type == "webhook":
+        return bool(config.get("allow_private")) or bool(config.get("allow_http"))
+    if channel_type == "smtp":
+        return bool(config.get("allow_private"))
+    return False
+
+
+def _webhook_target_is_private(url):
+    import webhook
+
+    try:
+        _parts, _scheme, host, port = webhook._parse_url(url)
+        return netguard.any_private(
+            netguard.resolve_addresses(host, port, allow_private=True)
+        )
+    except ValueError:
+        return False
+
+
+def _smtp_target_is_private(host, port):
+    try:
+        return netguard.any_private(
+            netguard.resolve_addresses(host, port, allow_private=True)
+        )
+    except ValueError:
+        return False
+
+
+def _webhook_config_from_raw(raw, existing_id=None, is_admin=False):
     """Validasi konfigurasi kanal webhook. Return (config, error)."""
     import webhook
 
@@ -29,8 +74,35 @@ def _webhook_config_from_raw(raw, existing_id=None):
     preset = str(raw.get("preset", old.get("preset", "generic")) or "generic").strip().lower()
     if preset not in ("slack", "discord", "generic"):
         return None, "Preset webhook harus slack, discord, atau generic."
-    allow_http = bool(raw.get("allow_http", old.get("allow_http", False)))
-    allow_private = bool(raw.get("allow_private", old.get("allow_private", False)))
+    requested_http = raw.get("allow_http") if "allow_http" in raw else None
+    requested_private = raw.get("allow_private") if "allow_private" in raw else None
+    if not is_admin and (
+        (requested_http is not None and netguard.as_bool(requested_http))
+        or (requested_private is not None and netguard.as_bool(requested_private))
+    ):
+        return None, "Hanya admin yang dapat mengizinkan target privat atau http."
+    allow_http = (
+        netguard.as_bool(requested_http)
+        if requested_http is not None
+        else netguard.as_bool(old.get("allow_http", False))
+    )
+    allow_private = (
+        netguard.as_bool(requested_private)
+        if requested_private is not None
+        else netguard.as_bool(old.get("allow_private", False))
+    )
+    # Escape hatch deploy hanya dipromosikan untuk admin, hanya bila admin
+    # tidak menyatakan sebaliknya, dan hanya untuk target yang benar-benar
+    # privat. Izin tetap disimpan eksplisit di kanal agar tidak bisa dipakai
+    # operator.
+    if (
+        is_admin
+        and requested_private is None
+        and not allow_private
+        and webhook.env_allows_private()
+        and _webhook_target_is_private(url)
+    ):
+        allow_private = True
     secret = str(raw.get("secret") or "").strip()
     if not secret:
         secret = str(old.get("secret") or "").strip()  # kosong = pertahankan secret tersimpan
@@ -47,19 +119,24 @@ def _webhook_config_from_raw(raw, existing_id=None):
     except (TypeError, ValueError):
         return None, "max_response_bytes harus berupa angka."
     max_response = min(webhook.MAX_RESPONSE_BYTES, max(256, max_response))
-    allow_http_flag = allow_http or (urlsplit(url).scheme or "").lower() == "http"
-    if allow_http_flag and not allow_http:
-        return None, "http hanya boleh bila izin eksplisit diaktifkan."
-    # URL baru wajib divalidasi; URL lama tidak perlu resolve DNS ulang kecuali
-    # kebijakan allow_http/allow_private berubah.
+    # Operator tidak pernah boleh menyimpan kebijakan target istimewa, termasuk
+    # mewarisinya dari kanal lama. Validasi target baru dilakukan dengan
+    # kebijakan ketat agar kanal permisif lama tidak bisa diarahkan ke jaringan
+    # internal (termasuk lewat DNS rebinding).
     new_url = str(raw.get("url") or "").strip()
-    policy_changed = (
-        allow_http != bool(old.get("allow_http", False))
-        or allow_private != bool(old.get("allow_private", False))
-    )
-    if new_url or not existing_id or policy_changed:
+    old_url = str(old.get("url") or "").strip()
+    url_changed = bool(new_url) and new_url != old_url
+    if not is_admin and (not existing_id or url_changed):
+        allow_http = False
+        allow_private = False
+    if not existing_id or url_changed:
         try:
-            webhook.validate_webhook_target(url, allow_private=allow_private, allow_http=allow_http)
+            webhook.validate_webhook_target(
+                url,
+                allow_private=allow_private if is_admin else False,
+                allow_http=allow_http if is_admin else False,
+                allow_env=False,
+            )
         except ValueError as exc:
             return None, f"URL ditolak: {exc}"
     config = {
@@ -74,14 +151,14 @@ def _webhook_config_from_raw(raw, existing_id=None):
     return config, None
 
 
-def _channel_config_from_payload(data, existing_id=None):
+def _channel_config_from_payload(data, existing_id=None, is_admin=False):
     channel_type = str(data.get("type") or "").strip().lower()
     if channel_type not in _CHANNEL_TYPES:
         return None, None, "Tipe kanal harus telegram atau smtp."
     name = str(data.get("name") or "").strip()
     if not name or len(name) > 80:
         return None, None, "Nama kanal wajib diisi (maks 80 karakter)."
-    enabled = bool(data.get("enabled", True))
+    enabled = netguard.as_bool(data.get("enabled", True))
     raw = data.get("config") or {}
     if not isinstance(raw, dict):
         return None, None, "Konfigurasi kanal tidak valid."
@@ -101,7 +178,7 @@ def _channel_config_from_payload(data, existing_id=None):
         if not existing_id and not config["bot_token"]:
             return None, None, "Bot token Telegram wajib diisi."
     elif channel_type == "webhook":
-        config, error = _webhook_config_from_raw(raw, existing_id=existing_id)
+        config, error = _webhook_config_from_raw(raw, existing_id=existing_id, is_admin=is_admin)
         if error:
             return None, None, error
     else:  # smtp
@@ -109,6 +186,16 @@ def _channel_config_from_payload(data, existing_id=None):
             port = int(raw.get("port", old.get("port", 587)) or 587)
         except (TypeError, ValueError):
             return None, None, "Port SMTP harus berupa angka."
+        if not 1 <= port <= 65535:
+            return None, None, "Port SMTP harus antara 1 dan 65535."
+        requested_private = raw.get("allow_private") if "allow_private" in raw else None
+        if not is_admin and requested_private is not None and netguard.as_bool(requested_private):
+            return None, None, "Hanya admin yang dapat mengizinkan target SMTP privat."
+        allow_private = (
+            netguard.as_bool(requested_private)
+            if requested_private is not None
+            else netguard.as_bool(old.get("allow_private", False))
+        )
         host = str(raw.get("host") or "").strip()
         username = str(raw.get("username") or "").strip()
         password = str(raw.get("password") or "").strip()
@@ -118,10 +205,47 @@ def _channel_config_from_payload(data, existing_id=None):
             username = str(old.get("username") or "").strip()
         if not password and existing_id:
             password = str(old.get("password") or "").strip()
+        try:
+            host = netguard.normalize_host(host)
+        except ValueError as exc:
+            return None, None, f"Host SMTP tidak valid: {exc}"
+        # Escape hatch hanya dipromosikan untuk admin, bila admin tidak
+        # menyatakan sebaliknya, dan hanya untuk target yang benar-benar privat.
+        if (
+            is_admin
+            and requested_private is None
+            and not allow_private
+            and netguard.env_allows_private_smtp()
+            and _smtp_target_is_private(host, port)
+        ):
+            allow_private = True
+        try:
+            old_host = netguard.normalize_host(old.get("host") or "") if old.get("host") else ""
+        except ValueError:
+            old_host = ""
+        try:
+            old_port = int(old.get("port") or 587) if existing_id else None
+        except (TypeError, ValueError):
+            old_port = None
+        # Operator tidak mewarisi izin target privat dari kanal lama; izin
+        # tersebut hanya dapat dipertahankan/diubah oleh admin.
+        target_changed = not existing_id or host != old_host or port != old_port
+        if not is_admin and target_changed:
+            allow_private = False
+        if target_changed:
+            try:
+                netguard.resolve_addresses(
+                    host,
+                    port,
+                    allow_private=allow_private if is_admin else False,
+                )
+            except ValueError as exc:
+                return None, None, f"Host SMTP ditolak: {exc}"
         config = {
             "host": host,
             "port": port,
-            "use_tls": bool(raw.get("use_tls", old.get("use_tls", True))),
+            "use_tls": netguard.as_bool(raw.get("use_tls", old.get("use_tls", True))),
+            "allow_private": allow_private,
             "username": username,
             "password": password,
             "from_addr": str(raw.get("from_addr") or "").strip(),
@@ -141,7 +265,9 @@ def api_list_channels():
 @bp.post("/api/channels")
 @roles("admin", "operator")
 def api_create_channel():
-    parsed, channel_type, error = _channel_config_from_payload(request.get_json(silent=True) or {})
+    parsed, channel_type, error = _channel_config_from_payload(
+        request.get_json(silent=True) or {}, is_admin=_is_admin()
+    )
     if error:
         return jsonify({"error": error}), 400
     if db.channel_name_exists(parsed["name"]):
@@ -156,7 +282,9 @@ def api_create_channel():
 def api_update_channel(channel_id):
     if db.get_channel(channel_id) is None:
         return jsonify({"error": "Kanal tidak ditemukan."}), 404
-    parsed, channel_type, error = _channel_config_from_payload(request.get_json(silent=True) or {}, existing_id=channel_id)
+    parsed, channel_type, error = _channel_config_from_payload(
+        request.get_json(silent=True) or {}, existing_id=channel_id, is_admin=_is_admin()
+    )
     if error:
         return jsonify({"error": error}), 400
     if db.channel_name_exists(parsed["name"], exclude_id=channel_id):
@@ -178,8 +306,23 @@ def api_delete_channel(channel_id):
 @bp.post("/api/channels/<int:channel_id>/test")
 @roles("admin", "operator")
 def api_test_channel(channel_id):
-    ok, detail = alerts.send_test(channel_id)
     channel = db.get_channel(channel_id)
+    if channel is None:
+        return jsonify({"error": "Kanal tidak ditemukan."}), 404
+    config = db.channel_config(channel_id) or {}
+    if _channel_requires_admin(channel["type"], config) and not _is_admin():
+        audit(
+            "channel.test",
+            f"channel:{channel_id}",
+            f"Uji kirim kanal {channel['name']} ditolak: target privat/http butuh admin",
+        )
+        return jsonify(
+            {
+                "error": "Uji kirim kanal dengan target privat/http hanya dapat dilakukan admin.",
+                "code": "forbidden",
+            }
+        ), 403
+    ok, detail = alerts.send_test(channel_id)
     name = channel["name"] if channel else str(channel_id)
     audit("channel.test", f"channel:{channel_id}", f"Uji kirim kanal {name}: {'berhasil' if ok else 'gagal'}")
     return jsonify({"ok": ok, "detail": detail})

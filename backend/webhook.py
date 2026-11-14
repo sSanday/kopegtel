@@ -3,7 +3,12 @@
 - URL harus https (http hanya bila kanal mengizinkan eksplisit atau env
   ALLOW_PRIVATE_WEBHOOKS / allow_http di config).
 - Target ditolak bila menunjuk loopback/link-local/privat kecuali
-  ALLOW_PRIVATE_WEBHOOKS=1 (env) atau allow_private=true pada kanal.
+  allow_private=true pada kanal. ALLOW_PRIVATE_WEBHOOKS=1 adalah escape hatch
+  tingkat deploy; saat admin menyimpan kanal, izin itu dipromosikan menjadi
+  allow_private agar kebijakan tersimpan eksplisit dan tidak bisa dipakai
+  operator.
+- Host di-resolve sekali, lalu koneksi memakai IP hasil resolusi tersebut
+  (DNS pinning) sehingga tidak rentan DNS rebinding.
 - Tidak mengikuti redirect; timeout 5 detik; respons dibatasi.
 - Tanda tangan: X-NMS-Timestamp (unix) dan X-NMS-Signature:
   sha256=<hex(HMAC-SHA256(secret, "<timestamp>.<body>"))>
@@ -12,10 +17,9 @@
 
 import hashlib
 import hmac
-import ipaddress
+import http.client
 import json
 import logging
-import os
 import re
 import socket
 import time
@@ -23,35 +27,20 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import urlsplit
 
+import netguard
+
 log = logging.getLogger("nms.webhook")
 
 TIMEOUT_SECONDS = 5
 MAX_RESPONSE_BYTES = 4096
 MAX_HEADER_VALUE = 512
 _HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_BLOCKED_PREFIXES = (
-    # IPv4
-    ("0.0.0.0", "0.255.255.255"),
-    ("10.0.0.0", "10.255.255.255"),
-    ("100.64.0.0", "100.127.255.255"),
-    ("127.0.0.0", "127.255.255.255"),
-    ("169.254.0.0", "169.254.255.255"),
-    ("172.16.0.0", "172.31.255.255"),
-    ("192.168.0.0", "192.168.255.255"),
-    ("224.0.0.0", "239.255.255.255"),
-    ("240.0.0.0", "255.255.255.255"),
-)
-_V6_BLOCKED_NETS = tuple(
-    ipaddress.ip_network(net)
-    for net in ("::/128", "::1/128", "::ffff:0.0.0.0/96", "64:ff9b::/96",
-                "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8")
-)
 _BLOCKED_HEADERS = {"host", "content-length", "content-type", "connection",
                     "x-nms-timestamp", "x-nms-signature", "transfer-encoding", "upgrade"}
 
 
 def env_allows_private():
-    return os.environ.get("ALLOW_PRIVATE_WEBHOOKS", "").strip().lower() in ("1", "true", "yes", "on")
+    return netguard.env_flag("ALLOW_PRIVATE_WEBHOOKS")
 
 
 def _parse_url(url):
@@ -67,11 +56,13 @@ def _parse_url(url):
         raise ValueError("URL webhook hanya boleh http(s).")
     if parts.username or parts.password:
         raise ValueError("URL webhook tidak boleh memuat kredensial.")
-    host = (parts.hostname or "").strip().lower()
-    if not host:
+    raw_host = (parts.hostname or "").strip()
+    if not raw_host:
         raise ValueError("Host webhook wajib diisi.")
-    if host.endswith(".localhost") or host == "localhost":
-        raise ValueError("Target loopback tidak diizinkan.")
+    try:
+        host = netguard.normalize_host(raw_host)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from None
     try:
         port = parts.port
     except ValueError:
@@ -83,43 +74,93 @@ def _parse_url(url):
 
 def _ip_blocked(ip):
     """True bila IP bukan publik (loopback/privat/link-local/reserved)."""
-    if ip.version == 6:
-        if ip.ipv4_mapped is not None:
-            return _ip_blocked(ip.ipv4_mapped)
-        if any(ip in net for net in _V6_BLOCKED_NETS):
-            return True
-        return ip.is_loopback or ip.is_multicast or ip.is_unspecified or ip.is_private or ip.is_reserved
-    first, second, third, fourth = (int(part) for part in str(ip).split("."))
-    for a, b in _BLOCKED_PREFIXES:
-        start = [int(p) for p in a.split(".")]
-        end = [int(p) for p in b.split(".")]
-        if start <= [first, second, third, fourth] <= end:
-            return True
-    return False
+    return netguard.ip_blocked(ip)
 
 
-def validate_webhook_target(url, *, allow_private=False, allow_http=None):
-    """Validasi target + resolusi DNS. Raise ValueError bila ditolak."""
+def _resolve_webhook_target(url, *, allow_private=False, allow_http=None, allow_env=True):
+    """Validasi target dan kembalikan (parts, daftar IP hasil resolusi).
+
+    ``allow_env`` hanya dipakai pemanggil tepercaya (mis. alat admin); alur
+    kanal selalu meneruskan kebijakan target yang tersimpan eksplisit.
+    """
     parts, scheme, host, port = _parse_url(url)
     if allow_http is None:
         allow_http = scheme == "http"
     if scheme == "http" and not allow_http:
         raise ValueError("http hanya diizinkan bila kanal ini mengizinkan eksplisit.")
-    if allow_private or env_allows_private():
-        return parts
-    try:
-        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    except OSError as exc:
-        raise ValueError(f"DNS gagal diselesaikan: {type(exc).__name__}") from None
-    resolved = {info[4][0] for info in infos}
-    for address in resolved:
-        try:
-            ip = ipaddress.ip_address(address)
-        except ValueError:
-            raise ValueError("Resolusi DNS tidak valid.") from None
-        if _ip_blocked(ip):
-            raise ValueError(f"Target bukan IP publik ({address}).")
+    effective_private = allow_private or (allow_env and env_allows_private())
+    # localhost hanya boleh untuk kanal yang secara eksplisit diizinkan admin.
+    if (host.lower() == "localhost" or host.lower().endswith(".localhost")) and not effective_private:
+        raise ValueError("Target loopback tidak diizinkan.")
+    addresses = netguard.resolve_addresses(
+        host,
+        port,
+        allow_private=effective_private,
+        resolver=socket.getaddrinfo,
+    )
+    return parts, addresses
+
+
+def validate_webhook_target(url, *, allow_private=False, allow_http=None, allow_env=True):
+    """Validasi target + resolusi DNS. Raise ValueError bila ditolak."""
+    parts, _addresses = _resolve_webhook_target(
+        url, allow_private=allow_private, allow_http=allow_http, allow_env=allow_env
+    )
     return parts
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection yang selalu terhubung ke IP hasil validasi."""
+
+    _pinned_address = None
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_address, self.port), self.timeout, self.source_address
+        )
+        if self._tunnel_host:
+            self._tunnel()
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection dengan IP terpin dan SNI/verifikasi nama asli."""
+
+    _pinned_address = None
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_address, self.port), self.timeout, self.source_address
+        )
+        if self._tunnel_host:
+            self._tunnel()
+            server_hostname = self._tunnel_host
+        else:
+            server_hostname = self.host
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
+
+
+class _PinnedHTTPHandler(urlrequest.HTTPHandler):
+    def __init__(self, address):
+        super().__init__()
+        self._address = address
+
+    def http_open(self, req):
+        connection = type(
+            "_PinnedHTTP", (_PinnedHTTPConnection,), {"_pinned_address": self._address}
+        )
+        return self.do_open(connection, req)
+
+
+class _PinnedHTTPSHandler(urlrequest.HTTPSHandler):
+    def __init__(self, address):
+        super().__init__()
+        self._address = address
+
+    def https_open(self, req):
+        connection = type(
+            "_PinnedHTTPS", (_PinnedHTTPSConnection,), {"_pinned_address": self._address}
+        )
+        return self.do_open(connection, req, context=self._context)
 
 
 def _payload(preset, subject, text, problem):
@@ -165,13 +206,15 @@ def _sanitize_headers(headers):
 def send_webhook(config, subject, text, problem=None):
     """POST ke webhook. Return (ok, detail, attempts). Secret tidak di-log."""
     url = config.get("url") or ""
-    allow_http = bool(config.get("allow_http"))
-    allow_private = bool(config.get("allow_private"))
+    allow_http = netguard.as_bool(config.get("allow_http"))
+    allow_private = netguard.as_bool(config.get("allow_private"))
     scheme = (urlsplit(url).scheme or "").lower()
     if scheme == "http" and not allow_http:
         return False, "URL ditolak: http memerlukan izin eksplisit pada kanal.", 0
     try:
-        validate_webhook_target(url, allow_private=allow_private, allow_http=allow_http)
+        _parts, addresses = _resolve_webhook_target(
+            url, allow_private=allow_private, allow_http=allow_http, allow_env=False
+        )
     except ValueError as exc:
         return False, f"URL ditolak: {exc}", 0
 
@@ -200,13 +243,20 @@ def send_webhook(config, subject, text, problem=None):
 
     # Proxy dimatikan: keputusan SSRF dilakukan lokal; proxy kampus bisa
     # mengarahkan ulang ke alamat internal yang tidak diperiksa DNS kita.
-    opener = urlrequest.build_opener(_NoRedirect(), urlrequest.ProxyHandler({}))
+    # Setiap percobaan memakai IP hasil resolusi awal (bukan resolve ulang).
     max_response = int(config.get("max_response_bytes") or MAX_RESPONSE_BYTES)
     max_response = min(MAX_RESPONSE_BYTES, max(256, max_response))
 
     delays = (1.0, 2.0)
     last_detail = "Belum dicoba."
     for attempt in range(1, 4):
+        address = addresses[(attempt - 1) % len(addresses)]
+        opener = urlrequest.build_opener(
+            _NoRedirect(),
+            urlrequest.ProxyHandler({}),
+            _PinnedHTTPHandler(address),
+            _PinnedHTTPSHandler(address),
+        )
         started = time.monotonic()
         request = urlrequest.Request(url, data=body, headers=headers, method="POST")
         try:
