@@ -149,30 +149,31 @@ def api_system_info():
 
 def _retention_preview():
     settings = db.get_settings()
-    raw = _days_ago_safe(int(settings.get("retention_raw_days", 7)))
-    hourly = _days_ago_safe(int(settings.get("retention_hourly_days", 30)))
-    events = _days_ago_safe(int(settings.get("retention_events_days", 30)))
-    audit = _days_ago_safe(int(settings.get("retention_audit_days", 365)))
+    retention = db.retention_days(settings)
+    raw = db.retention_cutoff(retention["retention_raw_days"])
+    hourly = db.retention_cutoff(retention["retention_hourly_days"], hourly=True)
+    events = db.retention_cutoff(retention["retention_events_days"])
+    audit = db.retention_cutoff(retention["retention_audit_days"])
+    checks = db.retention_cutoff(retention["retention_checks_days"])
+    try:
+        optical_hourly_days = int(db.get_fiber_settings().get("retention_optical_hourly_days", 90))
+    except (TypeError, ValueError):
+        optical_hourly_days = 90
+    optical_hourly = db.retention_cutoff(optical_hourly_days, hourly=True)
     counts = {}
     with db._lock:
         conn = db.get_conn()
+        counts["checks"] = conn.execute("SELECT COUNT(*) AS n FROM device_checks WHERE checked_at < ?", (checks,)).fetchone()["n"]
         counts["metrics"] = conn.execute("SELECT COUNT(*) AS n FROM device_metrics WHERE ts < ?", (raw,)).fetchone()["n"]
         counts["interfaces"] = conn.execute("SELECT COUNT(*) AS n FROM interface_stats WHERE ts < ?", (raw,)).fetchone()["n"]
         counts["optical"] = conn.execute("SELECT COUNT(*) AS n FROM optical_readings WHERE ts < ?", (raw,)).fetchone()["n"]
         counts["hourly"] = conn.execute("SELECT COUNT(*) AS n FROM device_metrics_hourly WHERE hour_ts < ?", (hourly,)).fetchone()["n"]
         counts["optical_hourly"] = conn.execute(
-            "SELECT COUNT(*) AS n FROM optical_hourly WHERE hour_ts < ?",
-            ((datetime.now(timezone.utc) - timedelta(days=int(db.get_fiber_settings().get("retention_optical_hourly_days", 90)))).strftime("%Y-%m-%dT%H:00:00Z"),),
+            "SELECT COUNT(*) AS n FROM optical_hourly WHERE hour_ts < ?", (optical_hourly,),
         ).fetchone()["n"]
         counts["events"] = conn.execute("SELECT COUNT(*) AS n FROM events WHERE created_at < ?", (events,)).fetchone()["n"]
         counts["audit"] = conn.execute("SELECT COUNT(*) AS n FROM audit_log WHERE ts < ?", (audit,)).fetchone()["n"]
     return counts
-
-
-def _days_ago_safe(days):
-    from datetime import timedelta as _td
-
-    return (datetime.now(timezone.utc) - _td(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @bp.get("/api/settings")
@@ -193,8 +194,8 @@ def api_update_settings():
         return jsonify({"error": "Payload tidak valid."}), 400
     allowed = set(db.SETTING_DEFAULTS)
     clean = {}
-    int_keys = {"default_poll_interval", "idle_timeout_minutes", "retention_raw_days",
-                "retention_hourly_days", "retention_events_days", "retention_audit_days",
+    int_keys = {"default_poll_interval", "idle_timeout_minutes", "retention_checks_days",
+                "retention_raw_days", "retention_hourly_days", "retention_events_days", "retention_audit_days",
                 "retention_syslog_days", "retention_trap_days",
                 "ingest_rate_limit_per_sec", "ingest_rate_window_seconds",
                 "ingest_max_message_bytes", "ingest_queue_size",

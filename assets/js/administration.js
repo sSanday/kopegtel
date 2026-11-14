@@ -130,6 +130,7 @@
      ===================================================== */
 
   const retRaw = document.getElementById("ret-raw");
+  const retChecks = document.getElementById("ret-checks");
   const retHourly = document.getElementById("ret-hourly");
   const retEvents = document.getElementById("ret-events");
   const retAudit = document.getElementById("ret-audit");
@@ -143,9 +144,11 @@
       const s = res.settings || {};
       const preview = s.retention_preview || {};
       retRaw.value = String(s.retention_raw_days ?? 7);
+      retChecks.value = String(s.retention_checks_days ?? 30);
       retHourly.value = String(s.retention_hourly_days ?? 30);
       retEvents.value = String(s.retention_events_days ?? 30);
       retAudit.value = String(s.retention_audit_days ?? 365);
+      document.getElementById("ret-checks-preview").textContent = String(preview.checks || 0);
       document.getElementById("ret-raw-preview").textContent = String((preview.metrics || 0) + (preview.interfaces || 0));
       document.getElementById("ret-hourly-preview").textContent = String(preview.hourly || 0);
       document.getElementById("ret-events-preview").textContent = String(preview.events || 0);
@@ -163,6 +166,7 @@
     if (retentionSave.disabled) return;
     const values = {
       retention_raw_days: Number(retRaw.value),
+      retention_checks_days: Number(retChecks.value),
       retention_hourly_days: Number(retHourly.value),
       retention_events_days: Number(retEvents.value),
       retention_audit_days: Number(retAudit.value),

@@ -196,3 +196,25 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Verifikasi live: `scan_jobs` tinggal 10 kolom aman; dua backup pra-migrasi
   sudah dibersihkan (`integrity_check: ok`); API daftar/detail scan tidak
   mengembalikan field kredensial. Suite: **203 passed**.
+
+## M-1 - Pengaturan retensi UI tidak berpengaruh (selesai)
+
+- Job `purge-old-checks` dan `purge-old-data` tidak lagi menerima `days`,
+  `hourly_days`, `events_days`, atau `audit_days` hardcoded. Keduanya membaca
+  pengaturan setiap kali berjalan, jadi perubahan di UI langsung berlaku pada
+  pembersihan berikutnya tanpa restart.
+- `db.retention_days()` menjadi satu sumber nilai retensi untuk job dan
+  pratinjau. Nilai hilang/tidak valid kembali ke default; nilai di atas batas
+  divalidasi ke 1..3650 hari.
+- `purge_old_data` memakai `None` (bukan default truthy) untuk events/audit,
+  sehingga `retention_events_days` dan `retention_audit_days` benar-benar
+  dipakai.
+- Retensi riwayat pemeriksaan perangkat kini dapat diatur melalui
+  `retention_checks_days` (default 30 hari) dan tampil di form Retensi data
+  beserta pratinjaunya. Ini menggantikan hardcode 30 hari.
+- Pratinjau `_retention_preview` memakai resolver yang sama dan menampilkan
+  jumlah baris `device_checks` yang akan dihapus.
+- Tes regresi `tests/test_retention.py` (5 tes): resolver pengaturan, fallback
+  nilai tidak valid, kecocokan pratinjau dengan hasil purge, override eksplisit
+  untuk pemanggil lama, dan job scheduler tanpa kwargs hardcoded. Suite:
+  **208 passed**.

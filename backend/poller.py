@@ -1034,19 +1034,18 @@ def start_poller():
         job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 30},
     )
 
-    # Bersihkan data lama tiap hari 02:30: pemeriksaan > 30 hari,
-    # metrik mentah > 7 hari (dirata-rata dulu ke tabel per jam).
+    # Bersihkan data lama tiap hari 02:30/02:35. Nilai retensi dibaca dari
+    # pengaturan setiap kali job berjalan, jadi perubahan UI langsung berlaku
+    # pada pembersihan berikutnya tanpa restart.
     _scheduler.add_job(
         db.purge_old_checks,
         trigger=CronTrigger(hour=2, minute=30),
-        kwargs={"days": 30},
         id="purge-old-checks",
         replace_existing=True,
     )
     _scheduler.add_job(
         db.purge_old_data,
         trigger=CronTrigger(hour=2, minute=35),
-        kwargs={"days": 7, "hourly_days": 30},
         id="purge-old-data",
         replace_existing=True,
     )

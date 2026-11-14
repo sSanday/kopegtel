@@ -14,27 +14,84 @@ from .fiber import (
     get_fiber_settings,
 )
 
-def purge_old_checks(days=30):
-    cutoff = _days_ago(days)
+# Nilai retensi yang dapat diubah dari Administration. Dipakai bersama oleh job
+# pembersihan dan pratinjau agar angka yang ditampilkan sama dengan yang dihapus.
+RETENTION_DEFAULTS = {
+    "retention_checks_days": 30,
+    "retention_raw_days": 7,
+    "retention_hourly_days": 30,
+    "retention_events_days": 30,
+    "retention_audit_days": 365,
+}
+RETENTION_MAX_DAYS = 3650
+
+
+def _clamp_days(value, default):
+    try:
+        days = int(value)
+    except (TypeError, ValueError):
+        return default
+    if days < 1:
+        return default
+    return min(days, RETENTION_MAX_DAYS)
+
+
+def retention_days(settings=None):
+    """Nilai retensi efektif (hari) dari pengaturan, sudah divalidasi.
+
+    Satu sumber untuk job harian dan pratinjau UI. Nilai yang hilang atau tidak
+    valid kembali ke default, sehingga database lama tidak membuat job gagal.
+    """
+    settings = get_settings({}) if settings is None else settings
+    return {
+        key: _clamp_days(settings.get(key), default)
+        for key, default in RETENTION_DEFAULTS.items()
+    }
+
+
+def retention_cutoff(days, hourly=False):
+    """Batas waktu efektif untuk retensi.
+
+    ``hourly=True`` membulatkan ke awal jam, sama seperti kolom ``hour_ts``
+    pada tabel ringkasan, sehingga pratinjau dan job menghitung baris yang
+    sama.
+    """
+    moment = datetime.now(timezone.utc) - timedelta(days=days)
+    return moment.strftime("%Y-%m-%dT%H:00:00Z" if hourly else "%Y-%m-%dT%H:%M:%SZ")
+
+
+def purge_old_checks(days=None):
+    """Hapus riwayat pemeriksaan perangkat yang lebih tua dari retensi.
+
+    ``days=None`` memakai pengaturan ``retention_checks_days`` sehingga
+    perubahan di UI berlaku pada pembersihan harian berikutnya.
+    """
+    if days is None:
+        days = retention_days()["retention_checks_days"]
+    else:
+        days = _clamp_days(days, RETENTION_DEFAULTS["retention_checks_days"])
+    cutoff = retention_cutoff(days)
     with _lock:
         conn = get_conn()
         cursor = conn.execute("DELETE FROM device_checks WHERE checked_at < ?", (cutoff,))
         conn.commit()
         return cursor.rowcount
 
-def purge_old_data(days=None, hourly_days=None, events_days=30, audit_days=365):
-    """Retensi: simpan rata-rata per jam (30 hari), buang data mentah > 7 hari.
+def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=None):
+    """Terapkan retensi data mentah, ringkasan, event, dan audit.
 
-    Nilai default diambil dari pengaturan (Administration → retensi data).
-    Data optik ikut mekanisme yang sama: mentah > retention_raw_days dihapus
-    setelah diagregasi ke optical_hourly (min/avg/max, disimpan 90 hari).
+    Semua nilai ``None`` berarti memakai pengaturan (Administration -> retensi
+    data); argumen eksplisit hanya dipertahankan untuk pemanggil lama. Data
+    optik ikut retensi mentah setelah diagregasi ke optical_hourly, lalu
+    ringkasan optik per jam disimpan sesuai pengaturan fiber.
     """
     settings = get_settings({})
+    resolved = retention_days(settings)
+    days = resolved["retention_raw_days"] if days is None else _clamp_days(days, resolved["retention_raw_days"])
+    hourly_days = resolved["retention_hourly_days"] if hourly_days is None else _clamp_days(hourly_days, resolved["retention_hourly_days"])
+    events_days = resolved["retention_events_days"] if events_days is None else _clamp_days(events_days, resolved["retention_events_days"])
+    audit_days = resolved["retention_audit_days"] if audit_days is None else _clamp_days(audit_days, resolved["retention_audit_days"])
     fiber = get_fiber_settings()
-    days = int(days if days is not None else settings.get("retention_raw_days", 7))
-    hourly_days = int(hourly_days if hourly_days is not None else settings.get("retention_hourly_days", 30))
-    events_days = int(events_days or settings.get("retention_events_days", 30))
-    audit_days = int(audit_days or settings.get("retention_audit_days", 365))
     optical_hourly_days = int(fiber.get("retention_optical_hourly_days", 90))
     try:
         syslog_days = int(settings.get("retention_syslog_days", 14))
@@ -45,11 +102,11 @@ def purge_old_data(days=None, hourly_days=None, events_days=30, audit_days=365):
     except (TypeError, ValueError):
         trap_days = 30
 
-    raw_cutoff = _days_ago(days)
-    hourly_cutoff = (datetime.now(timezone.utc) - timedelta(days=hourly_days)).strftime("%Y-%m-%dT%H:00:00Z")
-    optical_hourly_cutoff = (datetime.now(timezone.utc) - timedelta(days=optical_hourly_days)).strftime("%Y-%m-%dT%H:00:00Z")
-    events_cutoff = _days_ago(events_days)
-    audit_cutoff = _days_ago(audit_days)
+    raw_cutoff = retention_cutoff(days)
+    hourly_cutoff = retention_cutoff(hourly_days, hourly=True)
+    optical_hourly_cutoff = retention_cutoff(optical_hourly_days, hourly=True)
+    events_cutoff = retention_cutoff(events_days)
+    audit_cutoff = retention_cutoff(audit_days)
     with _lock:
         conn = get_conn()
         conn.execute(
@@ -179,10 +236,7 @@ SETTING_DEFAULTS = {
     "timezone": "Asia/Jakarta",
     "default_poll_interval": "60",
     "idle_timeout_minutes": "30",
-    "retention_raw_days": "7",
-    "retention_hourly_days": "30",
-    "retention_events_days": "30",
-    "retention_audit_days": "365",
+    **{key: str(value) for key, value in RETENTION_DEFAULTS.items()},
     # Modul MikroTik
     "mt_write_actions_enabled": "0",
     "mt_bruteforce_threshold": "10",

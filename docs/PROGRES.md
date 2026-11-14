@@ -159,3 +159,5 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
 - E2: commit E2; produksi hidup (healthz 200); 162 tes lolos.
 - H-3: kredensial scan tidak lagi disimpan; DB lama + backup dibersihkan dengan
   `VACUUM`/checkpoint; 203 tes lolos; produksi hidup (healthz 200).
+- M-1: job retensi membaca pengaturan UI (termasuk retensi pemeriksaan baru);
+  pratinjau memakai resolver yang sama; 208 tes lolos; produksi hidup (healthz 200).
