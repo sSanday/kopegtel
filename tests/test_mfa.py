@@ -346,3 +346,97 @@ def test_verify_login_requires_csrf(client, fresh_db):
     assert response.get_json()["mfa_required"] is True
     no_csrf = client.post("/api/mfa/verify-login", json={"code": "123456"})
     assert no_csrf.status_code == 403
+
+
+# ---------------------------------------------------------
+# M-6: kode pemulihan 6 digit, input non-ASCII, secret kosong
+# ---------------------------------------------------------
+
+def test_verify_totp_rejects_non_ascii_and_invalid_secret():
+    secret = mfa.new_secret()
+    moment = int(time.time())
+    code = f"{mfa.totp(secret, at=moment):06d}"
+    arabic = "".join(chr(0x0660 + int(digit)) for digit in code)
+    assert arabic.isdigit() and not arabic.isascii()
+
+    # Digit Unicode tidak boleh sampai ke hmac.compare_digest (TypeError/500).
+    assert mfa.verify_totp(secret, arabic, at=moment) is None
+    # Pemisah spasi/tanda hubung tetap diterima seperti sebelumnya.
+    assert mfa.verify_totp(secret, f"{code[:3]} {code[3:]}", at=moment) is not None
+    assert mfa.verify_totp(secret, f"{code[:3]}-{code[3:]}", at=moment) is not None
+    # Secret NULL/kosong/rusak tidak boleh menjadi kunci HMAC kosong.
+    assert mfa.verify_totp(None, code, at=moment) is None
+    assert mfa.verify_totp("", code, at=moment) is None
+    assert mfa.verify_totp("bukan secret!", code, at=moment) is None
+
+
+def test_verify_for_login_missing_secret_is_not_empty_hmac_key(fresh_db):
+    user_id = _mk_user(fresh_db, "mfa-null-secret", "mfa-null-secret-password")
+    with fresh_db._lock:
+        conn = fresh_db.get_conn()
+        conn.execute(
+            "UPDATE users SET mfa_enabled=1, mfa_secret=NULL, "
+            "mfa_recovery_hashes='[]', mfa_last_step=0 WHERE id=?",
+            (user_id,),
+        )
+        conn.commit()
+
+    user = fresh_db.find_user_by_id(user_id)
+    empty_key_code = f"{mfa._hotp(b'', int(time.time()) // 30):06d}"
+    assert mfa.verify_for_login(dict(user), empty_key_code) == (False, None)
+
+
+def test_mfa_login_accepts_six_digit_recovery_code(client, fresh_db):
+    user_id = _mk_user(
+        fresh_db, "mfa-recovery-six", "mfa-recovery-six-password", role="admin"
+    )
+    response = _login(client, "mfa-recovery-six", "mfa-recovery-six-password")
+    csrf = response.get_json()["csrf_token"]
+    _enable_mfa(client, csrf, fresh_db, None)
+
+    recovery_code = "23456-7ABCD"
+    assert sum(ch.isdigit() for ch in recovery_code) == 6
+    with fresh_db._lock:
+        conn = fresh_db.get_conn()
+        conn.execute(
+            "UPDATE users SET mfa_recovery_hashes=? WHERE id=?",
+            (json.dumps([mfa.hash_recovery_code(recovery_code)]), user_id),
+        )
+        conn.commit()
+
+    client.post("/api/logout", headers={"X-CSRF-Token": csrf})
+    ok = _complete_mfa_login(
+        client, "mfa-recovery-six", "mfa-recovery-six-password", recovery_code
+    )
+    assert ok["ok"] is True
+    assert client.get("/api/me").status_code == 200
+
+    # Kode pemulihan tetap sekali pakai.
+    client.post("/api/logout", headers={"X-CSRF-Token": ok["csrf_token"]})
+    response = _login(client, "mfa-recovery-six", "mfa-recovery-six-password")
+    csrf2 = response.get_json()["csrf_token"]
+    replay = client.post(
+        "/api/mfa/verify-login",
+        json={"code": recovery_code},
+        headers={"X-CSRF-Token": csrf2},
+    )
+    assert replay.status_code == 401
+
+
+def test_mfa_login_rejects_non_ascii_code_without_500(client, fresh_db):
+    _mk_user(fresh_db, "mfa-unicode", "mfa-unicode-password", role="admin")
+    response = _login(client, "mfa-unicode", "mfa-unicode-password")
+    csrf = response.get_json()["csrf_token"]
+    _enable_mfa(client, csrf, fresh_db, None)
+    client.post("/api/logout", headers={"X-CSRF-Token": csrf})
+
+    response = _login(client, "mfa-unicode", "mfa-unicode-password")
+    body = response.get_json()
+    assert body["mfa_required"] is True
+    bad = client.post(
+        "/api/mfa/verify-login",
+        json={"code": "\u0661\u0662\u0663\u0664\u0665\u0666"},
+        headers={"X-CSRF-Token": body["csrf_token"]},
+    )
+    assert bad.status_code == 401
+    assert bad.get_json()["code"] == "mfa_invalid"

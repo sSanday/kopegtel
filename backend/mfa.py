@@ -37,9 +37,27 @@ def new_secret():
 
 
 def _decode_secret(secret):
-    text = str(secret or "").strip().upper().replace(" ", "")
+    text = str(secret or "").strip().upper().replace(" ", "").replace("-", "")
+    if not text:
+        raise ValueError("Secret MFA kosong.")
     padding = "=" * (-len(text) % 8)
-    return base64.b32decode(text + padding)
+    try:
+        return base64.b32decode(text + padding)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Secret MFA tidak valid.") from exc
+
+
+def _totp_digits(code):
+    """Ambil kode TOTP hanya bila bentuknya 6 digit ASCII.
+
+    Input non-ASCII (mis. digit Arab-Indik) atau kode pemulihan 10 karakter
+    tidak boleh masuk ke perbandingan HMAC; keduanya ditangani sebagai kode
+    pemulihan oleh pemanggil.
+    """
+    text = "".join(str(code or "").split()).replace("-", "")
+    if len(text) == _DIGITS and text.isascii() and text.isdigit():
+        return text
+    return None
 
 
 def _hotp(key, counter):
@@ -60,10 +78,14 @@ def _hotp_str(secret, at=None):
 
 def verify_totp(secret, code, *, window=1, last_step=0, at=None):
     """Return step yang cocok (untuk anti-replay) atau None."""
-    digits = "".join(ch for ch in str(code or "") if ch.isdigit())
-    if len(digits) != _DIGITS:
+    digits = _totp_digits(code)
+    if digits is None:
         return None
-    key = _decode_secret(secret)
+    # Secret kosong/rusak tidak boleh menjadi kunci HMAC kosong.
+    try:
+        key = _decode_secret(secret)
+    except (TypeError, ValueError):
+        return None
     now_step = int(at if at is not None else time.time()) // _STEP_SECONDS
     for step in range(now_step - window, now_step + window + 1):
         if step <= int(last_step or 0):
@@ -216,6 +238,8 @@ def enable_after_verify(user_id, code):
         secret = db.decrypt_secret(user["mfa_pending_secret"])
     except Exception:
         return {"error": "Secret MFA tidak dapat dibaca. Ulangi pendaftaran."}
+    if not secret:
+        return {"error": "Secret MFA tidak dapat dibaca. Ulangi pendaftaran."}
     if verify_totp(secret, code, window=1, last_step=0) is None:
         return {"error": "Kode salah atau kedaluwarsa. Coba lagi."}
     codes = new_recovery_codes()
@@ -234,19 +258,25 @@ def enable_after_verify(user_id, code):
 
 
 def verify_for_login(user, code):
-    """Verifikasi kode TOTP (anti-replay) atau kode pemulihan. Return (ok, kind)."""
+    """Verifikasi kode TOTP (anti-replay) atau kode pemulihan. Return (ok, kind).
+
+    Kode pemulihan dapat memuat tepat 6 digit, jadi jumlah digit saja tidak
+    cukup untuk mengklasifikasikan input. TOTP dicoba lebih dulu, lalu kode
+    pemulihan selalu dicoba sebagai fallback.
+    """
     hashes = _hashes_from_user(user)
-    code_digits = "".join(ch for ch in str(code or "") if ch.isdigit())
-    if len(code_digits) == _DIGITS:
+    secret = None
+    if user["mfa_secret"]:
         try:
             secret = db.decrypt_secret(user["mfa_secret"])
         except Exception:
-            return False, None
-        step = verify_totp(secret, code_digits, window=1, last_step=user["mfa_last_step"])
+            log.warning("Secret MFA pengguna id=%s tidak dapat didekripsi", user["id"])
+            secret = None
+    if secret:
+        step = verify_totp(secret, code, window=1, last_step=user["mfa_last_step"])
         if step is not None:
             _update_user(user["id"], mfa_last_step=step)
             return True, "totp"
-        return False, None
     ok, remaining = consume_recovery_code(hashes, code)
     if ok:
         _update_user(user["id"], mfa_recovery_hashes=json.dumps(remaining))

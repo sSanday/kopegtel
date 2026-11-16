@@ -174,3 +174,7 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
 - M-5: sel CSV dinetralkan dari formula (`=`, `+`, `-`, `@`, karakter kontrol,
   termasuk yang didahului spasi) di audit, ketersediaan, dan semua ekspor CSV
   lain; 252 tes lolos; produksi hidup (healthz 200).
+- M-6: kode pemulihan 6 digit tidak lagi dianggap TOTP, digit non-ASCII
+  ditolak tanpa 500, dan secret MFA kosong/rusak tidak menjadi kunci HMAC
+  kosong; 256 tes lolos; produksi hidup (healthz 200) dan verifikasi live
+  memakai akun sementara berhasil (akun dibersihkan).

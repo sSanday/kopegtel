@@ -320,3 +320,22 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   karakter kontrol/spasi di depan, angka tetap angka, username gagal login
   anonim, dan nama perangkat/grup pada laporan ketersediaan. Suite:
   **252 passed**.
+
+## M-6 - Kode pemulihan MFA bertabrakan dengan TOTP & input non-ASCII (selesai)
+
+- `verify_for_login` tidak lagi menentukan jenis kode hanya dari jumlah digit.
+  TOTP dicoba lebih dulu; bila tidak cocok, kode pemulihan selalu dicoba.
+  Kode pemulihan 10 karakter yang kebetulan memuat tepat 6 digit (sekitar
+  1,88% kode) tidak lagi dianggap TOTP, tetap dapat dipakai, dan tetap
+  sekali pakai.
+- Hanya **6 digit ASCII** yang masuk ke `hmac.compare_digest`. Digit Unicode
+  (mis. Arab-Indik) ditolak sebagai kode salah (`401 mfa_invalid`), bukan
+  `TypeError`/HTTP 500. Pemisah spasi dan tanda hubung pada TOTP tetap
+  diterima.
+- `mfa_secret` NULL/kosong/rusak tidak lagi menjadi kunci HMAC kosong:
+  `_decode_secret` menolak secret kosong dan `verify_totp` mengembalikan
+  `None` untuk secret tidak valid. Bila secret tidak dapat didekripsi, kode
+  pemulihan tetap dapat dipakai sehingga pengguna tidak terkunci.
+- Tes regresi `tests/test_mfa.py` (4 tes M-6): digit Unicode dan secret
+  NULL/rusak, kode pemulihan 6 digit lewat alur login penuh beserta
+  sekali-pakai, dan respons API non-ASCII tanpa 500. Suite: **256 passed**.
