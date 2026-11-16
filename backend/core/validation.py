@@ -2,7 +2,7 @@
 import ipaddress
 import os
 
-from core.net import parse_allowed_networks
+from core.net import parse_allowed_networks, ip_default_allowed
 
 ALLOWED_NETWORKS = parse_allowed_networks(os.environ.get("ALLOWED_NETWORKS", ""))
 
@@ -25,7 +25,9 @@ def _parse_ip(value):
 
 def _ip_allowed(addr):
     if not ALLOWED_NETWORKS:
-        return True
+        # Tanpa ALLOWED_NETWORKS, hanya rentang privat yang boleh dipakai
+        # (dokumentasi .env.example). Jangan mengizinkan semua IP.
+        return ip_default_allowed(addr)
     return any(addr in network for network in ALLOWED_NETWORKS)
 
 

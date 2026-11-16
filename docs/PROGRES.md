@@ -204,3 +204,15 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   fingerprint tersimpan di devices.mikrotik_ssl_fingerprint (migrasi
   terverifikasi pada salinan DB produksi); 17 tes regresi baru; server hidup di
   `http://127.0.0.1:5000` (healthz 200, satu listener); 296 tes lolos.
+- M-12: kebijakan ALLOWED_NETWORKS kosong disamakan dengan dokumentasi
+  (hanya RFC1918 IPv4 + ULA fc00::/7 IPv6 untuk perangkat, uji, scan, bulk-add;
+  loopback/link-local/CGNAT/publik ditolak); 49 tes regresi baru; suite penuh
+  **345 passed** (1 peringatan deprecation Flask yang sudah ada); server hidup
+  di `http://127.0.0.1:5000` (healthz 200, satu listener). Catatan live: mesin
+  berpindah jaringan (Wi-Fi 10.215.235.143) sehingga perangkat LAN 192.168.30.x
+  tampil offline - bukan regresi; jalur poller tidak memakai ALLOWED_NETWORKS.
+- M-13: asesmen tuntas (lihat TEMUAN.md) - snapshot `nms.db`/`sla_demo.db`
+  terunduh publik tanpa login (HTTP 200) di raw.githubusercontent.com pada
+  `6c8158a`; `sla_demo.db` memuat hash scrypt admin lama; IP internal
+  RFC1918 terekspos; tidak ada community/password tersimpan; zip `.env`
+  (Telegram token) tidak dipakai kode. Remediasi menunggu keputusan pemilik.

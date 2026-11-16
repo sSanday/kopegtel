@@ -11,6 +11,7 @@ from collectors import mikrotik as mikrotik_collector
 from collectors import ping as ping_collector
 from collectors import snmp as snmp_collector
 from core.guard import audit, roles
+from core.net import network_default_allowed
 from core.validation import (
     ALLOWED_NETWORKS,
     DEVICE_TYPES,
@@ -119,7 +120,7 @@ def api_start_scan():
         for addr in network:
             if not _ip_allowed(addr):
                 return jsonify({"error": "CIDR berada di luar ALLOWED_NETWORKS yang diizinkan."}), 403
-    elif not network.is_private:
+    elif not network_default_allowed(network):
         return jsonify({"error": "Tanpa ALLOWED_NETWORKS, hanya rentang privat (RFC1918) yang boleh dipindai."}), 403
 
     community = str(data.get("community") or "").strip() or None

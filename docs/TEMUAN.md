@@ -513,3 +513,87 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Suite penuh: **296 passed** (1 peringatan deprecation Flask `__version__`
   yang sudah ada sebelumnya); `pip check` bersih; server hidup di
   `http://127.0.0.1:5000` (healthz 200, satu listener) setelah restart.
+
+## M-12 - ALLOWED_NETWORKS kosong berarti semua IP diizinkan untuk perangkat (selesai)
+
+- Akar masalah: `.env.example` dan README menyatakan bahwa ALLOWED_NETWORKS
+  kosong berarti hanya rentang privat (RFC1918) yang boleh dipantau, tetapi
+  `core/validation.py `_ip_allowed` justru `return True` saat daftar kosong.
+  Pengecualian hanya di jalur scan (`network.is_private`), dan `is_private`
+  sendiri meloloskan loopback (127.0.0.0/8, ::1) dan link-local
+  (169.254.0.0/16, fe80::/10). Dampaknya: perangkat bisa didaftarkan atau
+  diuji ke tujuan publik, loopback, atau link-local.
+- Perbaikan:
+  - `core/net.py` mendefinisikan `DEFAULT_ALLOWED_NETWORKS` (RFC1918 IPv4 dan
+    ULA fc00::/7 IPv6 - prinsip yang sama dengan RFC1918; CGNAT 100.64.0.0/10
+    dan ruang dokumentasi TIDAK termasuk) plus helper `ip_default_allowed`
+    dan `network_default_allowed` (subnet_of, menolak rentang menjulur).
+  - `_ip_allowed` tanpa ALLOWED_NETWORKS kini memakai kebijakan privat itu;
+    dengan ALLOWED_NETWORKS terisi, perilaku lama (hanya daftar) tidak berubah.
+  - Scan (`routes/discovery.py`) memakai `network_default_allowed` alih-alih
+    `is_private`: loopback/link-local/CGNAT/publik ditolak, rentang privat
+    diterima; `bulk-add` dan `/api/devices*` otomatis ikut lewat `_ip_allowed`.
+  - `.env.example` diperjelas: kosong berarti hanya rentang privat (RFC1918 /
+    fc00::/7) untuk perangkat & scan; loopback, link-local, CGNAT, dan IP
+    publik ditolak.
+  - Perubahan perilaku yang disengaja: perangkat terdaftar dengan IP publik/
+    loopback tidak bisa dibuat/diubah/diuji lagi sampai ALLOWED_NETWORKS
+    terisi eksplisit; jaringan menjulur (mis. /15) juga ditolak scan.
+- Tes regresi `tests/test_allowed_networks.py` (49 tes): unit kebijakan default
+  dan `network_default_allowed` (termasuk fc00::/7, "menjulur", TEST-NET,
+  loopback, link-local, CGNAT, multicast/unspecified), dan uji route: buat/
+  ubah perangkat (400 untuk IP publik/loopback/link-local, 201 untuk RFC1918),
+  `/api/devices/test` 400, scan 403 untuk CIDR non-privat / 202 untuk privat,
+  allowlist eksplisit berlaku juga untuk IP publik, `bulk-add` melewati IP
+  non-privat. Suite penuh: lihat docs/PROGRES.md.
+- Catatan migrasi: deployment yang mengisi ALLOWED_NETWORKS tidak terpengaruh.
+
+## M-13 - File sensitif di riwayat git dan zip (asesmen selesai; remediasi history menunggu keputusan)
+
+- Berkas terdampak di riwayat: `nms.db` (307.200 byte) dan `logs/sla_demo.db`
+  (335.872 byte) ditambahkan di commit `6c8158a` (2026-11-04, "rapikan kode")
+  dan dihapus dari tree di `cb9ebfd` (adopsi kopegtel2). Keduanya masih
+  tersedia di GitHub **sekarang ini**: `raw.githubusercontent.com/
+  sSanday/kopegtel/6c8158a/nms.db` dan `.../logs/sla_demo.db` merespons
+  **HTTP 200** tanpa autentikasi (branch cleanup/rapikan-kode). `origin/main`
+  tidak mengandung berkas ini. Commit lokal sesudah itu (H-1..M-12) tetap
+  memiliki riwayat yang sama; push berikutnya membawa riwayat itu.
+- Isi snapshot (diverifikasi pada salinan blob, tanpa nilai rahasia dicetak):
+  - `users`: 0 baris di keduanya. `snmp_community`, `ssh_pass`,
+    `ipmi_password`, `olts.community`, `snmp_trap_community`: kosong semua.
+  - `host_encryption` = `'{}'` di semua baris (bukan ciphertext).
+  - IP perangkat di dalamnya: `192.168.110.167`, `192.168.110.25`,
+    `192.168.110.251` (hosts, kedua DB) + `192.168.110.1` (services, hanya
+    sla_demo.db) - semuanya RFC1918, fingerprint internal jaringan.
+  - `sla_demo.db` berisi `settings.admin_user` (len=5, kemungkinan "admin")
+    dan `settings.admin_pass_hash` - hash **scrypt** (len=162). Hash ini bisa
+    di-crack offline; paparan beratnya tergantung kekuatan password lama dan
+    apakah password itu dipakai ulang di tempat lain.
+  - `sla_demo.db` juga berisi 12 audit_logs (hanya IP `127.0.0.1`), 1 services,
+    360 service_history, 1 SLA - tidak ada rahasia.
+  - `nms.db`: tidak ada kunci admin; settings hanya ambang/metrik.
+- Zip yang pernah dibagikan: zip yang disebut audit berisi `.env` dengan
+  `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID`; keduanya **tidak dibaca kode
+  apa pun** (integrasi Telegram aplikasi memakai kanal di database:
+  `alerts.send_telegram`, `escalation.py`, `telegram_chat_id` pengguna - bukan
+  env). `.env` sendiri tidak pernah dikomit (`.gitignore`: `.env`, `*.db`,
+  `logs/`), dan tidak ditemukan di mesin ini (`kopegtel-main.zip` 18/10/2026
+  bersih: hanya `.env.example`; `server.log` di dalamnya nol match untuk pola
+  token/password/community).
+- Remediasi yang dibutuhkan (menunggu persetujuan pemilik; aksi eksternal/
+  destruktif tidak dilakukan tanpa konfirmasi):
+  1. Rotasi `TELEGRAM_BOT_TOKEN` (BotFather -> /revoke) - karena zip pernah
+     dibagikan; bot bisa diambil alih siapa pun yang punya zip.
+  2. Ganti password admin lama (hash scrypt di atas) bila dipakai ulang
+     di tempat lain; bila hanya di aplikasi lama, perlakukan sebagai bocor.
+  3. Bersihkan riwayat git `cleanup/rapikan-kode` (purge `nms.db` dan
+     `logs/sla_demo.db` di semua commit, force-push dengan lease). Efek:
+     hashes semua commit sesudah 6c8158a berubah, termasuk referensi hash di
+     dokumen ini; clone lama tetap menyimpan blob (purge penuh perlu dukungan
+     GitHub). Alternatif: terima risiko (paparan: IP internal + hash scrypt)
+     dan cukup rotasi.
+  4. Hapus baris `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` dari `.env` lokal
+     (dead config).
+- Sudah dilakukan: verifikasi menyeluruh di atas; tree berjalan bersih
+  (`git ls-tree HEAD` tanpa .db/.env); backup hash blob sudah diambil ke
+  Temp untuk asesmen.
