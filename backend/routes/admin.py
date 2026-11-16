@@ -15,11 +15,13 @@ from werkzeug.security import generate_password_hash
 
 import auth
 import db
+import netguard
 import poller
 from core.constants import SLA_PERIODS
 from core.csvsafe import csv_row
 from core.env import APP_VERSION, SERVER_STARTED
 from core.guard import audit, roles
+from core.validation import parse_finite_int
 
 bp = Blueprint("admin", __name__)
 log = logging.getLogger("nms.admin")
@@ -235,9 +237,10 @@ def _retention_preview():
     events = db.retention_cutoff(retention["retention_events_days"])
     audit = db.retention_cutoff(retention["retention_audit_days"])
     checks = db.retention_cutoff(retention["retention_checks_days"])
-    try:
-        optical_hourly_days = int(db.get_fiber_settings().get("retention_optical_hourly_days", 90))
-    except (TypeError, ValueError):
+    optical_hourly_days = parse_finite_int(
+        db.get_fiber_settings().get("retention_optical_hourly_days", 90)
+    )
+    if optical_hourly_days is None or not (1 <= optical_hourly_days <= 3650):
         optical_hourly_days = 90
     optical_hourly = db.retention_cutoff(optical_hourly_days, hourly=True)
     counts = {}
@@ -320,11 +323,11 @@ def api_update_settings():
         if key not in allowed:
             continue
         if key in flag_keys:
-            clean[key] = "1" if bool(value) else "0"
+            # bool("0") == True di Python; parse string eksplisit.
+            clean[key] = "1" if netguard.as_bool(value) else "0"
         elif key in int_keys:
-            try:
-                number = int(value)
-            except (TypeError, ValueError):
+            number = parse_finite_int(value)
+            if number is None:
                 return jsonify({"error": f"{key} harus berupa angka."}), 400
             if key == "default_poll_interval" and not (10 <= number <= 86400):
                 return jsonify({"error": "Interval default harus antara 10 dan 86400 detik."}), 400

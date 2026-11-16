@@ -3,13 +3,18 @@
 import csv
 import io
 import ipaddress
+import logging
 import re
 
 from flask import Blueprint, Response, jsonify, request
 
+log = logging.getLogger("nms.events")
+
 import db
+import netguard
 from core.csvsafe import csv_cell
 from core.guard import audit, roles
+from core.validation import parse_finite_int
 from ingest import INGEST
 from ingest import rules as ingest_rules
 
@@ -18,6 +23,14 @@ bp = Blueprint("events", __name__)
 _SEVERITIES = ("disaster", "high", "average", "warning", "information")
 _MATCH_TYPES = ("contains", "startswith", "regex")
 _OID_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)*\.?$")
+
+
+def _finite_int(value):
+    """int() yang menolak NaN/Infinity/pecahan (lempar ValueError)."""
+    number = parse_finite_int(value)
+    if number is None:
+        raise ValueError
+    return number
 
 
 def _int_arg(name, default, low, high):
@@ -191,11 +204,11 @@ def _validate_rule(data, rule_id=None):
         except ingest_rules.PatternError as exc:
             return None, str(exc)
     try:
-        cooldown = min(86400, max(0, int(data.get("cooldown_seconds", 60))))
-        auto_resolve = min(10080, max(0, int(data.get("auto_resolve_minutes", 30))))
-        device_id = int(data["device_id"]) if data.get("device_id") else None
-        group_id = int(data["group_id"]) if data.get("group_id") else None
-        resolves_rule_id = int(data["resolves_rule_id"]) if data.get("resolves_rule_id") else None
+        cooldown = min(86400, max(0, _finite_int(data.get("cooldown_seconds", 60))))
+        auto_resolve = min(10080, max(0, _finite_int(data.get("auto_resolve_minutes", 30))))
+        device_id = _finite_int(data["device_id"]) if data.get("device_id") else None
+        group_id = _finite_int(data["group_id"]) if data.get("group_id") else None
+        resolves_rule_id = _finite_int(data["resolves_rule_id"]) if data.get("resolves_rule_id") else None
     except (TypeError, ValueError):
         return None, "Nilai angka aturan tidak valid."
     if resolves_rule_id and rule_id and resolves_rule_id == int(rule_id):
@@ -213,7 +226,7 @@ def _validate_rule(data, rule_id=None):
         "problem_severity": problem_severity, "cooldown_seconds": cooldown,
         "auto_resolve_minutes": auto_resolve, "recovery_pattern": recovery,
         "resolves_rule_id": resolves_rule_id,
-        "enabled": 1 if data.get("enabled", True) else 0,
+        "enabled": 1 if netguard.as_bool(data.get("enabled", True)) else 0,
     }, None
 
 
@@ -272,9 +285,8 @@ def api_update_receiver():
     kind = str(data.get("kind") or "").strip()
     if kind not in ("syslog_udp", "syslog_tcp", "snmp_trap", "netflow_udp", "ipfix_udp"):
         return jsonify({"error": "Jenis penerima tidak valid."}), 400
-    try:
-        port = int(data.get("port"))
-    except (TypeError, ValueError):
+    port = parse_finite_int(data.get("port"))
+    if port is None:
         return jsonify({"error": "Port harus berupa angka."}), 400
     if not (1024 <= port <= 65535):
         return jsonify({"error": "Port harus 1024-65535 (tanpa hak istimewa)."}), 400
@@ -296,9 +308,9 @@ def api_update_receiver():
                     cleaned.append(text)
             config["communities"] = cleaned
         if "allow_v1" in data:
-            config["allow_v1"] = bool(data.get("allow_v1"))
+            config["allow_v1"] = netguard.as_bool(data.get("allow_v1"))
     db.update_ingest_receiver(
-        kind, enabled=bool(data.get("enabled", False)), port=port,
+        kind, enabled=netguard.as_bool(data.get("enabled", False)), port=port,
         bind_address=bind, config=config or None,
     )
     audit("events.receiver_update", f"ingest_receiver:{kind}",
@@ -306,13 +318,15 @@ def api_update_receiver():
     try:
         status = INGEST.reload()
     except Exception as exc:
-        return jsonify({"ok": True, "warning": f"Konfigurasi disimpan, tetapi penerima gagal dimuat: {exc}"}), 200
+        log.warning("Penerima gagal dimuat setelah pengaturan disimpan (%s)", type(exc).__name__)
+        return jsonify({"ok": True, "warning": "Konfigurasi disimpan, tetapi penerima gagal dimuat (lihat log server)."}), 200
     try:
         from flow import FLOW
 
         flow_status = FLOW.reload()
         status = {**status, **flow_status}
     except Exception as exc:
+        log.warning("Penerima flow gagal dimuat setelah pengaturan disimpan (%s)", type(exc).__name__)
         return jsonify({"ok": True,
-                        "warning": f"Konfigurasi disimpan, tetapi penerima flow gagal dimuat: {exc}"}), 200
+                        "warning": "Konfigurasi disimpan, tetapi penerima flow gagal dimuat (lihat log server)."}), 200
     return jsonify({"ok": True, "receivers": status})

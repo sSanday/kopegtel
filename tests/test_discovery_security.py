@@ -122,16 +122,16 @@ def test_start_scan_keeps_credentials_only_in_memory(client, fresh_db, operator,
     seen = {}
     done = threading.Event()
 
-    def fake_run(job_id, cidr, community, mikrotik_user, mikrotik_password):
+    def fake_run(job_id, cidr, community):
         seen.update(
             {
                 "job_id": job_id,
                 "cidr": cidr,
                 "community": community,
-                "mikrotik_user": mikrotik_user,
-                "mikrotik_password": mikrotik_password,
             }
         )
+        # _run_scan asli melepas slot di finally; tiruan harus sama.
+        discovery_module._SCAN_JOB_SLOTS.release()
         done.set()
 
     monkeypatch.setattr(discovery_module, "_run_scan", fake_run)
@@ -142,6 +142,8 @@ def test_start_scan_keeps_credentials_only_in_memory(client, fresh_db, operator,
         json={
             "cidr": "192.168.50.0/29",
             "community": SCAN_COMMUNITY,
+            # L-5: kredensial RouterOS tidak diteruskan ke thread pemindaian
+            # (tidak boleh menyemprotkan password ke seluruh subnet).
             "mikrotik_user": SCAN_USER,
             "mikrotik_password": SCAN_PASSWORD,
         },
@@ -155,8 +157,6 @@ def test_start_scan_keeps_credentials_only_in_memory(client, fresh_db, operator,
         "job_id": job_id,
         "cidr": "192.168.50.0/29",
         "community": SCAN_COMMUNITY,
-        "mikrotik_user": SCAN_USER,
-        "mikrotik_password": SCAN_PASSWORD,
     }
 
     job = fresh_db.get_scan_job(job_id)

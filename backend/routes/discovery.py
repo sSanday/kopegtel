@@ -1,5 +1,6 @@
 """Blueprint Discovery: pemindaian CIDR & penambahan massal perangkat."""
 import ipaddress
+import logging
 import threading
 import concurrent.futures
 
@@ -7,7 +8,6 @@ from flask import Blueprint, g, jsonify, request
 
 import db
 import poller
-from collectors import mikrotik as mikrotik_collector
 from collectors import ping as ping_collector
 from collectors import snmp as snmp_collector
 from core.guard import audit, roles
@@ -22,11 +22,29 @@ from core.validation import (
 
 bp = Blueprint("discovery", __name__)
 
+log = logging.getLogger("nms.discovery")
+
 _SCAN_SEMAPHORE = threading.Semaphore(32)
 _scan_jobs_lock = threading.Lock()
+# Maksimal 2 pemindaian serentak; sisanya ditolak dengan 429.
+_SCAN_JOB_SLOTS = threading.Semaphore(2)
 
 
-def _run_scan(job_id, cidr, community, mikrotik_user, mikrotik_password):
+def _run_scan(job_id, cidr, community):
+    try:
+        _scan_addresses(job_id, cidr, community)
+        db.finish_scan_job(job_id)
+    except Exception:
+        log.exception("Pemindaian %s gagal", job_id)
+        try:
+            db.fail_scan_job(job_id)
+        except Exception:
+            log.exception("Gagal menandai pemindaian %s sebagai gagal", job_id)
+    finally:
+        _SCAN_JOB_SLOTS.release()
+
+
+def _scan_addresses(job_id, cidr, community):
     network = ipaddress.ip_network(cidr, strict=False)
     addresses = list(network.hosts()) or list(network)
     results = []
@@ -56,18 +74,8 @@ def _run_scan(job_id, cidr, community, mikrotik_user, mikrotik_password):
                         entry["type_hint"] = "snmp"
                 except Exception:
                     pass
-            if mikrotik_user and mikrotik_password:
-                try:
-                    res = mikrotik_collector.check_mikrotik(
-                        {"ip": ip, "port": 8728, "user": mikrotik_user,
-                         "password": mikrotik_password, "ssl": False}
-                    )
-                    if res.get("ok"):
-                        entry["identity"] = res.get("identity")
-                        entry["version"] = res.get("version")
-                        entry["type_hint"] = "mikrotik"
-                except Exception:
-                    pass
+            # Password RouterOS API TIDAK dikirim ke host hasil ping:
+            # pemindaian tidak boleh menyemprotkan kredensial ke seluruh subnet.
             return entry
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:
@@ -85,7 +93,6 @@ def _run_scan(job_id, cidr, community, mikrotik_user, mikrotik_password):
                     db.update_scan_job(job_id, completed, list(results))
 
     db.update_scan_job(job_id, completed, results)
-    db.finish_scan_job(job_id)
 
 
 @bp.get("/api/discovery/scans")
@@ -123,22 +130,39 @@ def api_start_scan():
     elif not network_default_allowed(network):
         return jsonify({"error": "Tanpa ALLOWED_NETWORKS, hanya rentang privat (RFC1918) yang boleh dipindai."}), 403
 
-    community = str(data.get("community") or "").strip() or None
-    mikrotik_user = str(data.get("mikrotik_user") or "").strip() or None
-    mikrotik_password = str(data.get("mikrotik_password") or "").strip() or None
+    # Slot dipindai hanya maksimal 2 sekaligus; slot dilepas oleh _run_scan
+    # (finally) setelah pekerjaan selesai atau gagal.
+    if not _SCAN_JOB_SLOTS.acquire(blocking=False):
+        return jsonify(
+            {"error": "Masih ada pemindaian lain yang berjalan. Tunggu sampai selesai.", "code": "scan_busy"}
+        ), 429
+    try:
+        community = str(data.get("community") or "").strip() or None
 
-    total = len(list(network.hosts())) or network.num_addresses
-    # Kredensial hanya diteruskan ke thread di memori; jangan pernah menulisnya
-    # ke scan_jobs (H-3).
-    job_id = db.create_scan_job(str(network), total, g.user["username"])
+        total = len(list(network.hosts())) or network.num_addresses
+        # Kredensial hanya diteruskan ke thread di memori; jangan pernah menulisnya
+        # ke scan_jobs (H-3).
+        job_id = db.create_scan_job(str(network), total, g.user["username"])
+    except Exception:
+        _SCAN_JOB_SLOTS.release()
+        raise
     audit("discovery.scan", f"scan:{job_id}", f"Memindai {network}")
-
-    thread = threading.Thread(
-        target=_run_scan,
-        args=(job_id, str(network), community, mikrotik_user, mikrotik_password),
-        daemon=True,
-    )
-    thread.start()
+    # Password RouterOS API tidak diterima di endpoint ini (penyemprotan
+    # kredensial ke subnet) - hanya komunitas SNMP opsional.
+    try:
+        thread = threading.Thread(
+            target=_run_scan,
+            args=(job_id, str(network), community),
+            daemon=True,
+        )
+        thread.start()
+    except Exception:
+        _SCAN_JOB_SLOTS.release()
+        try:
+            db.fail_scan_job(job_id)
+        except Exception:
+            log.exception("Gagal menandai pemindaian %s sebagai gagal", job_id)
+        raise
     return jsonify({"scan": {"id": job_id, "cidr": str(network), "total": total, "status": "running"}}), 202
 
 

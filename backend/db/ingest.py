@@ -9,7 +9,6 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from .connection import (
-    _days_ago,
     _lock,
     transaction,
     _now,

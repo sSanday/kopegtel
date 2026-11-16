@@ -22,9 +22,13 @@
   let dialog = null;
   let state = { device: null, onSaved: null, submitting: false };
 
-  function esc(value) {
-    return window.NMSFormat ? window.NMSFormat.escapeHtml(value) : String(value || "");
-  }
+  // Satu sumber escape: window.NMSFormat (format.js). Fallback minimal
+  // bila format.js gagal dimuat.
+  const esc = window.NMSFormat
+    ? window.NMSFormat.escapeHtml
+    : (value) => String(value == null ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
   function markup() {
     const typeOptions = DEVICE_TYPES.map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`).join("");

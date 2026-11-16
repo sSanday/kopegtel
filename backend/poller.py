@@ -39,14 +39,23 @@ from collectors import mikrotik_modules
 from collectors import optical as optical_collector
 from collectors import ping as ping_collector
 from collectors import snmp as snmp_collector
+from core.env import env_float, env_int
 from ingest import rules as ingest_rules
 
 log = logging.getLogger("nms.poller")
 
-MAX_WORKERS = int(os.environ.get("POLL_MAX_WORKERS", "8"))
+try:
+    MAX_WORKERS = env_int("POLL_MAX_WORKERS", 8, minimum=1, maximum=64)
+except ValueError as exc:
+    # config.validate_or_exit sudah memvalidasi di startup normal; jalur ini
+    # hanya untuk impor langsung (tes/skrip).
+    raise SystemExit(f"ERROR konfigurasi: {exc}") from exc
 MIN_INTERVAL_SECONDS = 10
 DEFAULT_INTERVAL_SECONDS = 60
-DEGRADED_LATENCY_MS = float(os.environ.get("DEGRADED_LATENCY_MS", "250"))
+try:
+    DEGRADED_LATENCY_MS = env_float("DEGRADED_LATENCY_MS", 250.0, minimum=0.0, maximum=60000.0)
+except ValueError as exc:
+    raise SystemExit(f"ERROR konfigurasi: {exc}") from exc
 DEGRADED_CPU_PERCENT = 90
 
 _scheduler = None

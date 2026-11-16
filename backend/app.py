@@ -39,6 +39,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
 
 import db  # noqa: E402  (env harus dimuat dulu)
 from core import guard  # noqa: E402
+from core.env import env_flag, env_int  # noqa: E402
 
 
 def _fail_fast(message):
@@ -52,7 +53,10 @@ except ValueError as exc:
     _fail_fast(str(exc))
 
 
-PORT = int(os.environ.get("PORT", "5500"))
+try:
+    PORT = env_int("PORT", 5500, minimum=1, maximum=65535)
+except ValueError as exc:
+    _fail_fast(str(exc))
 HOST = os.environ.get("HOST", "127.0.0.1")
 
 import poller  # noqa: E402
@@ -102,21 +106,11 @@ def bootstrap():
     _seed_admin()
 
 
-def _env_flag(name):
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
-
-
 def _positive_int_env(name, default, minimum=1):
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
     try:
-        value = int(raw)
-    except ValueError:
-        _fail_fast(f"{name} harus berupa angka.")
-    if value < minimum:
-        _fail_fast(f"{name} minimal {minimum}.")
-    return value
+        return env_int(name, default, minimum=minimum)
+    except ValueError as exc:
+        _fail_fast(str(exc))
 
 
 # Batas ukuran body request. Endpoint login/MFA memakai batas lebih kecil di
@@ -128,7 +122,7 @@ app.secret_key = SECRET_KEY
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=_env_flag("COOKIE_SECURE"),  # lokal: HTTP. Set 1 bila di belakang HTTPS.
+    SESSION_COOKIE_SECURE=env_flag("COOKIE_SECURE"),  # lokal: HTTP. Set 1 bila di belakang HTTPS.
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
     MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
     MAX_FORM_MEMORY_SIZE=MAX_REQUEST_BYTES,
@@ -136,7 +130,7 @@ app.config.update(
 )
 
 try:
-    TRUSTED_PROXIES = max(0, int(os.environ.get("TRUSTED_PROXIES", "0").strip() or "0"))
+    TRUSTED_PROXIES = env_int("TRUSTED_PROXIES", 0, minimum=0)
 except ValueError:
     _fail_fast("TRUSTED_PROXIES harus berupa angka (jumlah proxy tepercaya di depan aplikasi).")
 if TRUSTED_PROXIES > 0:

@@ -1,6 +1,5 @@
 """Guard API: autentikasi, CSRF, idle timeout, wajib ganti password."""
 import functools
-import os
 import time
 
 import db
@@ -8,9 +7,7 @@ import auth
 
 from flask import g, jsonify, request, session
 
-
-def _env_flag(name):
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+from core.env import env_flag
 
 
 def client_ip():
@@ -130,7 +127,7 @@ def guard_api():
 
 def add_security_headers(response):
     response = auth.security_headers(response)
-    if _env_flag("HSTS_ENABLED"):
+    if env_flag("HSTS_ENABLED"):
         # Hanya aktifkan bila aplikasi berada di belakang HTTPS (mis. reverse proxy).
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     # HTML tidak boleh heuristically cached — halaman menunjuk aset ber-?v= yang berubah.

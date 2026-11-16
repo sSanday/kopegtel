@@ -9,7 +9,6 @@ Prinsip:
 """
 
 import collections
-import json
 import logging
 import queue
 import socket
@@ -134,25 +133,55 @@ class BoundedBatcher:
 
 
 class RateLimiter:
-    """Sliding window sederhana per sumber (default 200 pesan / 10 detik)."""
+    """Sliding window per sumber: ``limit`` kejadian per ``window_seconds``.
 
-    def __init__(self, per_second=200, window_seconds=10):
-        self.limit = max(1, int(per_second)) * max(1, int(window_seconds))
+    Dict sumber kedaluwarsa dibersihkan berkala (setiap ``sweep_every``
+    panggilan dan saat penuh) agar sumber yang tidak pernah kembali tidak
+    menumpuk selamanya.
+    """
+
+    MAX_SOURCES = 4096
+    SWEEP_EVERY = 512
+
+    def __init__(self, limit=200, window_seconds=10, max_sources=None):
+        self.limit = max(1, int(limit))
         self.window = max(1, int(window_seconds))
-        self._events = collections.defaultdict(collections.deque)
+        self._events = {}
         self._lock = threading.Lock()
+        self._max_sources = max(1, int(max_sources or self.MAX_SOURCES))
+        self._since_sweep = 0
+
+    def _drop_expired(self, cutoff):
+        for source, bucket in list(self._events.items()):
+            if not bucket or bucket[-1] < cutoff:
+                self._events.pop(source, None)
 
     def allow(self, source, now=None):
         current = now or time.monotonic()
+        cutoff = current - self.window
         with self._lock:
-            bucket = self._events[source]
-            cutoff = current - self.window
+            self._since_sweep += 1
+            if self._since_sweep >= self.SWEEP_EVERY:
+                self._since_sweep = 0
+                self._drop_expired(cutoff)
+            bucket = self._events.get(source)
+            if bucket is None:
+                if len(self._events) >= self._max_sources:
+                    self._drop_expired(cutoff)
+                    if len(self._events) >= self._max_sources:
+                        # Penuh sumber aktif: tolak sumber baru (fail-safe).
+                        return False
+                bucket = self._events[source] = collections.deque()
             while bucket and bucket[0] < cutoff:
                 bucket.popleft()
             if len(bucket) >= self.limit:
-                return False
-            bucket.append(current)
-            return True
+                allowed = False
+            else:
+                bucket.append(current)
+                allowed = True
+            if not bucket:
+                self._events.pop(source, None)
+            return allowed
 
     def reset(self):
         with self._lock:
@@ -193,9 +222,14 @@ class IngestManager:
             self.stop()
             self._stop.clear()
             settings = db.get_settings()
+            try:
+                rate_per_sec = int(settings.get("ingest_rate_limit_per_sec", 200))
+                rate_window = int(settings.get("ingest_rate_window_seconds", 10))
+            except (TypeError, ValueError):
+                rate_per_sec, rate_window = 200, 10
             self._rate = RateLimiter(
-                settings.get("ingest_rate_limit_per_sec", 200),
-                settings.get("ingest_rate_window_seconds", 10),
+                limit=rate_per_sec * max(1, rate_window),
+                window_seconds=max(1, rate_window),
             )
             self._syslog_batcher = BoundedBatcher(
                 "syslog", db.add_syslog_events_batch,
@@ -401,9 +435,14 @@ class IngestManager:
             )
         if self._rate is None:
             settings = db.get_settings()
+            try:
+                rate_per_sec = int(settings.get("ingest_rate_limit_per_sec", 200))
+                rate_window = int(settings.get("ingest_rate_window_seconds", 10))
+            except (TypeError, ValueError):
+                rate_per_sec, rate_window = 200, 10
             self._rate = RateLimiter(
-                settings.get("ingest_rate_limit_per_sec", 200),
-                settings.get("ingest_rate_window_seconds", 10),
+                limit=rate_per_sec * max(1, rate_window),
+                window_seconds=max(1, rate_window),
             )
 
     def _device_for_ip(self, source_ip):

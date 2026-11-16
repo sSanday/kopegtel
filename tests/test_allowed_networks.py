@@ -122,7 +122,7 @@ def reset_rate_limit():
 def collectors(monkeypatch):
     monkeypatch.setattr(discovery_module.ping_collector, "check_ping", lambda _ip: {"ok": False})
     monkeypatch.setattr(discovery_module.snmp_collector, "check_snmp", lambda _c: {"ok": False})
-    monkeypatch.setattr(discovery_module.mikrotik_collector, "check_mikrotik", lambda _c: {"ok": False})
+    # Scan tidak lagi memanggil RouterOS (L-5); kredensial RouterOS tidak dipakai.
     calls = {"mikrotik": []}
 
     def fake_mikrotik(config):

@@ -2,9 +2,30 @@
 
 import csv
 import io
+import logging
 import re
 import time
 from collections import defaultdict, deque
+
+# Pesan aman untuk klien per kode error aksi RouterOS (detail mentah hanya di
+# log server). Kode (`code`) tetap dikirim agar UI dapat menampilkan konteks.
+_ACTION_ERROR_CLIENT_MESSAGES = {
+    "not_found": "Data tidak ditemukan di perangkat (mungkin sudah berubah).",
+    "not_allowed": "Aksi ini tidak diizinkan atau tidak dikenal.",
+    "invalid_target": "Target aksi tidak valid atau tidak lengkap.",
+    "invalid_timeout": "Timeout harus berupa angka + satuan (mis. 1h, 30m).",
+    "dry_run": "Aksi uji tidak dijalankan.",
+    "management_interface": "Aksi ditolak: antarmuka manajemen tidak boleh diubah.",
+    "unreachable": "Perangkat tidak dapat dihubungi.",
+    "auth_failed": "Autentikasi RouterOS ditolak.",
+    "timeout": "Perangkat tidak merespons (timeout).",
+    "tls_error": "Verifikasi TLS ke perangkat gagal.",
+    "tls_fingerprint_mismatch": "Fingerprint sertifikat TLS tidak cocok dengan yang tersimpan.",
+}
+
+_ACTION_ERROR_DEFAULT = "Aksi gagal dijalankan pada perangkat."
+
+log = logging.getLogger("nms.mikrotik")
 
 from flask import Blueprint, Response, g, jsonify, request, session
 
@@ -13,8 +34,10 @@ import db
 import poller
 from collectors import mikrotik_modules
 from core.csvsafe import csv_row
+import netguard
 from core.guard import audit, client_ip, roles
 from core.metrics import downsample as _downsample, range_since as _range_since
+from core.validation import parse_finite_int
 
 bp = Blueprint("mikrotik", __name__)
 
@@ -689,7 +712,7 @@ def api_mt_update_settings(device_id):
             if not isinstance(modules, dict):
                 return jsonify({"error": "modules harus berupa objek."}), 400
             clean["modules"] = {
-                key: bool(modules.get(key, True)) for key in db.MT_MODULE_DEFAULTS
+                key: netguard.as_bool(modules.get(key, True)) for key in db.MT_MODULE_DEFAULTS
             }
         if "intervals" in data:
             intervals = data.get("intervals")
@@ -700,16 +723,15 @@ def api_mt_update_settings(device_id):
             for key, (lo, hi) in limits.items():
                 if key not in intervals:
                     continue
-                try:
-                    value = int(intervals[key])
-                except (TypeError, ValueError):
+                value = parse_finite_int(intervals[key])
+                if value is None:
                     return jsonify({"error": f"Interval {key} harus berupa angka."}), 400
                 if not (lo <= value <= hi):
                     return jsonify({"error": f"Interval {key} harus antara {lo} dan {hi} detik."}), 400
                 clean["intervals"][key] = value
         for key in ("write_enabled", "write_ssl", "ssh_enabled", "backup_enabled"):
             if key in data:
-                clean[key] = bool(data[key])
+                clean[key] = netguard.as_bool(data[key])
         for key in ("write_user", "write_password", "ssh_user", "ssh_password", "ssh_host_key"):
             if key in data:
                 value = str(data.get(key) or "").strip()
@@ -717,25 +739,22 @@ def api_mt_update_settings(device_id):
                     return jsonify({"error": f"{key} terlalu panjang."}), 400
                 clean[key] = value
         if "write_port" in data and str(data.get("write_port") or "").strip():
-            try:
-                port = int(data["write_port"])
-            except (TypeError, ValueError):
+            port = parse_finite_int(data["write_port"])
+            if port is None:
                 return jsonify({"error": "Port API tulis harus berupa angka."}), 400
             if not (1 <= port <= 65535):
                 return jsonify({"error": "Port API tulis harus antara 1 dan 65535."}), 400
             clean["write_port"] = port
         if "ssh_port" in data and str(data.get("ssh_port") or "").strip():
-            try:
-                port = int(data["ssh_port"])
-            except (TypeError, ValueError):
+            port = parse_finite_int(data["ssh_port"])
+            if port is None:
                 return jsonify({"error": "Port SSH harus berupa angka."}), 400
             if not (1 <= port <= 65535):
                 return jsonify({"error": "Port SSH harus antara 1 dan 65535."}), 400
             clean["ssh_port"] = port
         if "backup_hour" in data:
-            try:
-                hour = int(data["backup_hour"])
-            except (TypeError, ValueError):
+            hour = parse_finite_int(data["backup_hour"])
+            if hour is None:
                 return jsonify({"error": "Jam backup harus berupa angka 0–23."}), 400
             if not (0 <= hour <= 23):
                 return jsonify({"error": "Jam backup harus antara 0 dan 23."}), 400
@@ -764,7 +783,7 @@ def api_mt_finding_ignore(device_id, finding_id):
     if finding is None or finding.get("device_id") != device_id:
         return jsonify({"error": "Temuan tidak ditemukan."}), 404
     data = request.get_json(silent=True) or {}
-    ignored = bool(data.get("ignored", True))
+    ignored = netguard.as_bool(data.get("ignored", True))
     reason = str(data.get("reason") or "").strip()
     if ignored and len(reason) < 3:
         return jsonify({"error": "Alasan mengabaikan temuan wajib diisi (minimal 3 karakter)."}), 400
@@ -886,10 +905,9 @@ def api_mt_topology_suggestions():
 @roles("admin", "operator")
 def api_mt_topology_apply():
     data = request.get_json(silent=True) or {}
-    try:
-        child_id = int(data.get("child_id"))
-        parent_id = int(data.get("parent_id"))
-    except (TypeError, ValueError):
+    child_id = parse_finite_int(data.get("child_id"))
+    parent_id = parse_finite_int(data.get("parent_id"))
+    if child_id is None or parent_id is None:
         return jsonify({"error": "child_id dan parent_id wajib berupa angka."}), 400
     allowed = {
         (item["child_id"], item["parent_id"]) for item in _mt_topology_suggestions()
@@ -1057,9 +1075,12 @@ def api_mt_backups_run(device_id):
             actor=g.user["username"], ip=client_ip(),
         )
     except ValueError as exc:
+        # ValueError dari backups.run_backup adalah pesan terkurasi (tanpa
+        # detail internal/secret), jadi aman ditampilkan.
         return jsonify({"error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001 — kegagalan SSH/ekspor sudah diaudit di backups.run_backup
-        return jsonify({"error": f"Backup gagal: {exc}"}), 502
+    except Exception as exc:  # noqa: BLE001 - kegagalan SSH/ekspor sudah diaudit di backups.run_backup
+        log.exception("Backup perangkat %s gagal", device_id)
+        return jsonify({"error": "Backup gagal dijalankan pada perangkat (lihat log server)."}), 502
     return jsonify({
         "ok": True,
         "backup": {
@@ -1180,27 +1201,34 @@ def api_mt_action(device_id):
     try:
         result = mikrotik_modules.perform_action(config, action, {**params, "target": target})
     except mikrotik_modules.ActionError as exc:
+        log.warning("Aksi %s gagal di perangkat %s (kode=%s): %s", action, device_id, exc.code, exc)
         db.add_mt_action(
             device_id, username=g.user["username"], action=action, target=target,
-            params=params, result=f"Gagal: {exc}", verified=None, before=None, after=None,
+            params=params, result=f"Gagal ({exc.code or 'action_failed'}): {type(exc).__name__}",
+            verified=None, before=None, after=None,
             ip=client_ip(),
         )
         audit(
             "mikrotik.action.failed", f"device:{device_id}",
-            f"Aksi {action} pada {target or '—'} gagal: {exc}",
+            f"Aksi {action} pada {target or '-'} gagal: {type(exc).__name__} (kode={exc.code})",
         )
         status = 404 if exc.code == "not_found" else 409 if exc.code == "management_interface" else 400
         if exc.code in ("unreachable", "auth_failed", "timeout", "tls_error", "tls_fingerprint_mismatch"):
             status = 502
-        return jsonify({"error": str(exc), "code": exc.code}), status
+        client_message = _ACTION_ERROR_CLIENT_MESSAGES.get(exc.code, _ACTION_ERROR_DEFAULT)
+        return jsonify({"error": client_message, "code": exc.code}), status
     except Exception as exc:  # noqa: BLE001
+        log.exception("Aksi %s gagal di perangkat %s", action, device_id)
         db.add_mt_action(
             device_id, username=g.user["username"], action=action, target=target,
-            params=params, result=f"Gagal: {exc}", verified=None, before=None, after=None,
+            params=params, result=f"Gagal: {type(exc).__name__}", verified=None, before=None, after=None,
             ip=client_ip(),
         )
-        audit("mikrotik.action.failed", f"device:{device_id}", f"Aksi {action} gagal: {exc}")
-        return jsonify({"error": f"Aksi gagal: {exc}"}), 500
+        audit(
+            "mikrotik.action.failed", f"device:{device_id}",
+            f"Aksi {action} pada {target or '-'} gagal: {type(exc).__name__}",
+        )
+        return jsonify({"error": _ACTION_ERROR_DEFAULT, "code": "action_failed"}), 500
 
     db.add_mt_action(
         device_id, username=g.user["username"], action=action, target=result.get("target") or target,

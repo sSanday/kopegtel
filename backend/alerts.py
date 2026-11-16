@@ -59,6 +59,13 @@ def render_template(body, problem, device):
     return text
 
 
+def _redact_token(text, bot_token):
+    """Sembunyikan bot_token bila muncul di pesan (tidak pernah di-log/dikirim)."""
+    if bot_token and isinstance(text, str):
+        text = text.replace(bot_token, "***")
+    return text
+
+
 def send_telegram(config, text):
     bot_token = (config or {}).get("bot_token") or ""
     chat_id = (config or {}).get("chat_id") or ""
@@ -75,16 +82,17 @@ def send_telegram(config, text):
         with urlrequest.urlopen(req, timeout=TIMEOUT_SECONDS, context=context) as response:
             data = json.loads(response.read().decode("utf-8"))
     except urlerror.HTTPError as exc:
-        body = ""
-        try:
-            body = exc.read().decode("utf-8", errors="replace")[:300]
-        except Exception:
-            pass
-        return False, f"Telegram menolak (HTTP {exc.code}): {body}"
+        # Detail respons Telegram hanya ke log; body bisa memuat teks arbitrer.
+        log.warning("Telegram menolak (HTTP %s)", exc.code)
+        return False, f"Telegram menolak permintaan (HTTP {exc.code}). Periksa bot_token/chat_id."
     except Exception as exc:
-        return False, f"Gagal menghubungi Telegram: {exc}"
+        # Detail mentah bisa memuat URL (yang berisi bot_token) - jangan
+        # diteruskan ke API/klien; cukup ke log sebagai nama kelas exception.
+        log.warning("Gagal menghubungi Telegram (%s)", type(exc).__name__)
+        return False, "Gagal menghubungi Telegram. Periksa jaringan dan bot_token."
     if not data.get("ok"):
-        return False, f"Telegram menolak: {str(data.get('description'))[:200]}"
+        description = _redact_token(str(data.get("description") or ""), bot_token)[:200]
+        return False, f"Telegram menolak: {description or 'alasan tidak diketahui'}"
     return True, "Terkirim ke Telegram."
 
 

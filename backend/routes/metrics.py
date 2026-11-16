@@ -1,6 +1,4 @@
 """Blueprint E4 — /metrics (Prometheus, Bearer token) + manajemen token API."""
-import json
-
 from flask import Blueprint, Response, g, jsonify, request
 
 import db
@@ -10,7 +8,8 @@ import prometheus
 
 bp = Blueprint("metrics", __name__)
 
-_RATE = RateLimiter(per_second=30, window_seconds=60)
+# 30 scrape per menit per IP (bukan 30/detik).
+_RATE = RateLimiter(limit=30, window_seconds=60)
 
 
 def _metrics_enabled():
@@ -38,7 +37,7 @@ def metrics_endpoint():
     if "metrics" not in (record.get("scopes") or []):
         return jsonify({"error": "Cakupan token tidak mencakup metrics."}), 403
 
-    payload, truncated = prometheus.render_metrics_text()
+    payload, _truncated = prometheus.render_metrics_text()
     return Response(
         payload,
         mimetype="text/plain; version=0.0.4; charset=utf-8",

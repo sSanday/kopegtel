@@ -17,10 +17,14 @@ from .connection import (
     get_conn,
     transaction,
 )
+from core.validation import parse_finite_int
 
 TOKEN_PREFIX = "nms_"
 TOKEN_BYTES = 32
 DEFAULT_SCOPES = ["metrics"]
+# Batas masa berlaku token (hari). Tanpa cap, timedelta(days=10**9) memicu
+# OverflowError (500) pada input JSON yang besar.
+MAX_TOKEN_TTL_DAYS = 3650
 
 
 def _hash_token(token):
@@ -72,16 +76,17 @@ def create_api_token(name, *, scopes=None, expires_in_days=None, allowed_ips=Non
     token = TOKEN_PREFIX + secrets.token_urlsafe(TOKEN_BYTES)
     token_hash = _hash_token(token)
     expires_at = None
-    if expires_in_days:
-        try:
-            days = int(expires_in_days)
-            if days < 1:
-                return None, "Kedaluwarsa minimal 1 hari."
-            expires_at = (
-                datetime.now(timezone.utc) + timedelta(days=days)
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        except (TypeError, ValueError):
+    if expires_in_days not in (None, ""):
+        days = parse_finite_int(expires_in_days)
+        if days is None:
             return None, "Kedaluwarsa harus berupa angka hari."
+        if days < 1:
+            return None, "Kedaluwarsa minimal 1 hari."
+        if days > MAX_TOKEN_TTL_DAYS:
+            return None, f"Kedaluwarsa maksimal {MAX_TOKEN_TTL_DAYS} hari."
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=days)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
     scopes_list = [str(scope).strip() for scope in (scopes or []) if str(scope).strip()]
     if not scopes_list:
         scopes_list = DEFAULT_SCOPES
@@ -148,8 +153,12 @@ def verify_api_token(token, *, ip=None):
                 break
         if match is None:
             return None
-        if match["expires_at"] and _parse_iso(match["expires_at"]) < datetime.now(timezone.utc):
-            return None
+        if match["expires_at"]:
+            expires = _parse_iso(match["expires_at"])
+            # expires_at yang diisi tetapi rusak/tak terurai diperlakukan
+            # kedaluwarsa (bukan TypeError -> 500).
+            if expires is None or expires < datetime.now(timezone.utc):
+                return None
         allowed = _parse_allowed_ips(match["allowed_ips"])
         if allowed and ip not in allowed:
             return None

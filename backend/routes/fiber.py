@@ -11,7 +11,7 @@ import fiber as fiber_calc
 import optical as optical_logic
 from core.csvsafe import csv_row
 from core.guard import audit, roles
-from core.validation import _parse_optional_id
+from core.validation import _parse_optional_id, parse_finite_float, parse_finite_int
 
 bp = Blueprint("fiber", __name__)
 
@@ -239,9 +239,8 @@ def _validate_fiber_link(data, existing_id=None):
     if db.fiber_link_name_exists(name, existing_id):
         return None, "Nama link sudah dipakai."
 
-    try:
-        device_a_id = int(data.get("device_a_id"))
-    except (TypeError, ValueError):
+    device_a_id = parse_finite_int(data.get("device_a_id"))
+    if device_a_id is None:
         return None, "Perangkat ujung A wajib dipilih."
     if db.get_device(device_a_id) is None:
         return None, "Perangkat ujung A tidak ditemukan."
@@ -274,9 +273,8 @@ def _validate_fiber_link(data, existing_id=None):
         if len(end_b_label) > 120:
             return None, "Label ujung B maksimal 120 karakter."
 
-    try:
-        length_km = float(data.get("length_km"))
-    except (TypeError, ValueError):
+    length_km = parse_finite_float(data.get("length_km"))
+    if length_km is None:
         return None, "Panjang fiber harus berupa angka (km)."
     if not (0 < length_km <= 10000):
         return None, "Panjang fiber harus antara 0 dan 10000 km."
@@ -286,9 +284,8 @@ def _validate_fiber_link(data, existing_id=None):
     def _wavelength(value, field):
         if value in (None, ""):
             return None, None
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
+        number = parse_finite_int(value)
+        if number is None:
             return None, f"{field} harus berupa angka (nm)."
         if not (800 <= number <= 1700):
             return None, f"{field} harus antara 800 dan 1700 nm."
@@ -306,9 +303,8 @@ def _validate_fiber_link(data, existing_id=None):
     def _small_int(value, field, default):
         if value in (None, ""):
             return default, None
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
+        number = parse_finite_int(value)
+        if number is None:
             return None, f"{field} harus berupa angka."
         if number < 0 or number > 10000:
             return None, f"{field} harus antara 0 dan 10000."
@@ -497,9 +493,8 @@ def _validate_fiber_measurement(data):
     def _num(value, label):
         if value in (None, ""):
             return None, None
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
+        number = parse_finite_float(value)
+        if number is None:
             return None, f"{label} harus berupa angka."
         if abs(number) > 300:
             return None, f"{label} di luar rentang wajar (±300)."
@@ -583,9 +578,8 @@ def api_delete_fiber_measurement(link_id, measurement_id):
 def _parse_optional_number(value, label, lo, hi):
     if value in (None, ""):
         return None, None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
+    number = parse_finite_float(value)
+    if number is None:
         return None, f"{label} harus berupa angka."
     if not (lo <= number <= hi):
         return None, f"{label} harus antara {lo} dan {hi}."
@@ -713,9 +707,8 @@ def api_update_optical_settings():
     for key, (lo, hi) in float_specs.items():
         if key not in data:
             continue
-        try:
-            number = float(data[key])
-        except (TypeError, ValueError):
+        number = parse_finite_float(data[key])
+        if number is None:
             return jsonify({"error": f"{key} harus berupa angka."}), 400
         if not (lo <= number <= hi):
             return jsonify({"error": f"{key} harus antara {lo} dan {hi}."}), 400
@@ -723,9 +716,8 @@ def api_update_optical_settings():
     for key, (lo, hi) in int_specs.items():
         if key not in data:
             continue
-        try:
-            number = int(float(data[key]))
-        except (TypeError, ValueError):
+        number = parse_finite_int(data[key])
+        if number is None:
             return jsonify({"error": f"{key} harus berupa angka."}), 400
         if not (lo <= number <= hi):
             return jsonify({"error": f"{key} harus antara {lo} dan {hi}."}), 400
@@ -740,9 +732,8 @@ def api_update_optical_settings():
             norm = str(key).strip().lower().replace(" ", "")
             if norm not in allowed:
                 return jsonify({"error": f"Nisbah splitter tidak dikenal: {norm} (diizinkan: 1:2..1:64)."}), 400
-            try:
-                loss = float(value)
-            except (TypeError, ValueError):
+            loss = parse_finite_float(value)
+            if loss is None:
                 return jsonify({"error": f"Redaman splitter {norm} harus berupa angka."}), 400
             if not (0.5 <= loss <= 40.0):
                 return jsonify({"error": f"Redaman splitter {norm} harus antara 0.5 dan 40 dB."}), 400
@@ -768,17 +759,15 @@ def api_fiber_calc():
         return jsonify({"error": "Payload tidak valid."}), 400
     settings = db.get_fiber_settings()
 
-    try:
-        length_km = float(data.get("length_km"))
-    except (TypeError, ValueError):
+    length_km = parse_finite_float(data.get("length_km"))
+    if length_km is None:
         return jsonify({"error": "Panjang harus berupa angka (km)."}), 400
     if not (0 < length_km <= 10000):
         return jsonify({"error": "Panjang harus antara 0 dan 10000 km."}), 400
 
     wavelength_nm = data.get("wavelength_nm", 1310)
-    try:
-        wavelength_nm = int(wavelength_nm)
-    except (TypeError, ValueError):
+    wavelength_nm = parse_finite_int(wavelength_nm)
+    if wavelength_nm is None:
         return jsonify({"error": "Panjang gelombang harus berupa angka (nm)."}), 400
     if not (800 <= wavelength_nm <= 1700):
         return jsonify({"error": "Panjang gelombang harus antara 800 dan 1700 nm."}), 400
@@ -786,9 +775,8 @@ def api_fiber_calc():
     def _small_int(value, field, default):
         if value in (None, ""):
             return default, None
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
+        number = parse_finite_int(value)
+        if number is None:
             return None, f"{field} harus berupa angka."
         if number < 0 or number > 10000:
             return None, f"{field} harus antara 0 dan 10000."
@@ -834,9 +822,8 @@ def api_fiber_calc():
 
     tx_power_dbm = data.get("tx_power_dbm")
     if tx_power_dbm not in (None, ""):
-        try:
-            tx_power_dbm = float(tx_power_dbm)
-        except (TypeError, ValueError):
+        tx_power_dbm = parse_finite_float(tx_power_dbm)
+        if tx_power_dbm is None:
             return jsonify({"error": "Daya Tx harus berupa angka (dBm)."}), 400
         if not (-100 <= tx_power_dbm <= 100):
             return jsonify({"error": "Daya Tx di luar rentang wajar (±100 dBm)."}), 400
@@ -845,9 +832,8 @@ def api_fiber_calc():
         response["rx_estimate_dbm"] = rx_estimate
         sensitivity = data.get("rx_sensitivity_dbm")
         if sensitivity not in (None, ""):
-            try:
-                sensitivity = float(sensitivity)
-            except (TypeError, ValueError):
+            sensitivity = parse_finite_float(sensitivity)
+            if sensitivity is None:
                 return jsonify({"error": "Sensitivitas penerima harus berupa angka (dBm)."}), 400
             if not (-100 <= sensitivity <= 100):
                 return jsonify({"error": "Sensitivitas penerima di luar rentang wajar (±100 dBm)."}), 400

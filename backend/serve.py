@@ -59,11 +59,19 @@ def _lease_watchdog(token):
 
 
 def main(argv=None):
+    from core.env import env_int
+
+    try:
+        default_port = env_int("PORT", 5500, minimum=1, maximum=65535)
+        default_threads = env_int("WAITRESS_THREADS", 8, minimum=1, maximum=64)
+    except ValueError as exc:
+        print(f"ERROR konfigurasi: {exc}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(description="Server NMS Kopegtel")
     parser.add_argument("--dev", action="store_true", help="mode pengembangan (Flask dev server), bukan untuk produksi")
     parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "5500")))
-    parser.add_argument("--threads", type=int, default=int(os.environ.get("WAITRESS_THREADS", "8")))
+    parser.add_argument("--port", type=int, default=default_port)
+    parser.add_argument("--threads", type=int, default=default_threads)
     args = parser.parse_args(argv)
 
     token = db.acquire_instance_lease()

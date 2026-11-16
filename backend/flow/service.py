@@ -9,7 +9,6 @@ Prinsip (sama dengan penerima syslog/trap):
   dalam SATU transaksi (termasuk top-N per kunci; sisanya ke "lainnya").
 """
 
-import collections
 import logging
 import socket
 import threading
@@ -190,9 +189,14 @@ class FlowManager:
     def ensure_pipeline(self):
         if self._rate is None:
             settings = db.get_settings()
+            try:
+                rate_per_sec = int(settings.get("ingest_rate_limit_per_sec", 200))
+                rate_window = int(settings.get("ingest_rate_window_seconds", 10))
+            except (TypeError, ValueError):
+                rate_per_sec, rate_window = 200, 10
             self._rate = RateLimiter(
-                settings.get("ingest_rate_limit_per_sec", 200),
-                settings.get("ingest_rate_window_seconds", 10),
+                limit=rate_per_sec * max(1, rate_window),
+                window_seconds=max(1, rate_window),
             )
         if not self._stats:
             self._stats = {kind: self._new_stats() for kind in ("netflow_udp", "ipfix_udp")}

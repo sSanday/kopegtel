@@ -199,7 +199,7 @@ def test_unknown_exporter_dropped(manager, fresh_db):
 def test_rate_limited_source_dropped(manager, fresh_db):
     from ingest.service import RateLimiter
 
-    manager._rate = RateLimiter(per_second=1, window_seconds=1)
+    manager._rate = RateLimiter(limit=1, window_seconds=1)
     manager.process_flow_datagram(_v5_packet(), "192.0.2.254", "netflow_udp")
     manager.process_flow_datagram(_v5_packet(), "192.0.2.254", "netflow_udp")
     assert manager.status()["netflow_udp"]["dropped_rate"] == 1

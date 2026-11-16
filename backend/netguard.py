@@ -8,9 +8,10 @@ serangan DNS rebinding tidak dapat mengarahkan koneksi ke jaringan internal.
 """
 
 import ipaddress
-import os
 import re
 import socket
+
+from core.env import env_flag  # satu sumber; di-re-export untuk pemanggil lama
 
 _V4_BLOCKED_NETS = tuple(
     ipaddress.ip_network(net)
@@ -43,10 +44,6 @@ _V6_BLOCKED_NETS = tuple(
     )
 )
 _HOST_RE = re.compile(r"^(?=.{1,253}\.?$)[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?\.?$")
-
-
-def env_flag(name):
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def as_bool(value):

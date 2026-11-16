@@ -59,6 +59,14 @@ def finish_scan_job(job_id):
             (_now(), job_id),
         )
 
+
+def fail_scan_job(job_id):
+    with transaction() as conn:
+        conn.execute(
+            "UPDATE scan_jobs SET status='error', finished_at=? WHERE id=?",
+            (_now(), job_id),
+        )
+
 def get_scan_job(job_id):
     with _lock:
         row = get_conn().execute("SELECT * FROM scan_jobs WHERE id = ?", (job_id,)).fetchone()

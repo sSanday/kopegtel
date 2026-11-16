@@ -76,10 +76,40 @@ def setup_logging():
 # Validasi konfigurasi (fail-fast)
 # ---------------------------------------------------------
 
+def _numeric_error(env, name, lo, hi, *, is_float=False):
+    """Validasi satu variabel angka; return pesan error atau None."""
+    raw = (env.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw) if is_float else int(raw)
+    except ValueError:
+        return f"{name} harus berupa angka, bukan {raw!r}."
+    if value != value or value in (float("inf"), float("-inf")):  # NaN/Inf
+        return f"{name} harus berupa angka terhingga, bukan {raw!r}."
+    if not (lo <= value <= hi):
+        return f"{name} harus antara {lo} dan {hi}, bukan {raw!r}."
+    return None
+
+
 def config_errors(env=None):
     """Kembalikan daftar pesan kesalahan konfigurasi (kosong = valid)."""
     env = env if env is not None else os.environ
     errors = []
+
+    for name, lo, hi in (
+        ("PORT", 1, 65535),
+        ("WAITRESS_THREADS", 1, 64),
+        ("POLL_MAX_WORKERS", 1, 64),
+        ("TRUSTED_PROXIES", 0, 16),
+        ("MAX_REQUEST_BYTES", 1024, 64 * 1024 * 1024),
+    ):
+        message = _numeric_error(env, name, lo, hi)
+        if message:
+            errors.append(message)
+    message = _numeric_error(env, "DEGRADED_LATENCY_MS", 0, 60000, is_float=True)
+    if message:
+        errors.append(message)
 
     secret = (env.get("SECRET_KEY") or "").strip()
     if not secret:

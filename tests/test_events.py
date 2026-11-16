@@ -114,7 +114,7 @@ def test_parse_syslog_empty_rejected():
 # ---------------------------------------------------------
 
 def test_rate_limiter_window():
-    limiter = RateLimiter(per_second=2, window_seconds=1)
+    limiter = RateLimiter(limit=2, window_seconds=1)
     base = 100.0
     assert limiter.allow("src", now=base) is True
     assert limiter.allow("src", now=base + 0.1) is True
@@ -155,7 +155,7 @@ def test_registered_source_accepted_and_batched(fresh_db):
 def test_rate_limited_source_dropped(fresh_db):
     _mk_device(fresh_db, "router-flood", "192.0.2.11")
     manager = IngestManager()
-    manager._rate = RateLimiter(per_second=1, window_seconds=1)
+    manager._rate = RateLimiter(limit=1, window_seconds=1)
     manager.process_syslog_datagram(b"<134>first: down", "192.0.2.11")
     manager.process_syslog_datagram(b"<134>second: down", "192.0.2.11")
     stats = manager.status()["syslog_udp"]

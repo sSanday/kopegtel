@@ -306,8 +306,16 @@ def test_policy_blocks_login_after_grace_expired(client, fresh_db):
         "mfa_policy_started_at": started,
     })
     response = _login(client, "mfa-policy", "mfa-policy-password")
-    assert response.status_code == 403
-    assert response.get_json()["code"] == "mfa_required"
+    # L-1: respons disamakan dengan kata sandi salah agar tidak menjadi
+    # oracle "password benar"; detailnya dicatat di audit.
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "Nama pengguna atau kata sandi salah."
+    assert "mfa_required" not in response.get_data(as_text=True)
+    with fresh_db._lock:
+        row = fresh_db.get_conn().execute(
+            "SELECT action FROM audit_log WHERE action='auth.login_mfa_policy_blocked'"
+        ).fetchone()
+    assert row is not None
 
 
 def test_policy_allows_login_inside_grace(client, fresh_db):

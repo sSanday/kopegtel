@@ -7,10 +7,16 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import auth
 import db
+import netguard
 from core.env import APP_VERSION
 from core.guard import client_ip, audit
 
 bp = Blueprint("auth", __name__)
+
+# Hash acuan untuk menyamakan waktu verifikasi sandi saat akun tidak ada.
+# Tanpa ini, login untuk username tidak dikenal berhenti sebelum scrypt/bcrypt
+# dijalankan, sehingga penyerang bisa membedakan akun yang ada vs tidak (L-1).
+_DUMMY_PASSWORD_HASH = generate_password_hash("dummy-untuk-pemerataan-waktu")
 
 
 def _establish_session(user, remember=False):
@@ -56,7 +62,7 @@ def api_login():
     data = request.get_json(silent=True) or {}
     raw_username = str(data.get("username") or "").strip()
     password = str(data.get("password") or "")
-    remember = bool(data.get("remember"))
+    remember = netguard.as_bool(data.get("remember"))
 
     if not raw_username or not password:
         return jsonify({"error": "Nama pengguna dan kata sandi wajib diisi."}), 400
@@ -89,7 +95,12 @@ def api_login():
         return jsonify({"error": "Nama pengguna atau kata sandi salah."}), 401
 
     user = db.find_user(username)
-    ok = user is not None and check_password_hash(user["password_hash"], password)
+    if user is None:
+        # Jalankan hash dummy agar waktu respons sama dengan akun yang ada.
+        check_password_hash(_DUMMY_PASSWORD_HASH, password)
+        ok = False
+    else:
+        ok = check_password_hash(user["password_hash"], password)
     if not ok:
         counts = auth.record_login_failure(username, ip)
         user_id = user["id"] if user else None
@@ -120,10 +131,19 @@ def api_login():
     # Kebijakan MFA untuk peran tertentu (dengan masa tenggang).
     policy = mfa.policy_state(user)
     if policy["required"] and not policy["grace_open"]:
-        return jsonify({
-            "error": "MFA wajib untuk peran Anda. Hubungi administrator.",
-            "code": "mfa_required",
-        }), 403
+        # Jangan balas 403 "mfa_required": itu oracle yang mengonfirmasi bahwa
+        # kata sandi BENAR (L-1). Respons disamakan dengan kata sandi salah;
+        # detailnya dicatat di audit untuk investigasi.
+        counts = auth.record_login_failure(username, ip)
+        auth.log_login_failure({"id": user["id"], "username": username}, ip, counts)
+        auth.log_audit(
+            {"id": user["id"], "username": user["username"]},
+            "auth.login_mfa_policy_blocked",
+            "login",
+            "Login ditolak: kebijakan MFA wajib untuk peran ini dan masa tenggang berakhir",
+            ip=ip,
+        )
+        return jsonify({"error": "Nama pengguna atau kata sandi salah."}), 401
 
     auth.clear_login_failures(username, ip)
     _establish_session(user, remember)
@@ -184,6 +204,5 @@ def api_change_own_password():
     refreshed = db.find_user_by_id(user["id"])
     if refreshed is not None:
         session["session_epoch"] = int(refreshed["session_epoch"] or 0)
-    session["must_change_password"] = "0"
     audit("auth.password_changed", "user", "Kata sandi diganti")
     return jsonify({"ok": True})

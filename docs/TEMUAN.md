@@ -634,3 +634,199 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   2. Ganti password admin lama (scrypt) bila dipakai ulang di tempat lain.
   3. Permintaan purge ke GitHub Support (opsional; lihat di atas).
   4. Hapus backup `.env` di Temp bila tidak lagi diperlukan.
+
+## L-1 - Login membocorkan keberadaan akun & oracle "password benar" (selesai)
+
+- `check_password_hash` dilewati ketika username tidak ada, sehingga waktu
+  respons berbeda antara akun tidak dikenal vs password salah (enumerasi
+  akun lewat selisih waktu). Sekarang `routes/auth.py` selalu menjalankan
+  satu verifikasi hash (acuan `_DUMMY_PASSWORD_HASH` dibuat sekali saat
+  modul diimpor, hanya untuk menyamakan waktu).
+- Respons `403 mfa_required` pada `auth.login_mfa_policy_blocked` mengungkap
+  bahwa kata sandi BENAR (oracle untuk memvalidasi daftar password bocor).
+  Sekarang respons disamakan dengan kata sandi salah
+  (`401 Nama pengguna atau kata sandi salah.`);
+  kegagalannya tetap dihitung pada batas login (`login_attempts`) dan
+  dicatat di audit sebagai `auth.login_mfa_policy_blocked` untuk
+  investigasi. Tes regresi `tests/test_mfa.py` diperbarui; `tests/test_low_findings.py`
+  menegaskan respons identik untuk akun tidak ada/salah sandi/kebijakan
+  diblokir.
+
+## L-2 - Input angka non-terhingga menghasilkan HTTP 500 (selesai)
+
+Python `json` (dipakai Flask `request.get_json`) menerima `Infinity`/`NaN`,
+sehingga `int()` pada float JSON bisa memicu OverflowError dan `float()`
+lolos ke validasi/DB. Ditemukan empat kelas jalur dan semua diperbaiki
+lewat helper bersama `parse_finite_float`/`parse_finite_int`
+(`backend/core/validation.py`; menolak NaN/Inf/bool-non-integral dan
+string kosong, menghasilkan None -> 400):
+
+- `db/tokens.py`: `expires_in_days` tanpa cap -> `timedelta(days=10**30)`
+  OverflowError. Sekarang dibatasi `MAX_TOKEN_TTL_DAYS=3650` dan ditolak
+  bila non-terhingga/bukan angka.
+- `routes/admin.py`: `int(value)` di blok int_keys dan `int(...)` untuk
+  `retention_optical_hourly_days` - Infinity lolos -> 500. Sekarang lewat
+  `parse_finite_int` (400 bila bukan angka terhingga).
+- `routes/devices.py`: `int(existing_id)` (JSON float inf -> OverflowError).
+- `routes/services.py`: `float(sla_target)` NaN lolos validasi
+  (`nan < 0`/`nan > 100` selalu False); sekarang ditolak.
+- Jalur JSON lain yang diperbaiki sejalan: `routes/mikrotik.py` (topology,
+  interval, write/ssh port, backup_hour), `routes/fiber.py` (device_a_id,
+  length_km, wavelength, _small_int, settings float/int, splitter loss,
+  OTDR _num), `routes/events.py` (cooldown/auto_resolve/device_id/group_id/
+  resolves_rule_id/port), `routes/escalation.py` (repeat_minutes,
+  target_id, delay_minutes), `routes/alerts.py` (channel_id, template_id),
+  `core/validation.py._parse_optional_id`.
+- Tes regresi di `tests/test_low_findings.py` (settings Infinity/NaN/10**30,
+  sla_target NaN, devices/test id 1e999, device_ids, api_token expires).
+
+## L-3 - verify_api_token bisa TypeError bila expires_at rusak (selesai)
+
+`_parse_iso` mengembalikan None untuk timestamp rusak; kode membandingkan
+`None < datetime` -> TypeError -> 500 pada setiap scrape Prometheus dengan
+token ber-expires_at rusak di DB. Sekarang expires_at yang terisi tetapi
+tak terurai diperlakukan sebagai kedaluwarsa (token ditolak, tercatat),
+dan penulisan kode diuji lewat `tests/test_low_findings.py`
+(`test_verify_api_token_with_broken_expires_at_is_rejected`).
+
+## L-4 - RateLimiter /metrics sebenarnya 1800 req/menit & dict sumber bocor (selesai)
+
+- `RateLimiter(per_second=30, window_seconds=60)` menghasilkan limit 1800
+  per 60 detik (rate tersirat 30/detik, bukan 30/menit). Kelas ditulis
+  ulang: konstruktor kini `RateLimiter(limit, window_seconds)` dengan limit
+  eksplisit (default aman), dan /metrics memakai `RateLimiter(limit=30,
+  window_seconds=60)` = 30 scrape/menit/IP.
+- Panggilan ingest (syslog/trap) dan flow mempertahankan perilaku lama
+  (sustained 200/detik selama 10 detik = 2000 per window) dengan
+  `limit=per_sec*window, window_seconds=window` + parsing pengaturan
+  toleran string kotor.
+- Dict sumber tidak pernah dibersihkan (memori tumbuh selamanya). Sekarang:
+  sweep berkala (setiap 512 panggilan) + saat penuh (default 4096 sumber),
+  sumber dengan seluruh kejadian kedaluwarsa dibuang, sumber baru ditolak
+  (fail-safe) bila semua penuh.
+- Tes: `test_metrics_rate_limited_to_30_per_minute_per_ip` (30 sukses,
+  ke-31 = 429, IP lain bebas), `test_rate_limiter_sweeps_stale_sources`,
+  `test_rate_limiter_rejects_new_sources_when_full` (+2 tes lama diupdate).
+
+## L-5 - Job scan bisa "running" selamanya; scan paralel tak dibatasi; spray kredensial (selesai)
+
+- Thread scan tanpa try/finally: exception membuat job tetap `running`.
+  `_run_scan` kini membungkus pekerjaan dalam try/except/finally; pada
+  kegagalan, job ditandai `error` lewat `db.fail_scan_job` (kolom status
+  scan_jobs), di-log traceback, dan slot selalu dilepas.
+- Jumlah scan paralel tidak dibatasi: `_SCAN_JOB_SLOTS = Semaphore(2)`;
+  endpoint `POST /api/discovery/scan` menolak dengan `429 scan_busy` bila
+  penuh; slot dilepas di finally thread (atau manual bila gagal sebelum
+  thread dibuat).
+- Probe MikroTik mengirim user+password RouterOS ke port 8728 pada SETIAP
+  host yang hidup di CIDR (kredensial bocor ke host non-MikroTik/penyerang).
+  **Dihapus**: endpoint tidak lagi menerima `mikrotik_user`/
+  `mikrotik_password` (diabaikan bila dikirim; komunitas SNMP opsional
+  tetap ada karena memang inti fungsi scan dan biasanya "public"). UI
+  pemindaian disederhanakan (field & kolom RouterOS hilang); uji koneksi
+  RouterOS hanya lewat formulir perangkat (button "Uji koneksi").
+- UI: kolom hasil scan menjadi sysName + tipe (bukan identitas RouterOS);
+  riwayat menampilkan status "gagal"; progres polling menampilkan pesan
+  gagal; `data-collection.js` tidak lagi membaca `mikrotik_password`.
+- Tes: `test_low_findings.py` (job gagal ditandai error, slot 429, slot
+  dilepas, kredensial di-body diabaikan) + `tests/test_discovery_security.py`
+  diupdate.
+
+## L-6 - Ping: "Destination host unreachable" bisa rc 0 di Windows (selesai)
+
+`check_ping` menganggap rc==0 selalu reachable, tetapi di Windows balasan
+ICMP gagal (mis. "Destination host unreachable" dari stack lokal, TTL
+expired) bisa rc 0 - perangkat "offline" tampil online di monitoring.
+Verifikasi di mesin ini: timeout sesungguhnya menghasilkan rc 1, tetapi
+balasan DHR tidak dapat diproduksi di jaringan Wi-Fi ini; fix defensif
+dilakukan agar aman tanpa bergantung pada perilaku OS:
+- `reachable` kini mensyaratkan rc==0 DAN tidak ada token kegagalan
+  (`timed out`, `habisan waktu`, `unreachable`, `tidak dapat dijangkau`,
+  `destination host`, `general failure`, `ttl expired`, dsb.) DAN ada
+  token balasan sukses EN/ID (`Reply from`, `Balasan dari`, `bytes from`)
+  atau latency terdeteksi. Bila output tidak dikenali, perangkat
+  dilaporkan tidak reachable (fail-safe).
+- Catatan residual: teks ping hanya diuji untuk EN/ID/Linux; locale lain
+  bisa dianggap down sampai token ditambahkan.
+- Tes: fake subprocess untuk rc=0 + DHR/timeout (not ok) dan balasan
+  Windows/Linux (ok).
+
+## L-7 - Galat mentah dikirim ke klien (selesai)
+
+- `alerts.send_telegram` meneruskan `exc` (bisa memuat URL yang mengandung
+  bot_token) ke API dan action_log. Sekarang: HTTPError ->
+  `"Telegram menolak permintaan (HTTP <kode>)..."`; Exception lain ->
+  pesan generik + tipe exception di log server; deskripsi Telegram yang
+  ditampilkan dibersihkan token-nya (`_redact_token`).
+- `routes/mikrotik.py` (aksi RouterOS) mengembalikan `Aksi gagal: {exc}`
+  dan `str(exc)` ke klien. Sekarang respons memakai pesan kurasi per kode
+  (`_ACTION_ERROR_CLIENT_MESSAGES`, mis. unreachable->502,
+  not_found->404, management_interface->409); detail mentah hanya ke log;
+  `mt_actions.result` dan audit menyimpan tipe exception + kode, bukan
+  teks mentah (dapat berisi respons router).
+- `routes/mikrotik.py` (backup 502) dan `routes/events.py` (2 warning
+  penerima gagal dimuat) kini generik + `log.warning(...)` dengan tipe
+  exception; detail mentah tidak lagi dikirim ke klien.
+- `backups.run_backup` audit tetap memuat detail exception untuk
+  investigasi (log internal, bukan respons API); `valueerror` terkurasi
+  (mis. "SSH belum diaktifkan") tetap ditampilkan apa adanya.
+- Tes: `test_send_telegram_*_hides_bot_token`, `test_mikrotik_action_error_is_generic`.
+
+## L-8 - int(PORT) crash & variabel env tidak terdokumentasi (selesai)
+
+- `core/env.py` baru: `env_int`/`env_float` (validasi terhingga dan
+  rentang; error jelas, bukan traceback) dipakai app.py (PORT,
+  TRUSTED_PROXIES, MAX_REQUEST_BYTES), serve.py (PORT, WAITRESS_THREADS;
+  error bersih + exit 2), poller.py (POLL_MAX_WORKERS, DEGRADED_LATENCY_MS),
+  dan core.env.env_flag sebagai satu sumber (menggantikan duplikasi
+  `_env_flag` di app.py/guard.py/netguard.py).
+- `config.config_errors()` kini memvalidasi PORT, WAITRESS_THREADS,
+  POLL_MAX_WORKERS, TRUSTED_PROXIES, MAX_REQUEST_BYTES (int, rentang) dan
+  DEGRADED_LATENCY_MS (float terhingga) - startup gagal dengan pesan yang
+  jelas bila salah.
+- `.env.example` kini mendokumentasikan semua variabel yang dipakai kode:
+  ALLOW_PRIVATE_WEBHOOKS, ALLOW_PRIVATE_SMTP, NMS_DB_PATH/DATABASE_PATH,
+  DB_BACKUP_ENABLED/DIR/KEEP, POLL_MAX_WORKERS (+ WAITRESS_THREADS sudah ada).
+- Tes: `test_config_errors_flag_invalid_numeric_env`, `test_env_int_*`,
+  `test_env_example_documents_used_vars`. Verifikasi manual: PORT=bukan-angka
+  -> "ERROR konfigurasi: PORT harus berupa angka..." lalu exit 1.
+
+## L-9 - Boolean string di API pengaturan (bool("0") == True) (selesai)
+
+- `routes/admin.py.flag_keys` memakai `bool(value)` sehingga "0" dianggap
+  True (disimpan sebagai "1"). Dipakai `netguard.as_bool` (string
+  1/true/yes/on -> True; selain itu False).
+- Seluruh konversi JSON->bool di jalur klien dialihkan ke `netguard.as_bool`:
+  routes/devices (snmp_enabled, mikrotik_enabled, mikrotik_ssl,
+  maintenance), routes/mikrotik (modules, write_enabled/write_ssl/
+  ssh_enabled/backup_enabled, ignored), routes/events (allow_v1, enabled),
+  routes/escalation (business_hours_enabled/enabled/business_hours_only),
+  routes/alerts (enabled, allow_private/allow_http pada kanal),
+  routes/problems (acked), routes/auth (remember).
+  (Nilai DB/internal tetap `bool()` - itu kolom boolean, bukan input klien.)
+- Tes: `test_settings_string_flags_parse_correctly`.
+
+## L-10 - Kualitas kode: import tak terpakai & duplikasi (selesai)
+
+- Import tak terpakai dihapus: `dbbackup.py` (glob), `flow/service.py`
+  (collections), `ingest/service.py` (json), `db/ingest.py` (_days_ago),
+  `db/mikrotik.py` (Fernet/InvalidToken, _get_fernet, decrypt_secret,
+  get_setting), `routes/metrics.py` (json).
+- `routes/metrics.py`: variabel `truncated` tidak terpakai -> `_truncated`.
+- `routes/auth.py`: `session["must_change_password"]` (tidak pernah dibaca;
+  guard membaca `user["must_change_password"]` dari DB) dihapus.
+- `db/connection.py`: `import uuid` (satu-satunya; bukan ganda lagi) kini
+  di posisi grup stdlib yang semestinya.
+- `_env_flag` duplikat di app.py/core/guard.py: satu sumber baru
+  `core.env.env_flag`; `netguard.env_flag` mengimpornya (dipakai webhook).
+- Fungsi escape duplikat JS: `assets/js/nav.js` dan `device-form.js`
+  menghapus implementasi sendiri; keduanya mendelegasikan ke
+  `window.NMSFormat.escapeHtml` (format.js) dengan fallback string yang
+  sama. Aset JS di-bump (nav.js?v=10, device-form.js?v=2,
+  data-collection.js?v=2 di semua halaman HTML).
+- Pesan usang "Tipe kanal harus telegram atau smtp." pada routes/alerts.py
+  diperbaiki menjadi "telegram, smtp, atau webhook." (webhook memang kanal
+  yang valid).
+- `uuid` ganda: hasil audit menunjukkan hanya satu impor di
+  `db/connection.py`; normalisasi penempatan dilakukan dan kerja pada
+  temuan tertulis di sini.

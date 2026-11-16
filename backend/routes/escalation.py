@@ -4,7 +4,9 @@ import re
 from flask import Blueprint, jsonify, request
 
 import db
+import netguard
 from core.guard import audit, roles
+from core.validation import parse_finite_int
 
 bp = Blueprint("escalation", __name__)
 
@@ -21,7 +23,7 @@ def _validate_policy(data, policy_id=None):
     if policy_id is not None and db.policy_name_exists(name, exclude_id=policy_id):
         return None, "Nama kebijakan sudah dipakai."
     description = str(data.get("description") or "").strip()[:500]
-    business_enabled = bool(data.get("business_hours_enabled"))
+    business_enabled = netguard.as_bool(data.get("business_hours_enabled"))
     start = str(data.get("business_start") or "08:00").strip()
     end = str(data.get("business_end") or "17:00").strip()
     days = str(data.get("business_days") or "1,2,3,4,5").strip()
@@ -31,10 +33,10 @@ def _validate_policy(data, policy_id=None):
         return None, "Jam selesai harus format HH:MM (00:00-23:59)."
     if not _DAYS_RE.match(days):
         return None, "business_days harus daftar angka 1-7 (1=Senin), mis. '1,2,3,4,5'."
-    try:
-        repeat = min(10080, max(0, int(data.get("repeat_minutes", 0))))
-    except (TypeError, ValueError):
+    repeat_value = parse_finite_int(data.get("repeat_minutes", 0))
+    if repeat_value is None:
         return None, "repeat_minutes harus berupa angka."
+    repeat = min(10080, max(0, repeat_value))
 
     raw_steps = data.get("steps") or []
     if not isinstance(raw_steps, list) or not (1 <= len(raw_steps) <= 20):
@@ -46,11 +48,11 @@ def _validate_policy(data, policy_id=None):
         target_type = str(raw.get("target_type") or "").strip().lower()
         if target_type not in ("channel", "user"):
             return None, f"Langkah {index}: target_type harus 'channel' atau 'user'."
-        try:
-            target_id = int(raw.get("target_id"))
-            delay = min(10080, max(0, int(raw.get("delay_minutes", 0))))
-        except (TypeError, ValueError):
+        target_id = parse_finite_int(raw.get("target_id"))
+        delay_value = parse_finite_int(raw.get("delay_minutes", 0))
+        if target_id is None or delay_value is None:
             return None, f"Langkah {index}: delay_minutes/target_id harus berupa angka."
+        delay = min(10080, max(0, delay_value))
         if target_type == "channel":
             if db.get_channel(target_id) is None:
                 return None, f"Langkah {index}: kanal #{target_id} tidak ditemukan."
@@ -61,11 +63,11 @@ def _validate_policy(data, policy_id=None):
             "delay_minutes": delay,
             "target_type": target_type,
             "target_id": target_id,
-            "business_hours_only": bool(raw.get("business_hours_only")),
+            "business_hours_only": netguard.as_bool(raw.get("business_hours_only")),
         })
 
     return {
-        "name": name, "description": description, "enabled": bool(data.get("enabled", True)),
+        "name": name, "description": description, "enabled": netguard.as_bool(data.get("enabled", True)),
         "business_hours_enabled": business_enabled,
         "business_start": start, "business_end": end, "business_days": days,
         "repeat_minutes": repeat, "steps": steps,

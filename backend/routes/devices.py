@@ -7,6 +7,7 @@ import time
 import db
 import poller
 import fiber as fiber_calc
+import netguard
 from collectors import ping as ping_collector
 from collectors import snmp as snmp_collector
 from collectors import mikrotik as mikrotik_collector
@@ -20,6 +21,7 @@ from core.validation import (
     _SNMP_VERSIONS,
     _ip_allowed,
     _parse_interval,
+    parse_finite_int,
     _parse_ip,
     _parse_optional_id,
     _parse_port,
@@ -115,8 +117,8 @@ def _validate_device(data, existing_id=None):
     if error:
         return {}, error
 
-    snmp_enabled = bool(data.get("snmp_enabled"))
-    mikrotik_enabled = bool(data.get("mikrotik_enabled"))
+    snmp_enabled = netguard.as_bool(data.get("snmp_enabled"))
+    mikrotik_enabled = netguard.as_bool(data.get("mikrotik_enabled"))
 
     snmp_port, error = _parse_port(data.get("snmp_port", 161), "Port SNMP")
     if error:
@@ -186,7 +188,7 @@ def _validate_device(data, existing_id=None):
         "location": location,
         "group_id": group_id,
         "parent_id": parent_id,
-        "maintenance": bool(data.get("maintenance")),
+        "maintenance": netguard.as_bool(data.get("maintenance")),
         "poll_interval": poll_interval,
         "snmp_enabled": snmp_enabled,
         "snmp_version": snmp_version,
@@ -201,7 +203,7 @@ def _validate_device(data, existing_id=None):
         "mikrotik_port": mikrotik_port,
         "mikrotik_user": mikrotik_user or None,
         "mikrotik_password": data.get("mikrotik_password"),
-        "mikrotik_ssl": bool(data.get("mikrotik_ssl")),
+        "mikrotik_ssl": netguard.as_bool(data.get("mikrotik_ssl")),
         "mikrotik_ssl_fingerprint": mikrotik_ssl_fingerprint,
     }
     return clean, None
@@ -295,9 +297,8 @@ def api_test_device():
     existing_id = data.get("id")
     existing = None
     if existing_id not in (None, ""):
-        try:
-            existing_id = int(existing_id)
-        except (TypeError, ValueError):
+        existing_id = parse_finite_int(existing_id)
+        if existing_id is None:
             return jsonify({"error": "ID perangkat tidak valid."}), 400
         existing = db.get_device(existing_id, include_secrets=True)
         if existing is None:
@@ -324,8 +325,8 @@ def api_test_device():
         return jsonify({"error": "IP berada di luar ALLOWED_NETWORKS yang diizinkan."}), 400
     ip = str(addr)
 
-    snmp_enabled = bool(data.get("snmp_enabled"))
-    mikrotik_enabled = bool(data.get("mikrotik_enabled"))
+    snmp_enabled = netguard.as_bool(data.get("snmp_enabled"))
+    mikrotik_enabled = netguard.as_bool(data.get("mikrotik_enabled"))
 
     if existing is not None:
         snmp_port = int(existing.get("snmp_port") or 161)
@@ -398,7 +399,7 @@ def api_test_device():
             "port": mikrotik_port,
             "user": data.get("mikrotik_user"),
             "password": password,
-            "ssl": bool(data.get("mikrotik_ssl")),
+            "ssl": netguard.as_bool(data.get("mikrotik_ssl")),
             "ssl_fingerprint": ssl_fingerprint,
         }
         result["mikrotik"] = mikrotik_collector.check_mikrotik(mikrotik_config)

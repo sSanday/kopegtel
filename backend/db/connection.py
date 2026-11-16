@@ -19,9 +19,9 @@ import logging
 import os
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-import uuid
 from cryptography.fernet import Fernet, InvalidToken
 
 

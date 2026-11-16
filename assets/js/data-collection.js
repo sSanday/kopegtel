@@ -416,8 +416,6 @@
   const scanForm = document.getElementById("scan-form");
   const scanCidr = document.getElementById("scan-cidr");
   const scanCommunity = document.getElementById("scan-community");
-  const scanMikrotikUser = document.getElementById("scan-mikrotik-user");
-  const scanMikrotikPassword = document.getElementById("scan-mikrotik-password");
   const scanStart = document.getElementById("scan-start");
   const scanNote = document.getElementById("scan-note");
   const scanProgress = document.getElementById("scan-progress");
@@ -456,7 +454,7 @@
       const data = await window.apiFetch("/api/discovery/scans");
       const scans = data.scans || [];
       scanHistoryList.innerHTML = scans.length
-        ? scans.map((scan) => `<li><span class="mono">${escapeHtml(scan.cidr)}</span> — ${scan.status === "running" ? "berjalan" : "selesai"} · ${scan.found} hidup dari ${scan.total} alamat · ${escapeHtml(formatDateTime(scan.created_at))}</li>`).join("")
+        ? scans.map((scan) => `<li><span class="mono">${escapeHtml(scan.cidr)}</span> — ${scan.status === "running" ? "berjalan" : scan.status === "error" ? "gagal" : "selesai"} · ${scan.found} hidup dari ${scan.total} alamat · ${escapeHtml(formatDateTime(scan.created_at))}</li>`).join("")
         : "<li>Belum ada pemindaian.</li>";
     } catch {
       scanHistoryList.innerHTML = "<li>Gagal memuat riwayat pemindaian.</li>";
@@ -481,7 +479,7 @@
         `<td class="mono">${escapeHtml(entry.ip)}</td>` +
         `<td class="mono">${entry.latency_ms == null ? "—" : `${Number(entry.latency_ms).toFixed(0)} ms`}</td>` +
         `<td>${escapeHtml(entry.sysname || "—")}</td>` +
-        `<td>${escapeHtml(entry.identity || "—")}${entry.version ? ` <span class="cell-sub mono">RouterOS ${escapeHtml(entry.version)}</span>` : ""}</td>` +
+        `<td>${escapeHtml(entry.type_hint || "—")}</td>` +
         `</tr>`
       ))
       .join("");
@@ -499,7 +497,9 @@
         scanProgressPct.textContent = `${pct}%`;
         scanProgressText.textContent = job.status === "running"
           ? `Memindai ${job.completed}/${job.total} alamat — ${job.found} hidup`
-          : `Selesai: ${job.found} perangkat hidup dari ${job.total} alamat`;
+          : job.status === "error"
+            ? "Pemindaian gagal — periksa log server."
+            : `Selesai: ${job.found} perangkat hidup dari ${job.total} alamat`;
         if (job.status !== "running") {
           stopScanPolling();
           renderScanResults(job);
@@ -533,8 +533,6 @@
         body: {
           cidr,
           community: scanCommunity.value.trim() || null,
-          mikrotik_user: scanMikrotikUser.value.trim() || null,
-          mikrotik_password: scanMikrotikPassword.value || null,
         },
       });
       scanProgress.hidden = false;
@@ -544,7 +542,6 @@
       pollScanJob(res.scan.id);
       // Bersihkan kredensial dari formulir setelah dikirim (tidak disimpan).
       scanCommunity.value = "";
-      scanMikrotikPassword.value = "";
     } catch (error) {
       scanNote.textContent = error.message || "Gagal memulai pemindaian.";
       scanNote.hidden = false;

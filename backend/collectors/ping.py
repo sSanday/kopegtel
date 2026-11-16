@@ -11,6 +11,18 @@ import sys
 
 TIMEOUT_SECONDS = 2
 _LATENCY_RE = re.compile(r"(?:time|waktu)[=<]\s*(\d+(?:[.,]\d+)?)\s*ms", re.IGNORECASE)
+# Baris "balasan" Windows/Linux (EN/ID): "Reply from", "Balasan dari",
+# "bytes from" (Linux). Tanpa token ini, output dianggap BUKAN balasan sukses.
+_REPLY_RE = re.compile(r"(reply from|balasan dari|bytes from)", re.IGNORECASE)
+# Baris kegagalan Windows/Linux (EN/ID). Windows dapat mengembalikan exit
+# code 0 walau ICMP gagal (mis. "Destination host unreachable" dari stack
+# lokal), jadi returncode == 0 SAJA tidak cukup (L-6).
+_FAILURE_RE = re.compile(
+    r"(timed out|habisan waktu|host unreachable|tidak dapat dijangkau|"
+    r"destination host|general failure|kesalahan umum|ttl expired|ttl habis|"
+    r"expired in transit|undeliverable)",
+    re.IGNORECASE,
+)
 
 
 def check_ping(ip):
@@ -32,12 +44,18 @@ def check_ping(ip):
         return {"method": "ping", "ok": False, "latency_ms": None, "reason": "unreachable"}
 
     output = (result.stdout or "") + (result.stderr or "")
-    reachable = result.returncode == 0
-
     latency_ms = None
     match = _LATENCY_RE.search(output)
     if match:
         latency_ms = float(match.group(1).replace(",", "."))
+
+    # Returncode 0 tidak cukup: balasannya harus terdeteksi DAN bukan baris
+    # kegagalan ("Destination host unreachable" bisa bernilai 0 di Windows).
+    reachable = (
+        result.returncode == 0
+        and _FAILURE_RE.search(output) is None
+        and bool(_REPLY_RE.search(output) or latency_ms is not None)
+    )
 
     if reachable:
         return {"method": "ping", "ok": True, "latency_ms": latency_ms, "reason": None}

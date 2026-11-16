@@ -221,3 +221,11 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   dan force-pushed (`6f4099d`); URL branch 404; akses via SHA lama tetap 200
   (butuh purge GitHub Support). TELEGRAM_* dihapus dari .env (backup di Temp).
   Rotasi token & ganti password admin lama = tanggung jawab pemilik.
+- L-1..L-10: seluruh temuan severity Low dibereskan (lihat TEMUAN.md, bagian
+  L-1 s.d. L-10). Suite regresi baru `tests/test_low_findings.py` (25 tes);
+  suite penuh **370 passed** (1 warning deprecation Flask yang sudah ada);
+  `tests/test_discovery_security.py` & `tests/test_mfa.py` diupdate;
+  `tests/test_events.py`/`test_flow.py` diupdate ke konstruktor RateLimiter
+  yang eksplisit. Detail verifier & catatan residual: ping hanya EN/ID/Linux
+  (locale lain -> fail-safe down sampai token ditambahkan); audit internal
+  tetap memuat detail untuk investigasi.

@@ -8,6 +8,7 @@ import db
 from core.csvsafe import csv_row
 from core.guard import audit, roles
 from core.constants import SLA_PERIODS
+from core.validation import parse_finite_float, parse_finite_int
 
 bp = Blueprint("services", __name__)
 
@@ -23,9 +24,8 @@ def _validate_service(data):
         return {}, "Nama layanan maksimal 120 karakter."
     division = str(data.get("division") or "").strip()[:120]
     description = str(data.get("description") or "").strip()[:300]
-    try:
-        sla_target = float(data.get("sla_target", 99.0))
-    except (TypeError, ValueError):
+    sla_target = parse_finite_float(data.get("sla_target", 99.0))
+    if sla_target is None:
         return {}, "Target SLA harus berupa angka persen."
     if sla_target < 0 or sla_target > 100:
         return {}, "Target SLA harus antara 0 dan 100."
@@ -92,9 +92,8 @@ def api_set_service_devices(service_id):
         return jsonify({"error": "device_ids harus berupa daftar id perangkat."}), 400
     valid_ids = []
     for raw in ids:
-        try:
-            number = int(raw)
-        except (TypeError, ValueError):
+        number = parse_finite_int(raw)
+        if number is None:
             return jsonify({"error": "device_ids berisi id yang tidak valid."}), 400
         if db.get_device(number) is None:
             return jsonify({"error": f"Perangkat id {number} tidak ditemukan."}), 404

@@ -4,7 +4,6 @@ Dipakai oleh poller (job harian) dan manage.py (backup-db). Tidak pernah
 menyentuh berkas DB melalui salin file biasa — selalu lewat API backup
 agar konsisten di tengah operasi tulis.
 """
-import glob
 import logging
 import os
 import re

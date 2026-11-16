@@ -6,7 +6,7 @@ import alerts
 import db
 import netguard
 from core.guard import audit, roles
-from core.validation import _parse_optional_id
+from core.validation import _parse_optional_id, parse_finite_int
 
 bp = Blueprint("alerts", __name__)
 
@@ -31,9 +31,9 @@ def _channel_requires_admin(channel_type, config):
     """True bila kanal memakai kebijakan target yang hanya boleh dipakai admin."""
     config = config or {}
     if channel_type == "webhook":
-        return bool(config.get("allow_private")) or bool(config.get("allow_http"))
+        return netguard.as_bool(config.get("allow_private")) or netguard.as_bool(config.get("allow_http"))
     if channel_type == "smtp":
-        return bool(config.get("allow_private"))
+        return netguard.as_bool(config.get("allow_private"))
     return False
 
 
@@ -154,7 +154,7 @@ def _webhook_config_from_raw(raw, existing_id=None, is_admin=False):
 def _channel_config_from_payload(data, existing_id=None, is_admin=False):
     channel_type = str(data.get("type") or "").strip().lower()
     if channel_type not in _CHANNEL_TYPES:
-        return None, None, "Tipe kanal harus telegram atau smtp."
+        return None, None, "Tipe kanal harus telegram, smtp, atau webhook."
     name = str(data.get("name") or "").strip()
     if not name or len(name) > 80:
         return None, None, "Nama kanal wajib diisi (maks 80 karakter)."
@@ -399,10 +399,9 @@ def _validate_rule(data):
     min_severity = str(data.get("min_severity") or "warning").strip().lower()
     if min_severity not in _SEVERITIES:
         return {}, "Severity minimum tidak valid."
-    try:
-        channel_id = int(data.get("channel_id"))
-        template_id = int(data.get("template_id"))
-    except (TypeError, ValueError):
+    channel_id = parse_finite_int(data.get("channel_id"))
+    template_id = parse_finite_int(data.get("template_id"))
+    if channel_id is None or template_id is None:
         return {}, "Kanal dan template wajib dipilih."
     if db.get_channel(channel_id) is None:
         return {}, "Kanal tidak ditemukan."
@@ -431,7 +430,7 @@ def _validate_rule(data):
         "channel_id": channel_id,
         "template_id": template_id,
         "escalation_policy_id": policy_id,
-        "enabled": bool(data.get("enabled", True)),
+        "enabled": netguard.as_bool(data.get("enabled", True)),
     }, None
 
 

@@ -1,15 +1,12 @@
 """MikroTik: snapshot, kapabilitas, logs, temuan, metrik, aksi, backup."""
 
 import json
-from cryptography.fernet import Fernet, InvalidToken
 
 from .connection import (
-    _get_fernet,
     _json_loads,
     _lock,
     transaction,
     _now,
-    decrypt_secret,
     encrypt_secret,
     get_conn,
 )
@@ -18,9 +15,6 @@ from .devices import (
     _LATEST_METRICS_SELECT,
     get_device,
     row_to_device,
-)
-from .settings import (
-    get_setting,
 )
 
 MT_MODULE_DEFAULTS = {

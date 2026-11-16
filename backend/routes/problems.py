@@ -2,6 +2,7 @@
 from flask import Blueprint, g, jsonify, request
 
 import db
+import netguard
 from core.guard import audit, roles
 
 bp = Blueprint("problems", __name__)
@@ -27,7 +28,7 @@ def api_list_problems():
 @roles("admin", "operator")
 def api_ack_problem(problem_id):
     data = request.get_json(silent=True) or {}
-    acked = bool(data.get("acked", True))
+    acked = netguard.as_bool(data.get("acked", True))
     username = g.user["username"]
     if acked:
         ok = db.ack_problem(problem_id, username)
