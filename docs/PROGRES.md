@@ -248,3 +248,12 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   gagal) sehingga perangkat 6/7/8 tetap tampil offline; bukan regresi.
   MikroTik RouterOS API perlu diaktifkan di router (`/ip service enable
   api` + `api-ssl`) lalu kredensial disimpan di perangkat 6.
+- L-2 lanjutan 2026-11-17: `parse_finite_int` kini menolak int64 overflow
+  (pemeriksaan eksak untuk int/string-digit; float diperiksa sesudah int()),
+  menolak bool di `parse_finite_float`/`parse_finite_int`; `_parse_optional_id`
+  batas atas int64; helper `parse_query_int` untuk query-string; hardening
+  OverflowError di port SMTP & `_int_arg`. Repro `channel_id: 10**30` -> 400
+  (dulu 500); semua `int(request.args...)` terverifikasi ter-wrap atau aman
+  (int dari string tidak bisa OverflowError). `tests/test_low_findings.py`
+  kini **65 tes**; suite penuh **410 passed** (17.4 menit). Server di-restart
+  dengan kode ini (healthz ok).

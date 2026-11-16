@@ -184,7 +184,7 @@ def _channel_config_from_payload(data, existing_id=None, is_admin=False):
     else:  # smtp
         try:
             port = int(raw.get("port", old.get("port", 587)) or 587)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None, None, "Port SMTP harus berupa angka."
         if not 1 <= port <= 65535:
             return None, None, "Port SMTP harus antara 1 dan 65535."

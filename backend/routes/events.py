@@ -36,7 +36,7 @@ def _finite_int(value):
 def _int_arg(name, default, low, high):
     try:
         value = int(request.args.get(name, default))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         value = default
     return min(high, max(low, value))
 

@@ -655,6 +655,52 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   menegaskan respons identik untuk akun tidak ada/salah sandi/kebijakan
   diblokir.
 
+## L-2 (lanjutan) - int64 overflow -> HTTP 500 pada ID dari JSON (selesai 2026-11-17)
+
+Perbaikan L-2 menolak NaN/Infinity, tetapi bilangan bulat raksasa lolos
+tanpa batas atas; dipakai sebagai ID query, SQLite melempar OverflowError
+("Python int too large to convert to SQLite INTEGER") -> HTTP 500, padahal
+tujuan L-2 justru menghilangkan 500. Terverifikasi: `db.get_device`,
+`get_channel`, `get_template`, `find_user_by_id` semuanya OverflowError
+untuk 10**30; repro: POST ke pembuat aturan alert dengan
+`{"channel_id": 10**30, "template_id": 1}` menghasilkan 500.
+
+Perbaikan (`backend/core/validation.py`):
+- `SQLITE_INT64_MAX`/`SQLITE_INT64_MIN` (signed 64-bit) sebagai batas wajib.
+- `parse_finite_int` menolak di luar rentang int64: input int dan string
+  digit diperiksa **eksak** (jalur float dilewati, agar 9223372036854775807
+  tidak ikut tertolak karena pembulatan double); input float diperiksa
+  sesudah `int()` (konversi double integral selalu eksak). `10**30`,
+  `2**63`, `"9223372036854775808"` -> None (400).
+- `parse_finite_int`/`parse_finite_float` menolak bool (`True`/`False`) -
+  field angka yang menerima `true` dari JSON kini 400, bukan diam-diam 1/1.0
+  (docstring sebelumnya menyatakan menolak bool, tapi kodenya tidak).
+- `_parse_optional_id` batas atas dijamin `parse_finite_int` (1..int64 max).
+- Helper baru `parse_query_int(raw, default, min_value=, max_value=)` -
+  int() untuk query-string yang tidak pernah melempar (dipakai di dokumentasi;
+  seluruh `int(request.args.get(...))` yang tidak di-wrap sudah diverifikasi
+  terbungkus try/except di seluruh routes, mis. audit-log/devices/mikrotik/
+  problems/services - perilaku tidak berubah).
+- Hardening tambahan: `routes/alerts.py` (port SMTP, risiko `1e999` -> inf
+  -> `int()` OverflowError) dan `_int_arg` di `routes/events.py` kini
+  menangkap OverflowError juga.
+
+Titik yang terdampak (semua kini 400, bukan 500):
+`routes/devices.py` (api/devices/test, existing_id),
+`routes/escalation.py` (target_id langkah kebijakan),
+`routes/mikrotik.py` (topology/apply child_id & parent_id),
+`routes/fiber.py` (device_a_id),
+`routes/alerts.py` (api/rules channel_id & template_id) dan
+`_parse_optional_id` dipakai di devices/alerts/fiber/discovery/mikrotik
+(group_id, device_id, parent_id, profile_id, escalation_policy_id, dst).
+`db/tokens.py` (expires_in_days) sudah ter-cover lewat MAX_TOKEN_TTL_DAYS.
+
+Tes: `tests/test_low_findings.py` +9 tes (unit parse_finite_int int64/bool,
+_parse_optional_id, parse_query_int; integrasi: /api/rules channel & template
+raksasa, escalation policy target_id, devices/test existing_id, fiber-links
+device_a_id, topology/apply -> semuanya 400, bukan 500). Suite: 65 passed di
+file itu; suite penuh lihat docs/PROGRES.md.
+
 ## L-2 - Input angka non-terhingga menghasilkan HTTP 500 (selesai)
 
 Python `json` (dipakai Flask `request.get_json`) menerima `Infinity`/`NaN`,

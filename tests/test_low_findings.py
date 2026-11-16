@@ -159,6 +159,143 @@ def test_api_token_expires_in_days_capped_and_finite(fresh_db):
     assert record is not None
 
 
+# L-2 lanjutan: bilangan bulat raksasa melewati SQLite signed 64-bit dan
+# memicu OverflowError -> HTTP 500. parse_finite_int kini menolak di luar
+# rentang int64; bool (True/False) juga ditolak (bukan angka).
+def test_parse_finite_int_rejects_bool_and_int64_overflow():
+    from core.validation import (
+        SQLITE_INT64_MAX,
+        SQLITE_INT64_MIN,
+        parse_finite_float,
+        parse_finite_int,
+    )
+
+    assert parse_finite_int(True) is None
+    assert parse_finite_int(False) is None
+    assert parse_finite_int(10**30) is None
+    assert parse_finite_int(-10**30) is None
+    assert parse_finite_int(2**63) is None
+    assert parse_finite_int(-(2**63) - 1) is None
+    assert parse_finite_int("9223372036854775808") is None
+    assert parse_finite_int("1e999") is None
+    assert parse_finite_int(SQLITE_INT64_MAX) == SQLITE_INT64_MAX
+    assert parse_finite_int(SQLITE_INT64_MIN) == SQLITE_INT64_MIN
+    assert parse_finite_int("9223372036854775807") == SQLITE_INT64_MAX
+    assert parse_finite_int(2) == 2  # perilaku normal tidak berubah
+    # bool juga ditolak di level float (dipakai langsung di banyak jalur)
+    assert parse_finite_float(True) is None
+    assert parse_finite_float(False) is None
+
+
+def test_parse_optional_id_enforces_int64_bound():
+    from core.validation import SQLITE_INT64_MAX, _parse_optional_id
+
+    number, error = _parse_optional_id(10**30, "ID")
+    assert number is None and error
+    number, error = _parse_optional_id(2**63, "ID")
+    assert number is None and error
+    number, error = _parse_optional_id(True, "ID")
+    assert number is None and error
+    number, error = _parse_optional_id(SQLITE_INT64_MAX, "ID")
+    assert number == SQLITE_INT64_MAX and error is None
+
+
+def test_parse_query_int_never_raises():
+    from core.validation import parse_query_int
+
+    assert parse_query_int("abc", 100, min_value=1, max_value=500) == 100
+    assert parse_query_int("9999", 100, min_value=1, max_value=500) == 500
+    assert parse_query_int("-3", 100, min_value=1, max_value=500) == 1
+    assert parse_query_int(None, 100, min_value=1, max_value=500) == 100
+    assert parse_query_int("  42  ", 100, min_value=1, max_value=500) == 42
+    assert parse_query_int("0", 0, min_value=0, max_value=2**63 - 1) == 0
+
+
+def test_action_rule_huge_channel_id_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-rule", "l2-rule-password", role="admin")
+    csrf = _csrf(client, "l2-rule", "l2-rule-password")
+    response = client.post(
+        "/api/rules",
+        json={
+            "name": "rule-overflow-test",
+            "min_severity": "warning",
+            "channel_id": 10**30,
+            "template_id": 1,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+
+
+def test_action_rule_huge_template_id_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-rule2", "l2-rule2-password", role="admin")
+    csrf = _csrf(client, "l2-rule2", "l2-rule2-password")
+    response = client.post(
+        "/api/rules",
+        json={
+            "name": "rule-overflow-test-2",
+            "min_severity": "warning",
+            "channel_id": 1,
+            "template_id": 10**30,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+
+
+def test_escalation_policy_huge_target_id_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-esc", "l2-esc-password", role="admin")
+    csrf = _csrf(client, "l2-esc", "l2-esc-password")
+    response = client.post(
+        "/api/escalation-policies",
+        json={
+            "name": "esc-overflow",
+            "steps": [{"target_type": "channel", "target_id": 10**30, "delay_minutes": 5}],
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+
+
+def test_device_test_huge_existing_id_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-devtest", "l2-devtest-password", role="admin")
+    csrf = _csrf(client, "l2-devtest", "l2-devtest-password")
+    response = client.post(
+        "/api/devices/test",
+        json={"id": 10**30, "ip": "192.168.1.1"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+
+
+def test_fiber_link_huge_device_a_id_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-fiber", "l2-fiber-password", role="admin")
+    csrf = _csrf(client, "l2-fiber", "l2-fiber-password")
+    response = client.post(
+        "/api/fiber-links",
+        json={
+            "name": "fiber-overflow",
+            "device_a_id": 10**30,
+            "port_a": "Gi0/1",
+            "end_b_label": "ODC-1",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+    assert "ujung A" in response.get_json()["error"]
+
+
+def test_mikrotik_topology_apply_huge_ids_returns_400_not_500(client, fresh_db):
+    _mk_user(fresh_db, "l2-top", "l2-top-password", role="admin")
+    csrf = _csrf(client, "l2-top", "l2-top-password")
+    response = client.post(
+        "/api/mikrotik/topology/apply",
+        json={"child_id": 10**30, "parent_id": 1},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert response.status_code == 400, response.get_json()
+
+
 # ---------------------------------------------------------
 # L-3
 # ---------------------------------------------------------
