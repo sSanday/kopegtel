@@ -192,3 +192,10 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   menelan kegagalan flow; `/healthz` memakai koneksi baca terpisah. Server
   hidup di `http://127.0.0.1:5000` (healthz 200, satu listener); 273 tes
   lolos.
+- M-10: migrasi skema + seed admin dipindahkan dari impor `app.py` ke
+  `app.bootstrap()` yang hanya dipanggil setelah lease instance dipegang;
+  `acquire_instance_lease()` membuat tabel lease minimal sendiri; seluruh
+  startup (poller, ingest, flow) berada dalam `try/finally` sehingga kegagalan
+  tetap melepas lease. Server hidup di `http://127.0.0.1:5000` (healthz 200,
+  satu listener); instance kedua ditolak dengan exit 1 tanpa mengganggu
+  instance pertama; 279 tes lolos.

@@ -11,7 +11,8 @@ Modul MikroTik (M1–M6) — baca-dulu, tulis-hanya-bila-diaktifkan secara sadar
   berada di `backend/routes/` (satu blueprint per domain) dan helper bersama di
   `backend/core/`. REST API JSON di `/api/*`.
 - **Basis data**: SQLite (`backend/nms.db`, WAL mode) melalui paket
-  `backend/db/`. Migrasi skema otomatis saat start (`db.init_db()`).
+  `backend/db/`. Migrasi skema otomatis saat start setelah lease instance
+  diperoleh (`app.bootstrap()` → `db.init_db()`).
 - **Pemantauan berkala**: APScheduler dalam proses yang sama (`backend/poller.py`).
 - **Autentikasi**: sesi cookie HttpOnly + SameSite=Lax + token CSRF untuk semua
   metode tulis. Batas percobaan login (5 gagal / 10 menit per akun+IP dan

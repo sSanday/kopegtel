@@ -428,3 +428,39 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Suite penuh: **273 passed** (1 peringatan deprecation Flask `__version__`
   yang sudah ada sebelumnya); `pip check` bersih; server hidup di
   `http://127.0.0.1:5000` (healthz 200, satu listener).
+
+## M-10 - Urutan startup melanggar mekanisme lease (selesai)
+
+- Akar masalah: `app.py` menjalankan `db.init_db()` dan `_seed_admin()` saat
+  modul diimpor, sedangkan `serve.py` mengimpor `app` sebelum mengambil lease
+  instance. Instance kedua karena itu bisa menjalankan migrasi skema (dan
+  membuat akun admin) saat instance pertama masih hidup. Selain itu
+  `poller.start_poller()` berada di luar blok `try/finally`, dan impor
+  `ingest`/`flow` terjadi setelah poller dinyalakan tetapi sebelum blok
+  proteksi, sehingga kegagalan di antaranya meninggalkan poller berjalan dan
+  lease tidak dilepas.
+- `app.py` sekarang bebas efek samping database saat diimpor. Inisialisasi
+  dipindahkan ke fungsi eksplisit `bootstrap()` (skema + akun admin awal);
+  `serve.py` memanggilnya hanya setelah `db.acquire_instance_lease()`
+  berhasil. Mode dev `python backend/app.py` juga memanggil `bootstrap()`.
+- `acquire_instance_lease()` membuat tabel `instance_lease` minimal sendiri
+  (`CREATE TABLE IF NOT EXISTS`) sebelum memeriksa lease. Tabel ini prasyarat
+  untuk mengambil lease, sehingga database baru tetap bisa memperoleh lease
+  tanpa menjalankan migrasi skema penuh lebih dulu; tabel aplikasi lain baru
+  dibuat oleh `bootstrap()` setelah lease dipegang.
+- Seluruh startup setelah lease berada dalam satu blok `try/finally`:
+  watchdog heartbeat dinyalakan lebih dulu, lalu `bootstrap()`, poller, dan
+  penerima ingest/flow. Kegagalan `bootstrap()` atau `start_poller()` tetap
+  menjalankan pembersihan (poller, ingest/flow) dan melepas lease. Impor
+  ingest/flow juga dipindahkan ke dalam blok proteksi.
+- Tes regresi `tests/test_startup_order.py` (6 tes): `import app, serve` tidak
+  membuat tabel/migrasi/seed admin; lease bisa diambil pada database kosong dan
+  hanya `instance_lease` yang dibuat; `bootstrap()` membuat skema + admin;
+  instance kedua berhenti tanpa bootstrap/poller/pelepasan lease; urutan
+  lease → bootstrap → poller → server dengan cleanup lengkap; kegagalan
+  `start_poller()` tetap menutup poller dan melepas lease. Fixture M-9 juga
+  diperbaiki agar tidak mewariskan koneksi database sementara ke tes berikutnya.
+- Suite penuh: **279 passed** (1 peringatan deprecation Flask `__version__`
+  yang sudah ada sebelumnya); `pip check` bersih; server hidup di
+  `http://127.0.0.1:5000` (healthz 200, satu listener) dan instance kedua
+  ditolak dengan exit 1 tanpa mengganggu instance pertama.

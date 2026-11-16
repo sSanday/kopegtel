@@ -164,7 +164,7 @@ def test_failed_purge_rolls_back_earlier_deletes(fresh_db):
     assert result["events_deleted"] == 1
 
 
-def test_healthz_uses_readonly_connection_not_shared(fresh_db, monkeypatch):
+def test_healthz_uses_readonly_connection_not_shared(fresh_db):
     """Health check tidak boleh menyentuh koneksi bersama milik thread lain."""
     poller.LAST_HEARTBEAT = time.time()
 
@@ -177,8 +177,11 @@ def test_healthz_uses_readonly_connection_not_shared(fresh_db, monkeypatch):
         def close(self):
             pass
 
-    monkeypatch.setattr(fresh_db.connection, "_conn", Boom())
-    monkeypatch.setattr(fresh_db, "_conn", Boom())
+    # Set langsung (bukan monkeypatch.setattr): teardown fresh_db menutup dan
+    # mengosongkan _conn, sehingga tes berikutnya tidak mewarisi koneksi Boom
+    # atau koneksi database sementara tes ini.
+    fresh_db.connection._conn = Boom()
+    fresh_db._conn = Boom()
 
     response = app_module.app.test_client().get("/healthz")
     assert response.status_code == 200

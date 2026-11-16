@@ -8,7 +8,9 @@ Pengembangan (Flask dev server di bawah flag --dev):
 
 Opsi: --host/--port/--threads (default dari env HOST/PORT/WAITRESS_THREADS).
 Satu instance saja per database: lease di tabel instance_lease (heartbeat
-10 detik; lease basi > 30 detik diambil alih).
+10 detik; lease basi > 30 detik diambil alih). Migrasi skema dan seed admin
+baru dijalankan setelah lease didapat, jadi instance kedua tidak memigrasikan
+database saat instance pertama masih hidup.
 
 Environment:
     WAITRESS_THREADS  jumlah thread waitress (default 8)
@@ -78,22 +80,33 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 1
-    watchdog = threading.Thread(target=_lease_watchdog, args=(token,), daemon=True, name="lease-watchdog")
-    watchdog.start()
 
-    poller.start_poller()
-    from ingest import INGEST
-    from flow import FLOW
+    ingest = None
+    flow = None
+    try:
+        # Heartbeat dulu, baru inisialisasi berat: lease harus terus segar
+        # selama migrasi skema berjalan.
+        watchdog = threading.Thread(target=_lease_watchdog, args=(token,), daemon=True, name="lease-watchdog")
+        watchdog.start()
 
-    try:
-        INGEST.start()
-    except Exception:
-        log.exception("Penerima syslog/trap gagal dimulai; aplikasi tetap berjalan.")
-    try:
-        FLOW.start()
-    except Exception:
-        log.exception("Penerima flow gagal dimulai; aplikasi tetap berjalan.")
-    try:
+        # Impor app tidak menyentuh database. Migrasi skema + seed admin baru
+        # dijalankan di sini, setelah lease dipegang, sehingga instance kedua
+        # tidak bisa memigrasikan DB saat instance pertama masih hidup.
+        app_module.bootstrap()
+
+        poller.start_poller()
+        from ingest import INGEST
+        from flow import FLOW
+
+        ingest, flow = INGEST, FLOW
+        try:
+            ingest.start()
+        except Exception:
+            log.exception("Penerima syslog/trap gagal dimulai; aplikasi tetap berjalan.")
+        try:
+            flow.start()
+        except Exception:
+            log.exception("Penerima flow gagal dimulai; aplikasi tetap berjalan.")
         if args.dev:
             log.warning("Mode --dev: menggunakan server pengembangan Flask, jangan dipakai di produksi.")
             app_module.app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
@@ -103,15 +116,20 @@ def main(argv=None):
             log.info("Waitress melayani di http://%s:%d (threads=%d)", args.host, args.port, args.threads)
             serve(app_module.app, host=args.host, port=args.port, threads=args.threads)
     finally:
+        if ingest is not None:
+            try:
+                ingest.stop()
+            except Exception:
+                log.warning("Gagal menghentikan penerima ingest.", exc_info=True)
+        if flow is not None:
+            try:
+                flow.stop()
+            except Exception:
+                log.warning("Gagal menghentikan penerima flow.", exc_info=True)
         try:
-            INGEST.stop()
+            poller.shutdown_poller()
         except Exception:
-            log.warning("Gagal menghentikan penerima ingest.", exc_info=True)
-        try:
-            FLOW.stop()
-        except Exception:
-            log.warning("Gagal menghentikan penerima flow.", exc_info=True)
-        poller.shutdown_poller()
+            log.warning("Gagal menghentikan poller.", exc_info=True)
         try:
             db.release_instance_lease(token)
         except Exception:

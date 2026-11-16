@@ -295,7 +295,9 @@ def ingest_benchmark(messages, devices_count, args):
     with redirect_stdout(open(os.devnull, "w", encoding="utf-8")):
         import app as app_module  # noqa: E402
 
-    # Impor app membuat akun admin (must_change_password=1); matikan untuk loadtest.
+        app_module.bootstrap()
+
+    # bootstrap() membuat skema + akun admin (must_change_password=1); matikan untuk loadtest.
     with db._lock:
         db.get_conn().execute("UPDATE users SET must_change_password=0")
         db.get_conn().commit()
@@ -569,6 +571,8 @@ def main():
     # ---------- Benchmark endpoint ----------
     with redirect_stdout(open(os.devnull, "w", encoding="utf-8")):
         import app as app_module  # noqa: E402
+
+        app_module.bootstrap()
 
     # Seed admin di app.py membuat must_change_password=1; matikan untuk loadtest.
     with db._lock:

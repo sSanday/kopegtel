@@ -302,6 +302,16 @@ def acquire_instance_lease():
     token = uuid.uuid4().hex
     now = _now()
     with transaction() as conn:
+        # Tabel lease adalah prasyarat untuk mengambil lease itu sendiri.
+        # Dibuat minimal di sini agar database baru bisa mengambil lease
+        # TANPA menjalankan migrasi skema penuh sebelum lease dipegang.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS instance_lease ("
+            " id INTEGER PRIMARY KEY CHECK (id = 1),"
+            " pid INTEGER NOT NULL,"
+            " token TEXT NOT NULL,"
+            " heartbeat TEXT NOT NULL)"
+        )
         row = conn.execute("SELECT pid, heartbeat FROM instance_lease WHERE id = 1").fetchone()
         if row is not None and _lease_fresh(row["heartbeat"]):
             return None

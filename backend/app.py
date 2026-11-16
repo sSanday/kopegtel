@@ -74,8 +74,6 @@ from routes import mfa as mfa_routes  # noqa: E402
 from routes import flow as flow_routes  # noqa: E402
 from routes import metrics as metrics_routes  # noqa: E402
 
-db.init_db()
-
 
 def _seed_admin():
     if db.user_count() > 0:
@@ -92,7 +90,17 @@ def _seed_admin():
     log.info("Akun admin awal dibuat: %s (wajib mengganti kata sandi pada login pertama)", username)
 
 
-_seed_admin()
+def bootstrap():
+    """Siapkan skema database dan akun admin awal.
+
+    Sengaja TIDAK dipanggil saat modul diimpor: entrypoint (``serve.py``)
+    harus mengambil lease instance terlebih dahulu, agar instance kedua tidak
+    menjalankan migrasi skema saat instance pertama masih hidup. Tes memanggil
+    fungsi ini sekali setelah database sementara dibuat.
+    """
+    db.init_db()
+    _seed_admin()
+
 
 def _env_flag(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
@@ -234,6 +242,7 @@ if __name__ == "__main__":
     from ingest import INGEST
     from flow import FLOW
 
+    bootstrap()
     poller.start_poller()
     INGEST.start()
     FLOW.start()

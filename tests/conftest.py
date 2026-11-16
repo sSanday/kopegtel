@@ -18,9 +18,12 @@ os.environ["ALLOWED_NETWORKS"] = ""
 
 sys.path.insert(0, os.path.join(BASE_DIR, "backend"))
 
+import app as app_module  # noqa: E402
 import db  # noqa: E402
 
-db.init_db()
+# Sama seperti entrypoint produksi: skema + akun admin dibuat secara eksplisit,
+# bukan sebagai efek samping impor app.
+app_module.bootstrap()
 
 
 @pytest.fixture()
