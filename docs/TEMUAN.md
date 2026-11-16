@@ -369,3 +369,22 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   field internal system-info tersembunyi, admin tetap mendapat field
   internal, `table_counts` tidak menunggu lock global, dan cache pratinjau
   dipakai ulang. Suite: **263 passed**.
+
+## M-8 - waitress tidak tercantum di requirements.txt (selesai)
+
+- `waitress>=3.0,<4` ditambahkan ke `requirements.txt`. Sebelumnya paket ini
+  hanya ada di `requirements.lock`, sehingga instalasi dari daftar runtime
+  berakhir `ImportError` saat `backend/serve.py` masuk mode produksi.
+  `requirements.lock` tetap memakai versi pasti `waitress==3.0.2`.
+- Audit seluruh impor pihak ketiga di `backend/` menemukan masalah sejenis:
+  `pyasn1` diimpor langsung oleh `backend/ingest/traps.py` (decoder/encoder
+  BER) tetapi hanya tersedia sebagai dependensi transitif pysnmp. Paket itu
+  kini dideklarasikan eksplisit (`pyasn1>=0.6,<1`, lock `0.6.5`) agar tidak
+  hilang bila dependensi pysnmp berubah.
+- Tes regresi `tests/test_requirements.py` (4 tes): setiap impor pihak ketiga
+  runtime wajib ada di `requirements.txt`, waitress wajib ada di daftar
+  runtime dan lock, seluruh persyaratan runtime wajib terkunci dengan versi
+  pasti, dan `serve.py` harus benar-benar mengimpor waitress.
+- Verifikasi: `pip install --dry-run --ignore-installed -r requirements.txt`
+  berhasil dan memilih `waitress-3.0.2`; `pip check` bersih. Suite:
+  **267 passed**.

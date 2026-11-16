@@ -182,3 +182,7 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   retensi dan tabel pindah ke koneksi baca terpisah + cache 60 detik, dengan
   indeks waktu baru; 263 tes lolos; produksi hidup (healthz 200) dan
   verifikasi live per peran berhasil (akun sementara dibersihkan).
+- M-8: `waitress` dan `pyasn1` (impor langsung) ditambahkan ke
+  `requirements.txt`; tes penjaga memastikan semua impor runtime pihak ketiga
+  tercantum dan terkunci versi pasti di `requirements.lock`; 267 tes lolos;
+  produksi hidup (healthz 200).

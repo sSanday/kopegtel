@@ -1,8 +1,14 @@
 flask>=3.0
 apscheduler>=3.10,<4
 werkzeug>=3.0
+# waitress (3.0.2, ZPL-2.1): server WSGI produksi yang dipakai backend/serve.py.
+# Tanpa paket ini, `python backend/serve.py` gagal ImportError saat start.
+waitress>=3.0,<4
 cryptography>=42.0
 pysnmp>=7.0
+# pyasn1 dipakai langsung oleh backend/ingest/traps.py (decoder/encoder BER),
+# jadi dideklarasikan eksplisit dan tidak hanya mengandalkan dependensi pysnmp.
+pyasn1>=0.6,<1
 # prometheus_client (0.26.0, Apache-2.0, resmi Prometheus): render format teks
 # dengan escaping label yang benar lewat custom collector.
 prometheus_client>=0.21,<1
