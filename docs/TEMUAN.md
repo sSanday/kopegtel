@@ -597,3 +597,40 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Sudah dilakukan: verifikasi menyeluruh di atas; tree berjalan bersih
   (`git ls-tree HEAD` tanpa .db/.env); backup hash blob sudah diambil ke
   Temp untuk asesmen.
+
+### M-13 - Status akhir remediasi (2026-11-16, setelah persetujuan pemilik)
+
+- Riwayat `cleanup/rapikan-kode` **ditulis ulang** dengan `git filter-branch`
+  (`git rm --cached --ignore-unmatch -- nms.db logs/sla_demo.db`): berkas
+  sensitif tidak ada lagi di commit mana pun; tree branch identik sebelum/
+  sesudah rewrite (`git diff` kosong); ref `refs/original` dihapus; referensi
+  hash pra-rewrite (mis. `6c8158a`) sudah tidak valid untuk checkout lokal
+  (semua commit sesudah `6c8158a` mendapat hash baru).
+- `git push --force-with-lease` berhasil: remote `cleanup/rapikan-kode` kini
+  menunjuk tip hasil rewrite (lihat `git ls-remote`). URL branch untuk
+  `nms.db` dan `logs/sla_demo.db` merespons **404**.
+- **Akses langsung via SHA lama masih terbuka**: `raw.githubusercontent.com/
+  sSanday/kopegtel/6c8158a/nms.db` dan `.../logs/sla_demo.db` tetap **HTTP
+  200** - GitHub menyimpan objek tak terjangkau (cache/raw). Menghentikan ini
+  sepenuhnya memerlukan permintaan purge ke GitHub Support
+  (https://support.github.com/contact/private-information) dengan referensi
+  hash lama; itu di luar jangkauan saya. Sementara itu, anggap isi kedua DB
+  tetap dapat dibaca siapa pun yang tahu SHA.
+- Isi yang terekspos untuk diketahui publik sampai purge: hash scrypt admin
+  lama (`sla_demo.db`), nama pengguna admin (len=5), dan IP internal RFC1918
+  (`192.168.110.167`, `192.168.110.25`, `192.168.110.251`, `192.168.110.1`).
+  Tidak ada community SNMP/password SSH/IPMI/kontak Telegram/akun pengguna.
+- `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` dihapus dari `.env` lokal
+  (backup: `C:\Users\sandi\AppData\Local\Temp\opencode\env-backup-*.env`,
+  tidak dikomit; sedang tidak dibaca kode apa pun). **Rotasi token dilakukan
+  pemilik** (BotFather /revoke) karena zip pernah dibagikan.
+- Branch cadangan `backup/pre-m13-rewrite` dan salinan ekstraksi sementara
+  sudah dihapus; ref lokal yang tersisa tidak mereferensikan berkas sensitif.
+  Reflog lokal masih menyimpan objek lama (auto-expire 90 hari); purge lokal
+  penuh bila diinginkan: `git reflog expire --expire=now --all; git gc
+  --prune=now`.
+- Sisa di tangan pemilik:
+  1. Rotasi token Telegram (sudah dinyatakan akan dilakukan).
+  2. Ganti password admin lama (scrypt) bila dipakai ulang di tempat lain.
+  3. Permintaan purge ke GitHub Support (opsional; lihat di atas).
+  4. Hapus backup `.env` di Temp bila tidak lagi diperlukan.

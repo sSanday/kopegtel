@@ -216,3 +216,8 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   `6c8158a`; `sla_demo.db` memuat hash scrypt admin lama; IP internal
   RFC1918 terekspos; tidak ada community/password tersimpan; zip `.env`
   (Telegram token) tidak dipakai kode. Remediasi menunggu keputusan pemilik.
+- M-13 remediasi: riwayat `cleanup/rapikan-kode` ditulis ulang (kedua .db
+  dihapus di semua commit; tree identik; refs/original & backup branch dihapus)
+  dan force-pushed (`6f4099d`); URL branch 404; akses via SHA lama tetap 200
+  (butuh purge GitHub Support). TELEGRAM_* dihapus dari .env (backup di Temp).
+  Rotasi token & ganti password admin lama = tanggung jawab pemilik.
