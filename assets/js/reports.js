@@ -119,16 +119,24 @@
       ["Zona waktu", info.timezone],
       ["Uptime server", formatUptimeLong(info.server_uptime_s || 0)],
       ["Waktu server (UTC)", info.time_utc],
-      ["Python", info.python_version],
-      ["Flask", info.flask_version],
-      ["Basis data", `${info.db_path} (${formatBytes(info.db_size_bytes)})`],
-      ["Poller", info.poller && info.poller.running ? `Berjalan (maks ${info.poller.max_workers} worker)` : "Tidak berjalan"],
     ];
+    if (info.python_version) items.push(["Python", info.python_version]);
+    if (info.flask_version) items.push(["Flask", info.flask_version]);
+    if (info.db_path) items.push(["Basis data", `${info.db_path} (${formatBytes(info.db_size_bytes)})`]);
+    items.push(["Poller", info.poller && info.poller.running ? `Berjalan (maks ${info.poller.max_workers} worker)` : "Tidak berjalan"]);
     sysinfoList.innerHTML = items
       .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "—" : String(value))}</dd></div>`)
       .join("");
 
-    const counts = info.table_counts || {};
+    const countsPanel = document.getElementById("table-counts-panel");
+    const counts = info.table_counts;
+    if (!counts || typeof counts !== "object") {
+      // Peran non-admin tidak menerima hitungan tabel (M-7).
+      if (countsPanel) countsPanel.hidden = true;
+      tableCountsRows.innerHTML = "";
+      return;
+    }
+    if (countsPanel) countsPanel.hidden = false;
     const labels = {
       devices: "Perangkat",
       device_checks: "Pemeriksaan",

@@ -178,3 +178,7 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   ditolak tanpa 500, dan secret MFA kosong/rusak tidak menjadi kunci HMAC
   kosong; 256 tes lolos; produksi hidup (healthz 200) dan verifikasi live
   memakai akun sementara berhasil (akun dibersihkan).
+- M-7: non-admin hanya menerima pengaturan/system-info yang aman; COUNT(*)
+  retensi dan tabel pindah ke koneksi baca terpisah + cache 60 detik, dengan
+  indeks waktu baru; 263 tes lolos; produksi hidup (healthz 200) dan
+  verifikasi live per peran berhasil (akun sementara dibersihkan).

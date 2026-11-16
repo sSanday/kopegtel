@@ -9,6 +9,7 @@ from .connection import (
     _lock,
     _now,
     get_conn,
+    readonly_connection,
 )
 from .fiber import (
     get_fiber_settings,
@@ -322,7 +323,9 @@ def table_counts():
               "optical_readings", "optical_modules", "optical_hourly",
               "fiber_links", "fiber_measurements"]
     counts = {}
-    with _lock:
+    # Koneksi baca terpisah: COUNT(*) pada tabel besar tidak boleh menahan
+    # _lock global yang dipakai poller dan request lain.
+    with readonly_connection() as conn:
         for table in tables:
-            counts[table] = get_conn().execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+            counts[table] = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
     return counts

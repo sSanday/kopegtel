@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import uuid
 from cryptography.fernet import Fernet, InvalidToken
@@ -64,6 +65,25 @@ def get_conn():
             _conn.execute("PRAGMA foreign_keys=ON")
             _conn.execute("PRAGMA busy_timeout=5000")
         return _conn
+
+
+@contextmanager
+def readonly_connection():
+    """Koneksi baca terpisah untuk query statistik berat.
+
+    COUNT(*) pada tabel besar tidak boleh memegang ``_lock`` global: WAL
+    mengizinkan pembaca paralel, sehingga poller dan request lain tetap jalan.
+    Koneksi ini hanya-baca agar tidak ada yang tidak sengaja menulis lewat
+    jalur statistik.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=5)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+        yield conn
+    finally:
+        conn.close()
 
 def _now():
     """Waktu UTC dalam format 'YYYY-MM-DDTHH:MM:SSZ' (semua timestamp di DB)."""

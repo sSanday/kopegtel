@@ -36,4 +36,13 @@ def fresh_db(tmp_path, monkeypatch):
                 target._conn.close()
             target._conn = None
     db.init_db()
-    return db
+    try:
+        yield db
+    finally:
+        # Tutup koneksi sebelum monkeypatch mengembalikan DB_PATH. Tanpa ini
+        # tes berikutnya mewarisi koneksi ke database sementara tes ini.
+        with db.connection._lock:
+            for target in (db, db.connection):
+                if getattr(target, "_conn", None) is not None:
+                    target._conn.close()
+                target._conn = None

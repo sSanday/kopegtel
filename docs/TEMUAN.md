@@ -339,3 +339,33 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Tes regresi `tests/test_mfa.py` (4 tes M-6): digit Unicode dan secret
   NULL/rusak, kode pemulihan 6 digit lewat alur login penuh beserta
   sekali-pakai, dan respons API non-ASCII tanpa 500. Suite: **256 passed**.
+
+## M-7 - `/api/settings` & `/api/reports/system-info` bocor dan berat (selesai)
+
+- `GET /api/settings` untuk non-admin sekarang hanya mengembalikan nilai aman
+  yang dipakai UI monitoring: `org_name`, `timezone`, dan
+  `default_poll_interval`. Path backup (`db_backup_dir`), kebijakan MFA,
+  batas ingest, pengaturan token/metrik, dan `retention_preview` tidak lagi
+  dikirim ke viewer/operator. Admin tetap menerima pengaturan lengkap.
+- `GET /api/reports/system-info` untuk non-admin hanya memuat versi aplikasi,
+  organisasi, zona waktu, uptime, status poller, dan waktu server. Versi
+  Python/Flask, nama/ukuran berkas database, dan `table_counts` hanya untuk
+  admin. Panel "Ukuran basis data" di Reports otomatis disembunyikan bila
+  data itu tidak ada.
+- Delapan `COUNT(*)` pratinjau retensi dan empat belas `COUNT(*)` informasi
+  tabel tidak lagi berjalan di dalam `db._lock` global. Keduanya memakai
+  `db.readonly_connection()` (koneksi baca terpisah, `query_only=ON`) dan
+  cache 60 detik; perubahan pengaturan retensi langsung membatalkan cache
+  pratinjau. Request lain dan poller tetap berjalan saat hitungan berlangsung.
+- Indeks waktu ditambahkan lewat migrasi idempoten: `device_metrics(ts)`,
+  `interface_stats(ts)`, `events(created_at)`,
+  `device_metrics_hourly(hour_ts)`, dan `optical_hourly(hour_ts)`, sehingga
+  pratinjau dan job purge tidak lagi memindai seluruh tabel.
+- Fixture `tests/conftest.py::fresh_db` sekarang menutup koneksi di akhir tes
+  agar tes berikutnya tidak mewarisi database sementara. Ini juga menghapus
+  kegagalan urutan `test_login_flood.py` + `test_api.py` yang lama.
+- Tes regresi `tests/test_admin_exposure.py` (7 tes): whitelist settings,
+  data admin tetap lengkap, tidak ada hitungan retensi untuk non-admin,
+  field internal system-info tersembunyi, admin tetap mendapat field
+  internal, `table_counts` tidak menunggu lock global, dan cache pratinjau
+  dipakai ulang. Suite: **263 passed**.

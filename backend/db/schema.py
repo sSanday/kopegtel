@@ -972,6 +972,13 @@ def init_db():
                 conn.execute(f"ALTER TABLE devices ADD COLUMN {name} {ddl}")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_checks_time ON device_checks (checked_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_if_stats_device_name_id ON interface_stats (device_id, if_name, id)")
+        # M-7: indeks waktu agar pratinjau retensi dan job purge tidak
+        # memindai seluruh tabel metrik/interface/event.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_time ON device_metrics (ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_if_stats_time ON interface_stats (ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON events (created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_hourly_hour ON device_metrics_hourly (hour_ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_optical_hourly_hour ON optical_hourly (hour_ts)")
 
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()

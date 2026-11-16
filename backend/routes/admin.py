@@ -3,8 +3,10 @@
 import csv
 import io
 import json
+import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -20,6 +22,7 @@ from core.env import APP_VERSION, SERVER_STARTED
 from core.guard import audit, roles
 
 bp = Blueprint("admin", __name__)
+log = logging.getLogger("nms.admin")
 
 # ---------------------------------------------------------
 # Audit log & laporan
@@ -127,24 +130,97 @@ def api_system_info():
     import flask as flask_module
 
     settings = db.get_settings()
-    return jsonify(
-        {
-            "app_version": APP_VERSION,
-            "org_name": settings["org_name"],
-            "timezone": settings["timezone"],
-            "python_version": platform.python_version(),
-            "flask_version": flask_module.__version__,
-            "server_uptime_s": int(time.monotonic() - SERVER_STARTED),
-            "db_path": os.path.basename(db.DB_PATH),
-            "db_size_bytes": db.db_file_size(),
-            "table_counts": db.table_counts(),
-            "poller": {
-                "running": poller._scheduler is not None,
-                "max_workers": poller.MAX_WORKERS,
-            },
-            "time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
+    # M-7: data internal (versi runtime, path/ukuran DB, jumlah baris) hanya
+    # untuk admin. Peran lain tetap mendapat informasi aman yang dibutuhkan
+    # halaman Reports tanpa memicu COUNT(*) tabel besar.
+    payload = {
+        "app_version": APP_VERSION,
+        "org_name": settings["org_name"],
+        "timezone": settings["timezone"],
+        "server_uptime_s": int(time.monotonic() - SERVER_STARTED),
+        "poller": {
+            "running": poller._scheduler is not None,
+            "max_workers": poller.MAX_WORKERS,
+        },
+        "time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if g.user["role"] == "admin":
+        payload.update(
+            {
+                "python_version": platform.python_version(),
+                "flask_version": flask_module.__version__,
+                "db_path": os.path.basename(db.DB_PATH),
+                "db_size_bytes": db.db_file_size(),
+                "table_counts": _cached_table_counts(),
+            }
+        )
+    return jsonify(payload)
+
+
+# ---------------------------------------------------------
+# Statistik berat: cache singkat + koneksi baca terpisah.
+# ---------------------------------------------------------
+
+_STATS_TTL_SECONDS = 60
+_stats_lock = threading.Lock()
+_stats_refresh_lock = threading.Lock()
+_retention_cache = {"key": None, "at": 0.0, "data": None}
+_table_counts_cache = {"key": None, "at": 0.0, "data": None}
+
+
+def _stats_key():
+    """Kunci cache mengikuti DB aktif (tes memakai database berbeda-beda)."""
+    connection = getattr(db, "connection", db)
+    return str(getattr(connection, "DB_PATH", ""))
+
+
+def _cache_fresh(cache, key, now):
+    return (
+        cache["data"] is not None
+        and cache["key"] == key
+        and (now - cache["at"]) < _STATS_TTL_SECONDS
     )
+
+
+def _cached_stats(cache, loader):
+    """Hitung sekali per TTL; pengguna lain menunggu satu perhitungan.
+
+    Perhitungan dilakukan di luar ``db._lock`` oleh loader (koneksi baca
+    terpisah), jadi request lain tidak ikut tersendat.
+    """
+    key = _stats_key()
+    with _stats_lock:
+        if _cache_fresh(cache, key, time.monotonic()):
+            return cache["data"]
+    with _stats_refresh_lock:
+        with _stats_lock:
+            if _cache_fresh(cache, key, time.monotonic()):
+                return cache["data"]
+        data = loader()
+        with _stats_lock:
+            cache.update({"key": key, "at": time.monotonic(), "data": data})
+        return data
+
+
+def _cached_retention_preview():
+    try:
+        return _cached_stats(_retention_cache, _retention_preview)
+    except Exception:
+        log.exception("Gagal menghitung pratinjau retensi")
+        return {}
+
+
+def _cached_table_counts():
+    try:
+        return _cached_stats(_table_counts_cache, db.table_counts)
+    except Exception:
+        log.exception("Gagal menghitung jumlah baris tabel")
+        return {}
+
+
+def _invalidate_retention_cache():
+    with _stats_lock:
+        _retention_cache.update({"key": None, "at": 0.0, "data": None})
 
 
 # ---------------------------------------------------------
@@ -165,8 +241,8 @@ def _retention_preview():
         optical_hourly_days = 90
     optical_hourly = db.retention_cutoff(optical_hourly_days, hourly=True)
     counts = {}
-    with db._lock:
-        conn = db.get_conn()
+    # M-7: koneksi baca terpisah agar 8 COUNT(*) tidak menahan lock global.
+    with db.readonly_connection() as conn:
         counts["checks"] = conn.execute("SELECT COUNT(*) AS n FROM device_checks WHERE checked_at < ?", (checks,)).fetchone()["n"]
         counts["metrics"] = conn.execute("SELECT COUNT(*) AS n FROM device_metrics WHERE ts < ?", (raw,)).fetchone()["n"]
         counts["interfaces"] = conn.execute("SELECT COUNT(*) AS n FROM interface_stats WHERE ts < ?", (raw,)).fetchone()["n"]
@@ -183,10 +259,13 @@ def _retention_preview():
 @bp.get("/api/settings")
 def api_get_settings():
     settings = db.get_settings()
-    settings["retention_preview"] = _retention_preview()
     if g.user["role"] != "admin":
-        # Non-admin: hanya informasi yang dibutuhkan untuk menampilkan halaman.
-        return jsonify({"settings": settings})
+        # M-7: peran lain hanya menerima nilai aman yang dipakai UI monitoring.
+        # Path backup, kebijakan MFA, batas ingest, dan pratinjau retensi berat
+        # tidak ikut dikirim.
+        public_keys = ("org_name", "timezone", "default_poll_interval")
+        return jsonify({"settings": {key: settings.get(key) for key in public_keys}})
+    settings["retention_preview"] = _cached_retention_preview()
     return jsonify({"settings": settings})
 
 
@@ -302,6 +381,7 @@ def api_update_settings():
     if not clean:
         return jsonify({"error": "Tidak ada pengaturan yang dikirim."}), 400
     db.set_settings(clean)
+    _invalidate_retention_cache()
     audit("settings.update", "settings", f"Mengubah pengaturan: {', '.join(sorted(clean))}")
     return jsonify({"ok": True, "settings": db.get_settings()})
 
