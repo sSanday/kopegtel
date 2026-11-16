@@ -198,6 +198,7 @@ def cmd_restore_db(args):
         except Exception:
             pass
         db._conn = None
+        db.connection._conn = None
         os.replace(tmp_path, db.DB_PATH)
         for suffix in ("-wal", "-shm", "-journal"):
             side = db.DB_PATH + suffix
@@ -308,13 +309,14 @@ def cmd_rotate_encryption_key(args):
     from cryptography.fernet import Fernet as _Fernet
 
     new_fernet = _Fernet(new_key)
-    for table, cols in db.ENCRYPTED_FIELDS:
-        for col in cols:
-            rows = db.get_conn().execute(
-                f"SELECT {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"
-            ).fetchall()
-            for row in rows:
-                new_fernet.decrypt(row[col].encode("utf-8"))
+    with db._lock:
+        for table, cols in db.ENCRYPTED_FIELDS:
+            for col in cols:
+                rows = db.get_conn().execute(
+                    f"SELECT {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"
+                ).fetchall()
+                for row in rows:
+                    new_fernet.decrypt(row[col].encode("utf-8"))
 
     print(f"\nBERHASIL mengenkripsi ulang {written} nilai dengan kunci baru.")
     print("\nKUNCI ENCRYPTION_KEY BARU (tampil sekali — simpan sekarang, mis. di password manager):")

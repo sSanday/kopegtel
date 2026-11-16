@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -29,8 +30,7 @@ def _clip(value, limit, default=""):
 
 
 def add_audit_log(user_id, username, ip, action, obj, summary):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT INTO audit_log (ts, user_id, username, ip, action, object, summary) VALUES (?,?,?,?,?,?,?)",
             (
@@ -43,7 +43,6 @@ def add_audit_log(user_id, username, ip, action, obj, summary):
                 _clip(summary, AUDIT_SUMMARY_MAX),
             ),
         )
-        conn.commit()
 
 
 def count_recent_audit(action, minutes):

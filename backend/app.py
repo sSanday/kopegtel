@@ -161,7 +161,10 @@ app.register_blueprint(metrics_routes.bp)
 @app.get("/healthz")
 def healthz():
     try:
-        db.get_conn().execute("SELECT 1").fetchone()
+        # Koneksi baca terpisah: health check tidak boleh memakai koneksi
+        # bersama (_conn) milik thread request/poller tanpa lock.
+        with db.readonly_connection() as conn:
+            conn.execute("SELECT 1").fetchone()
         db_ok = True
     except Exception:
         db_ok = False

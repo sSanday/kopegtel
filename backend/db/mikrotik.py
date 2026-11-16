@@ -7,6 +7,7 @@ from .connection import (
     _get_fernet,
     _json_loads,
     _lock,
+    transaction,
     _now,
     decrypt_secret,
     encrypt_secret,
@@ -146,8 +147,7 @@ def save_mt_device_settings(device_id, data):
     if ssh_user is not None:
         ssh_user = str(ssh_user).strip()[:120] or None
 
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO mt_device_settings (
@@ -188,7 +188,6 @@ def save_mt_device_settings(device_id, data):
                 now,
             ),
         )
-        conn.commit()
     return get_mt_device_settings(device_id)
 
 def get_mt_capabilities(device_id):
@@ -209,8 +208,7 @@ def get_mt_capabilities(device_id):
 def save_mt_capabilities(device_id, capabilities):
     now = _now()
     caps = capabilities or {}
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO mt_capabilities
@@ -231,7 +229,6 @@ def save_mt_capabilities(device_id, capabilities):
                 caps.get("checked_at") or now, now,
             ),
         )
-        conn.commit()
 
 def get_mt_system(device_id):
     with _lock:
@@ -247,8 +244,7 @@ def get_mt_system(device_id):
 def save_mt_system(device_id, system):
     now = _now()
     system = system or {}
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO mt_system (
@@ -280,7 +276,6 @@ def save_mt_system(device_id, system):
                 json.dumps(system.get("packages") or [], ensure_ascii=False), now,
             ),
         )
-        conn.commit()
 
 def get_mt_poll_state(device_id, layer=None):
     with _lock:
@@ -304,8 +299,7 @@ def get_mt_poll_state(device_id, layer=None):
 
 def set_mt_poll_state(device_id, layer, *, last_run, ok, error=None, cursor=None, truncated=None):
     previous = get_mt_poll_state(device_id, layer) or {}
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO mt_poll_state
@@ -326,7 +320,6 @@ def set_mt_poll_state(device_id, layer, *, last_run, ok, error=None, cursor=None
                 json.dumps(truncated if truncated is not None else previous.get("truncated") or {}),
             ),
         )
-        conn.commit()
 
 def replace_mt_snapshot(table, device_id, rows, ts, *, truncated=False, scope_prefix=None):
     """Ganti snapshot satu tabel secara upsert; baris yang hilang dibuang.
@@ -351,8 +344,7 @@ def replace_mt_snapshot(table, device_id, rows, ts, *, truncated=False, scope_pr
     if scope_prefix:
         scope_sql = " AND row_key LIKE ?"
         scope_params = [f"{scope_prefix}%"]
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             f"UPDATE {table} SET stale = 1 WHERE device_id = ?{scope_sql}",
             (device_id, *scope_params),
@@ -372,7 +364,6 @@ def replace_mt_snapshot(table, device_id, rows, ts, *, truncated=False, scope_pr
                 f"DELETE FROM {table} WHERE device_id = ? AND stale = 1{scope_sql}",
                 (device_id, *scope_params),
             )
-        conn.commit()
 
 def mark_mt_table_stale(table, device_id, scope_prefix=None):
     if table not in MT_SNAPSHOT_TABLES:
@@ -381,13 +372,11 @@ def mark_mt_table_stale(table, device_id, scope_prefix=None):
     if scope_prefix:
         scope_sql = " AND row_key LIKE ?"
         scope_params = [f"{scope_prefix}%"]
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             f"UPDATE {table} SET stale = 1 WHERE device_id = ?{scope_sql}",
             (device_id, *scope_params),
         )
-        conn.commit()
 
 def list_mt_rows(table, device_id, *, include_stale=True):
     if table not in MT_SNAPSHOT_TABLES:
@@ -420,8 +409,7 @@ def record_mt_logs(device_id, rows, polled_at=None):
     if not rows:
         return 0
     ts = polled_at or _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.executemany(
             """
             INSERT OR IGNORE INTO mt_logs (
@@ -439,7 +427,6 @@ def record_mt_logs(device_id, rows, polled_at=None):
                 if row.get("row_key")
             ],
         )
-        conn.commit()
         return cursor.rowcount
 
 def list_mt_logs(device_id, *, severity=None, topics=None, search=None, limit=200, offset=0):
@@ -492,8 +479,7 @@ def mt_login_failure_counts(device_id, since):
 
 def replace_mt_findings(device_id, findings, detected_at=None):
     now = detected_at or _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute("UPDATE mt_security_findings SET stale = 1 WHERE device_id = ?", (device_id,))
         for finding in findings or []:
             key = finding.get("finding_key")
@@ -520,7 +506,6 @@ def replace_mt_findings(device_id, findings, detected_at=None):
         conn.execute(
             "DELETE FROM mt_security_findings WHERE device_id = ? AND stale = 1", (device_id,)
         )
-        conn.commit()
 
 def list_mt_findings(device_id, *, include_ignored=True, include_stale=False):
     where = ["device_id = ?"]
@@ -546,8 +531,7 @@ def get_mt_finding(finding_id):
     return dict(row) if row else None
 
 def set_mt_finding_ignored(finding_id, *, ignored, username, reason=None):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             UPDATE mt_security_findings
@@ -562,7 +546,6 @@ def set_mt_finding_ignored(finding_id, *, ignored, username, reason=None):
                 finding_id,
             ),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def mt_finding_count(device_id, *, open_only=True):
@@ -579,13 +562,11 @@ def mt_finding_count(device_id, *, open_only=True):
 def record_mt_metrics(device_id, ts, values):
     if not values:
         return
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             "INSERT INTO mt_metric_history (device_id, ts, metric, value) VALUES (?,?,?,?)",
             [(device_id, ts, key, value) for key, value in values.items() if value is not None],
         )
-        conn.commit()
 
 def mt_metric_points(device_id, metric, since, limit=10000):
     with _lock:
@@ -841,18 +822,15 @@ def set_device_parent(child_id, parent_id, username):
         if cursor["parent_id"] == child_id:
             return False, "Relasi ini akan membentuk siklus topologi."
         cursor = get_device(cursor["parent_id"])
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE devices SET parent_id=?, updated_at=? WHERE id=?",
             (parent_id, _now(), child_id),
         )
-        conn.commit()
     return True, f"Menjadikan {parent['name']} induk dari {child['name']}."
 
 def add_mt_action(device_id, *, username, action, target, params, result, verified, before, after, ip="-"):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO mt_actions
@@ -869,7 +847,6 @@ def add_mt_action(device_id, *, username, action, target, params, result, verifi
                 ip,
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def list_mt_actions(device_id, limit=100):

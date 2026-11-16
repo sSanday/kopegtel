@@ -5,6 +5,7 @@ import sqlite3
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -17,14 +18,12 @@ def create_scan_job(cidr, total, created_by):
     Community SNMP / kredensial RouterOS hanya diteruskan ke thread pemindaian
     di memori; setelah proses selesai tidak ada salinan yang tersisa di DB.
     """
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO scan_jobs (cidr, status, total, completed, found, created_by, created_at, results)"
             " VALUES (?, 'running', ?, 0, 0, ?, ?, '[]')",
             (cidr, int(total), created_by, _now()),
         )
-        conn.commit()
         return cursor.lastrowid
 
 
@@ -47,22 +46,18 @@ def scrub_scan_credentials_file(path):
 
 
 def update_scan_job(job_id, completed, results):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE scan_jobs SET completed=?, found=?, results=? WHERE id=?",
             (int(completed), len(results), json.dumps(results, ensure_ascii=False), job_id),
         )
-        conn.commit()
 
 def finish_scan_job(job_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE scan_jobs SET status='done', finished_at=? WHERE id=?",
             (_now(), job_id),
         )
-        conn.commit()
 
 def get_scan_job(job_id):
     with _lock:

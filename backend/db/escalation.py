@@ -2,6 +2,7 @@
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -62,8 +63,7 @@ def policy_name_exists(name, exclude_id=None):
 
 def create_policy(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO escalation_policies (name, description, enabled, business_hours_enabled,"
             " business_start, business_end, business_days, repeat_minutes, created_at, updated_at)"
@@ -78,14 +78,12 @@ def create_policy(data):
         )
         policy_id = cursor.lastrowid
         _replace_steps(conn, policy_id, data.get("steps") or [])
-        conn.commit()
         return policy_id
 
 
 def update_policy(policy_id, data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE escalation_policies SET name=?, description=?, enabled=?, business_hours_enabled=?,"
             " business_start=?, business_end=?, business_days=?, repeat_minutes=?, updated_at=?"
@@ -99,7 +97,6 @@ def update_policy(policy_id, data):
             ),
         )
         _replace_steps(conn, policy_id, data.get("steps") or [])
-        conn.commit()
         return cursor.rowcount > 0
 
 
@@ -118,10 +115,8 @@ def _replace_steps(conn, policy_id, steps):
 
 
 def delete_policy(policy_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM escalation_policies WHERE id = ?", (policy_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 
@@ -131,14 +126,12 @@ def delete_policy(policy_id):
 
 def register_escalation(problem_id, policy_id):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO escalation_state (problem_id, policy_id, last_step,"
             " created_at, updated_at) VALUES (?,?,0,?,?)",
             (problem_id, policy_id, now, now),
         )
-        conn.commit()
 
 
 def get_escalation_state(problem_id):
@@ -151,33 +144,27 @@ def get_escalation_state(problem_id):
 
 def mark_escalation_step(problem_id, step, sent_at=None):
     stamp = sent_at or _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE escalation_state SET last_step=?, last_sent_at=?, updated_at=? WHERE problem_id=?",
             (int(step), stamp, _now(), problem_id),
         )
-        conn.commit()
 
 
 def mark_escalation_recovered(problem_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE escalation_state SET recovery_sent=1, updated_at=? WHERE problem_id=?",
             (_now(), problem_id),
         )
-        conn.commit()
 
 
 def stop_escalation(problem_id, reason):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "UPDATE escalation_state SET stopped_reason=?, updated_at=? WHERE problem_id=?",
             (str(reason)[:120], _now(), problem_id),
         )
-        conn.commit()
 
 
 def pending_escalations():

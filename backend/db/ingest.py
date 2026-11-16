@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from .connection import (
     _days_ago,
     _lock,
+    transaction,
     _now,
     decrypt_secret,
     encrypt_secret,
@@ -86,8 +87,7 @@ def update_ingest_receiver(kind, *, enabled, port, bind_address, config=None):
                 merged[key] = list(value or [])  # daftar kosong = hapus semua
             else:
                 merged[key] = value
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE ingest_receivers SET enabled=?, port=?, bind_address=?, config=?, updated_at=?"
             " WHERE kind=?",
@@ -97,7 +97,6 @@ def update_ingest_receiver(kind, *, enabled, port, bind_address, config=None):
                 now, kind,
             ),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 
@@ -118,14 +117,12 @@ def add_syslog_events_batch(rows):
             (row.get("tag") or "")[:255] or None, message, (row.get("raw") or "")[:8192] or None,
             row.get("dedup_hash") or dedup_hash(row["device_id"], ts, message),
         ))
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             "INSERT INTO syslog_events (ts, received_at, device_id, source_ip, hostname, facility,"
             " severity, tag, message, raw, dedup_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             payload,
         )
-        conn.commit()
     return len(payload)
 
 
@@ -144,14 +141,12 @@ def add_snmp_traps_batch(rows):
             varbinds[:16384], (row.get("raw") or "")[:8192] or None,
             row.get("dedup_hash") or dedup_hash(row["device_id"], ts, varbinds),
         ))
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             "INSERT INTO snmp_traps (ts, received_at, device_id, source_ip, trap_oid, trap_name,"
             " varbinds, raw, dedup_hash) VALUES (?,?,?,?,?,?,?,?,?)",
             payload,
         )
-        conn.commit()
     return len(payload)
 
 
@@ -272,35 +267,29 @@ def ingest_rule_name_exists(name, exclude_id=None):
 
 def create_ingest_rule(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             f"INSERT INTO ingest_rules ({', '.join(_RULE_FIELDS)}, created_at, updated_at)"
             f" VALUES ({', '.join('?' for _ in _RULE_FIELDS)}, ?, ?)",
             (*[data.get(key) for key in _RULE_FIELDS], now, now),
         )
-        conn.commit()
         return cursor.lastrowid
 
 
 def update_ingest_rule(rule_id, data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             f"UPDATE ingest_rules SET {', '.join(f'{key}=?' for key in _RULE_FIELDS)}, updated_at=?"
             " WHERE id=?",
             (*[data.get(key) for key in _RULE_FIELDS], now, rule_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 
 def delete_ingest_rule(rule_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM ingest_rules WHERE id = ?", (rule_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 
@@ -362,8 +351,7 @@ def record_ingest_problem(rule, device_id, severity, message):
     """
     now = _now()
     suppressed = parent_suppression_name(device_id)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         row = conn.execute(
             "SELECT id, notified_at FROM problems WHERE device_id=? AND rule_id=? AND status='open'",
             (device_id, rule["id"]),
@@ -374,14 +362,12 @@ def record_ingest_problem(rule, device_id, severity, message):
                 " last_seen_at=?, suppressed_by_parent=? WHERE id=?",
                 (severity, str(message)[:300], now, suppressed, row["id"]),
             )
-            conn.commit()
             should_notify = False
             if not suppressed:
                 cooldown = max(0, int(rule.get("cooldown_seconds") or 0))
                 last = row["notified_at"]
                 if not last or _older_than(last, cooldown):
                     conn.execute("UPDATE problems SET notified_at=? WHERE id=?", (now, row["id"]))
-                    conn.commit()
                     should_notify = True
             return {"id": row["id"], "is_new": False, "should_notify": should_notify,
                     "suppressed_by_parent": suppressed}
@@ -395,7 +381,6 @@ def record_ingest_problem(rule, device_id, severity, message):
                 None if suppressed else now, suppressed,
             ),
         )
-        conn.commit()
         return {"id": cursor.lastrowid, "is_new": True, "should_notify": not suppressed,
                 "suppressed_by_parent": suppressed}
 
@@ -417,34 +402,28 @@ def get_problem(problem_id):
 
 
 def mark_problem_notified(problem_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute("UPDATE problems SET notified_at=? WHERE id=?", (_now(), problem_id))
-        conn.commit()
 
 
 def resolve_ingest_problem(device_id, rule_id):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET status='resolved', resolved_at=? WHERE device_id=? AND rule_id=?"
             " AND status='open'",
             (now, device_id, rule_id),
         )
-        conn.commit()
         return cursor.rowcount
 
 
 def resolve_rule_problems(rule_id):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET status='resolved', resolved_at=? WHERE rule_id=? AND status='open'",
             (now, rule_id),
         )
-        conn.commit()
         return cursor.rowcount
 
 
@@ -452,8 +431,7 @@ def auto_resolve_ingest_problems():
     """Tutup problem aturan yang tidak menerima kejadian selama N menit."""
     now = datetime.now(timezone.utc)
     resolved = 0
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         rows = conn.execute(
             """
             SELECT p.id, p.device_id, p.rule_id, p.started_at, p.last_seen_at,
@@ -474,15 +452,13 @@ def auto_resolve_ingest_problems():
                     (now.strftime("%Y-%m-%dT%H:%M:%SZ"), row["id"]),
                 )
                 resolved += 1
-        conn.commit()
     return resolved
 
 
 def reevaluate_suppressed_problems():
     """Bersihkan penekanan bila parent sudah pulih. Return daftar problem yang perlu dikirim."""
     ready = []
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         rows = conn.execute(
             "SELECT * FROM problems WHERE status='open' AND suppressed_by_parent IS NOT NULL"
         ).fetchall()
@@ -494,7 +470,6 @@ def reevaluate_suppressed_problems():
                 (_now(), row["id"]),
             )
             ready.append(dict(row, suppressed_by_parent=None))
-        conn.commit()
     return ready
 
 

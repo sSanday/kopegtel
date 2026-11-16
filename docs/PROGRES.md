@@ -186,3 +186,9 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   `requirements.txt`; tes penjaga memastikan semua impor runtime pihak ketiga
   tercantum dan terkunci versi pasti di `requirements.lock`; 267 tes lolos;
   produksi hidup (healthz 200).
+- M-9: semua penulisan DB memakai `db.transaction()` (commit sekali, rollback
+  penuh saat gagal, transaksi bersarang ikut terluar); `_lock` me-rollback
+  transaksi yang menggantung di batas blok; `purge_old_data` tidak lagi
+  menelan kegagalan flow; `/healthz` memakai koneksi baca terpisah. Server
+  hidup di `http://127.0.0.1:5000` (healthz 200, satu listener); 273 tes
+  lolos.

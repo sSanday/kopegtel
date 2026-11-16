@@ -4,6 +4,7 @@ import json
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -69,8 +70,7 @@ def get_fiber_settings():
 def set_fiber_settings(values):
     """values: dict kunci fiber_* → nilai (sudah tervalidasi API). Kembalikan jumlah tersimpan."""
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         count = 0
         for key, value in values.items():
             if key not in FIBER_SETTING_DEFAULTS:
@@ -81,7 +81,6 @@ def set_fiber_settings(values):
                 (key, str(value), now),
             )
             count += 1
-        conn.commit()
     return count
 
 def list_optical_profiles():
@@ -104,8 +103,7 @@ def optical_profile_name_exists(name, exclude_id=None):
 
 def create_optical_profile(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO optical_profiles
@@ -122,13 +120,11 @@ def create_optical_profile(data):
                 now, now,
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_optical_profile(profile_id, data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             UPDATE optical_profiles SET
@@ -145,18 +141,15 @@ def update_optical_profile(profile_id, data):
                 now, profile_id,
             ),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_optical_profile(profile_id):
     """Hapus ditolak bila masih dipakai link fiber."""
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         used = conn.execute("SELECT COUNT(*) AS n FROM fiber_links WHERE profile_id = ?", (profile_id,)).fetchone()["n"]
         if used:
             return False, used
         cursor = conn.execute("DELETE FROM optical_profiles WHERE id = ?", (profile_id,))
-        conn.commit()
         return cursor.rowcount > 0, 0
 
 _LINK_SELECT = """
@@ -188,8 +181,7 @@ def fiber_link_name_exists(name, exclude_id=None):
 
 def create_fiber_link(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO fiber_links
@@ -208,13 +200,11 @@ def create_fiber_link(data):
                 data.get("notes", ""), now, now,
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_fiber_link(link_id, data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             UPDATE fiber_links SET
@@ -233,14 +223,11 @@ def update_fiber_link(link_id, data):
                 data.get("notes", ""), now, link_id,
             ),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_fiber_link(link_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM fiber_links WHERE id = ?", (link_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def fiber_links_using_port(device_id, if_name):
@@ -256,8 +243,7 @@ def record_optical_readings(device_id, ts, readings):
     rx_loss, tx_fault, module_present, ddm_supported)."""
     if not readings:
         return 0
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             """
             INSERT INTO optical_readings
@@ -275,7 +261,6 @@ def record_optical_readings(device_id, ts, readings):
                 for r in readings
             ],
         )
-        conn.commit()
         return len(readings)
 
 def latest_optical_readings():
@@ -338,8 +323,7 @@ def upsert_optical_module(device_id, if_name, *, vendor, part_no, serial, type_,
                           wavelength_nm, link_length_m, ts):
     """Upsert modul SFP; kembalikan dict {is_new, serial_changed, serial_before, serial_after}."""
     serial = (serial or "").strip() or None
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         existing = conn.execute(
             "SELECT * FROM optical_modules WHERE device_id = ? AND if_name = ?",
             (device_id, if_name),
@@ -359,7 +343,6 @@ def upsert_optical_module(device_id, if_name, *, vendor, part_no, serial, type_,
                  link_length_m if link_length_m is not None else existing["link_length_m"],
                  ts, device_id, if_name),
             )
-            conn.commit()
             return {"is_new": False, "serial_changed": serial_changed,
                     "serial_before": old_serial, "serial_after": keep_serial}
         conn.execute(
@@ -370,7 +353,6 @@ def upsert_optical_module(device_id, if_name, *, vendor, part_no, serial, type_,
             """,
             (device_id, if_name, vendor, part_no, serial, type_, wavelength_nm, link_length_m, ts, ts),
         )
-        conn.commit()
         return {"is_new": True, "serial_changed": False, "serial_before": None, "serial_after": serial}
 
 def list_optical_modules():
@@ -399,8 +381,7 @@ def get_optical_port_state_by_id(state_id):
 
 def upsert_optical_port_state(device_id, if_name, *, is_optical, ddm_supported, ts, consec=None, last_serial=None):
     consec_json = json.dumps(consec) if consec is not None else None
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO optical_port_state (device_id, if_name, is_optical, ddm_supported, last_check, consec, last_serial)
@@ -415,7 +396,6 @@ def upsert_optical_port_state(device_id, if_name, *, is_optical, ddm_supported, 
             (device_id, if_name, 1 if is_optical else 0, 1 if ddm_supported else 0,
              ts, consec_json, last_serial),
         )
-        conn.commit()
 
 def list_optical_port_states():
     with _lock:
@@ -428,8 +408,7 @@ def get_link_state(link_id):
     return dict(row) if row else None
 
 def save_link_state(link_id, *, consec, status, metrics, ts):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO optical_link_state (link_id, consec, status, metrics, updated_at)
@@ -440,7 +419,6 @@ def save_link_state(link_id, *, consec, status, metrics, ts):
             """,
             (link_id, json.dumps(consec), status, json.dumps(metrics or {}), ts),
         )
-        conn.commit()
 
 def optical_summary_counts():
     """Ringkasan modul fiber untuk kartu Dashboard / /api/optical/summary."""
@@ -507,8 +485,7 @@ def get_fiber_measurement(measurement_id):
 
 def create_fiber_measurement(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO fiber_measurements
@@ -522,12 +499,10 @@ def create_fiber_measurement(data):
                 data.get("notes", ""), now, data.get("created_by", "-"),
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_fiber_measurement(measurement_id, data):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             UPDATE fiber_measurements SET
@@ -541,13 +516,10 @@ def update_fiber_measurement(measurement_id, data):
                 data.get("notes", ""), measurement_id,
             ),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_fiber_measurement(measurement_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM fiber_measurements WHERE id = ?", (measurement_id,))
-        conn.commit()
         return cursor.rowcount > 0
 

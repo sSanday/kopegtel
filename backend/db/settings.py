@@ -7,6 +7,7 @@ from .connection import (
     DB_PATH,
     _days_ago,
     _lock,
+    transaction,
     _now,
     get_conn,
     readonly_connection,
@@ -72,10 +73,8 @@ def purge_old_checks(days=None):
     else:
         days = _clamp_days(days, RETENTION_DEFAULTS["retention_checks_days"])
     cutoff = retention_cutoff(days)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM device_checks WHERE checked_at < ?", (cutoff,))
-        conn.commit()
         return cursor.rowcount
 
 def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=None):
@@ -108,8 +107,7 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
     optical_hourly_cutoff = retention_cutoff(optical_hourly_days, hourly=True)
     events_cutoff = retention_cutoff(events_days)
     audit_cutoff = retention_cutoff(audit_days)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             INSERT INTO device_metrics_hourly (device_id, hour_ts, cpu_pct_avg, mem_pct_avg, disk_pct_avg, temp_c_avg, samples)
@@ -193,12 +191,12 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
             flow_hourly_days = int(settings.get("retention_flow_hourly_days", 90))
         except (TypeError, ValueError):
             flow_hourly_days = 90
-        try:
-            from . import flow as _flow_db
+        from . import flow as _flow_db
 
-            flow_result = _flow_db.purge_flow(flow_days, flow_hourly_days, conn=conn)
-        except Exception:
-            flow_result = {"rolled_hours": 0, "flow_raw_deleted": 0, "flow_hourly_deleted": 0}
+        # Jangan telan kegagalan flow: seluruh purge berada dalam satu
+        # transaksi, jadi error di sini harus membatalkan semuanya agar tidak
+        # ada rollup/DELETE flow yang tersimpan setengah jalan.
+        flow_result = _flow_db.purge_flow(flow_days, flow_hourly_days, conn=conn)
         # Backup: simpan N versi terakhir per perangkat.
         try:
             backup_keep = int(settings.get("mt_backup_retention_versions", 30))
@@ -215,7 +213,6 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
             """,
             (backup_keep,),
         )
-        conn.commit()
         return {
             "metrics_deleted": metrics_deleted,
             "interfaces_deleted": interfaces_deleted,
@@ -299,8 +296,7 @@ def get_setting(key, default=None):
 def set_settings(values):
     now = _now()
     allowed = set(SETTING_DEFAULTS)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         for key, value in values.items():
             if key not in allowed:
                 continue
@@ -309,7 +305,6 @@ def set_settings(values):
                 " ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                 (key, str(value), now),
             )
-        conn.commit()
 
 def db_file_size():
     try:

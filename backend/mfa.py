@@ -211,10 +211,8 @@ def _update_user(user_id, **fields):
     assignments.append("updated_at=?")
     values.append(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     values.append(user_id)
-    with db._lock:
-        conn = db.get_conn()
+    with db.transaction() as conn:
         conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", values)
-        conn.commit()
 
 
 def start_setup(user_id):

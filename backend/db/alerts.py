@@ -4,6 +4,7 @@ import json
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     decrypt_secret,
     encrypt_secret,
@@ -89,13 +90,11 @@ def channel_config(channel_id):
 
 def create_channel(name, type_, config, enabled=True):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO notification_channels (name, type, config, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?)",
             (name.strip(), type_, encrypt_secret(json.dumps(config or {}, ensure_ascii=False)), 1 if enabled else 0, now, now),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_channel(channel_id, name, type_, config, enabled):
@@ -116,20 +115,16 @@ def update_channel(channel_id, name, type_, config, enabled):
         # Daftar header dibiarkan apa adanya bila kanal diedit tanpa mengisinya.
         if "headers" not in merged and old.get("headers"):
             merged["headers"] = old["headers"]
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE notification_channels SET name=?, type=?, config=?, enabled=?, updated_at=? WHERE id=?",
             (name.strip(), type_, encrypt_secret(json.dumps(merged, ensure_ascii=False)), 1 if enabled else 0, now, channel_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_channel(channel_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM notification_channels WHERE id = ?", (channel_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def channel_name_exists(name, exclude_id=None):
@@ -159,31 +154,25 @@ def template_name_exists(name, exclude_id=None):
 
 def create_template(name, body):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO message_templates (name, body, created_at, updated_at) VALUES (?,?,?,?)",
             (name.strip(), body.strip(), now, now),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_template(template_id, name, body):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE message_templates SET name=?, body=?, updated_at=? WHERE id=?",
             (name.strip(), body.strip(), now, template_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_template(template_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM message_templates WHERE id = ?", (template_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def list_rules():
@@ -216,8 +205,7 @@ def rule_name_exists(name, exclude_id=None):
         return row is not None
 
 def create_rule(data):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO action_rules (name, min_severity, group_id, device_id, channel_id, template_id, escalation_policy_id, enabled, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
@@ -225,26 +213,21 @@ def create_rule(data):
              data["channel_id"], data["template_id"], data.get("escalation_policy_id"),
              1 if data.get("enabled", True) else 0, _now()),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_rule(rule_id, data):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE action_rules SET name=?, min_severity=?, group_id=?, device_id=?, channel_id=?, template_id=?, escalation_policy_id=?, enabled=? WHERE id=?",
             (data["name"], data.get("min_severity", "warning"), data.get("group_id"), data.get("device_id"),
              data["channel_id"], data["template_id"], data.get("escalation_policy_id"),
              1 if data.get("enabled", True) else 0, rule_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_rule(rule_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM action_rules WHERE id = ?", (rule_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def list_action_log(limit=100, offset=0, status=None):
@@ -270,11 +253,9 @@ def list_action_log(limit=100, offset=0, status=None):
     return {"total": total, "entries": [dict(r) for r in rows]}
 
 def add_action_log(rule_id, channel_id, device_id, problem_id, status, detail):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT INTO action_log (ts, rule_id, channel_id, device_id, problem_id, status, detail) VALUES (?,?,?,?,?,?,?)",
             (_now(), rule_id, channel_id, device_id, problem_id, status, (detail or "")[:400]),
         )
-        conn.commit()
 

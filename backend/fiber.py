@@ -87,13 +87,11 @@ def open_link_kinds(link_id):
 
 def resolve_link_problems(link_id, kind):
     now = db._now()
-    with db._lock:
-        conn = db.get_conn()
+    with db.transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET status='resolved', resolved_at=? WHERE link_id=? AND kind=? AND status='open'",
             (now, link_id, kind),
         )
-        conn.commit()
         return cursor.rowcount
 
 

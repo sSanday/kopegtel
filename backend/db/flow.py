@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from .connection import (
     _days_ago,
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -69,8 +70,7 @@ def insert_bucket_rows(rows, top_n=100):
         for group, v in agg.items()
     ]
     top_n = max(1, min(1000, int(top_n or 100)))
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             """
             INSERT INTO flow_buckets (bytes, packets, flows, exporter_device_id, bucket_ts, kind, key)
@@ -83,7 +83,6 @@ def insert_bucket_rows(rows, top_n=100):
             payload,
         )
         _trim_top_n(conn, top_n=top_n)
-        conn.commit()
     return len(payload)
 
 
@@ -195,10 +194,8 @@ def rollup_hourly_buckets(conn=None, now=None):
 
     if conn is not None:
         return _work(conn)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         result = _work(conn)
-        conn.commit()
         return result
 
 
@@ -217,10 +214,8 @@ def purge_flow(days=7, hourly_days=90, conn=None):
 
     if conn is not None:
         return _work(conn)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         result = _work(conn)
-        conn.commit()
         return result
 
 

@@ -4,6 +4,7 @@
 from .connection import (
     _days_ago,
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -32,12 +33,16 @@ def list_services():
 def get_service(service_id):
     with _lock:
         row = get_conn().execute("SELECT * FROM services WHERE id = ?", (service_id,)).fetchone()
+        device_rows = (
+            get_conn().execute(
+                "SELECT d.id, d.name, d.status, d.ip FROM service_devices sd JOIN devices d ON d.id = sd.device_id WHERE sd.service_id = ?",
+                (service_id,),
+            ).fetchall()
+            if row is not None
+            else []
+        )
     if row is None:
         return None
-    device_rows = get_conn().execute(
-        "SELECT d.id, d.name, d.status, d.ip FROM service_devices sd JOIN devices d ON d.id = sd.device_id WHERE sd.service_id = ?",
-        (service_id,),
-    ).fetchall()
     return {**dict(row), "devices": [dict(r) for r in device_rows]}
 
 def service_name_exists(name, exclude_id=None):
@@ -50,40 +55,33 @@ def service_name_exists(name, exclude_id=None):
 
 def create_service(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO services (name, division, sla_target, mode, description, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
             (data["name"], data.get("division", ""), float(data.get("sla_target", 99.0)),
              data.get("mode", "all"), data.get("description", ""), now, now),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_service(service_id, data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE services SET name=?, division=?, sla_target=?, mode=?, description=?, updated_at=? WHERE id=?",
             (data["name"], data.get("division", ""), float(data.get("sla_target", 99.0)),
              data.get("mode", "all"), data.get("description", ""), now, service_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_service(service_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM services WHERE id = ?", (service_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def set_service_devices(service_id, device_ids):
     ids = [int(i) for i in dict.fromkeys(device_ids)]
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute("DELETE FROM service_devices WHERE service_id = ?", (service_id,))
         if ids:
             conn.executemany(
@@ -91,7 +89,6 @@ def set_service_devices(service_id, device_ids):
                 [(service_id, i) for i in ids],
             )
         conn.execute("UPDATE services SET updated_at=? WHERE id=?", (now, service_id))
-        conn.commit()
 
 def service_availability(service_id, days=1):
     """Ketersediaan layanan = gabungan pemeriksaan perangkat penopang.

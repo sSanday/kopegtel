@@ -5,6 +5,7 @@ import json
 from .connection import (
     _days_ago,
     _lock,
+    transaction,
     _now,
     encrypt_secret,
     get_conn,
@@ -213,8 +214,7 @@ def name_exists(name, exclude_id=None):
 
 def create_device(data):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO devices (
@@ -240,7 +240,6 @@ def create_device(data):
                 1 if data["mikrotik_ssl"] else 0, now, now,
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_device(device_id, data):
@@ -275,8 +274,7 @@ def update_device(device_id, data):
         mikrotik_password = pick_secret("mikrotik_password", existing["mikrotik_password"])
 
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             UPDATE devices SET
@@ -299,12 +297,10 @@ def update_device(device_id, data):
                 mikrotik_password, 1 if data["mikrotik_ssl"] else 0, now, device_id,
             ),
         )
-        conn.commit()
     return True
 
 def delete_device(device_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         # Perangkat yang dihapus menjadi referensi ujung B → simpan namanya sebagai label teks.
         conn.execute(
             """
@@ -315,13 +311,11 @@ def delete_device(device_id):
             (device_id, device_id),
         )
         cursor = conn.execute("DELETE FROM devices WHERE id = ?", (device_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def record_check(device_id, status, latency_ms, detail, maintenance=False):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT INTO device_checks (device_id, checked_at, status, latency_ms, detail_json, maintenance) VALUES (?,?,?,?,?,?)",
             (device_id, now, status, latency_ms, json.dumps(detail, ensure_ascii=False), 1 if maintenance else 0),
@@ -336,16 +330,13 @@ def record_check(device_id, status, latency_ms, detail, maintenance=False):
                 "UPDATE devices SET status=?, latency_ms=?, updated_at=? WHERE id=?",
                 (status, latency_ms, now, device_id),
             )
-        conn.commit()
 
 def add_event(device_id, old_status, new_status, message):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT INTO events (device_id, old_status, new_status, message, created_at) VALUES (?,?,?,?,?)",
             (device_id, old_status, new_status, message, _now()),
         )
-        conn.commit()
 
 def recent_checks(device_id, limit=100):
     with _lock:
@@ -407,8 +398,7 @@ def summary():
 
 def record_metric(device_id, ts, *, cpu_pct, mem_used, mem_total, disk_used, disk_total,
                   temp_c, cpu_temp_c, voltage, uptime_s, ping_ms):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             """
             INSERT INTO device_metrics (
@@ -421,7 +411,6 @@ def record_metric(device_id, ts, *, cpu_pct, mem_used, mem_total, disk_used, dis
                 temp_c, cpu_temp_c, voltage, uptime_s, ping_ms,
             ),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def latest_metric(device_id, before_id=None):
@@ -443,8 +432,7 @@ def update_device_snapshot(device_id, *, version=None, model=None, board=None, a
                            serial=None, firmware=None, cpu_count=None, cpu_frequency_mhz=None):
     """Perbarui kolom snapshot perangkat (versi RouterOS, model, dll)."""
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             """
             UPDATE devices SET
@@ -456,13 +444,10 @@ def update_device_snapshot(device_id, *, version=None, model=None, board=None, a
             (version, model, board, architecture, serial, firmware,
              cpu_count, cpu_frequency_mhz, now, device_id),
         )
-        conn.commit()
 
 def set_device_metrics_error(device_id, reason):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute("UPDATE devices SET metrics_error=? WHERE id=?", (reason, device_id))
-        conn.commit()
 
 def update_device_thresholds(device_id, thresholds):
     allowed = {
@@ -479,13 +464,11 @@ def update_device_thresholds(device_id, thresholds):
     if not assignments:
         return False
     values.append(device_id)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             f"UPDATE devices SET {', '.join(assignments)} WHERE id=?",
             values,
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def metric_points(device_id, since, limit=10000):
@@ -560,8 +543,7 @@ def interface_previous(device_id, if_name):
 
 def record_interface_stats(device_id, ts, entries):
     """entries: list dict(if_name, running, disabled, rx_bytes, tx_bytes, rx_bps, tx_bps)."""
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.executemany(
             """
             INSERT INTO interface_stats (device_id, ts, if_name, running, disabled, rx_bytes, tx_bytes, rx_bps, tx_bps)
@@ -576,7 +558,6 @@ def record_interface_stats(device_id, ts, entries):
                 for entry in entries
             ],
         )
-        conn.commit()
 
 def list_groups():
     with _lock:
@@ -592,34 +573,28 @@ def get_group(group_id):
     return dict(row) if row else None
 
 def create_group(name, description=""):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO host_groups (name, description, created_at) VALUES (?,?,?)",
             (name.strip(), (description or "").strip()[:300], _now()),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def update_group(group_id, name, description=""):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE host_groups SET name=?, description=? WHERE id=?",
             (name.strip(), (description or "").strip()[:300], group_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def delete_group(group_id):
     """Hapus ditolak bila masih dipakai perangkat."""
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         used = conn.execute("SELECT COUNT(*) AS n FROM devices WHERE group_id = ?", (group_id,)).fetchone()["n"]
         if used:
             return False, used
         cursor = conn.execute("DELETE FROM host_groups WHERE id = ?", (group_id,))
-        conn.commit()
         return (cursor.rowcount > 0), 0
 
 def group_name_exists(name, exclude_id=None):
@@ -656,14 +631,12 @@ def list_profiles():
     return profiles
 
 def upsert_profile(device_type, interval_seconds, thresholds):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(
             "INSERT INTO monitoring_profiles (device_type, interval_seconds, thresholds) VALUES (?,?,?)"
             " ON CONFLICT(device_type) DO UPDATE SET interval_seconds=excluded.interval_seconds, thresholds=excluded.thresholds",
             (device_type, int(interval_seconds), json.dumps(thresholds, ensure_ascii=False)),
         )
-        conn.commit()
 
 def apply_profile_to_type(device_type, interval_seconds, thresholds):
     """Terapkan profil (interval + ambang) ke semua perangkat tipe ini, lalu jadwalkan ulang."""
@@ -684,10 +657,8 @@ def apply_profile_to_type(device_type, interval_seconds, thresholds):
             assignments.append(f"{column}=?")
             values.append(float(thresholds[short]))
     values.append(device_type)
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         conn.execute(f"UPDATE devices SET {', '.join(assignments)} WHERE type=?", values)
-        conn.commit()
 
 def availability(device_id, days=1):
     with _lock:
@@ -761,21 +732,17 @@ def list_maintenance(limit=100):
     return [dict(r) for r in rows]
 
 def create_maintenance(name, device_id, group_id, starts_at, ends_at, note, created_by):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO maintenance_windows (name, device_id, group_id, starts_at, ends_at, note, created_at, created_by)"
             " VALUES (?,?,?,?,?,?,?,?)",
             (name.strip(), device_id, group_id, starts_at, ends_at, (note or "").strip()[:300], _now(), created_by),
         )
-        conn.commit()
         return cursor.lastrowid
 
 def delete_maintenance(window_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute("DELETE FROM maintenance_windows WHERE id = ?", (window_id,))
-        conn.commit()
         return cursor.rowcount > 0
 
 def device_in_maintenance(device, at_ts=None):

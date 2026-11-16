@@ -3,6 +3,7 @@
 
 from .connection import (
     _lock,
+    transaction,
     _now,
     get_conn,
 )
@@ -12,8 +13,7 @@ _SEVERITY_RANK = {"disaster": 5, "high": 4, "average": 3, "warning": 2, "informa
 def open_problem(device_id, kind, severity, message, link_id=None):
     """Buat masalah bila belum ada yang terbuka untuk (device_id, kind, link); else perbarui pesan."""
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         row = conn.execute(
             "SELECT id FROM problems WHERE device_id = ? AND kind = ? AND status = 'open'"
             " AND COALESCE(link_id, 0) = COALESCE(?, 0)",
@@ -24,25 +24,21 @@ def open_problem(device_id, kind, severity, message, link_id=None):
                 "UPDATE problems SET severity=?, message=? WHERE id=?",
                 (severity, message[:300], row["id"]),
             )
-            conn.commit()
             return row["id"], False
         cursor = conn.execute(
             "INSERT INTO problems (device_id, kind, severity, message, status, started_at, link_id) VALUES (?,?,?,?,'open',?,?)",
             (device_id, kind, severity, message[:300], now, link_id),
         )
-        conn.commit()
         return cursor.lastrowid, True
 
 def resolve_problem(device_id, kind, link_id=None):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET status='resolved', resolved_at=? WHERE device_id=? AND kind=? AND status='open'"
             " AND COALESCE(link_id, 0) = COALESCE(?, 0)",
             (now, device_id, kind, link_id),
         )
-        conn.commit()
         return cursor.rowcount
 
 def resolve_device_status_problems(device_id):
@@ -79,23 +75,19 @@ def list_problems_for_device(device_id, status="open", limit=100):
 
 def ack_problem(problem_id, username):
     now = _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET acked_by=?, acked_at=? WHERE id=? AND status='open'",
             (username, now, problem_id),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def unack_problem(problem_id):
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "UPDATE problems SET acked_by=NULL, acked_at=NULL WHERE id=? AND status='open'",
             (problem_id,),
         )
-        conn.commit()
         return cursor.rowcount > 0
 
 def top_problems(since_iso, limit=20):

@@ -388,3 +388,43 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
 - Verifikasi: `pip install --dry-run --ignore-installed -r requirements.txt`
   berhasil dan memilih `waitress-3.0.2`; `pip check` bersih. Suite:
   **267 passed**.
+
+## M-9 - Satu koneksi SQLite bersama, tanpa rollback (selesai)
+
+- Akar masalah: seluruh thread memakai satu koneksi SQLite, dan setiap fungsi
+  menulis beberapa statement lalu memanggil `conn.commit()` sendiri. Bila
+  fungsi gagal di tengah (mis. `purge_old_data`) sebelum commit, transaksi
+  tetap terbuka di koneksi bersama; commit milik thread lain berikutnya ikut
+  menyimpan perubahan setengah jadi itu. `purge_old_data` juga menelan
+  kegagalan purge flow, sehingga DELETE lain tetap di-commit tanpa rollup.
+  `/healthz` membaca koneksi bersama tanpa `_lock`.
+- `db/connection.py` sekarang menyediakan `transaction()`: blok normal
+  di-commit tepat sekali setelah selesai, exception apa pun me-rollback
+  seluruh blok, dan transaksi bersarang ikut transaksi terluar (kegagalan
+  inner menandai transaksi luar lewat `_tx_failed` sehingga commit berikutnya
+  dibatalkan). `_lock` diganti `_DatabaseLock` yang tetap reentrant tetapi
+  menjadi jaring pengaman: transaksi yang masih terbuka saat lock terluar
+  dilepas di-rollback, dan sisa transaksi "yatim" dari jalur luar lock
+  di-rollback saat lock berikutnya diambil. Koneksi memakai
+  `_TransactionConnection` yang menolak commit setelah transaksi tercemar.
+- Semua blok tulis di `backend/db/*.py` (alerts, audit, devices, discovery,
+  escalation, fiber, flow, ingest, mikrotik, mtbackup, problems, services,
+  settings, tokens, users) memakai `with transaction() as conn:`; commit
+  per-fungsi dihapus. `backend/fiber.py::resolve_link_problems`,
+  `backend/mfa.py::_update_user`, dan helper lease instance ikut memakai
+  `transaction()`. Hanya `schema.init_db()` dan rebuild tabel scan-job lama
+  yang masih memanggil `commit()` eksplisit karena menjalankan DDL/VACUUM.
+- `purge_old_data` tidak lagi menelan error purge flow: kegagalan membatalkan
+  seluruh transaksi, jadi tidak ada DELETE/rollup yang tersimpan sebagian.
+  `/healthz` memakai `db.readonly_connection()` (koneksi baca terpisah) dan
+  tidak menyentuh koneksi bersama. `get_service()` memindahkan query perangkat
+  ke dalam `_lock`; verifikasi kunci di `manage.py` berjalan di dalam lock dan
+  mereset kedua alias koneksi setelah restore.
+- Tes regresi `tests/test_transactions.py` (6 tes): tulisan gagal tidak bocor
+  ke commit berikutnya, blok lock yang lupa commit di-rollback, transaksi
+  yatim dibersihkan sebelum lock berikutnya, kegagalan transaksi dalam
+  membatalkan transaksi luar, kegagalan `purge_old_data` mengembalikan DELETE
+  yang sudah berjalan, dan `/healthz` tidak memakai koneksi bersama.
+- Suite penuh: **273 passed** (1 peringatan deprecation Flask `__version__`
+  yang sudah ada sebelumnya); `pip check` bersih; server hidup di
+  `http://127.0.0.1:5000` (healthz 200, satu listener).

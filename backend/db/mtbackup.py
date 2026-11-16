@@ -8,6 +8,7 @@ import difflib
 
 from .connection import (
     _lock,
+    transaction,
     get_conn,
     _now,
     decrypt_secret,
@@ -19,8 +20,7 @@ from .settings import get_setting
 def create_mt_backup(device_id, *, source, filename, size, sha256, content_encrypted, created_at=None):
     """Simpan backup; payload sudah terenkripsi. Kembalikan baris yang tersimpan."""
     ts = created_at or _now()
-    with _lock:
-        conn = get_conn()
+    with transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO mt_backups (device_id, created_at, source, filename, size, sha256, content)"
             " VALUES (?,?,?,?,?,?,?)",
@@ -37,7 +37,6 @@ def create_mt_backup(device_id, *, source, filename, size, sha256, content_encry
             " ORDER BY created_at DESC, id DESC LIMIT ?)",
             (device_id, device_id, keep),
         )
-        conn.commit()
         row = conn.execute(
             "SELECT id, device_id, created_at, source, filename, size, sha256"
             " FROM mt_backups WHERE id = ?",
@@ -145,32 +144,27 @@ def reencrypt_all(new_key):
 
     new_fernet = Fernet(new_key)
     written, failed = 0, []
-    with _lock:
-        conn = get_conn()
-        try:
-            for table, cols in ENCRYPTED_FIELDS:
-                for col in cols:
-                    rows = conn.execute(
-                        f"SELECT rowid AS _rid, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"
-                    ).fetchall()
-                    for row in rows:
-                        value = row[col]
-                        try:
-                            plain = _get_fernet().decrypt(value.encode("utf-8")).decode("utf-8")
-                        except Exception:
-                            failed.append(f"{table}.{col} (rowid {row['_rid']})")
-                            continue
-                        conn.execute(
-                            f"UPDATE {table} SET {col} = ? WHERE rowid = ?",
-                            (new_fernet.encrypt(plain.encode("utf-8")).decode("utf-8"), row["_rid"]),
-                        )
-                        written += 1
-            if failed:
-                conn.rollback()
-                return 0, failed
-            conn.commit()
-            return written, []
-        except Exception:
+    with transaction() as conn:
+        for table, cols in ENCRYPTED_FIELDS:
+            for col in cols:
+                rows = conn.execute(
+                    f"SELECT rowid AS _rid, {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''"
+                ).fetchall()
+                for row in rows:
+                    value = row[col]
+                    try:
+                        plain = _get_fernet().decrypt(value.encode("utf-8")).decode("utf-8")
+                    except Exception:
+                        failed.append(f"{table}.{col} (rowid {row['_rid']})")
+                        continue
+                    conn.execute(
+                        f"UPDATE {table} SET {col} = ? WHERE rowid = ?",
+                        (new_fernet.encrypt(plain.encode("utf-8")).decode("utf-8"), row["_rid"]),
+                    )
+                    written += 1
+        if failed:
+            # Batalkan seluruh penulisan; tidak ada nilai yang diubah.
             conn.rollback()
-            raise
+            return 0, failed
+        return written, []
 

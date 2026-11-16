@@ -15,6 +15,7 @@ from .connection import (
     _lock,
     _now,
     get_conn,
+    transaction,
 )
 
 TOKEN_PREFIX = "nms_"
@@ -85,13 +86,12 @@ def create_api_token(name, *, scopes=None, expires_in_days=None, allowed_ips=Non
     if not scopes_list:
         scopes_list = DEFAULT_SCOPES
     ips = [str(item).strip() for item in (allowed_ips or []) if str(item).strip()]
-    with _lock:
-        exists = get_conn().execute(
+    with transaction() as conn:
+        exists = conn.execute(
             "SELECT id FROM api_tokens WHERE name = ? COLLATE NOCASE", (name,)
         ).fetchone()
         if exists:
             return None, "Nama token sudah dipakai."
-        conn = get_conn()
         cursor = conn.execute(
             "INSERT INTO api_tokens (name, token_hash, token_prefix, scopes, expires_at,"
             " allowed_ips, created_at, created_by) VALUES (?,?,?,?,?,?,?,?)",
@@ -99,7 +99,6 @@ def create_api_token(name, *, scopes=None, expires_in_days=None, allowed_ips=Non
              json.dumps(scopes_list, ensure_ascii=False), expires_at,
              ",".join(ips), _now(), str(created_by or "-")[:60]),
         )
-        conn.commit()
         return token, {
             "id": cursor.lastrowid, "name": name, "token_prefix": token[:12],
             "scopes": scopes_list, "expires_at": expires_at, "allowed_ips": ips,
@@ -124,12 +123,11 @@ def get_api_token(token_id):
 
 
 def revoke_api_token(token_id):
-    with _lock:
-        cursor = get_conn().execute(
+    with transaction() as conn:
+        cursor = conn.execute(
             "UPDATE api_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
             (_now(), int(token_id)),
         )
-        get_conn().commit()
         return cursor.rowcount > 0
 
 
@@ -139,8 +137,8 @@ def verify_api_token(token, *, ip=None):
     if not candidate or not candidate.startswith(TOKEN_PREFIX):
         return None
     digest = _hash_token(candidate)
-    with _lock:
-        rows = get_conn().execute(
+    with transaction() as conn:
+        rows = conn.execute(
             "SELECT * FROM api_tokens WHERE revoked_at IS NULL"
         ).fetchall()
         match = None
@@ -156,11 +154,10 @@ def verify_api_token(token, *, ip=None):
         if allowed and ip not in allowed:
             return None
         now = _now_iso()
-        get_conn().execute(
+        conn.execute(
             "UPDATE api_tokens SET last_used_at=? WHERE id=?",
             (now, match["id"]),
         )
-        get_conn().commit()
     item = _row_to_dict(match)
     item["last_used_at"] = now
     return item
