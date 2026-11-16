@@ -56,6 +56,7 @@ def row_to_device(row):
         "mikrotik_port": device["mikrotik_port"],
         "mikrotik_user": device["mikrotik_user"],
         "mikrotik_ssl": bool(device["mikrotik_ssl"]),
+        "mikrotik_ssl_fingerprint": device.get("mikrotik_ssl_fingerprint"),
         "has_mikrotik_credential": has_mikrotik,
         "routeros_version": device.get("routeros_version"),
         "mikrotik_model": device.get("mikrotik_model"),
@@ -223,8 +224,8 @@ def create_device(data):
                 snmp_v3_user, snmp_v3_auth_proto, snmp_v3_auth_password,
                 snmp_v3_priv_proto, snmp_v3_priv_password,
                 mikrotik_enabled, mikrotik_port, mikrotik_user, mikrotik_password,
-                mikrotik_ssl, created_at, updated_at
-            ) VALUES (?,?,?,?,?,'unknown',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                mikrotik_ssl, mikrotik_ssl_fingerprint, created_at, updated_at
+            ) VALUES (?,?,?,?,?,'unknown',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 data["name"], data["ip"], data["type"], data["location"], data["poll_interval"],
@@ -237,7 +238,8 @@ def create_device(data):
                 encrypt_secret(data.get("snmp_v3_priv_password")),
                 1 if data["mikrotik_enabled"] else 0, data["mikrotik_port"],
                 data.get("mikrotik_user"), encrypt_secret(data.get("mikrotik_password")),
-                1 if data["mikrotik_ssl"] else 0, now, now,
+                1 if data["mikrotik_ssl"] else 0,
+                data.get("mikrotik_ssl_fingerprint"), now, now,
             ),
         )
         return cursor.lastrowid
@@ -254,6 +256,13 @@ def update_device(device_id, data):
             return current  # field tidak dikirim → pertahankan
         new = new.strip()
         return encrypt_secret(new) if new else current  # kosong = pertahankan yang tersimpan
+
+    # Fingerprint bersifat opsional & tidak dienkripsi (bukan rahasia); field yang
+    # tidak dikirim mempertahankan nilai tersimpan, string kosong (None) menghapus.
+    if "mikrotik_ssl_fingerprint" in data:
+        mikrotik_ssl_fingerprint = data.get("mikrotik_ssl_fingerprint")
+    else:
+        mikrotik_ssl_fingerprint = existing.get("mikrotik_ssl_fingerprint")
 
     snmp_enabled = data.get("snmp_enabled", bool(existing["snmp_enabled"]))
     mikrotik_enabled = data.get("mikrotik_enabled", bool(existing["mikrotik_enabled"]))
@@ -284,7 +293,7 @@ def update_device(device_id, data):
                 snmp_v3_user=?, snmp_v3_auth_proto=?, snmp_v3_auth_password=?,
                 snmp_v3_priv_proto=?, snmp_v3_priv_password=?,
                 mikrotik_enabled=?, mikrotik_port=?, mikrotik_user=?, mikrotik_password=?,
-                mikrotik_ssl=?, updated_at=?
+                mikrotik_ssl=?, mikrotik_ssl_fingerprint=?, updated_at=?
             WHERE id=?
             """,
             (
@@ -294,7 +303,8 @@ def update_device(device_id, data):
                 data.get("snmp_v3_user"), data["snmp_v3_auth_proto"], snmp_v3_auth_password,
                 data["snmp_v3_priv_proto"], snmp_v3_priv_password,
                 1 if mikrotik_enabled else 0, data["mikrotik_port"], data.get("mikrotik_user"),
-                mikrotik_password, 1 if data["mikrotik_ssl"] else 0, now, device_id,
+                mikrotik_password, 1 if data["mikrotik_ssl"] else 0,
+                mikrotik_ssl_fingerprint, now, device_id,
             ),
         )
     return True

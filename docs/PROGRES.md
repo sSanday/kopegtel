@@ -199,3 +199,8 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   tetap melepas lease. Server hidup di `http://127.0.0.1:5000` (healthz 200,
   satu listener); instance kedua ditolak dengan exit 1 tanpa mengganggu
   instance pertama; 279 tes lolos.
+- M-11: verifikasi TLS untuk RouterOS API-SSL tidak lagi dimatikan; pinning
+  fingerprint SHA-256 per perangkat (self-signed) atau verifikasi CA standar;
+  fingerprint tersimpan di devices.mikrotik_ssl_fingerprint (migrasi
+  terverifikasi pada salinan DB produksi); 17 tes regresi baru; server hidup di
+  `http://127.0.0.1:5000` (healthz 200, satu listener); 296 tes lolos.

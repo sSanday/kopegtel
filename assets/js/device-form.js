@@ -149,6 +149,12 @@
           <span>Mode</span>
           <span class="check check--inline"><input id="df-mikrotik-ssl" type="checkbox" /> Pakai SSL (port 8729)</span>
         </label>
+        <label class="admin-field admin-field--full" id="df-mikrotik-fingerprint-field" hidden>
+          <span>Fingerprint SHA-256 sertifikat</span>
+          <input id="df-mikrotik-ssl-fingerprint" name="mikrotik_ssl_fingerprint" type="text" autocomplete="off" spellcheck="false" placeholder="contoh: AA:BB:CC:… (64 hex)" />
+          <span class="field-error" id="df-mikrotik-ssl-fingerprint-error" hidden></span>
+          <span class="admin-note">Untuk sertifikat self-signed: isi fingerprint SHA-256 sertifikat perangkat (64 hex, boleh dipisah titik dua). Kosongkan untuk menghapus pinning; tanpa pinning hanya sertifikat tepercaya CA yang diterima.</span>
+        </label>
       </div>
     </div>
 
@@ -185,6 +191,7 @@
 
     document.getElementById("df-snmp-enabled").addEventListener("change", syncToggles);
     document.getElementById("df-mikrotik-enabled").addEventListener("change", syncToggles);
+    document.getElementById("df-mikrotik-ssl").addEventListener("change", syncToggles);
     document.getElementById("df-snmp-version").addEventListener("change", syncToggles);
     document.getElementById("df-test").addEventListener("click", runTest);
     document.getElementById("device-form").addEventListener("submit", submitForm);
@@ -196,6 +203,8 @@
     const mikrotikOn = document.getElementById("df-mikrotik-enabled").checked;
     document.getElementById("df-snmp-fields").hidden = !snmpOn;
     document.getElementById("df-mikrotik-fields").hidden = !mikrotikOn;
+    const sslOn = document.getElementById("df-mikrotik-ssl").checked;
+    document.getElementById("df-mikrotik-fingerprint-field").hidden = !(mikrotikOn && sslOn);
     const v3 = document.getElementById("df-snmp-version").value === "v3";
     document.getElementById("df-snmp-v2c-fields").hidden = v3;
     document.getElementById("df-snmp-v3-fields").hidden = !v3;
@@ -251,6 +260,15 @@
       setFieldError("df-mikrotik-user", "df-mikrotik-user-error", user ? "" : "User RouterOS wajib diisi.");
       const password = document.getElementById("df-mikrotik-password").value;
       setFieldError("df-mikrotik-password", "df-mikrotik-password-error", password || hasExisting ? "" : "Password wajib diisi.");
+      const fingerprint = document.getElementById("df-mikrotik-ssl-fingerprint").value.trim();
+      let fingerprintError = "";
+      if (fingerprint) {
+        const compact = fingerprint.replace(/^\s*sha-?256\s*:?\s*/i, "").replace(/[\s:-]/g, "").toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(compact)) {
+          fingerprintError = "Fingerprint harus 64 digit heksadesimal SHA-256 (boleh dipisah titik dua).";
+        }
+      }
+      setFieldError("df-mikrotik-ssl-fingerprint", "df-mikrotik-ssl-fingerprint-error", fingerprintError);
     }
 
     return document.querySelectorAll("#device-dialog [aria-invalid='true']").length === 0;
@@ -281,6 +299,7 @@
       mikrotik_user: value("df-mikrotik-user"),
       mikrotik_password: document.getElementById("df-mikrotik-password").value,
       mikrotik_ssl: document.getElementById("df-mikrotik-ssl").checked,
+      mikrotik_ssl_fingerprint: value("df-mikrotik-ssl-fingerprint"),
     };
   }
 
@@ -414,6 +433,7 @@
     document.getElementById("df-snmp-enabled").checked = !!device.snmp_enabled;
     document.getElementById("df-mikrotik-enabled").checked = !!device.mikrotik_enabled;
     document.getElementById("df-mikrotik-ssl").checked = !!device.mikrotik_ssl;
+    set("df-mikrotik-ssl-fingerprint", device.mikrotik_ssl_fingerprint || "");
     document.getElementById("df-maintenance").checked = !!device.maintenance;
   }
 

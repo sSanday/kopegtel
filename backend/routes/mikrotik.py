@@ -64,6 +64,8 @@ _MT_ERROR_LABELS = {
     "auth_failed": "Autentikasi RouterOS gagal — periksa pengguna/kata sandi API.",
     "no_permission": "Pengguna API tidak memiliki izin membaca bagian ini.",
     "timeout": "RouterOS tidak menjawab dalam batas waktu.",
+    "tls_error": "Verifikasi TLS ke RouterOS gagal - periksa sertifikat dan fingerprint perangkat.",
+    "tls_fingerprint_mismatch": "Fingerprint sertifikat RouterOS tidak cocok dengan pengaturan perangkat.",
     "unsupported": "Perintah ini tidak tersedia pada versi/paket RouterOS perangkat.",
     "error": "Terjadi kesalahan saat membaca RouterOS.",
     "unknown": "Menunggu poll MikroTik pertama.",
@@ -148,7 +150,7 @@ def _mt_tab_state(device, tab, settings, caps, snapshot_exists=False):
     if supported:
         return {"state": "ok", "reason": None, "detail": _MT_ERROR_LABELS["ok"], "probes": probe_states}
     if probe_states:
-        priority = ["no_permission", "timeout", "auth_failed", "error", "unsupported"]
+        priority = ["no_permission", "timeout", "tls_fingerprint_mismatch", "tls_error", "auth_failed", "error", "unsupported"]
         reason = "unsupported"
         for candidate in priority:
             if any(item.get("reason") == candidate for item in probe_states):
@@ -165,7 +167,7 @@ def _mt_tab_state(device, tab, settings, caps, snapshot_exists=False):
             "probes": probe_states,
         }
     metrics_error = (device.get("metrics_error") or "").strip().lower()
-    if metrics_error in ("auth_failed", "timeout", "error", "unreachable"):
+    if metrics_error in ("auth_failed", "timeout", "error", "unreachable", "tls_error", "tls_fingerprint_mismatch"):
         state = "timeout" if metrics_error == "timeout" else metrics_error
         return {
             "state": state,
@@ -1171,6 +1173,7 @@ def api_mt_action(device_id):
         "user": settings.get("write_user") or "",
         "password": password or "",
         "ssl": bool(settings.get("write_ssl")),
+        "ssl_fingerprint": device.get("mikrotik_ssl_fingerprint"),
         "management_ip": device["ip"],
     }
 
@@ -1187,7 +1190,7 @@ def api_mt_action(device_id):
             f"Aksi {action} pada {target or '—'} gagal: {exc}",
         )
         status = 404 if exc.code == "not_found" else 409 if exc.code == "management_interface" else 400
-        if exc.code in ("unreachable", "auth_failed", "timeout"):
+        if exc.code in ("unreachable", "auth_failed", "timeout", "tls_error", "tls_fingerprint_mismatch"):
             status = 502
         return jsonify({"error": str(exc), "code": exc.code}), status
     except Exception as exc:  # noqa: BLE001

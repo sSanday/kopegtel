@@ -430,6 +430,8 @@
     auth_failed: "Kredensial API ditolak oleh perangkat (auth_failed).",
     timeout: "Koneksi ke API RouterOS timeout (timeout).",
     unreachable: "Port API RouterOS tidak terjangkau (unreachable).",
+    tls_error: "Verifikasi TLS ke RouterOS gagal — periksa sertifikat dan fingerprint perangkat (tls_error).",
+    tls_fingerprint_mismatch: "Fingerprint sertifikat RouterOS tidak cocok dengan pengaturan perangkat (tls_fingerprint_mismatch).",
     snmp_no_response: "RouterOS API gagal dan SNMP tidak merespons (snmp_no_response).",
     error: "Terjadi galat saat membaca metrik (error).",
   };

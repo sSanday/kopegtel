@@ -10,6 +10,7 @@ import fiber as fiber_calc
 from collectors import ping as ping_collector
 from collectors import snmp as snmp_collector
 from collectors import mikrotik as mikrotik_collector
+from collectors import tls as tls_util
 from core.guard import audit, roles
 from core.metrics import downsample as _downsample, range_since as _range_since
 from core.validation import (
@@ -159,6 +160,20 @@ def _validate_device(data, existing_id=None):
         if not password and not has_existing:
             return {}, "Password MikroTik API wajib diisi."
 
+    # M-11: fingerprint SHA-256 untuk pinning TLS. Field yang tidak dikirim
+    # mempertahankan nilai tersimpan; string kosong menghapusnya.
+    if "mikrotik_ssl_fingerprint" in data:
+        try:
+            mikrotik_ssl_fingerprint = tls_util.normalize_fingerprint(
+                data.get("mikrotik_ssl_fingerprint")
+            )
+        except ValueError as exc:
+            return {}, str(exc)
+    elif existing_row:
+        mikrotik_ssl_fingerprint = existing_row.get("mikrotik_ssl_fingerprint")
+    else:
+        mikrotik_ssl_fingerprint = None
+
     if db.ip_exists(ip, exclude_id=existing_id):
         return {}, "IP sudah dipakai perangkat lain."
     if db.name_exists(name, exclude_id=existing_id):
@@ -187,6 +202,7 @@ def _validate_device(data, existing_id=None):
         "mikrotik_user": mikrotik_user or None,
         "mikrotik_password": data.get("mikrotik_password"),
         "mikrotik_ssl": bool(data.get("mikrotik_ssl")),
+        "mikrotik_ssl_fingerprint": mikrotik_ssl_fingerprint,
     }
     return clean, None
 
@@ -368,12 +384,22 @@ def api_test_device():
         password = data.get("mikrotik_password")
         if not password and existing:
             password = db.decrypt_secret(existing.get("mikrotik_password"))
+        if "mikrotik_ssl_fingerprint" in data:
+            try:
+                ssl_fingerprint = tls_util.normalize_fingerprint(
+                    data.get("mikrotik_ssl_fingerprint")
+                )
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        else:
+            ssl_fingerprint = (existing or {}).get("mikrotik_ssl_fingerprint")
         mikrotik_config = {
             "ip": ip,
             "port": mikrotik_port,
             "user": data.get("mikrotik_user"),
             "password": password,
             "ssl": bool(data.get("mikrotik_ssl")),
+            "ssl_fingerprint": ssl_fingerprint,
         }
         result["mikrotik"] = mikrotik_collector.check_mikrotik(mikrotik_config)
 

@@ -19,10 +19,13 @@ Prinsip:
 import hashlib
 import json
 import re
+import ssl
 from datetime import datetime, timedelta, timezone
 
 from librouteros import connect
 from librouteros.exceptions import LibRouterosError, MultiTrapError, TrapError
+
+from . import tls as tls_util
 
 MAX_ROWS = 5000
 RETRY_SECONDS = 6 * 60 * 60
@@ -290,6 +293,10 @@ _AUTH_WORDS = ("invalid user name or password", "login", "authentication", "pass
 
 def classify_error(exc):
     """Klasifikasikan exception RouterOS untuk status kapabilitas."""
+    if isinstance(exc, tls_util.TlsVerificationError):
+        return exc.code
+    if isinstance(exc, ssl.SSLError):
+        return "tls_error"
     message = str(exc or "").lower()
     if isinstance(exc, TimeoutError) or "timed out" in message or "timeout" in message:
         return "timeout"
@@ -931,11 +938,19 @@ class ModuleSession:
                 return payload
             reason = result.get("reason") or "error"
             errors.append({"path": spec["path"], "reason": reason, "detail": result.get("detail")})
-            if reason in ("timeout", "error", "auth_failed"):
+            if reason in ("timeout", "error", "auth_failed", "tls_error", "tls_fingerprint_mismatch"):
                 break
 
         reason = "unsupported"
-        priority = {"no_permission": 4, "timeout": 3, "auth_failed": 2, "error": 2, "unsupported": 1}
+        priority = {
+            "no_permission": 4,
+            "timeout": 3,
+            "tls_fingerprint_mismatch": 3,
+            "tls_error": 3,
+            "auth_failed": 2,
+            "error": 2,
+            "unsupported": 1,
+        }
         for error in errors:
             if priority.get(error["reason"], 0) > priority.get(reason, 0):
                 reason = error["reason"]
@@ -1688,13 +1703,13 @@ class ActionError(Exception):
 def _action_connect(config, timeout=DEFAULT_TIMEOUT):
     kwargs = {"timeout": timeout, "port": int(config.get("port") or 8728)}
     if bool(config.get("ssl")):
-        import ssl
-
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        ip = config["ip"]
-        kwargs["ssl_wrapper"] = lambda sock: context.wrap_socket(sock, server_hostname=ip)
+        # M-11: aksi tulis memakai verifikasi TLS yang sama dengan pembacaan.
+        try:
+            kwargs["ssl_wrapper"] = tls_util.ssl_wrapper(
+                config["ip"], config.get("ssl_fingerprint")
+            )
+        except ValueError as exc:
+            raise ActionError(str(exc), "tls_error") from exc
     return connect(
         config["ip"],
         username=(config.get("user") or "").strip(),
@@ -1847,6 +1862,8 @@ def perform_action(config, action, params):
         raise
     except (TrapError, MultiTrapError) as exc:
         raise ActionError(f"RouterOS menolak aksi: {exc}", classify_error(exc)) from exc
+    except tls_util.TlsVerificationError as exc:
+        raise ActionError(str(exc), exc.code) from exc
     except (LibRouterosError, TimeoutError, OSError) as exc:
         raise ActionError(f"Gagal menjalankan aksi: {exc}", "unreachable") from exc
     finally:

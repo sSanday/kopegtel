@@ -24,6 +24,7 @@ from librouteros.exceptions import (
 )
 
 from . import mikrotik_modules
+from . import tls as tls_util
 
 TIMEOUT_SECONDS = 5
 MAX_INTERFACE_ROWS = 5000
@@ -136,10 +137,17 @@ def check_mikrotik(config, plan=None):
     kwargs = {"timeout": TIMEOUT_SECONDS, "port": port}
 
     if use_ssl:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE  # RouterOS biasanya memakai sertifikat self-signed
-        kwargs["ssl_wrapper"] = lambda sock: context.wrap_socket(sock, server_hostname=ip)
+        # M-11: jangan matikan verifikasi TLS. Fingerprint per perangkat dipakai
+        # untuk pinning sertifikat self-signed; tanpa fingerprint, verifikasi CA
+        # standar tetap diberlakukan (self-signed akan ditolak).
+        try:
+            kwargs["ssl_wrapper"] = tls_util.ssl_wrapper(
+                ip, config.get("ssl_fingerprint")
+            )
+        except ValueError as exc:
+            # Fingerprint tersimpan tidak valid: gagalkan dengan jelas,
+            # jangan biarkan ValueError bocor keluar collector.
+            return {"method": "mikrotik", "ok": False, "reason": "tls_error", "detail": str(exc)}
 
     try:
         api = connect(ip, username=user, password=password, **kwargs)
@@ -153,6 +161,20 @@ def check_mikrotik(config, plan=None):
         }
     except LibRouterosError as exc:
         return {"method": "mikrotik", "ok": False, "reason": "error", "detail": str(exc)}
+    except tls_util.TlsVerificationError as exc:
+        return {
+            "method": "mikrotik",
+            "ok": False,
+            "reason": exc.code,
+            "detail": str(exc),
+        }
+    except ssl.SSLError as exc:
+        return {
+            "method": "mikrotik",
+            "ok": False,
+            "reason": "tls_error",
+            "detail": f"Verifikasi TLS gagal: {exc}",
+        }
     except TimeoutError:
         return {"method": "mikrotik", "ok": False, "reason": "timeout", "detail": "Koneksi ke RouterOS timeout."}
     except (ConnectionRefusedError, ConnectionResetError, OSError) as exc:

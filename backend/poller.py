@@ -80,6 +80,7 @@ def _decrypted_mikrotik_config(device):
         "user": device["mikrotik_user"],
         "password": db.decrypt_secret(device["mikrotik_password"]),
         "ssl": bool(device["mikrotik_ssl"]),
+        "ssl_fingerprint": device.get("mikrotik_ssl_fingerprint"),
     }
 
 

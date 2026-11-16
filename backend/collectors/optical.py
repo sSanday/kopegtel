@@ -53,6 +53,7 @@ from optical import (
     parse_wavelength_nm,
 )
 from collectors.snmp import _auth_data, _walk  # reuse auth + walk yang sudah teruji
+from collectors import tls as tls_util
 
 TIMEOUT_SECONDS = 5
 SNMP_TIMEOUT_SECONDS = 2  # konsisten dengan kolektor SNMP yang ada; budget 5 dtk berlaku untuk API RouterOS
@@ -105,10 +106,15 @@ def check_optical_mikrotik(config, skip_ports=None):
 
     kwargs = {"timeout": TIMEOUT_SECONDS, "port": port}
     if use_ssl:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE  # RouterOS biasanya self-signed
-        kwargs["ssl_wrapper"] = lambda sock: context.wrap_socket(sock, server_hostname=ip)
+        # M-11: verifikasi TLS wajib. Fingerprint per perangkat dipakai untuk
+        # pinning sertifikat self-signed; tanpa itu, verifikasi CA standar.
+        try:
+            kwargs["ssl_wrapper"] = tls_util.ssl_wrapper(
+                ip, config.get("ssl_fingerprint")
+            )
+        except ValueError as exc:
+            return {"method": "mikrotik-optical", "ok": False, "reason": "tls_error",
+                    "detail": str(exc), "ports": [], "scanned": []}
 
     try:
         api = connect(ip, username=user, password=password, **kwargs)
@@ -118,6 +124,12 @@ def check_optical_mikrotik(config, skip_ports=None):
     except LibRouterosError as exc:
         return {"method": "mikrotik-optical", "ok": False, "reason": "error",
                 "detail": str(exc), "ports": [], "scanned": []}
+    except tls_util.TlsVerificationError as exc:
+        return {"method": "mikrotik-optical", "ok": False, "reason": exc.code,
+                "detail": str(exc), "ports": [], "scanned": []}
+    except ssl.SSLError as exc:
+        return {"method": "mikrotik-optical", "ok": False, "reason": "tls_error",
+                "detail": f"Verifikasi TLS gagal: {exc}", "ports": [], "scanned": []}
     except TimeoutError:
         return {"method": "mikrotik-optical", "ok": False, "reason": "timeout",
                 "detail": "Koneksi ke RouterOS timeout.", "ports": [], "scanned": []}

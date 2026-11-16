@@ -123,6 +123,7 @@ def init_db():
                 mikrotik_user TEXT,
                 mikrotik_password TEXT,
                 mikrotik_ssl INTEGER NOT NULL DEFAULT 0,
+                mikrotik_ssl_fingerprint TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -966,6 +967,8 @@ def init_db():
             ("group_id", "INTEGER REFERENCES host_groups(id)"),
             ("parent_id", "INTEGER REFERENCES devices(id) ON DELETE SET NULL"),
             ("maintenance", "INTEGER NOT NULL DEFAULT 0"),
+            # M-11: fingerprint SHA-256 sertifikat untuk pinning TLS RouterOS.
+            ("mikrotik_ssl_fingerprint", "TEXT"),
         ]
         for name, ddl in device_columns:
             if name not in existing_columns:

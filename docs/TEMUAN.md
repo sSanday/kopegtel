@@ -464,3 +464,52 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   yang sudah ada sebelumnya); `pip check` bersih; server hidup di
   `http://127.0.0.1:5000` (healthz 200, satu listener) dan instance kedua
   ditolak dengan exit 1 tanpa mengganggu instance pertama.
+
+## M-11 - Verifikasi TLS dimatikan untuk RouterOS API-SSL (selesai)
+
+- Akar masalah: ketiga jalur koneksi RouterOS (collector baca, kolektor optik,
+  aksi tulis) memakai konteks TLS dengan `verify_mode = CERT_NONE` dengan alasan
+  sertifikat self-signed. Kredensial API dan data konfigurasi karena itu rentan
+  MITM: siapa pun di jalur bisa memalsukan sertifikat dan membaca/menyisipkan
+  perintah.
+- Perbaikan memakai **pinning fingerprint SHA-256 per perangkat** lewat helper
+  bersama `collectors/tls.py`:
+  - Fingerprint diisi -> handshake TLS (>= 1.2) tanpa validasi CA, tetapi
+    sertifikat peer WAJIB cocok dengan fingerprint tersimpan; perbandingan
+    constant-time (`hmac.compare_digest`) di dalam `ssl_wrapper`, sebelum
+    kredensial dikirim. Tidak cocok -> koneksi ditutup, `TlsVerificationError`
+    (kode `tls_fingerprint_mismatch`) dilempar.
+  - Fingerprint kosong -> verifikasi CA standar (`create_default_context`,
+    CERT_REQUIRED + hostname). Sertifikat self-signed ditolak; admin harus
+    mengisi fingerprint.
+  - Fingerprint dinormalisasi ke 64 hex huruf kecil; masukan `AA:BB:..`, spasi,
+    tanda hubung, atau awalan `sha256:` diterima. Fingerprint adalah data
+    sertifikat publik, bukan rahasia.
+  - Fingerprint invalid tersimpan tidak pernah membuat exception mentah bocor:
+    ketiga jalur gagal dengan jelas (`tls_error` / `ActionError` kode TLS).
+- Perangkat menyimpan `devices.mikrotik_ssl_fingerprint` (DDL baru + migrasi
+  ALTER idempoten; terverifikasi pada salinan database produksi: kolom
+  `mikrotik_ssl_fingerprint` id 45, `integrity_check=ok`, 4 perangkat utuh).
+  `row_to_device` mengeksposnya; create/update device menyimpannya; field yang
+  tidak dikirim mempertahankan nilai tersimpan; string kosong menghapus pinning.
+  Uji koneksi (`/api/devices/test`) dan aksi tulis MikroTik memakai fingerprint
+  perangkat yang sama; fingerprint divalidasi juga di backend (400 bila bukan
+  64 hex).
+- UI: field "Fingerprint SHA-256 sertifikat" pada form perangkat, tampil hanya
+  saat SSL diaktifkan, divalidasi klien (64 hex) dan server; labels error TLS
+  (`tls_error`, `tls_fingerprint_mismatch`) ditambahkan di inventory.js,
+  mikrotik.js, `_MT_ERROR_LABELS`, prioritas probe kapabilitas, pemetaan
+  `metrics_error`, dan status HTTP aksi tulis (502).
+- Ketiga lokasi temuan tidak lagi memakai `CERT_NONE` (dijaga tes regresi).
+  Sertifikat CA-signed tetap bisa dipakai tanpa pinning.
+- Tes regresi `tests/test_mikrotik_tls.py` (17 tes): normalisasi fingerprint;
+  `ssl_wrapper` terhadap TLS server lokal self-signed (pin cocok diterima, pin
+  tidak cocok ditolak sebelum data, tanpa pin ditolak CA, fingerprint tersimpan
+  invalid -> `tls_error` bukan exception); `check_mikrotik` end-to-end lewat
+  RouterOS tiruan di atas TLS; `perform_action` memetakan kegagalan TLS ke
+  `ActionError.code`; route perangkat (normalisasi saat create, preserve saat
+  field absen, clear saat kosong, 400 saat invalid); uji koneksi meneruskan dan
+  memvalidasi fingerprint; tiga lokasi temuan bebas `CERT_NONE`.
+- Suite penuh: **296 passed** (1 peringatan deprecation Flask `__version__`
+  yang sudah ada sebelumnya); `pip check` bersih; server hidup di
+  `http://127.0.0.1:5000` (healthz 200, satu listener) setelah restart.

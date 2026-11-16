@@ -49,6 +49,8 @@
     auth_failed: "Autentikasi RouterOS gagal.",
     no_permission: "Pengguna API tidak memiliki izin membaca bagian ini.",
     timeout: "RouterOS tidak menjawab dalam batas waktu.",
+    tls_error: "Verifikasi TLS ke RouterOS gagal — periksa sertifikat dan fingerprint perangkat.",
+    tls_fingerprint_mismatch: "Fingerprint sertifikat RouterOS tidak cocok dengan pengaturan perangkat.",
     unsupported: "Fitur ini tidak aktif atau tidak didukung di perangkat ini.",
     disabled: "Modul ini dinonaktifkan pada pengaturan perangkat.",
     unknown: "Menunggu poll MikroTik pertama.",

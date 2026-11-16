@@ -248,6 +248,14 @@ User baca untuk NMS (bukan hak tulis), contoh RouterOS v7:
 ```
 
 - **API SSL** (opsional, bila `address=` dibatasi, pertimbangkan `policy=read,api,ssh` dan port 8729).
+  Sertifikat yang dipakai RouterOS umumnya **self-signed**, sehingga NMS tidak menerima
+  sertifikat itu begitu saja: isi **Fingerprint SHA-256** sertifikat pada form perangkat
+  (muncul saat checkbox SSL dicentang). Ambil fingerprint dari WinBox/Terminal
+  (`/certificate print detail` → kolom `fingerprint`) atau dari mesin NMS:
+  `openssl s_client -connect <ip>:8729 </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256`.
+  Format `AA:BB:...` langsung bisa ditempel. Kosongkan untuk menghapus pinning; tanpa
+  fingerprint hanya sertifikat tepercaya CA yang diterima. Fingerprint adalah data
+  sertifikat publik (bukan kata sandi) dan berubah bila sertifikat diperbarui.
 - **SNMP**: aktifkan dan batasi `allowed-address`; isi komunitas hanya di form perangkat.
 - **SSH untuk backup konfigurasi (M6, opsional)**: user terpisah, contoh `policy=sensitive,read`;
   halaman MikroTik → perangkat → *Backup konfigurasi (SSH)*; `host key` dicatat ketat.
