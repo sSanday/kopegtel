@@ -621,19 +621,22 @@ Aturan: jangan memperbaiki bug di luar lingkup tahap yang berjalan; catat di sin
   (`192.168.110.167`, `192.168.110.25`, `192.168.110.251`, `192.168.110.1`).
   Tidak ada community SNMP/password SSH/IPMI/kontak Telegram/akun pengguna.
 - `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` dihapus dari `.env` lokal
-  (backup: `C:\Users\sandi\AppData\Local\Temp\opencode\env-backup-*.env`,
-  tidak dikomit; sedang tidak dibaca kode apa pun). **Rotasi token dilakukan
+  (tidak dikomit; tidak dibaca kode apa pun). Backup `.env` di Temp yang
+  dibuat saat scrub telah dihapus 2026-11-17. **Rotasi token dilakukan
   pemilik** (BotFather /revoke) karena zip pernah dibagikan.
 - Branch cadangan `backup/pre-m13-rewrite` dan salinan ekstraksi sementara
   sudah dihapus; ref lokal yang tersisa tidak mereferensikan berkas sensitif.
-  Reflog lokal masih menyimpan objek lama (auto-expire 90 hari); purge lokal
-  penuh bila diinginkan: `git reflog expire --expire=now --all; git gc
-  --prune=now`.
+- 2026-11-17: `git reflog expire --expire=now --all; git gc --prune=now`
+  dijalankan; objek pra-rewrite (termasuk `6c8158a`) **tidak ada lagi** di
+  clone lokal (`git cat-file -t 6c8158a` -> "Not a valid object name");
+  `git fsck --unreachable` bersih. Purge sisi GitHub tetap perlu Support
+  (lihat di atas); teks permintaan siap pakai: `docs/GITHUB-SUPPORT-PURGE.md`.
 - Sisa di tangan pemilik:
   1. Rotasi token Telegram (sudah dinyatakan akan dilakukan).
-  2. Ganti password admin lama (scrypt) bila dipakai ulang di tempat lain.
-  3. Permintaan purge ke GitHub Support (opsional; lihat di atas).
-  4. Hapus backup `.env` di Temp bila tidak lagi diperlukan.
+  2. ~~Ganti password admin lama~~ **SELESAI 2026-11-17** (lihat
+     "Pasca-eksposur" di bawah).
+  3. Permintaan purge ke GitHub Support (opsional; teks siap pakai di
+     `docs/GITHUB-SUPPORT-PURGE.md`).
 
 ## L-1 - Login membocorkan keberadaan akun & oracle "password benar" (selesai)
 
@@ -741,15 +744,24 @@ Verifikasi di mesin ini: timeout sesungguhnya menghasilkan rc 1, tetapi
 balasan DHR tidak dapat diproduksi di jaringan Wi-Fi ini; fix defensif
 dilakukan agar aman tanpa bergantung pada perilaku OS:
 - `reachable` kini mensyaratkan rc==0 DAN tidak ada token kegagalan
-  (`timed out`, `habisan waktu`, `unreachable`, `tidak dapat dijangkau`,
-  `destination host`, `general failure`, `ttl expired`, dsb.) DAN ada
-  token balasan sukses EN/ID (`Reply from`, `Balasan dari`, `bytes from`)
-  atau latency terdeteksi. Bila output tidak dikenali, perangkat
-  dilaporkan tidak reachable (fail-safe).
-- Catatan residual: teks ping hanya diuji untuk EN/ID/Linux; locale lain
-  bisa dianggap down sampai token ditambahkan.
-- Tes: fake subprocess untuk rc=0 + DHR/timeout (not ok) dan balasan
-  Windows/Linux (ok).
+  (multi-bahasa, lihat di bawah) DAN ada token balasan sukses
+  (EN/ID/de/fr/es/pt/it/nl/pl/ru/ja/zh). Bila output tidak dikenali,
+  perangkat dilaporkan tidak reachable (fail-safe).
+- Update 2026-11-17 (L-6 lanjutan): token balasan/kegagalan/timeout & regex
+  latency diperluas ke de, fr, es, pt, it, nl, pl, ru, ja, zh (mis. DE
+  `Antwort von` / `Zeitüberschreitung`, FR `Réponse de` / `délai d'attente`,
+  ES `Respuesta desde` / `tiempo de espera`, PT `Resposta de` /
+  `esgotado o tempo limite`, IT `Risposta da` / `non raggiungibile`,
+  NL `Antwoord van` / `Doelhost onbereikbaar`, PL `Odpowiedź z` /
+  `przekroczono limit czasu`, RU `Ответ от` / `интервал ожидания`,
+  JA `からの応答` / `タイムアウト`, ZH `的回复` / `请求超时`).
+  Latency saja (tanpa token balasan) TIDAK lagi dianggap bukti hidup —
+  latency multi-bahasa bisa cocok walau bahasanya tidak dikenal; hanya
+  token balasan yang menentukan. Token kegagalan TTL masih hanya EN/ID.
+  Latensi RU (`время<1мс`, satuan `мс`) ikut diparse.
+- Tes: fake subprocess untuk rc=0 + DHR/timeout (not ok), balasan
+  Windows/Linux (ok), 10 locale ok + 10 locale gagal-rc0 + 10 locale
+  timeout + 1 locale tak dikenal (fail-safe down).
 
 ## L-7 - Galat mentah dikirim ke klien (selesai)
 
@@ -830,3 +842,51 @@ dilakukan agar aman tanpa bergantung pada perilaku OS:
 - `uuid` ganda: hasil audit menunjukkan hanya satu impor di
   `db/connection.py`; normalisasi penempatan dilakukan dan kerja pada
   temuan tertulis di sini.
+
+## Pasca-eksposur - penyelesaian lanjutan (2026-11-17)
+
+- **Password admin (hash yang beredar publik) direset paksa** lewat jalur
+  DB aplikasi (`db.update_user`): hash scrypt baru; `must_change_password=1`
+  → login berikutnya **wajib** mengganti password; `session_epoch` 0→1 →
+  semua cookie/sesi lama gugur (M-4). Tercatat di audit log:
+  `auth.admin_password_reset_cli` (user_id 0, username `system`).
+  Password sementara disampaikan sekali ke pemilik (tidak ditulis ke
+  berkas/log mana pun). Bila sementara hilang: `py backend\manage.py
+  reset-password admin`.
+- **Backup `.env` di Temp dihapus**
+  (`Temp\opencode\env-backup-20261116-213719.env`, berisi nilai TELEGRAM
+  token/chat id lama). `.env` saat ini hanya memuat ADMIN_USERNAME,
+  ADMIN_PASSWORD, ALLOWED_NETWORKS, DEGRADED_LATENCY_MS, ENCRYPTION_KEY,
+  PORT, SECRET_KEY — tanpa TELEGRAM_*.
+- **Reflog lokal di-expire** (`git reflog expire --expire=now --all`) dan
+  `git gc --prune=now`: objek pra-rewrite (termasuk `6c8158a`) **tidak ada
+  lagi** di clone lokal (`git cat-file -t 6c8158a` → "Not a valid object
+  name"; `git fsck --unreachable` bersih; 2.522 objek di 1 pack).
+- **`raw.githubusercontent.com/sSanday/kopegtel/6c8158a/nms.db` masih
+  HTTP 200** (2026-11-17) — objek tak terjangkau di sisi GitHub. Bukan sesuatu
+  yang bisa ditutup dari mesin ini; perlu GitHub Support. Teks permintaan
+  siap pakai: `docs/GITHUB-SUPPORT-PURGE.md`. Alternatif instan yang bisa
+  dipilih pemilik: **jadikan repo private** (raw URL langsung 404 untuk
+  akses anonim).
+- **Rotasi token Telegram (BotFather /revoke) tetap di pemilik.** Kanal
+  Telegram di aplikasi terenkripsi Fernet di DB (`notification_channels`),
+  tidak bergantung pada `.env`; simpan token baru lewat UI pengaturan
+  notifikasi — bukan ke `.env`, bukan ke git.
+- **L-6 lanjutan**: ping kini mengenali output 12 bahasa (EN, ID, de, fr,
+  es, pt, it, nl, pl, ru, ja, zh) — token balasan, token kegagalan, token
+  timeout, dan regex latency (satuan `ms`/`мс`); latency tanpa token balasan
+  bukan lagi bukti hidup; locale tak dikenal = fail-safe down. 10 locale
+  diuji untuk reply/failure/timeout + 1 fail-safe. Catatan tersisa: token
+  kegagalan "TTL expired" hanya EN/ID; locale selain 12 di atas tetap
+  fail-safe down sampai tokennya ditambahkan.
+- **Jaringan**: mesin ini di Wi-Fi **10.20.26.143** (2026-11-17);
+  `192.168.30.1` tidak terjangkau (ping & TCP gagal) — perangkat 6/7/8 akan
+  tetap tampil offline sampai mesin kembali ke jaringan yang meng-routing
+  192.168.30.0/24. Bukan regresi (poller tidak memakai ALLOWED_NETWORKS).
+- **MikroTik RouterOS API (perangkat 6)**: belum bisa diverifikasi dari
+  sini karena router tidak terjangkau. Setelah jaringan kembali: di router
+  jalankan `/ip service enable api` (port 8728) dan/atau `/ip service enable
+  api-ssl` (port 8729), lalu simpan kredensial (+ fingerprint SHA-256 bila
+  SSL, M-11) di perangkat 6 lewat UI; uji dengan tombol "Uji koneksi".
+- Suite regresi L-6 lanjutan: `tests/test_low_findings.py` **56 passed**;
+  suite penuh dijalankan pada sesi ini (lihat docs/PROGRES.md).

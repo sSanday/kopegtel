@@ -229,3 +229,22 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   yang eksplisit. Detail verifier & catatan residual: ping hanya EN/ID/Linux
   (locale lain -> fail-safe down sampai token ditambahkan); audit internal
   tetap memuat detail untuk investigasi.
+- Pasca-eksposur 2026-11-17: password admin (hash lama yang beredar publik)
+  **direset paksa** via CLI `manage.py` (`update_user` → hash scrypt baru,
+  `must_change_password=1`, `session_epoch` 0→1 sehingga semua sesi lama gugur;
+  tercatat `auth.admin_password_reset_cli`). Password sementara disampaikan
+  sekali ke pemilik (tidak ditulis ke berkas/log); login berikutnya wajib
+  mengganti password. Backup `.env` di Temp dihapus; `git reflog expire
+  --expire=now --all; git gc --prune=now` dijalankan — objek `6c8158a` tidak
+  ada lagi di clone lokal (`git cat-file` → Not a valid object name; `fsck
+  --unreachable` bersih). `raw.githubusercontent.com/sSanday/kopegtel/
+  6c8158a/nms.db` masih **HTTP 200** (perlu GitHub Support — teks permintaan
+  siap pakai: `docs/GITHUB-SUPPORT-PURGE.md`; alternatif: jadikan repo
+  private). Rotasi token Telegram tetap tanggung jawab pemilik. Ping kini
+  mengenali 12 bahasa + token kegagalan/timeout/latency multi-bahasa (L-6
+  lanjutan); latency saja tidak lagi jadi bukti hidup; locale tak dikenal =
+  fail-safe down; `tests/test_low_findings.py` kini 56 tes. Catatan jaringan:
+  mesin di Wi-Fi 10.20.26.143 - 192.168.30.1 tidak terjangkau (ping/TCP 8728
+  gagal) sehingga perangkat 6/7/8 tetap tampil offline; bukan regresi.
+  MikroTik RouterOS API perlu diaktifkan di router (`/ip service enable
+  api` + `api-ssl`) lalu kredensial disimpan di perangkat 6.

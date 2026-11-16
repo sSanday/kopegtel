@@ -361,6 +361,99 @@ def test_ping_linux_reply_is_ok(monkeypatch):
     assert result["latency_ms"] == pytest.approx(0.5)
 
 
+# L-6: ping multi-bahasa. Tiap locale harus mengenali baris "balasan"-nya
+# (ok) dan baris gagalnya; locale yang tidak dikenal tetap fail-safe (down).
+LOCALE_REPLY_OUTPUTS = {
+    "de": "Antwort von 192.168.30.1: Bytes=32 Zeit<1ms TTL=64\n",
+    "fr": "Réponse de 192.168.30.1 : octets=32 temps<1ms TTL=64\n",
+    "es": "Respuesta desde 192.168.30.1: bytes=32 tiempo<1ms TTL=64\n",
+    "pt": "Resposta de 192.168.30.1: bytes=32 tempo<1ms TTL=64\n",
+    "it": "Risposta da 192.168.30.1: byte=32 durata<1ms TTL=64\n",
+    "nl": "Antwoord van 192.168.30.1: bytes=32 tijd<1ms TTL=64\n",
+    "pl": "Odpowiedź z 192.168.30.1: bajty=32 czas<1ms TTL=64\n",
+    "ru": "Ответ от 192.168.30.1: байт=32 время<1мс TTL=64\n",
+    "ja": "192.168.30.1 からの応答: バイト数 = 32 時間<1ms TTL=64\n",
+    "zh": "来自 192.168.30.1 的回复: 字节=32 时间<1ms TTL=64\n",
+}
+LOCALE_FAILURE_OUTPUTS = {
+    # rc == 0 walau gagal (kasus "Destination host unreachable" lokal)
+    "de": "Antwort von 10.0.0.2: Zielhost nicht erreichbar.\n",
+    "fr": "Réponse de 10.0.0.2 : Impossible de joindre l'hôte de destination.\n",
+    "es": "Respuesta desde 10.0.0.2: Host de destino inaccesible.\n",
+    "pt": "Resposta de 10.0.0.2: Host de destino inacessível.\n",
+    "it": "Risposta da 10.0.0.2: Host di destinazione non raggiungibile.\n",
+    "nl": "Antwoord van 10.0.0.2: Doelhost onbereikbaar.\n",
+    "pl": "Odpowiedź z 10.0.0.2: Host docelowy nie jest dostępny.\n",
+    "ru": "Ответ от 10.0.0.2: Узел назначения недоступен.\n",
+    "ja": "192.168.30.1 からの応答: 宛先ホストに到達できません。\n",
+    "zh": "来自 192.168.30.1 的回复: 无法访问目标主机。\n",
+}
+
+
+@pytest.mark.parametrize("locale", sorted(LOCALE_REPLY_OUTPUTS))
+def test_ping_locale_reply_is_ok(monkeypatch, locale):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: _fake_ping(0, LOCALE_REPLY_OUTPUTS[locale]),
+    )
+    result = ping_collector.check_ping("192.168.30.1")
+    assert result["ok"] is True
+    assert result["latency_ms"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("locale", sorted(LOCALE_FAILURE_OUTPUTS))
+def test_ping_locale_failure_with_rc0_is_not_ok(monkeypatch, locale):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: _fake_ping(0, LOCALE_FAILURE_OUTPUTS[locale]),
+    )
+    result = ping_collector.check_ping("192.168.30.1")
+    assert result["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "locale,output",
+    [
+        ("de", "Zeitüberschreitung der Anforderung.\n"),
+        ("fr", "Le délai d'attente de la demande est dépassé.\n"),
+        ("es", "Tiempo de espera agotado para esta solicitud.\n"),
+        ("pt", "Esgotado o tempo limite do pedido.\n"),
+        ("it", "Richiesta scaduta.\n"),
+        ("nl", "Time-out bij aanvraag.\n"),
+        ("pl", "Przekroczono limit czasu żądania.\n"),
+        ("ru", "Превышен интервал ожидания для запроса.\n"),
+        ("ja", "要求がタイムアウトしました。\n"),
+        ("zh", "请求超时。\n"),
+    ],
+)
+def test_ping_locale_timeout_is_not_ok(monkeypatch, locale, output):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: _fake_ping(1, output),
+    )
+    result = ping_collector.check_ping("192.168.30.1")
+    assert result["ok"] is False
+    assert result["reason"] == "timeout"
+
+
+def test_ping_unknown_locale_is_fail_safe_down(monkeypatch):
+    # Locale yang tidak dikenal: tidak ada token balasan yang cocok,
+    # walau rc == 0. Harus dianggap down, bukan online.
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: _fake_ping(
+            0,
+            "AntwortXX 192.168.30.1: Bytes=32 Zeit<1ms TTL=64\n",
+        ),
+    )
+    result = ping_collector.check_ping("192.168.30.1")
+    assert result["ok"] is False
+
+
 # ---------------------------------------------------------
 # L-7
 # ---------------------------------------------------------
