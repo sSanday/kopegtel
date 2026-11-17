@@ -1,4 +1,6 @@
-/* Penyimpanan sementara sisi klien (TTL 5 detik) + penyegar otomatis. */
+/* Penyimpanan sementara sisi klien (TTL 5 detik) + penyegar otomatis.
+ * Cache menyimpan promise yang sedang berjalan supaya permintaan bersamaan
+ * untuk key yang sama hanya menembak backend sekali. */
 (function () {
   "use strict";
 
@@ -6,19 +8,31 @@
   const cache = new Map();
 
   /**
-   * Ambil dari cache bila segar; jika tidak, jalankan fetcher lalu simpan.
+   * Ambil dari cache bila segar; jika tidak, jalankan fetcher lalu simpan
+   * promise-nya. Pemanggil yang datang saat request masih berjalan berbagi
+   * promise yang sama. Kegagalan tidak di-cache agar bisa dicoba lagi.
    * key: string unik, mis. 'devices:page1:query=...'
    */
-  async function cached(key, fetcher, options) {
+  function cached(key, fetcher, options) {
     const ttl = (options && options.ttl) || TTL_MS;
-    const now = Date.now();
     const hit = cache.get(key);
-    if (hit && now - hit.at < ttl) {
-      return hit.value;
-    }
-    const value = await fetcher();
-    cache.set(key, { at: Date.now(), value });
-    return value;
+    if (hit && Date.now() - hit.at < ttl) return hit.promise;
+
+    const entry = { at: Date.now(), promise: null };
+    entry.promise = Promise.resolve()
+      .then(fetcher)
+      .then(
+        (value) => {
+          entry.at = Date.now();
+          return value;
+        },
+        (error) => {
+          if (cache.get(key) === entry) cache.delete(key);
+          throw error;
+        }
+      );
+    cache.set(key, entry);
+    return entry.promise;
   }
 
   function invalidate(prefix) {
