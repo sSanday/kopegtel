@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Alerts · NMS Kopegtel</title>
   <meta name="description" content="Kanal notifikasi, template pesan, dan aturan aksi otomatis NMS Kopegtel." />
-  <meta name="theme-color" content="#060a14" />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/dashboard.css" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -239,7 +241,7 @@
               <label class="check"><input id="esc-enabled" type="checkbox" checked /> Kebijakan aktif</label>
             </div>
 
-            <h3 class="panel__sub" style="margin-top: 1rem;">Langkah eskalasi</h3>
+            <h3 class="panel__sub mt-1">Langkah eskalasi</h3>
             <div class="table-wrap">
               <table class="mon-table">
                 <thead><tr><th scope="col">#</th><th scope="col">Jeda (menit)</th><th scope="col">Tipe target</th><th scope="col">Target</th><th scope="col">Jam kerja</th><th scope="col"></th></tr></thead>

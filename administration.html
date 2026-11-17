@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Administration · NMS Kopegtel</title>
   <meta name="description" content="Pengaturan umum, retensi data, dan informasi instalasi NMS Kopegtel." />
-  <meta name="theme-color" content="#060a14" />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/dashboard.css" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -71,7 +73,7 @@
                 <span class="check check--inline"><input type="checkbox" class="mfa-role" value="admin" id="mfa-role-admin" /> Administrator</span>
                 <span class="check check--inline"><input type="checkbox" class="mfa-role" value="operator" id="mfa-role-operator" /> Operator</span>
                 <span class="check check--inline"><input type="checkbox" class="mfa-role" value="viewer" id="mfa-role-viewer" /> Viewer</span>
-                <label class="admin-field" style="max-width: 260px;">
+                <label class="admin-field field-narrow">
                   <span>Masa tenggang (hari)</span>
                   <input id="mfa-grace-days" type="number" min="0" max="365" step="1" inputmode="numeric" value="7" />
                 </label>

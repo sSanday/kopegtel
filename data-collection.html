@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Data collection · NMS Kopegtel</title>
   <meta name="description" content="Grup host, profil pemantauan, jendela pemeliharaan, dan pemindaian jaringan NMS Kopegtel." />
-  <meta name="theme-color" content="#060a14" />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/dashboard.css" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -276,7 +278,7 @@
 
           <div class="scan-progress" id="scan-progress" hidden>
             <p class="scan-progress__label"><span id="scan-progress-text">Memindai…</span><span id="scan-progress-pct">0%</span></p>
-            <div class="sla-meter__track scan-progress__track" aria-hidden="true"><span id="scan-progress-bar" style="width: 0%"></span></div>
+            <div class="sla-meter__track scan-progress__track" aria-hidden="true"><span id="scan-progress-bar" class="progress-fill"></span></div>
           </div>
 
           <div class="table-wrap" id="scan-results-wrap" hidden>

@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Inventory · NMS Kopegtel</title>
   <meta name="description" content="Inventaris aset perangkat, host, dan infrastruktur NMS Kopegtel." />
-  <meta name="theme-color" content="#060a14" />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/dashboard.css" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -287,19 +289,19 @@
               <article class="metric-card" id="card-cpu">
                 <p class="metric-card__label">CPU</p>
                 <p class="metric-card__value"><span id="d-cpu">—</span><small> %</small></p>
-                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-cpu" style="width: 0%"></span></div>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-cpu"></span></div>
                 <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-cpu">Normal</span> <span id="d-cpu-sub" class="metric-card__detail">—</span></p>
               </article>
               <article class="metric-card" id="card-mem">
                 <p class="metric-card__label">Memori</p>
                 <p class="metric-card__value"><span id="d-mem">—</span><small> %</small></p>
-                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-mem" style="width: 0%"></span></div>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-mem"></span></div>
                 <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-mem">Normal</span> <span id="d-mem-sub" class="metric-card__detail">—</span></p>
               </article>
               <article class="metric-card" id="card-storage">
                 <p class="metric-card__label">Storage</p>
                 <p class="metric-card__value"><span id="d-storage">—</span><small> %</small></p>
-                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok" id="bar-storage" style="width: 0%"></span></div>
+                <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-storage"></span></div>
                 <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-storage">Normal</span> <span id="d-storage-sub" class="metric-card__detail">—</span></p>
               </article>
               <article class="metric-card">

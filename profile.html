@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Profil — NMS Kopegtel</title>
   <meta name="description" content="Profil pengguna: ganti kata sandi dan kelola MFA TOTP." />
-  <meta name="theme-color" content="#060a14" />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/dashboard.css" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -62,10 +64,10 @@
             <div class="mfa-secret-block">
               <p class="panel__sub">Secret (manual):</p>
               <code class="mono" id="mfa-secret"></code>
-              <p class="panel__sub" style="margin-top:.5rem">URI: <code class="mono" id="mfa-uri" style="word-break: break-all"></code></p>
+              <p class="panel__sub mt-half">URI: <code class="mono break-all" id="mfa-uri"></code></p>
             </div>
           </div>
-          <form class="admin-form__grid" id="mfa-verify-form" style="max-width: 420px;">
+          <form class="admin-form__grid form-narrow" id="mfa-verify-form">
             <label class="admin-field"><span>Kode 6 digit *</span><input id="mfa-code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" /></label>
             <div class="admin-actions">
               <button class="btn btn--primary" type="submit">Verifikasi &amp; aktifkan</button>
@@ -84,7 +86,7 @@
 
         <div class="admin-form" id="mfa-on-block" hidden>
           <p class="panel__sub">Sisa kode pemulihan: <strong id="mfa-recovery-left">0</strong></p>
-          <form class="admin-form__grid" id="mfa-disable-form" style="max-width: 560px;">
+          <form class="admin-form__grid form-wide" id="mfa-disable-form">
             <label class="admin-field"><span>Kata sandi saat ini *</span><input id="mfa-disable-pw" type="password" autocomplete="current-password" /></label>
             <label class="admin-field"><span>Kode MFA atau kode pemulihan *</span><input id="mfa-disable-code" type="text" autocomplete="one-time-code" placeholder="000000 / XXXXX-XXXXX" /></label>
             <div class="admin-actions"><button class="btn btn--ghost" type="submit">Nonaktifkan MFA</button></div>
@@ -96,14 +98,6 @@
       <footer class="foot">© 2026, NMS Kopegtel</footer>
     </main>
   </div>
-
-  <style>
-    .mfa-setup { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; margin: .75rem 0; }
-    .mfa-qr img { width: 180px; height: 180px; background: #fff; padding: .5rem; border-radius: .75rem; }
-    .mfa-recovery { columns: 2; gap: .5rem 1.5rem; font-family: var(--mono, monospace); }
-    .mfa-recovery li { margin: .25rem 0; letter-spacing: .08em; }
-    @media (max-width: 640px) { .mfa-recovery { columns: 1; } }
-  </style>
 
   <script src="assets/js/format.js?v=1" defer></script>
   <script src="assets/js/api.js?v=2" defer></script>
