@@ -2604,6 +2604,19 @@ td strong {
   padding-top: 0.4rem;
 }
 
+.dialog--prompt {
+  width: min(440px, 100vw - 2rem);
+}
+
+.toast--error {
+  border-color: rgba(255, 115, 135, 0.4);
+}
+
+.toast--error .toast__dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(255, 115, 135, 0.15);
+}
+
 .test-results__item {
   font-size: 0.8rem;
 }

@@ -143,12 +143,35 @@
     </main>
   </div>
 
+  <dialog class="device-dialog dialog--prompt" id="user-dialog" aria-labelledby="user-dialog-title">
+    <form class="admin-form" id="user-dialog-form" novalidate>
+      <div class="modal__head">
+        <div>
+          <h2 class="panel__title" id="user-dialog-title">Konfirmasi</h2>
+          <p class="panel__sub" id="user-dialog-desc"></p>
+        </div>
+        <button class="modal__close" type="button" data-user-dialog-close aria-label="Tutup dialog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+        </button>
+      </div>
+      <label class="admin-field" id="user-dialog-field-wrap">
+        <span id="user-dialog-label">Kata sandi *</span>
+        <input id="user-dialog-input" type="password" autocomplete="current-password" />
+      </label>
+      <p class="form-note" id="user-dialog-note" role="alert" hidden></p>
+      <div class="admin-actions">
+        <button class="btn btn--primary" id="user-dialog-submit" type="submit">Lanjutkan</button>
+        <button class="btn btn--ghost" type="button" data-user-dialog-close>Batal</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="assets/js/format.js?v=1" defer></script>
   <script src="assets/js/api.js?v=2" defer></script>
   <script src="assets/js/store.js?v=1" defer></script>
   <script src="assets/js/nav.js?v=10" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/device-form.js?v=2" defer></script>
-  <script src="assets/js/users.js?v=3" defer></script>
+  <script src="assets/js/users.js?v=4" defer></script>
 </body>
 </html>

@@ -62,6 +62,115 @@
   const usrNote = document.getElementById("usr-note");
   const usrSave = document.getElementById("usr-save");
 
+  // ---------------- Dialog & toast (tanpa prompt/alert bawaan) ----------------
+  const dialog = document.getElementById("user-dialog");
+  const dialogForm = document.getElementById("user-dialog-form");
+  const dialogTitle = document.getElementById("user-dialog-title");
+  const dialogDesc = document.getElementById("user-dialog-desc");
+  const dialogFieldWrap = document.getElementById("user-dialog-field-wrap");
+  const dialogLabel = document.getElementById("user-dialog-label");
+  const dialogInput = document.getElementById("user-dialog-input");
+  const dialogNote = document.getElementById("user-dialog-note");
+  const dialogSubmit = document.getElementById("user-dialog-submit");
+
+  let dialogResolve = null;
+
+  function toast(message, kind) {
+    document.querySelectorAll(".toast").forEach((el) => el.remove());
+    const el = document.createElement("div");
+    el.className = kind === "error" ? "toast toast--error" : "toast";
+    el.setAttribute("role", "status");
+    el.innerHTML = `<span class="toast__dot" aria-hidden="true"></span>${escapeHtml(message)}`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("is-visible"));
+    window.setTimeout(() => {
+      el.classList.remove("is-visible");
+      window.setTimeout(() => el.remove(), 250);
+    }, 4200);
+  }
+
+  /**
+   * Dialog modal berinput rahasia (atau konfirmasi tanpa input).
+   * Mengembalikan isian saat dikonfirmasi, atau null saat dibatalkan.
+   * Tidak memakai window.prompt agar teks kata sandi tidak terlihat.
+   */
+  function openDialog(options) {
+    return new Promise((resolve) => {
+      if (!dialog || typeof dialog.showModal !== "function") {
+        resolve(null);
+        return;
+      }
+      dialogResolve = resolve;
+      const withInput = options.withInput !== false;
+      dialogTitle.textContent = options.title || "Konfirmasi";
+      dialogDesc.textContent = options.description || "";
+      dialogDesc.hidden = !options.description;
+      dialogFieldWrap.hidden = !withInput;
+      dialogLabel.textContent = options.label || "Kata sandi *";
+      dialogInput.value = "";
+      dialogInput.type = options.type || "password";
+      dialogInput.autocomplete = options.autocomplete || "current-password";
+      dialogInput.placeholder = options.placeholder || "";
+      dialogInput.minLength = options.minLength || 0;
+      dialogInput.removeAttribute("aria-invalid");
+      dialogNote.hidden = true;
+      dialogNote.textContent = "";
+      dialogSubmit.textContent = options.confirmLabel || "Lanjutkan";
+      dialogSubmit.classList.toggle("btn--danger", Boolean(options.danger));
+      dialogSubmit.classList.toggle("btn--primary", !options.danger);
+      dialog.showModal();
+      if (withInput) dialogInput.focus({ preventScroll: true });
+      else dialogSubmit.focus({ preventScroll: true });
+    });
+  }
+
+  function settleDialog(value) {
+    if (!dialog || !dialog.open) return;
+    dialog.close();
+    const resolve = dialogResolve;
+    dialogResolve = null;
+    if (resolve) resolve(value);
+  }
+
+  if (dialog) {
+    dialogForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const withInput = !dialogFieldWrap.hidden;
+      const value = dialogInput.value;
+      if (withInput) {
+        const min = Number(dialogInput.minLength) || 0;
+        if (!value.trim()) {
+          dialogNote.textContent = "Kolom ini wajib diisi.";
+          dialogNote.hidden = false;
+          dialogInput.setAttribute("aria-invalid", "true");
+          dialogInput.focus();
+          return;
+        }
+        if (min && value.length < min) {
+          dialogNote.textContent = `Minimal ${min} karakter.`;
+          dialogNote.hidden = false;
+          dialogInput.setAttribute("aria-invalid", "true");
+          dialogInput.focus();
+          return;
+        }
+      }
+      settleDialog(withInput ? value : "confirmed");
+    });
+    dialogInput.addEventListener("input", () => {
+      dialogInput.removeAttribute("aria-invalid");
+      dialogNote.hidden = true;
+    });
+    // Esc / penutupan bawaan: selesaikan sebagai batal.
+    dialog.addEventListener("close", () => {
+      const resolve = dialogResolve;
+      dialogResolve = null;
+      if (resolve) resolve(null);
+    });
+    document.querySelectorAll("[data-user-dialog-close]").forEach((button) => {
+      button.addEventListener("click", () => settleDialog(null));
+    });
+  }
+
   let editingUserId = null;
 
   let usersCache = [];
@@ -195,7 +304,7 @@
         await window.apiFetch(`/api/users/${id}`, { method: "PUT", body: { role: select.value } });
         await loadUsers();
       } catch (error) {
-        window.alert(error.message || "Gagal mengubah peran.");
+        toast(error.message || "Gagal mengubah peran.", "error");
       } finally {
         button.disabled = false;
       }
@@ -209,43 +318,62 @@
     }
 
     if (button.dataset.action === "reset-mfa") {
-      const password = window.prompt("Reset MFA pengguna ini. Masukkan KATA SANDI ANDA (admin) untuk konfirmasi:");
+      const user = usersCache.find((item) => item.id === id);
+      const password = await openDialog({
+        title: "Reset MFA",
+        description: `MFA untuk "${user ? user.username : id}" akan dihapus. Masukkan kata sandi akun admin Anda untuk konfirmasi.`,
+        label: "Kata sandi Anda *",
+        confirmLabel: "Reset MFA",
+        danger: true,
+      });
       if (password == null) return;
       try {
         await window.apiFetch(`/api/mfa/reset/${id}`, { method: "POST", body: { password } });
-        window.alert("MFA pengguna direset. Pengguna wajib mengaktifkan ulang MFA saat login.");
+        toast("MFA pengguna direset. Pengguna wajib mengaktifkan ulang MFA saat login.");
         await loadUsers();
       } catch (error) {
-        window.alert(error.message || "Gagal mereset MFA.");
+        toast(error.message || "Gagal mereset MFA.", "error");
       }
       return;
     }
 
     if (button.dataset.action === "reset-password") {
-      const password = window.prompt("Kata sandi baru (min. 10 karakter):");
+      const user = usersCache.find((item) => item.id === id);
+      const password = await openDialog({
+        title: "Reset kata sandi",
+        description: `Kata sandi baru untuk "${user ? user.username : id}". Pengguna wajib menggantinya saat login berikutnya.`,
+        label: "Kata sandi baru * (min. 10 karakter)",
+        confirmLabel: "Reset kata sandi",
+        autocomplete: "new-password",
+        minLength: 10,
+      });
       if (password == null) return;
-      if (password.length < 10) {
-        window.alert("Kata sandi minimal 10 karakter.");
-        return;
-      }
       try {
         await window.apiFetch(`/api/users/${id}`, { method: "PUT", body: { password } });
-        window.alert("Kata sandi direset. Pengguna wajib menggantinya saat login berikutnya.");
+        toast("Kata sandi direset. Pengguna wajib menggantinya saat login berikutnya.");
         await loadUsers();
       } catch (error) {
-        window.alert(error.message || "Gagal mereset kata sandi.");
+        toast(error.message || "Gagal mereset kata sandi.", "error");
       }
       return;
     }
 
     if (button.dataset.action === "delete") {
       const user = usersCache.find((item) => item.id === id);
-      if (!window.confirm(`Hapus akun "${user ? user.username : id}"?`)) return;
+      const confirmed = await openDialog({
+        title: "Hapus pengguna",
+        description: `Hapus akun "${user ? user.username : id}"? Tindakan ini tidak bisa dibatalkan.`,
+        confirmLabel: "Hapus",
+        danger: true,
+        withInput: false,
+      });
+      if (confirmed == null) return;
       try {
         await window.apiFetch(`/api/users/${id}`, { method: "DELETE" });
+        toast("Pengguna dihapus.");
         await loadUsers();
       } catch (error) {
-        window.alert(error.message || "Gagal menghapus pengguna.");
+        toast(error.message || "Gagal menghapus pengguna.", "error");
       }
     }
   });
