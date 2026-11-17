@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const { escapeHtml, formatBytes } = window.NMSFormat;
+  const { escapeHtml, formatBytes, formatBps } = window.NMSFormat;
 
   const TABS = {
     summary: { title: "Ringkasan", desc: "Total trafik per eksporter dan top talkers." },
@@ -96,7 +96,7 @@
         <td>${(exporter.packets || 0).toLocaleString("id-ID")}</td>
         <td>${(exporter.flows || 0).toLocaleString("id-ID")}</td>
         <td class="mono">${exporter.series && exporter.series.length
-          ? `${formatBytes(Math.round((exporter.series[exporter.series.length - 1].bytes || 0) * 8 / (data.grain === "raw" ? 300 : 3600)))}/s`
+          ? formatBps(Math.round((exporter.series[exporter.series.length - 1].bytes || 0) * 8 / (data.grain === "raw" ? 300 : 3600)))
           : "—"}</td>
       </tr>`).join("");
     $("flow-summary-empty").hidden = (data.exporters || []).length > 0;
@@ -121,7 +121,7 @@
     });
     svg.innerHTML = `<polyline fill="none" stroke="#2fe0c4" stroke-width="2" points="${points.join(" ")}" />`
       + `<line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="rgba(255,255,255,.15)" />`
-      + `<text x="${pad}" y="12" fill="rgba(255,255,255,.6)" font-size="10">puncak ${escapeHtml(formatBytes(max))}/s</text>`;
+      + `<text x="${pad}" y="12" fill="rgba(255,255,255,.6)" font-size="10">puncak ${escapeHtml(formatBps(max))}</text>`;
   }
 
   function renderInterfaceRows(entries) {
