@@ -10,7 +10,7 @@ Penggunaan:
 import os
 import sys
 import tempfile
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")

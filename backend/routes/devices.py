@@ -1,4 +1,5 @@
 """Blueprint Perangkat: CRUD, metrik, snapshot, topology, grup, profil, pemeliharaan."""
+import logging
 from collections import defaultdict, deque
 
 from flask import Blueprint, g, jsonify, request, session
@@ -27,10 +28,13 @@ from core.validation import (
     _parse_ip,
     _parse_optional_id,
     _parse_port,
+    parse_finite_float,
     parse_query_int,
 )
 
 bp = Blueprint("devices", __name__)
+
+log = logging.getLogger("nms.devices")
 
 # ---------------------------------------------------------
 # Rate limit untuk /api/devices/test: 8 panggilan / 60 detik per user
@@ -81,6 +85,7 @@ def _validate_device(data, existing_id=None):
     if not _ip_allowed(addr):
         return {}, "IP berada di luar ALLOWED_NETWORKS yang diizinkan."
     ip = str(addr)
+    ip_changed = bool(existing_row) and ip != str(existing_row.get("ip") or "").strip()
 
     device_type = str(data.get("type") or (existing_row or {}).get("type") or "lainnya").strip().lower()
     if device_type not in DEVICE_TYPES:
@@ -150,11 +155,26 @@ def _validate_device(data, existing_id=None):
         if snmp_version == "v2c":
             community = str(data.get("snmp_community") or "").strip()
             has_existing = existing_row and existing_row.get("snmp_community")
+            if ip_changed and has_existing and not community:
+                return {}, (
+                    "IP perangkat berubah: masukkan ulang community SNMP. "
+                    "Kredensial lama tidak boleh dikirim ke alamat baru."
+                )
             if not community and not has_existing:
                 return {}, "Community SNMP wajib diisi untuk versi v2c."
         else:  # v3
             if not snmp_v3_user:
                 return {}, "Username SNMP v3 wajib diisi."
+            if ip_changed:
+                for field, label in (
+                    ("snmp_v3_auth_password", "password auth SNMP v3"),
+                    ("snmp_v3_priv_password", "password priv SNMP v3"),
+                ):
+                    if existing_row.get(field) and not str(data.get(field) or "").strip():
+                        return {}, (
+                            f"IP perangkat berubah: masukkan ulang {label}. "
+                            "Kredensial lama tidak boleh dikirim ke alamat baru."
+                        )
 
     mikrotik_user = str(data.get("mikrotik_user") or "").strip()[:120]
     if mikrotik_enabled:
@@ -162,11 +182,17 @@ def _validate_device(data, existing_id=None):
             return {}, "User MikroTik API wajib diisi."
         password = str(data.get("mikrotik_password") or "").strip()
         has_existing = existing_row and existing_row.get("mikrotik_password")
+        if ip_changed and has_existing and not password:
+            return {}, (
+                "IP perangkat berubah: masukkan ulang password MikroTik API. "
+                "Kredensial lama tidak boleh dikirim ke alamat baru."
+            )
         if not password and not has_existing:
             return {}, "Password MikroTik API wajib diisi."
 
     # M-11: fingerprint SHA-256 untuk pinning TLS. Field yang tidak dikirim
-    # mempertahankan nilai tersimpan; string kosong menghapusnya.
+    # mempertahankan nilai tersimpan; string kosong menghapusnya. Pin milik
+    # host lama tidak dipertahankan saat IP berubah.
     if "mikrotik_ssl_fingerprint" in data:
         try:
             mikrotik_ssl_fingerprint = tls_util.normalize_fingerprint(
@@ -174,7 +200,7 @@ def _validate_device(data, existing_id=None):
             )
         except ValueError as exc:
             return {}, str(exc)
-    elif existing_row:
+    elif existing_row and not ip_changed:
         mikrotik_ssl_fingerprint = existing_row.get("mikrotik_ssl_fingerprint")
     else:
         mikrotik_ssl_fingerprint = None
@@ -559,7 +585,14 @@ def api_device_poll(device_id):
         remaining = int(POLL_COOLDOWN_SECONDS - (now - last)) + 1
         return jsonify({"error": f"Tunggu {remaining} detik sebelum memicu poll lagi."}), 429
     _poll_requests[device_id] = now
-    poller.run_check(device_id)  # sinkron: satu perangkat, tidak menahan yang lain
+    try:
+        # Sinkron agar UI langsung memuat hasil; kegagalan tetap dibalas JSON,
+        # bukan 500 tanpa pesan.
+        poller.run_check(device_id)
+    except Exception:
+        log.exception("Poll manual untuk perangkat %s gagal.", device_id)
+        audit("device.poll.failed", f"device:{device_id}", f"Poll manual gagal {device['name']}")
+        return jsonify({"error": "Poll manual gagal; periksa log server untuk detail."}), 502
     audit("device.poll", f"device:{device_id}", f"Poll manual {device['name']}")
     return jsonify({"ok": True})
 
@@ -592,9 +625,8 @@ def api_device_thresholds(device_id):
         value = data.get(short, data.get(column))
         if value is None:
             continue
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
+        number = parse_finite_float(value)
+        if number is None:
             return jsonify({"error": f"Ambang {short} harus berupa angka."}), 400
         if short.startswith("temp"):
             if number < 1 or number > 150:
@@ -603,10 +635,19 @@ def api_device_thresholds(device_id):
             return jsonify({"error": f"Ambang {short} harus antara 1 dan 100 %."}), 400
         clean[column] = number
 
+    def _current(prefix, kind):
+        column = f"threshold_{prefix}_{kind}"
+        value = clean.get(column)
+        if value is None:
+            value = (device or {}).get(column)
+        if value is None:
+            value = db.PROFILES_DEFAULT_THRESHOLDS.get(f"{prefix}_{kind}")
+        return value
+
     for prefix in ("cpu", "mem", "storage", "temp"):
-        warn = clean.get(f"threshold_{prefix}_warn", (device or {}).get(f"threshold_{prefix}_warn", 70))
-        crit = clean.get(f"threshold_{prefix}_crit", (device or {}).get(f"threshold_{prefix}_crit", 90))
-        if warn > crit:
+        warn = _current(prefix, "warn")
+        crit = _current(prefix, "crit")
+        if warn is not None and crit is not None and warn > crit:
             return jsonify({"error": f"Ambang peringatan {prefix} tidak boleh melebihi ambang kritis."}), 400
 
     if not clean:
@@ -810,9 +851,8 @@ def api_upsert_profile(device_type):
     clean = {}
     for key in ("cpu_warn", "cpu_crit", "mem_warn", "mem_crit", "storage_warn", "storage_crit", "temp_warn", "temp_crit"):
         if key in thresholds and thresholds[key] is not None:
-            try:
-                value = float(thresholds[key])
-            except (TypeError, ValueError):
+            value = parse_finite_float(thresholds[key])
+            if value is None:
                 return jsonify({"error": f"Ambang {key} harus angka."}), 400
             if key.startswith("temp"):
                 if value < 1 or value > 150:
@@ -826,8 +866,11 @@ def api_upsert_profile(device_type):
         if warn > crit:
             return jsonify({"error": f"Ambang peringatan {prefix} tidak boleh melebihi ambang kritis."}), 400
     db.upsert_profile(device_type, interval, clean)
-    # Terapkan ke perangkat tipe ini (dokumentasikan di UI).
-    db.apply_profile_to_type(device_type, interval, clean)
+    # Terapkan ke perangkat tipe ini dan jadwalkan ulang job poller agar
+    # interval baru berlaku langsung (tanpa menunggu restart).
+    affected = db.apply_profile_to_type(device_type, interval, clean)
+    for row in affected or []:
+        poller.schedule_device(row)
     audit("profile.update", f"profile:{device_type}", f"Mengubah profil pemantauan {device_type}")
     return jsonify({"ok": True})
 

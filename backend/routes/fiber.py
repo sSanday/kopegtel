@@ -11,6 +11,7 @@ import fiber as fiber_calc
 import optical as optical_logic
 from core.csvsafe import csv_row
 from core.guard import audit, roles
+from core.metrics import downsample as _downsample
 from core.validation import _parse_optional_id, parse_finite_float, parse_finite_int
 
 bp = Blueprint("fiber", __name__)

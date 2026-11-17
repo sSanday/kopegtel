@@ -58,6 +58,14 @@ def run_backup(out_dir=None, keep=None, *, actor="system", ip="127.0.0.1"):
         dst.close()
         src.close()
 
+    # Backup memuat hash password + secret terenkripsi: batasi izin berkas.
+    # Windows tidak mendukung mode POSIX penuh; kegagalan chmod tidak boleh
+    # menggagalkan backup yang sudah valid.
+    try:
+        os.chmod(target, 0o600)
+    except OSError:
+        log.warning("Tidak dapat membatasi izin berkas backup %s", target, exc_info=True)
+
     check = sqlite3.connect(target)
     try:
         integrity = check.execute("PRAGMA integrity_check").fetchone()[0]

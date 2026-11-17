@@ -23,12 +23,12 @@ log = logging.getLogger("nms.prometheus")
 
 try:
     from prometheus_client import CollectorRegistry, generate_latest
-    from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, InfoMetricFamily
+    from prometheus_client.core import GaugeMetricFamily, InfoMetricFamily
     HAVE_PROMETHEUS = True
 except Exception:  # pragma: no cover - dependensi wajib di requirements.lock
     CollectorRegistry = None
     generate_latest = None
-    CounterMetricFamily = GaugeMetricFamily = InfoMetricFamily = None
+    GaugeMetricFamily = InfoMetricFamily = None
     HAVE_PROMETHEUS = False
 
 _CACHE_LOCK = threading.Lock()

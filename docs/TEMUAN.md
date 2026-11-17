@@ -980,3 +980,55 @@ dilakukan agar aman tanpa bergantung pada perilaku OS:
   SSL, M-11) di perangkat 6 lewat UI; uji dengan tombol "Uji koneksi".
 - Suite regresi L-6 lanjutan: `tests/test_low_findings.py` **56 passed**;
   suite penuh dijalankan pada sesi ini (lihat docs/PROGRES.md).
+
+## Tinjauan lanjutan 2026-11-17 (H-4, M-14..M-19, L-11..L-13)
+
+Tinjauan kode independen menemukan satu bug 500, enam masalah ketahanan/
+operasional, dan tiga masalah kualitas. Semua ditangani:
+
+- **H-4 (selesai)** `routes/fiber.py` memanggil `_downsample` tanpa impor,
+  sehingga `/api/optical/ports/<id>/history?range=24h|7d` selalu 500 dan
+  grafik Rx gagal. Impor `core.metrics.downsample` ditambahkan; regresi
+  menguji kedua rentang.
+- **M-14 (selesai)** Saat IP perangkat diubah dan password/community
+  dikosongkan, `db.update_device` mempertahankan kredensial lama lalu poller
+  mengirimkannya ke IP baru. Route kini **menolak perubahan IP tanpa
+  memasukkan ulang** kredensial yang tersimpan (SNMP v2c/v3, MikroTik), dan
+  lapisan DB menghapus secret kosong saat IP berubah (fail-safe). Fingerprint
+  TLS pin host lama juga tidak dipertahankan. Perubahan IP + kredensial baru
+  tetap berfungsi.
+- **M-15 (selesai)** `PUT /api/profiles/<tipe>` tidak menjadwalkan ulang job
+  poller, sehingga interval baru baru berlaku setelah restart.
+  `db.apply_profile_to_type` kini mengembalikan perangkat terdampak dan route
+  memanggil `poller.schedule_device` (replace_existing) untuk tiap perangkat.
+- **M-16 (selesai)** `poller._check_thresholds` menganggap metrik yang hilang
+  (mis. sensor suhu gagal dibaca) sebagai "kembali normal", menutup masalah
+  palsu lalu membukanya lagi. Metrik `None`/NaN/inf/teks sekarang dilewati;
+  masalah hanya ditutup oleh pembacaan valid yang benar-benar normal.
+- **M-17 (selesai)** `PUT /api/devices/<id>/thresholds` membandingkan nilai
+  NULL (`None > None`) sehingga 500, dan default suhu memakai 70/90 padahal
+  poller memakai 60/75. Default diambil dari
+  `PROFILES_DEFAULT_THRESHOLDS` (60/75), NULL di-fallback, dan input memakai
+  `parse_finite_float` (NaN/inf ditolak 400).
+- **M-18 (selesai)** `POST /api/devices/<id>/poll` menjalankan poll sinkron
+  tanpa penanganan galat: kegagalan menjadi 500 tanpa pesan. Kegagalan kini
+  dicatat ke log + audit dan dibalas JSON **502** dengan pesan generik (detail
+  internal tidak dikirim ke klien). Poll tetap sinkron agar UI langsung
+  memuat hasil; durasi dibatasi timeout collector.
+- **M-19 (selesai)** `poller.run_check` hanya mencatat peringatan bila
+  perangkat sudah dihapus, sehingga job terus berjalan dan berulang.
+  Job sekarang dilepas dari scheduler (`unschedule_device`).
+- **L-11 (selesai)** Berkas backup memuat hash password + secret terenkripsi
+  tetapi izinnya tidak dibatasi. `dbbackup.run_backup` memanggil
+  `os.chmod(target, 0o600)` setelah backup (kegagalan chmod di Windows hanya
+  dicatat, tidak menggagalkan backup).
+- **L-12 (selesai)** Tidak ada indeks `(device_id, id)` pada
+  `device_metrics`, sehingga query metrik terbaru (`MAX(id)` per perangkat)
+  memindai tabel. Indeks `idx_metrics_device_id` ditambahkan idempoten untuk
+  DB baru maupun lama.
+- **L-13 (selesai)** Import tak terpakai dihapus: `os` di `poller.py`,
+  `CounterMetricFamily` di `prometheus.py`, `redirect_stderr` di
+  `tools/route_map.py`. Tes AST memastikan ketiganya tidak muncul lagi.
+- Regresi baru: `tests/test_review_findings.py` **14 tes** (H-4, M-14..M-19,
+  L-11..L-13, termasuk bukti izin backup dan indeks). Suite penuh lihat
+  docs/PROGRES.md.

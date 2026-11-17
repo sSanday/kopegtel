@@ -252,22 +252,35 @@ def create_device(data):
         return cursor.lastrowid
 
 def update_device(device_id, data):
-    """Update perangkat. Secret yang kosong berarti 'pertahankan yang tersimpan'."""
+    """Update perangkat.
+
+    Secret kosong berarti 'pertahankan yang tersimpan' HANYA bila IP tidak
+    berubah. Saat IP berubah, kredensial lama tidak boleh ikut dikirim ke host
+    baru: field secret yang kosong/tidak dikirim akan dikosongkan (fail-safe),
+    dan lapisan route mewajibkan operator memasukkan ulang kredensial.
+    """
     existing = get_device(device_id, include_secrets=True)
     if existing is None:
         return False
 
+    ip_changed = str(data.get("ip") or "").strip() != str(existing.get("ip") or "").strip()
+
     def pick_secret(key, current):
         new = data.get(key)
         if new is None:
-            return current  # field tidak dikirim → pertahankan
-        new = new.strip()
-        return encrypt_secret(new) if new else current  # kosong = pertahankan yang tersimpan
+            return None if ip_changed else current
+        new = str(new).strip()
+        if new:
+            return encrypt_secret(new)
+        return None if ip_changed else current
 
     # Fingerprint bersifat opsional & tidak dienkripsi (bukan rahasia); field yang
     # tidak dikirim mempertahankan nilai tersimpan, string kosong (None) menghapus.
+    # Pin milik host lama tidak berlaku untuk IP baru.
     if "mikrotik_ssl_fingerprint" in data:
         mikrotik_ssl_fingerprint = data.get("mikrotik_ssl_fingerprint")
+    elif ip_changed:
+        mikrotik_ssl_fingerprint = None
     else:
         mikrotik_ssl_fingerprint = existing.get("mikrotik_ssl_fingerprint")
 
@@ -656,7 +669,11 @@ def upsert_profile(device_type, interval_seconds, thresholds):
         )
 
 def apply_profile_to_type(device_type, interval_seconds, thresholds):
-    """Terapkan profil (interval + ambang) ke semua perangkat tipe ini, lalu jadwalkan ulang."""
+    """Terapkan profil (interval + ambang) ke semua perangkat tipe ini.
+
+    Kembalikan daftar perangkat terdampak agar pemanggil dapat menjadwalkan
+    ulang job poller dengan interval baru tanpa menunggu restart.
+    """
     key_map = {
         "cpu_warn": "threshold_cpu_warn",
         "cpu_crit": "threshold_cpu_crit",
@@ -676,6 +693,10 @@ def apply_profile_to_type(device_type, interval_seconds, thresholds):
     values.append(device_type)
     with transaction() as conn:
         conn.execute(f"UPDATE devices SET {', '.join(assignments)} WHERE type=?", values)
+        rows = conn.execute(
+            "SELECT id, poll_interval FROM devices WHERE type=?", (device_type,)
+        ).fetchall()
+    return [{"id": row["id"], "poll_interval": row["poll_interval"]} for row in rows]
 
 def availability(device_id, days=1):
     with _lock:

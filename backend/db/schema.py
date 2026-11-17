@@ -978,6 +978,9 @@ def init_db():
         # M-7: indeks waktu agar pratinjau retensi dan job purge tidak
         # memindai seluruh tabel metrik/interface/event.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_time ON device_metrics (ts)")
+        # Metrik terbaru diambil dengan MAX(id) per device; indeks komposit
+        # membuat pencarian itu tidak memindai seluruh tabel saat data membesar.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_device_id ON device_metrics (device_id, id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_if_stats_time ON interface_stats (ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_time ON events (created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_metrics_hourly_hour ON device_metrics_hourly (hour_ts)")

@@ -18,7 +18,7 @@ Event ringkas dicatat ke tabel ``events`` (umpan "Aktivitas terbaru").
 
 import json
 import logging
-import os
+import math
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
@@ -108,7 +108,21 @@ def _compute_status(ping_result, mikrotik_result):
     return "online"
 
 
+def _metric_number(value):
+    """Nilai metrik sebagai float terhingga; None/NaN/inf/teks = tidak diketahui."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
 def _threshold_level(value, warn, crit):
+    value = _metric_number(value)
     if value is None:
         return None
     if crit is not None and value >= crit:
@@ -173,7 +187,13 @@ def _check_thresholds(device, previous, current):
     }
     for key, (warn, crit) in metric_keys.items():
         label, kind, unit = labels[key]
-        level = _threshold_level(current.get(key), warn, crit)
+        # Sensor bisa gagal membaca satu metrik pada siklus ini. Nilai yang
+        # tidak diketahui BUKAN bukti pulih: biarkan masalah tetap terbuka
+        # sampai ada pembacaan valid yang memang kembali normal.
+        current_value = _metric_number(current.get(key))
+        if current_value is None:
+            continue
+        level = _threshold_level(current_value, warn, crit)
         prev_level = _threshold_level((previous or {}).get(key), warn, crit)
         if level == prev_level:
             continue
@@ -188,7 +208,7 @@ def _check_thresholds(device, previous, current):
             )
             continue
         severity = "high" if level == "kritis" else "warning"
-        value = current[key]
+        value = current_value
         actions.append(
             {
                 "message": f"{device['name']}: {label} {value:.1f}{unit} melewati ambang {level} ({warn}/{crit}{unit})",
@@ -885,7 +905,8 @@ def run_check(device_id, force_mikrotik=False):
     try:
         device = db.get_device(device_id, include_secrets=True)
         if device is None:
-            log.warning("Device %s tidak ditemukan, job dilewati.", device_id)
+            log.warning("Device %s tidak ditemukan; job poller dilepas.", device_id)
+            unschedule_device(device_id)
             return
         _run_check_body(device, force_mikrotik)
         _note_poll_metrics(time.monotonic() - _started, error=False)

@@ -265,3 +265,14 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   clamp (audit, alerts, devices, flow, ingest, mikrotik). Tes +4 di
   `tests/test_low_findings.py` (total **69 passed**); suite penuh
   **414 passed** (17.8 menit).
+- Tinjauan lanjutan 2026-11-17 (H-4, M-14..M-19, L-11..L-13): riwayat port
+  optik 24h/7d tidak lagi 500 (`_downsample` diimpor); perubahan IP perangkat
+  mewajibkan kredensial dimasukkan ulang dan DB menghapus secret kosong saat
+  IP berubah; interval profil langsung menjadwalkan ulang poller; metrik
+  hilang tidak lagi menutup masalah ambang secara palsu; ambang NULL + default
+  suhu 60/75 diperbaiki; poll manual gagal dibalas JSON 502 (bukan 500);
+  job perangkat terhapus dilepas dari scheduler; backup `chmod 0600`; indeks
+  `(device_id, id)` pada `device_metrics`; import tak terpakai dihapus.
+  Regresi `tests/test_review_findings.py` **14 passed**; tes area terdampak
+  **103 passed**. Suite penuh **428 passed** (19.6 menit, 1 warning
+  deprecation Flask yang sudah ada).
