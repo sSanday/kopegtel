@@ -847,6 +847,11 @@ td strong {
   box-shadow: 0 0 0 3px rgba(255, 115, 135, 0.14);
 }
 
+.activity__dot--idle {
+  background: var(--muted);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
 .activity__body p {
   margin: 0;
   font-size: 0.84rem;

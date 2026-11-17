@@ -34,6 +34,23 @@
     else window.addEventListener("nms:me-ready", fn, { once: true });
   }
 
+  /**
+   * Jenis aktivitas untuk ikon. Utamakan field kind/severity dari API bila
+   * tersedia (belum ada — lihat BACKEND-TODO.md); fallback eksplisit dari
+   * transisi old_status/new_status, bukan menebak isi pesan.
+   */
+  function activityKind(entry) {
+    const raw = String(entry.kind || entry.severity || "").toLowerCase();
+    if (["critical", "danger", "disaster", "high", "error"].includes(raw)) return "down";
+    if (["warning", "warn", "average", "degraded"].includes(raw)) return "warn";
+    if (["info", "information", "ok", "online"].includes(raw)) return "ok";
+    const status = String(entry.new_status || "").toLowerCase();
+    if (status === "offline") return "down";
+    if (status === "degraded") return "warn";
+    if (status === "maintenance") return "idle";
+    return "ok";
+  }
+
   async function fetchAttentionDevices() {
     const results = await Promise.all(
       ATTENTION_STATUSES.map((status) =>
@@ -150,9 +167,16 @@
       activityList.innerHTML = items.length
         ? items
             .map((entry) => {
-              const kind = /Ambang|down|offline/i.test(entry.message) ? "warn" : "ok";
+              const kind = activityKind(entry);
+              const dotClass = kind === "warn"
+                ? " activity__dot--warn"
+                : kind === "down"
+                  ? " activity__dot--down"
+                  : kind === "idle"
+                    ? " activity__dot--idle"
+                    : "";
               return (
-                `<li><span class="activity__dot${kind === "warn" ? " activity__dot--warn" : ""}" aria-hidden="true"></span>` +
+                `<li><span class="activity__dot${dotClass}" aria-hidden="true"></span>` +
                 `<div class="activity__body"><p>${escapeHtml(entry.message)}</p>` +
                 `<time datetime="${escapeHtml(entry.created_at)}">${escapeHtml(timeAgo(entry.created_at))}</time></div></li>`
               );
