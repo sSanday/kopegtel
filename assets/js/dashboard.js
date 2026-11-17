@@ -20,6 +20,9 @@
   const statMikrotikMeta = document.getElementById("stat-mikrotik-meta");
   const dashboardEmpty = document.getElementById("dashboard-empty");
   const dashboardGrid = document.getElementById("dashboard-grid");
+  const dashboardError = document.getElementById("dashboard-error");
+  const dashboardErrorText = document.getElementById("dashboard-error-text");
+  const dashboardRetry = document.getElementById("dashboard-retry");
   const deviceRows = document.getElementById("device-rows");
   const activityList = document.getElementById("activity-list");
 
@@ -66,6 +69,36 @@
     return [...byId.values()];
   }
 
+  /**
+   * Kegagalan muat: tampilkan banner + tombol coba lagi, bersihkan nilai lama
+   * agar tidak terlihat seperti data terbaru, dan isi panel dengan pesan galat.
+   */
+  function renderDashboardError(error) {
+    const message = (error && error.message) || "Tidak dapat menghubungi server.";
+    if (dashboardError && dashboardErrorText) {
+      dashboardErrorText.textContent = `Gagal memuat data dasbor: ${message}`;
+      dashboardError.hidden = false;
+    }
+    if (dashboardEmpty) dashboardEmpty.hidden = true;
+
+    statDevicesTotal.textContent = "—";
+    statDevicesMeta.textContent = "Data tidak tersedia";
+    statProblemsTotal.textContent = "—";
+    statProblemsMeta.textContent = "Data tidak tersedia";
+    statAvailability.textContent = "—";
+    statAvailabilityMeta.textContent = "Data tidak tersedia";
+    statMaintenance.textContent = "—";
+    if (statFiber) statFiber.hidden = true;
+    if (statMikrotik) statMikrotik.hidden = true;
+
+    if (deviceRows) {
+      deviceRows.innerHTML = `<tr class="empty-row"><td colspan="4">Gagal memuat perangkat: ${escapeHtml(message)}</td></tr>`;
+    }
+    if (activityList) {
+      activityList.innerHTML = `<li class="empty-row"><div class="activity__body"><p>Gagal memuat aktivitas: ${escapeHtml(message)}</p></div></li>`;
+    }
+  }
+
   async function refresh() {
     const me = window.__nmsMe;
     if (me && greetingName) greetingName.textContent = me.username;
@@ -93,9 +126,10 @@
         devices = devices.concat((online.devices || []).filter((device) => !seen.has(device.id)));
       }
     } catch (error) {
-      if (deviceRows) deviceRows.innerHTML = `<tr class="empty-row"><td colspan="4">Gagal memuat data: ${escapeHtml(error.message)}</td></tr>`;
+      renderDashboardError(error);
       return;
     }
+    dashboardError.hidden = true;
 
     const total = summary.total || 0;
     const problemCount = summary.problems_active || 0;
@@ -188,6 +222,17 @@
 
   whenReady(() => {
     document.getElementById("dash-add-first")?.addEventListener("click", () => window.openDeviceForm());
+    if (dashboardRetry) {
+      dashboardRetry.addEventListener("click", async () => {
+        dashboardRetry.disabled = true;
+        window.NMSStore.invalidate();
+        try {
+          await refresh();
+        } finally {
+          dashboardRetry.disabled = false;
+        }
+      });
+    }
     window.addEventListener("nms:devices-changed", () => {
       window.NMSStore.invalidate();
       refresh();

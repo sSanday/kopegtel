@@ -2149,6 +2149,11 @@ td strong {
   font-size: 0.8rem;
 }
 
+/* Banner dasbor berada langsung di kolom .main, bukan di dalam panel. */
+.dashboard-error {
+  margin: 0;
+}
+
 .test-results {
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--line);
