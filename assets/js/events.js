@@ -218,12 +218,16 @@
   $("rule-cancel").addEventListener("click", () => { $("rule-form").hidden = true; editingRuleId = null; });
 
   async function deleteRule(rule) {
-    if (!window.confirm(`Hapus aturan "${rule.name}"?`)) return;
+    if (!(await window.NMSUi.confirm(`Hapus aturan "${rule.name}"?`, {
+      title: "Hapus aturan",
+      confirmLabel: "Hapus",
+      danger: true,
+    }))) return;
     try {
       await window.apiFetch(`/api/events/rules/${rule.id}`, { method: "DELETE" });
       await loadRules();
     } catch (error) {
-      window.alert(error.message);
+      await window.NMSUi.alert(error.message);
     }
   }
 

@@ -63,16 +63,7 @@
   }
 
   function toast(message) {
-    const el = document.createElement("div");
-    el.className = "toast";
-    el.setAttribute("role", "status");
-    el.innerHTML = `<span class="toast__dot" aria-hidden="true"></span>${escapeHtml(message)}`;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add("is-visible"));
-    window.setTimeout(() => {
-      el.classList.remove("is-visible");
-      window.setTimeout(() => el.remove(), 250);
-    }, 4200);
+    window.NMSUi.toast(message);
   }
 
   /** Grafik garis SVG (pendekatan yang sama dengan halaman detail perangkat). */
@@ -1007,7 +998,7 @@
       if (!canOperate()) return;
       openLinkForm(null);
     });
-    linkRows.addEventListener("click", (event) => {
+    linkRows.addEventListener("click", async (event) => {
       const edit = event.target.closest("[data-link-edit]");
       if (edit) {
         const link = linksCache.find((item) => item.id === Number(edit.getAttribute("data-link-edit")));
@@ -1019,7 +1010,11 @@
         const id = Number(del.getAttribute("data-link-delete"));
         const link = linksCache.find((item) => item.id === id);
         const name = link ? link.name : `#${id}`;
-        if (window.confirm(`Hapus link "${name}"? Masalah fiber terkait link ini juga terhapus.`)) {
+        if (await window.NMSUi.confirm(`Hapus link "${name}"? Masalah fiber terkait link ini juga terhapus.`, {
+          title: "Hapus link",
+          confirmLabel: "Hapus",
+          danger: true,
+        })) {
           apiFetch(`/api/fiber-links/${id}`, { method: "DELETE" })
             .then(() => { toast("Link dihapus."); return loadLinks(); })
             .catch((error) => toast(error.message || "Gagal menghapus link."));
@@ -1051,7 +1046,7 @@
 
     measLink.addEventListener("change", loadMeasurements);
     measAddBtn.addEventListener("click", () => openMeasurementForm(null));
-    measRows.addEventListener("click", (event) => {
+    measRows.addEventListener("click", async (event) => {
       const edit = event.target.closest("[data-meas-edit]");
       if (edit) {
         const row = currentMeasurements.find((item) => item.id === Number(edit.getAttribute("data-meas-edit")));
@@ -1061,7 +1056,11 @@
       const del = event.target.closest("[data-meas-delete]");
       if (del) {
         const id = Number(del.getAttribute("data-meas-delete"));
-        if (window.confirm("Hapus catatan pengukuran ini?")) {
+        if (await window.NMSUi.confirm("Hapus catatan pengukuran ini?", {
+          title: "Hapus pengukuran",
+          confirmLabel: "Hapus",
+          danger: true,
+        })) {
           apiFetch(`/api/fiber-links/${currentMeasurementLinkId}/measurements/${id}`, { method: "DELETE" })
             .then(() => { toast("Pengukuran dihapus."); return loadMeasurements(); })
             .catch((error) => toast(error.message || "Gagal menghapus pengukuran."));
@@ -1076,7 +1075,7 @@
 
     document.getElementById("settings-form").addEventListener("submit", submitSettingsForm);
     document.getElementById("profile-add").addEventListener("click", () => openProfileForm(null));
-    profileRows.addEventListener("click", (event) => {
+    profileRows.addEventListener("click", async (event) => {
       const edit = event.target.closest("[data-profile-edit]");
       if (edit) {
         const profile = profilesCache.find((item) => item.id === Number(edit.getAttribute("data-profile-edit")));
@@ -1087,7 +1086,11 @@
       if (del) {
         const id = Number(del.getAttribute("data-profile-delete"));
         const profile = profilesCache.find((item) => item.id === id);
-        if (window.confirm(`Hapus profil "${profile ? profile.name : id}"?`)) {
+        if (await window.NMSUi.confirm(`Hapus profil "${profile ? profile.name : id}"?`, {
+          title: "Hapus profil",
+          confirmLabel: "Hapus",
+          danger: true,
+        })) {
           apiFetch(`/api/optical/profiles/${id}`, { method: "DELETE" })
             .then(async () => {
               toast("Profil dihapus.");

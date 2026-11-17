@@ -613,7 +613,7 @@
           const res = await window.apiFetch(`/api/devices/${id}`);
           window.openDeviceForm({ device: res.device, onSaved: () => { window.NMSStore.invalidate(); loadHosts(); } });
         } catch (error) {
-          window.alert(error.message || "Gagal memuat perangkat.");
+          await window.NMSUi.alert(error.message || "Gagal memuat perangkat.");
         }
         return;
       }
@@ -621,7 +621,11 @@
 
     if (button.dataset.action === "delete") {
       const label = { group: "grup", host: "perangkat", maintenance: "jadwal pemeliharaan" }[kind] || "item";
-      if (!window.confirm(`Hapus ${label} ini?`)) return;
+      if (!(await window.NMSUi.confirm(`Hapus ${label} ini?`, {
+        title: "Hapus item",
+        confirmLabel: "Hapus",
+        danger: true,
+      }))) return;
       const paths = { group: `/api/groups/${id}`, host: `/api/devices/${id}`, maintenance: `/api/maintenance/${id}` };
       try {
         await window.apiFetch(paths[kind], { method: "DELETE" });
@@ -630,9 +634,9 @@
         else if (kind === "maintenance") await loadMaintenance();
       } catch (error) {
         if (kind === "group" && error.status === 409) {
-          window.alert(error.message); // "Grup masih dipakai N perangkat"
+          await window.NMSUi.alert(error.message); // "Grup masih dipakai N perangkat"
         } else {
-          window.alert(error.message || "Gagal menghapus.");
+          await window.NMSUi.alert(error.message || "Gagal menghapus.");
         }
       }
     }

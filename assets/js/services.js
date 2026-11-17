@@ -225,12 +225,16 @@
       return;
     }
     if (button.dataset.action === "delete") {
-      if (!window.confirm(`Hapus layanan "${service.name}"? Perangkat penopangnya tidak ikut terhapus.`)) return;
+      if (!(await window.NMSUi.confirm(`Hapus layanan "${service.name}"? Perangkat penopangnya tidak ikut terhapus.`, {
+        title: "Hapus layanan",
+        confirmLabel: "Hapus",
+        danger: true,
+      }))) return;
       try {
         await window.apiFetch(`/api/services/${id}`, { method: "DELETE" });
         await loadServices();
       } catch (error) {
-        window.alert(error.message || "Gagal menghapus layanan.");
+        await window.NMSUi.alert(error.message || "Gagal menghapus layanan.");
       }
     }
   });

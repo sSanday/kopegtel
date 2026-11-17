@@ -170,16 +170,7 @@
     detailError.hidden = true;
   }
   function toast(message) {
-    const el = document.createElement("div");
-    el.className = "toast";
-    el.setAttribute("role", "status");
-    el.innerHTML = `<span class="toast__dot" aria-hidden="true"></span>${escapeHtml(message)}`;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add("is-visible"));
-    window.setTimeout(() => {
-      el.classList.remove("is-visible");
-      window.setTimeout(() => el.remove(), 250);
-    }, 4600);
+    window.NMSUi.toast(message);
   }
   function firmwareMeta(statusValue) {
     if (statusValue === "pending") return { cls: "status status--warn", label: "Tertunda" };
@@ -436,7 +427,10 @@
     const child = Number(button.dataset.child);
     const parent = Number(button.dataset.parent);
     const childName = button.closest("tr").querySelector("td strong").textContent;
-    if (!window.confirm(`Jadikan perangkat induk dari ${childName}? Relasi ini hanya saran dari neighbor, bukan konfirmasi fisik.`)) return;
+    if (!(await window.NMSUi.confirm(`Jadikan perangkat induk dari ${childName}? Relasi ini hanya saran dari neighbor, bukan konfirmasi fisik.`, {
+      title: "Terapkan relasi topologi",
+      confirmLabel: "Terapkan",
+    }))) return;
     button.disabled = true;
     try {
       const result = await apiFetch("/api/mikrotik/topology/apply", {
@@ -447,7 +441,7 @@
       loadTopology();
       loadFleet();
     } catch (error) {
-      alert(error.message || "Gagal menerapkan relasi topologi.");
+      await window.NMSUi.alert(error.message || "Gagal menerapkan relasi topologi.");
     } finally {
       button.disabled = false;
     }
@@ -540,7 +534,7 @@
         else loadTab();
       }
     } catch (error) {
-      alert(error.message || "Gagal menjalankan poll MikroTik.");
+      await window.NMSUi.alert(error.message || "Gagal menjalankan poll MikroTik.");
     } finally {
       pollButton.disabled = false;
     }
@@ -1495,7 +1489,7 @@
           toast(`Backup tersimpan: ${backup.filename || ""} (${formatBytes(backup.size)})`);
           loadBackups();
         } catch (error) {
-          alert(error.message || "Backup gagal.");
+          await window.NMSUi.alert(error.message || "Backup gagal.");
         } finally {
           run.disabled = false;
         }
@@ -1517,7 +1511,7 @@
               ? `Diff: ${result.from} → ${result.to}\n\n${result.diff}`
               : result.note || "Tidak ada perbedaan.";
         } catch (error) {
-          alert(error.message || "Gagal memuat diff.");
+          await window.NMSUi.alert(error.message || "Gagal memuat diff.");
         } finally {
           button.disabled = false;
         }
@@ -1549,7 +1543,7 @@
         }
         loadTab();
       } catch (error) {
-        alert(error.message || "Gagal menyimpan interface penting.");
+        await window.NMSUi.alert(error.message || "Gagal menyimpan interface penting.");
         importantBtn.disabled = false;
       }
       return;
@@ -1560,12 +1554,17 @@
     const target = button.dataset.target || "";
     const label = button.dataset.label || target;
     if (action === "finding_ignore") {
-      const reason = window.prompt(`Alasan mengabaikan temuan ini (wajib, min. 3 karakter):`);
+      const reason = await window.NMSUi.prompt(
+        "Alasan mengabaikan temuan ini (wajib, min. 3 karakter):",
+        {
+          title: "Abaikan temuan",
+          label: "Alasan *",
+          required: false,
+          validate: (value) => (value.trim().length < 3 ? "Alasan minimal 3 karakter." : null),
+          confirmLabel: "Abaikan",
+        }
+      );
       if (reason == null) return;
-      if (reason.trim().length < 3) {
-        alert("Alasan minimal 3 karakter.");
-        return;
-      }
       button.disabled = true;
       try {
         await apiFetch(`/api/mikrotik/devices/${state.detail.id}/findings/${target}/ignore`, {
@@ -1575,14 +1574,17 @@
         toast("Temuan diabaikan.");
         refreshOverviewAndTab();
       } catch (error) {
-        alert(error.message || "Gagal mengabaikan temuan.");
+        await window.NMSUi.alert(error.message || "Gagal mengabaikan temuan.");
       } finally {
         button.disabled = false;
       }
       return;
     }
     if (action === "finding_unignore") {
-      if (!window.confirm("Aktifkan kembali temuan ini?")) return;
+      if (!(await window.NMSUi.confirm("Aktifkan kembali temuan ini?", {
+        title: "Aktifkan temuan",
+        confirmLabel: "Aktifkan",
+      }))) return;
       button.disabled = true;
       try {
         await apiFetch(`/api/mikrotik/devices/${state.detail.id}/findings/${target}/ignore`, {
@@ -1592,7 +1594,7 @@
         toast("Temuan diaktifkan kembali.");
         refreshOverviewAndTab();
       } catch (error) {
-        alert(error.message || "Gagal mengaktifkan temuan.");
+        await window.NMSUi.alert(error.message || "Gagal mengaktifkan temuan.");
       } finally {
         button.disabled = false;
       }
@@ -1607,18 +1609,26 @@
     const device = state.detail.overview.device;
     const actionLabel = ACTION_LABELS[action] || action;
     const targetLabel = opts.label || target || device.name;
-    if (!window.confirm(`${actionLabel} pada "${targetLabel}" di perangkat ${device.name}? Tindakan ini dicatat di audit log.`)) {
+    if (!(await window.NMSUi.confirm(`${actionLabel} pada "${targetLabel}" di perangkat ${device.name}? Tindakan ini dicatat di audit log.`, {
+      title: actionLabel,
+      confirmLabel: actionLabel,
+      danger: true,
+    }))) {
       return;
     }
     if (opts.typed) {
-      const typedValue = window.prompt(
-        `Ketik nama perangkat "${device.name}" untuk mengonfirmasi: ${actionLabel} pada "${targetLabel}".`
+      const typedValue = await window.NMSUi.prompt(
+        `Ketik nama perangkat "${device.name}" untuk mengonfirmasi: ${actionLabel} pada "${targetLabel}".`,
+        {
+          title: "Konfirmasi aksi",
+          label: "Nama perangkat *",
+          required: false,
+          validate: (value) => (value === device.name ? null : "Nama perangkat tidak cocok. Aksi dibatalkan."),
+          confirmLabel: actionLabel,
+          danger: true,
+        }
       );
       if (typedValue == null) return;
-      if (typedValue !== device.name) {
-        alert("Nama perangkat tidak cocok. Aksi dibatalkan.");
-        return;
-      }
     }
     try {
       const result = await apiFetch(`/api/mikrotik/devices/${state.detail.id}/actions`, {
@@ -1633,7 +1643,7 @@
       toast(result.detail || `${actionLabel} selesai.`);
       refreshOverviewAndTab();
     } catch (error) {
-      alert(error.message || `${actionLabel} gagal.`);
+      await window.NMSUi.alert(error.message || `${actionLabel} gagal.`);
     }
   }
 

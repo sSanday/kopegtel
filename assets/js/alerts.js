@@ -593,7 +593,11 @@
     }
     if (button.dataset.action === "delete") {
       const names = { rule: "aturan aksi", template: "template", channel: "kanal" };
-      if (!window.confirm(`Hapus ${names[kind] || "item"} ini?`)) return;
+      if (!(await window.NMSUi.confirm(`Hapus ${names[kind] || "item"} ini?`, {
+        title: "Hapus item",
+        confirmLabel: "Hapus",
+        danger: true,
+      }))) return;
       const paths = { rule: `/api/rules/${id}`, template: `/api/templates/${id}`, channel: `/api/channels/${id}` };
       try {
         await window.apiFetch(paths[kind], { method: "DELETE" });
@@ -601,7 +605,7 @@
         else if (kind === "template") await loadTemplates();
         else if (kind === "channel") await loadChannels();
       } catch (error) {
-        window.alert(error.message || "Gagal menghapus.");
+        await window.NMSUi.alert(error.message || "Gagal menghapus.");
       }
     }
   });
@@ -686,13 +690,17 @@
         if (button.dataset.escAction === "edit") {
           await openPolicyForm(policy);
         } else if (button.dataset.escAction === "delete") {
-          if (!window.confirm(`Hapus kebijakan "${policy.name}"? Aturan aksi yang memakainya akan kembali mengirim langsung.`)) return;
+          if (!(await window.NMSUi.confirm(`Hapus kebijakan "${policy.name}"? Aturan aksi yang memakainya akan kembali mengirim langsung.`, {
+            title: "Hapus kebijakan",
+            confirmLabel: "Hapus",
+            danger: true,
+          }))) return;
           try {
             await window.apiFetch(`/api/escalation-policies/${policy.id}`, { method: "DELETE" });
             policiesCache = [];
             await loadEscalation();
           } catch (error) {
-            window.alert(error.message || "Gagal menghapus.");
+            await window.NMSUi.alert(error.message || "Gagal menghapus.");
           }
         }
       });

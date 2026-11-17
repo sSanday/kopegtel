@@ -453,12 +453,16 @@
     tokenRows.innerHTML = tokensCache.map(formatTokenRow).join("");
     tokenRows.querySelectorAll("[data-token-action]").forEach((button) => {
       button.addEventListener("click", async () => {
-        if (!window.confirm("Cabut token ini? Scrape yang memakainya akan gagal.")) return;
+        if (!(await window.NMSUi.confirm("Cabut token ini? Scrape yang memakainya akan gagal.", {
+          title: "Cabut token",
+          confirmLabel: "Cabut",
+          danger: true,
+        }))) return;
         try {
           await window.apiFetch(`/api/metrics/tokens/${button.dataset.id}`, { method: "DELETE" });
           await loadTokens();
         } catch (error) {
-          window.alert(error.message);
+          await window.NMSUi.alert(error.message);
         }
       });
     });

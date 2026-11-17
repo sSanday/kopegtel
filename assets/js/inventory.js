@@ -352,18 +352,22 @@
         const res = await window.apiFetch(`/api/devices/${id}`);
         window.openDeviceForm({ device: res.device, onSaved: () => { window.NMSStore.invalidate(); loadHosts(); } });
       } catch (error) {
-        alert(error.message || "Gagal memuat perangkat.");
+        await window.NMSUi.alert(error.message || "Gagal memuat perangkat.");
       }
       return;
     }
     if (button.dataset.action === "delete") {
-      if (!window.confirm("Hapus perangkat ini? Riwayat pemeriksaan dan metriknya ikut terhapus.")) return;
+      if (!(await window.NMSUi.confirm("Hapus perangkat ini? Riwayat pemeriksaan dan metriknya ikut terhapus.", {
+        title: "Hapus perangkat",
+        confirmLabel: "Hapus",
+        danger: true,
+      }))) return;
       try {
         await window.apiFetch(`/api/devices/${id}`, { method: "DELETE" });
         window.NMSStore.invalidate();
         loadHosts();
       } catch (error) {
-        alert(error.message || "Gagal menghapus perangkat.");
+        await window.NMSUi.alert(error.message || "Gagal menghapus perangkat.");
       }
     }
   });
