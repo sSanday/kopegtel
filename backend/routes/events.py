@@ -14,7 +14,7 @@ import db
 import netguard
 from core.csvsafe import csv_cell
 from core.guard import audit, roles
-from core.validation import parse_finite_int
+from core.validation import SQLITE_INT64_MAX, parse_finite_int, parse_query_int
 from ingest import INGEST
 from ingest import rules as ingest_rules
 
@@ -34,16 +34,19 @@ def _finite_int(value):
 
 
 def _int_arg(name, default, low, high):
-    try:
-        value = int(request.args.get(name, default))
-    except (TypeError, ValueError, OverflowError):
-        value = default
-    return min(high, max(low, value))
+    return parse_query_int(
+        request.args.get(name), default, min_value=low, max_value=high
+    )
 
 
 def _filters():
     return {
-        "device_id": request.args.get("device_id") or None,
+        "device_id": parse_query_int(
+            request.args.get("device_id"),
+            None,
+            min_value=0,
+            max_value=SQLITE_INT64_MAX,
+        ),
         "q": (request.args.get("q") or "").strip()[:200] or None,
         "start": request.args.get("from") or None,
         "end": request.args.get("to") or None,

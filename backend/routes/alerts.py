@@ -6,7 +6,12 @@ import alerts
 import db
 import netguard
 from core.guard import audit, roles
-from core.validation import _parse_optional_id, parse_finite_int
+from core.validation import (
+    SQLITE_INT64_MAX,
+    _parse_optional_id,
+    parse_finite_int,
+    parse_query_int,
+)
 
 bp = Blueprint("alerts", __name__)
 
@@ -478,11 +483,10 @@ def api_delete_rule(rule_id):
 
 @bp.get("/api/action-log")
 def api_action_log():
-    try:
-        limit = min(500, max(1, int(request.args.get("limit", "100"))))
-        offset = max(0, int(request.args.get("offset", "0")))
-    except ValueError:
-        limit, offset = 100, 0
+    limit = parse_query_int(request.args.get("limit"), 100, min_value=1, max_value=500)
+    offset = parse_query_int(
+        request.args.get("offset"), 0, min_value=0, max_value=SQLITE_INT64_MAX
+    )
     status = (request.args.get("status") or "").strip().lower() or None
     if status and status not in ("sent", "failed", "skipped"):
         return jsonify({"error": "Status tidak valid."}), 400

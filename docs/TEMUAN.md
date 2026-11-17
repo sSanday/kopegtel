@@ -677,10 +677,10 @@ Perbaikan (`backend/core/validation.py`):
   (docstring sebelumnya menyatakan menolak bool, tapi kodenya tidak).
 - `_parse_optional_id` batas atas dijamin `parse_finite_int` (1..int64 max).
 - Helper baru `parse_query_int(raw, default, min_value=, max_value=)` -
-  int() untuk query-string yang tidak pernah melempar (dipakai di dokumentasi;
-  seluruh `int(request.args.get(...))` yang tidak di-wrap sudah diverifikasi
-  terbungkus try/except di seluruh routes, mis. audit-log/devices/mikrotik/
-  problems/services - perilaku tidak berubah).
+  int() untuk query-string yang tidak pernah melempar. **Koreksi:** klaim awal
+  bahwa seluruh `int(request.args.get(...))` aman karena dibungkus
+  `try/except ValueError` ternyata salah (angka besar seperti `10**30` adalah
+  int valid, bukan ValueError); lihat "L-2 (lanjutan 2)" di bawah.
 - Hardening tambahan: `routes/alerts.py` (port SMTP, risiko `1e999` -> inf
   -> `int()` OverflowError) dan `_int_arg` di `routes/events.py` kini
   menangkap OverflowError juga.
@@ -700,6 +700,50 @@ _parse_optional_id, parse_query_int; integrasi: /api/rules channel & template
 raksasa, escalation policy target_id, devices/test existing_id, fiber-links
 device_a_id, topology/apply -> semuanya 400, bukan 500). Suite: 65 passed di
 file itu; suite penuh lihat docs/PROGRES.md.
+
+## L-2 (lanjutan 2) - angka besar query-string -> HTTP 500 (selesai 2026-11-17)
+
+`int()` pada query-string menerima `10**30` sebagai int valid. Blok
+`try/except ValueError` tidak menangkapnya; nilai lolos ke `sqlite3` dan baru
+melempar `OverflowError: Python int too large to convert to SQLite INTEGER`
+saat parameter di-bind -> HTTP 500. Ini melengkapi L-2 (lanjutan): validasi
+JSON sudah memakai `parse_finite_int`, tetapi query-string belum.
+
+Terverifikasi 500 sebelum perbaikan (repro):
+- `GET /api/audit-log?offset=10**30`
+- `GET /api/action-log?offset=10**30`
+- `GET /api/mikrotik/devices?page=10**30`
+- `GET /api/flow/summary?exporter_id=10**30`
+- `GET /api/flow/talkers?kind=src&exporter_id=10**30`
+- `GET /api/devices?page=10**30` dan `?group=10**30`
+- `GET /api/events/syslog?device_id=10**30` (idem `/traps`)
+- `GET /api/mikrotik/devices/<id>/tab/<tab>?page=10**30`
+- `GET /api/mikrotik/devices/<id>/backups/<id>/diff?with=10**30`
+
+Perbaikan:
+- `QUERY_PAGE_MAX = 1_000_000` di `core/validation.py`; `(page-1)*per_page`
+  tetap jauh di bawah int64 meskipun per_page maksimum 500 (500 juta).
+- Route memakai `parse_query_int` dengan batas atas eksplisit:
+  `routes/admin.py` (audit-log limit/offset, top-problems period),
+  `routes/alerts.py` (action-log limit/offset),
+  `routes/devices.py` (page/per_page/group),
+  `routes/events.py` (page/per_page/device_id),
+  `routes/flow.py` (exporter_id/limit),
+  `routes/mikrotik.py` (devices & tab page/per_page, backup diff `with`).
+- Offset, exporter_id, device_id, group, dan `with` dibatasi
+  `SQLITE_INT64_MAX`; limit/per_page memakai batas UI yang sudah ada.
+- Pertahanan berlapis di DB: `db/audit.py`, `db/alerts.py`, `db/devices.py`,
+  `db/flow.py`, `db/ingest.py`, `db/mikrotik.py` juga memakai
+  `parse_query_int`, sehingga pemanggil langsung tidak bisa memicu
+  OverflowError saat bind.
+- Semua endpoint di atas kini **200** dengan nilai di-clamp (filter yang tidak
+  ada menghasilkan daftar kosong); diff backup dengan `with` raksasa menjadi
+  **404** (backup pembanding tidak ada), bukan 500.
+
+Tes: `tests/test_low_findings.py` +4 tes (clamp helper eksak termasuk string
+5000 digit -> default; integrasi 9 endpoint raksasa; tab & diff backup
+MikroTik; pagination DB langsung). Total file **69 passed**; suite penuh
+**414 passed** (17.8 menit) di `docs/PROGRES.md`.
 
 ## L-2 - Input angka non-terhingga menghasilkan HTTP 500 (selesai)
 

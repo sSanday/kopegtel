@@ -8,6 +8,7 @@ from flask import Blueprint, Response, jsonify, request
 import db
 from core.csvsafe import csv_cell
 from core.guard import roles
+from core.validation import SQLITE_INT64_MAX, parse_query_int
 from flow import FLOW
 
 bp = Blueprint("flow", __name__)
@@ -24,17 +25,13 @@ def _exporter_id():
     raw = request.args.get("exporter_id") or request.args.get("exporter")
     if not raw:
         return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
+    return parse_query_int(raw, None, min_value=0, max_value=SQLITE_INT64_MAX)
 
 
 def _limit(default=10, cap=1000):
-    try:
-        return min(cap, max(1, int(request.args.get("limit", str(default)))))
-    except (TypeError, ValueError):
-        return default
+    return parse_query_int(
+        request.args.get("limit"), default, min_value=1, max_value=cap
+    )
 
 
 def _csv_response(filename, header, rows):

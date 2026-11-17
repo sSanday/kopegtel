@@ -13,6 +13,11 @@ from .connection import (
 from .fiber import (
     optical_summary_counts,
 )
+from core.validation import (
+    QUERY_PAGE_MAX,
+    SQLITE_INT64_MAX,
+    parse_query_int,
+)
 
 def row_to_device(row):
     """Bentuk dict publik — tanpa secret."""
@@ -133,8 +138,8 @@ def availability_map(days=1):
 def query_devices(search="", status="", device_type="", group_id=None, page=1, per_page=20,
                   routeros_version="", mikrotik_model=""):
     """List perangkat dengan filter server-side + pagination."""
-    page = max(1, int(page or 1))
-    per_page = min(100, max(1, int(per_page or 20)))
+    page = parse_query_int(page, 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(per_page, 20, min_value=1, max_value=100)
     where, params = [], []
     if search:
         like = f"%{search.strip().lower()}%"
@@ -157,7 +162,9 @@ def query_devices(search="", status="", device_type="", group_id=None, page=1, p
             where.append("devices.group_id IS NULL")
         else:
             where.append("devices.group_id = ?")
-            params.append(int(group_id))
+            params.append(
+                parse_query_int(group_id, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+            )
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
     with _lock:
         total = get_conn().execute(f"SELECT COUNT(*) AS n FROM devices {where_sql}", params).fetchone()["n"]

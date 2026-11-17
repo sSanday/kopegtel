@@ -16,6 +16,7 @@ from .devices import (
     get_device,
     row_to_device,
 )
+from core.validation import QUERY_PAGE_MAX, SQLITE_INT64_MAX, parse_query_int
 
 MT_MODULE_DEFAULTS = {
     "ppp": True,
@@ -443,7 +444,11 @@ def list_mt_logs(device_id, *, severity=None, topics=None, search=None, limit=20
         ).fetchone()["n"]
         rows = get_conn().execute(
             f"SELECT * FROM mt_logs WHERE {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
-            [*params, min(1000, max(1, int(limit))), max(0, int(offset))],
+            [
+                *params,
+                parse_query_int(limit, 200, min_value=1, max_value=1000),
+                parse_query_int(offset, 0, min_value=0, max_value=SQLITE_INT64_MAX),
+            ],
         ).fetchall()
     return [dict(row) for row in rows], total
 
@@ -681,8 +686,8 @@ def _mt_bulk_enrich(device_ids):
 
 def query_mt_devices(search="", status="", version="", firmware="", model="", page=1, per_page=25):
     """Daftar perangkat MikroTik dengan filter/pagination sisi server."""
-    page = max(1, int(page or 1))
-    per_page = min(100, max(1, int(per_page or 25)))
+    page = parse_query_int(page, 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(per_page, 25, min_value=1, max_value=100)
     where = ["(devices.type = 'mikrotik' OR devices.mikrotik_enabled = 1)"]
     params = []
     if search:

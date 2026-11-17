@@ -14,6 +14,7 @@ from .connection import (
     _now,
     get_conn,
 )
+from core.validation import SQLITE_INT64_MAX, parse_query_int
 
 MAX_KEY_BYTES = 180
 FLOW_KINDS = ("src", "dst", "pair", "app", "proto", "interface")
@@ -256,7 +257,9 @@ def flow_summary(range_key="1h", exporter_id=None):
     where = f"{ts_col} >= ?"
     if exporter_id:
         where += " AND exporter_device_id = ?"
-        params.append(int(exporter_id))
+        params.append(
+            parse_query_int(exporter_id, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+        )
     with _lock:
         conn = get_conn()
         totals = conn.execute(
@@ -314,7 +317,9 @@ def flow_top(kind, range_key="1h", exporter_id=None, limit=10):
     where = f"kind = ? AND {ts_col} >= ?"
     if exporter_id:
         where += " AND exporter_device_id = ?"
-        params.append(int(exporter_id))
+        params.append(
+            parse_query_int(exporter_id, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+        )
     limit = max(1, min(1000, int(limit or 10)))
     with _lock:
         rows = get_conn().execute(

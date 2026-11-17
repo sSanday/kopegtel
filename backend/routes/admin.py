@@ -21,7 +21,7 @@ from core.constants import SLA_PERIODS
 from core.csvsafe import csv_row
 from core.env import APP_VERSION, SERVER_STARTED
 from core.guard import audit, roles
-from core.validation import parse_finite_int
+from core.validation import SQLITE_INT64_MAX, parse_finite_int, parse_query_int
 
 bp = Blueprint("admin", __name__)
 log = logging.getLogger("nms.admin")
@@ -35,11 +35,10 @@ log = logging.getLogger("nms.admin")
 def api_audit_log():
     search = (request.args.get("search") or "").strip() or None
     action = (request.args.get("action") or "").strip() or None
-    try:
-        limit = min(500, max(1, int(request.args.get("limit", "100"))))
-        offset = max(0, int(request.args.get("offset", "0")))
-    except ValueError:
-        limit, offset = 100, 0
+    limit = parse_query_int(request.args.get("limit"), 100, min_value=1, max_value=500)
+    offset = parse_query_int(
+        request.args.get("offset"), 0, min_value=0, max_value=SQLITE_INT64_MAX
+    )
     return jsonify(db.list_audit_log(search=search, action=action, limit=limit, offset=offset))
 
 
@@ -117,10 +116,7 @@ def api_report_availability_csv():
 
 @bp.get("/api/reports/top-problems")
 def api_report_top_problems():
-    try:
-        period = min(90, max(1, int(request.args.get("period", "7"))))
-    except ValueError:
-        period = 7
+    period = parse_query_int(request.args.get("period"), 7, min_value=1, max_value=90)
     since = (datetime.now(timezone.utc) - timedelta(days=period)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = db.top_problems(since, limit=20)
     return jsonify({"period_days": period, "rows": rows})

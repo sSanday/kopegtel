@@ -16,6 +16,8 @@ from core.guard import audit, roles
 from core.metrics import downsample as _downsample, range_since as _range_since
 from core.validation import (
     DEVICE_TYPES,
+    QUERY_PAGE_MAX,
+    SQLITE_INT64_MAX,
     _SNMP_AUTH_PROTOS,
     _SNMP_PRIV_PROTOS,
     _SNMP_VERSIONS,
@@ -25,6 +27,7 @@ from core.validation import (
     _parse_ip,
     _parse_optional_id,
     _parse_port,
+    parse_query_int,
 )
 
 bp = Blueprint("devices", __name__)
@@ -218,14 +221,16 @@ def api_list_devices():
     search = request.args.get("search", "").strip()
     status = request.args.get("status", "").strip().lower()
     device_type = request.args.get("type", "").strip().lower()
-    group = request.args.get("group")
-    page = request.args.get("page", 1)
-    per_page = request.args.get("per_page", 20)
-    try:
-        page = max(1, int(page))
-        per_page = min(100, max(1, int(per_page)))
-    except (TypeError, ValueError):
-        page, per_page = 1, 20
+    group = (request.args.get("group") or "").strip() or None
+    if group not in (None, "none"):
+        group_id = parse_query_int(
+            group, None, min_value=0, max_value=SQLITE_INT64_MAX
+        )
+        if group_id is None or group_id < 1:
+            return jsonify({"error": "Grup tidak valid."}), 400
+        group = group_id
+    page = parse_query_int(request.args.get("page"), 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(request.args.get("per_page"), 20, min_value=1, max_value=100)
     if status and status not in ("online", "degraded", "offline", "unknown", "maintenance"):
         return jsonify({"error": "Status tidak valid."}), 400
     return jsonify(

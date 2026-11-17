@@ -13,6 +13,11 @@ ALLOWED_NETWORKS = parse_allowed_networks(os.environ.get("ALLOWED_NETWORKS", "")
 SQLITE_INT64_MAX = 2**63 - 1
 SQLITE_INT64_MIN = -(2**63)
 
+# Nomor halaman query-string dikalikan per_page sebelum menjadi OFFSET.
+# Batasi halaman agar hasil kali tetap jauh di bawah int64 meskipun per_page
+# maksimum (500): 1.000.000 * 500 = 500 juta << 9,22e18.
+QUERY_PAGE_MAX = 1_000_000
+
 DEVICE_TYPES = {
     "mikrotik", "router", "switch", "access-point", "server",
     "olt", "ont", "firewall", "lainnya",

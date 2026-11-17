@@ -16,6 +16,7 @@ from .connection import (
     encrypt_secret,
     get_conn,
 )
+from core.validation import QUERY_PAGE_MAX, SQLITE_INT64_MAX, parse_query_int
 
 _SEVERITY_RANK = {"disaster": 5, "high": 4, "average": 3, "warning": 2, "information": 1}
 _SYSLOG_SEVERITY = {
@@ -163,18 +164,20 @@ def list_syslog_events(*, device_id=None, severity=None, q=None, start=None, end
     where, params = ["1=1"], []
     if device_id:
         where.append("e.device_id = ?")
-        params.append(int(device_id))
+        params.append(
+            parse_query_int(device_id, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+        )
     if severity not in (None, ""):
         where.append("e.severity = ?")
-        params.append(int(severity))
+        params.append(parse_query_int(severity, -1, min_value=-1, max_value=7))
     if q:
         where.append("(lower(e.message) LIKE ? OR lower(COALESCE(e.tag, '')) LIKE ?)")
         like = f"%{str(q).strip().lower()}%"
         params.extend([like, like])
     _time_filters(where, params, start, end)
     where_sql = " AND ".join(where)
-    per_page = min(500, max(1, int(per_page or 50)))
-    page = max(1, int(page or 1))
+    per_page = parse_query_int(per_page, 50, min_value=1, max_value=500)
+    page = parse_query_int(page, 1, min_value=1, max_value=QUERY_PAGE_MAX)
     with _lock:
         conn = get_conn()
         total = conn.execute(
@@ -186,7 +189,10 @@ def list_syslog_events(*, device_id=None, severity=None, q=None, start=None, end
             " ORDER BY e.id DESC LIMIT ? OFFSET ?"
         )
         if limit is not None:
-            rows = conn.execute(sql, [*params, min(10000, int(limit)), 0]).fetchall()
+            rows = conn.execute(
+                sql,
+                [*params, parse_query_int(limit, 10000, min_value=1, max_value=10000), 0],
+            ).fetchall()
         else:
             rows = conn.execute(sql, [*params, per_page, (page - 1) * per_page]).fetchall()
     return {"total": total, "entries": [dict(row) for row in rows], "page": page, "per_page": per_page}
@@ -196,15 +202,17 @@ def list_snmp_traps(*, device_id=None, q=None, start=None, end=None, page=1, per
     where, params = ["1=1"], []
     if device_id:
         where.append("e.device_id = ?")
-        params.append(int(device_id))
+        params.append(
+            parse_query_int(device_id, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+        )
     if q:
         where.append("(lower(e.trap_oid) LIKE ? OR lower(COALESCE(e.trap_name, '')) LIKE ?)")
         like = f"%{str(q).strip().lower()}%"
         params.extend([like, like])
     _time_filters(where, params, start, end)
     where_sql = " AND ".join(where)
-    per_page = min(500, max(1, int(per_page or 50)))
-    page = max(1, int(page or 1))
+    per_page = parse_query_int(per_page, 50, min_value=1, max_value=500)
+    page = parse_query_int(page, 1, min_value=1, max_value=QUERY_PAGE_MAX)
     with _lock:
         conn = get_conn()
         total = conn.execute(
@@ -216,7 +224,10 @@ def list_snmp_traps(*, device_id=None, q=None, start=None, end=None, page=1, per
             " ORDER BY e.id DESC LIMIT ? OFFSET ?"
         )
         if limit is not None:
-            rows = conn.execute(sql, [*params, min(10000, int(limit)), 0]).fetchall()
+            rows = conn.execute(
+                sql,
+                [*params, parse_query_int(limit, 10000, min_value=1, max_value=10000), 0],
+            ).fetchall()
         else:
             rows = conn.execute(sql, [*params, per_page, (page - 1) * per_page]).fetchall()
     return {"total": total, "entries": [dict(row) for row in rows], "page": page, "per_page": per_page}

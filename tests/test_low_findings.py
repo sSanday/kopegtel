@@ -211,6 +211,98 @@ def test_parse_query_int_never_raises():
     assert parse_query_int("0", 0, min_value=0, max_value=2**63 - 1) == 0
 
 
+def test_parse_query_int_clamps_huge_values_exactly():
+    from core.validation import SQLITE_INT64_MAX, parse_query_int
+
+    huge = str(10**30)
+    assert (
+        parse_query_int(huge, 0, min_value=0, max_value=SQLITE_INT64_MAX)
+        == SQLITE_INT64_MAX
+    )
+    assert parse_query_int("-" + huge, 0, min_value=0, max_value=SQLITE_INT64_MAX) == 0
+    # Melewati batas digit int() Python -> kembali ke default, bukan error.
+    assert parse_query_int("9" * 5000, 7, min_value=1, max_value=90) == 7
+
+
+# Query-string angka besar: int() valid (bukan ValueError), tetapi bind ke
+# SQLite melempar OverflowError -> HTTP 500. Semua harus di-clamp helper.
+def test_huge_query_ints_are_clamped_not_500(client, fresh_db):
+    from core.validation import QUERY_PAGE_MAX
+
+    _mk_user(fresh_db, "l2-query", "l2-query-password", role="admin")
+    _csrf(client, "l2-query", "l2-query-password")
+    huge = str(10**30)
+    paths = [
+        f"/api/audit-log?limit={huge}&offset={huge}",
+        f"/api/action-log?limit={huge}&offset={huge}",
+        f"/api/mikrotik/devices?page={huge}&per_page={huge}",
+        f"/api/devices?page={huge}&per_page={huge}",
+        f"/api/devices?group={huge}",
+        f"/api/flow/summary?exporter_id={huge}",
+        f"/api/flow/talkers?kind=src&exporter_id={huge}",
+        f"/api/events/syslog?device_id={huge}",
+        f"/api/events/traps?device_id={huge}",
+    ]
+    for path in paths:
+        response = client.get(path)
+        assert response.status_code == 200, (
+            path, response.status_code, response.get_json()
+        )
+
+    body = client.get(f"/api/mikrotik/devices?page={huge}&per_page={huge}").get_json()
+    assert body["page"] == QUERY_PAGE_MAX
+    assert body["per_page"] == 100
+
+    body = client.get(f"/api/devices?page={huge}&per_page={huge}").get_json()
+    assert body["page"] == QUERY_PAGE_MAX
+    assert body["per_page"] == 100
+    assert body["devices"] == []
+
+    assert client.get(f"/api/devices?group={huge}").get_json()["devices"] == []
+    assert client.get(f"/api/flow/summary?exporter_id={huge}").get_json()["exporters"] == []
+
+
+def test_huge_query_int_on_mikrotik_tab_and_backup_not_500(client, fresh_db):
+    device_id = fresh_db.create_device({
+        "name": "l2-query-mt", "ip": "10.30.9.1", "type": "mikrotik", "location": "",
+        "poll_interval": 60, "group_id": None, "parent_id": None,
+        "maintenance": False, "snmp_enabled": False, "snmp_version": "v2c",
+        "snmp_port": 161, "snmp_v3_auth_proto": "SHA", "snmp_v3_priv_proto": "AES",
+        "mikrotik_enabled": True, "mikrotik_port": 8728,
+        "mikrotik_user": "api", "mikrotik_password": None, "mikrotik_ssl": False,
+    })
+    _mk_user(fresh_db, "l2-query-mt", "l2-query-mt-password", role="admin")
+    _csrf(client, "l2-query-mt", "l2-query-mt-password")
+    huge = str(10**30)
+
+    response = client.get(
+        f"/api/mikrotik/devices/{device_id}/tab/interfaces?page={huge}&per_page={huge}"
+    )
+    assert response.status_code == 200, response.get_json()
+
+    # with_id besar harus menjadi 404 (tidak ada backup), bukan 500 bind overflow.
+    backup = fresh_db.create_mt_backup(
+        device_id, source="manual", filename="v1.rsc", size=1,
+        sha256="0" * 64, content_encrypted=fresh_db.encrypt_secret("x\n"),
+    )
+    response = client.get(
+        f"/api/mikrotik/devices/{device_id}/backups/{backup['id']}/diff?with={huge}"
+    )
+    assert response.status_code == 404, response.get_json()
+
+
+def test_db_pagination_with_huge_values_never_raises(fresh_db):
+    huge = 10**30
+    assert fresh_db.list_audit_log(offset=huge)["entries"] == []
+    assert fresh_db.list_action_log(offset=huge)["entries"] == []
+    assert fresh_db.query_devices(page=huge, group_id=huge)["devices"] == []
+    assert fresh_db.query_mt_devices(page=huge)["devices"] == []
+    assert fresh_db.list_syslog_events(device_id=huge)["entries"] == []
+    assert fresh_db.list_snmp_traps(device_id=huge)["entries"] == []
+    assert fresh_db.flow.flow_summary(exporter_id=huge)["exporters"] == []
+    assert fresh_db.flow.flow_top("src", exporter_id=huge) == []
+
+
 def test_action_rule_huge_channel_id_returns_400_not_500(client, fresh_db):
     _mk_user(fresh_db, "l2-rule", "l2-rule-password", role="admin")
     csrf = _csrf(client, "l2-rule", "l2-rule-password")

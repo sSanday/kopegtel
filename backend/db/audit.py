@@ -11,6 +11,7 @@ from .connection import (
 from .devices import (
     summary,
 )
+from core.validation import SQLITE_INT64_MAX, parse_query_int
 
 # Batas panjang field audit. SQLite tidak menegakkan VARCHAR, jadi nilai dari
 # pemanggil (termasuk username login yang tidak terautentikasi) harus dipotong
@@ -58,7 +59,8 @@ def count_recent_audit(action, minutes):
     return int(row["n"] or 0)
 
 def list_audit_log(search=None, action=None, limit=100, offset=0):
-    limit = min(500, max(1, int(limit or 100)))
+    limit = parse_query_int(limit, 100, min_value=1, max_value=500)
+    offset = parse_query_int(offset, 0, min_value=0, max_value=SQLITE_INT64_MAX)
     where, params = [], []
     if search:
         like = f"%{search.strip().lower()}%"
@@ -72,7 +74,7 @@ def list_audit_log(search=None, action=None, limit=100, offset=0):
         total = get_conn().execute(f"SELECT COUNT(*) AS n FROM audit_log {where_sql}", params).fetchone()["n"]
         rows = get_conn().execute(
             f"SELECT * FROM audit_log {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
-            [*params, limit, int(offset or 0)],
+            [*params, limit, offset],
         ).fetchall()
     return {"total": total, "entries": [dict(r) for r in rows]}
 

@@ -37,7 +37,12 @@ from core.csvsafe import csv_row
 import netguard
 from core.guard import audit, client_ip, roles
 from core.metrics import downsample as _downsample, range_since as _range_since
-from core.validation import parse_finite_int
+from core.validation import (
+    QUERY_PAGE_MAX,
+    SQLITE_INT64_MAX,
+    parse_finite_int,
+    parse_query_int,
+)
 
 bp = Blueprint("mikrotik", __name__)
 
@@ -219,8 +224,8 @@ def _mt_filter_rows(rows, search, fields):
 
 
 def _mt_page(rows, page, per_page):
-    page = max(1, int(page or 1))
-    per_page = min(200, max(1, int(per_page or 50)))
+    page = parse_query_int(page, 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(per_page, 50, min_value=1, max_value=200)
     total = len(rows)
     start = (page - 1) * per_page
     return {
@@ -530,11 +535,8 @@ def api_mt_filter_options():
 
 @bp.get("/api/mikrotik/devices")
 def api_mt_devices():
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-        per_page = min(100, max(1, int(request.args.get("per_page", 25))))
-    except (TypeError, ValueError):
-        page, per_page = 1, 25
+    page = parse_query_int(request.args.get("page"), 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(request.args.get("per_page"), 25, min_value=1, max_value=100)
     return jsonify(
         db.query_mt_devices(
             search=request.args.get("search", "").strip(),
@@ -617,11 +619,8 @@ def api_mt_tab(device_id, tab):
     if device is None:
         return jsonify({"error": "Perangkat MikroTik tidak ditemukan."}), 404
     role = g.user["role"]
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-        per_page = min(200, max(1, int(request.args.get("per_page", 50))))
-    except (TypeError, ValueError):
-        page, per_page = 1, 50
+    page = parse_query_int(request.args.get("page"), 1, min_value=1, max_value=QUERY_PAGE_MAX)
+    per_page = parse_query_int(request.args.get("per_page"), 50, min_value=1, max_value=200)
     settings = db.get_mt_device_settings(device_id)
     caps = db.get_mt_capabilities(device_id)
     exists = db.mt_snapshot_updated_at("mt_interfaces", device_id) is not None
@@ -1102,7 +1101,9 @@ def api_mt_backup_diff(device_id, backup_id):
     if device is None:
         return jsonify({"error": "Perangkat MikroTik tidak ditemukan."}), 404
     with_raw = request.args.get("with", "").strip()
-    with_id = int(with_raw) if with_raw.isdigit() else None
+    with_id = parse_query_int(
+        with_raw, None, min_value=0, max_value=SQLITE_INT64_MAX
+    )
     result = backups.backup_diff(device_id, backup_id, with_id)
     if result is None:
         return jsonify({"error": "Backup tidak ditemukan."}), 404

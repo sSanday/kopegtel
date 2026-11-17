@@ -253,7 +253,15 @@ Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
   menolak bool di `parse_finite_float`/`parse_finite_int`; `_parse_optional_id`
   batas atas int64; helper `parse_query_int` untuk query-string; hardening
   OverflowError di port SMTP & `_int_arg`. Repro `channel_id: 10**30` -> 400
-  (dulu 500); semua `int(request.args...)` terverifikasi ter-wrap atau aman
-  (int dari string tidak bisa OverflowError). `tests/test_low_findings.py`
-  kini **65 tes**; suite penuh **410 passed** (17.4 menit). Server di-restart
-  dengan kode ini (healthz ok).
+  (dulu 500). `tests/test_low_findings.py` kini **65 tes**; suite penuh
+  **410 passed** (17.4 menit). Server di-restart dengan kode ini (healthz ok).
+- L-2 lanjutan 2 (query-string) 2026-11-17: klaim "semua int(request.args...)
+  aman" di atas keliru - `10**30` adalah int valid sehingga lolos
+  `try/except ValueError` dan melempar OverflowError saat bind SQLite -> 500.
+  Semua titik query-string kini memakai `parse_query_int` dengan batas
+  eksplisit: audit-log/action-log offset (int64 max), mikrotik devices/tab
+  page (`QUERY_PAGE_MAX=1e6`) & per_page, flow exporter_id/limit, devices
+  page/per_page/group, events device_id, backup diff `with`. Layer DB ikut
+  clamp (audit, alerts, devices, flow, ingest, mikrotik). Tes +4 di
+  `tests/test_low_findings.py` (total **69 passed**); suite penuh
+  **414 passed** (17.8 menit).

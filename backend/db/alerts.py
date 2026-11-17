@@ -10,6 +10,7 @@ from .connection import (
     encrypt_secret,
     get_conn,
 )
+from core.validation import SQLITE_INT64_MAX, parse_query_int
 
 _KEEP_IF_EMPTY = (
     "bot_token", "password", "auth_password", "secret",
@@ -231,7 +232,8 @@ def delete_rule(rule_id):
         return cursor.rowcount > 0
 
 def list_action_log(limit=100, offset=0, status=None):
-    limit = min(500, max(1, int(limit or 100)))
+    limit = parse_query_int(limit, 100, min_value=1, max_value=500)
+    offset = parse_query_int(offset, 0, min_value=0, max_value=SQLITE_INT64_MAX)
     where, params = [], []
     if status:
         where.append("status = ?")
@@ -248,7 +250,7 @@ def list_action_log(limit=100, offset=0, status=None):
             LEFT JOIN devices d ON d.id = a.device_id
             {where_sql} ORDER BY a.id DESC LIMIT ? OFFSET ?
             """,
-            [*params, limit, int(offset or 0)],
+            [*params, limit, offset],
         ).fetchall()
     return {"total": total, "entries": [dict(r) for r in rows]}
 
