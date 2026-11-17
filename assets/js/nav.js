@@ -214,7 +214,8 @@
     const roles = child.roles || ["admin", "operator", "viewer"];
     if (!roles.includes(role)) return "";
     const [childPage, childHash] = child.href.split("#");
-    const isActive = childPage === pageName && ("#" + (childHash || "")) === hash;
+    // Tanpa hash, tampilan pertama adalah tampilan bawaan halaman.
+    const isActive = childPage === pageName && (hash ? "#" + (childHash || "") === hash : index === 0);
     const badge = child.badge === "problems" ? '<span class="nav__badge nav__badge--danger" data-problems-badge hidden>0</span>' : "";
     return (
       `<a class="nav__sublink${isActive ? " is-active" : ""}" href="${escapeHtml(child.href)}"${isActive ? ' aria-current="page"' : ""}>` +
@@ -248,7 +249,7 @@
       const isOpen = groupCurrent;
       parts.push(
         `<div class="nav__group${groupCurrent ? " is-current" : ""}${isOpen ? " is-open" : ""}" data-nav-group>` +
-          `<button class="nav__link nav__toggle" type="button" data-nav-toggle aria-expanded="${isOpen}" aria-controls="nav-${escapeHtml(item.id)}">` +
+          `<button class="nav__link nav__toggle" type="button" data-nav-toggle aria-expanded="${isOpen}"${groupCurrent ? ' aria-current="true"' : ""} aria-controls="nav-${escapeHtml(item.id)}">` +
             ICONS[item.icon] +
             `<span class="nav__toggle-label">${escapeHtml(item.label)}</span>${badge}${CHEVRON}` +
           "</button>" +
@@ -264,7 +265,7 @@
         '<span class="user__meta"><span class="user__name" id="user-name"></span><span class="user__role" id="user-role"></span></span>' +
       "</div>" +
       `<a class="nav__link" href="profile.html" style="margin-top: .35rem;">${ICONS.profile}<span class="nav__toggle-label">Profil</span></a>` +
-      `<button class="logout" id="logout" type="button">${ICONS.logout}<span>Keluar</span></button>` +
+      `<button class="logout" id="logout" type="button" aria-label="Keluar">${ICONS.logout}<span>Keluar</span></button>` +
       "</div>"
     );
 
@@ -327,7 +328,16 @@
       window.rememberCsrf(me.csrf_token);
       renderNav(container, me);
       refreshProblemsBadge();
-      window.addEventListener("hashchange", () => renderNav(container, window.__nmsMe || me));
+      // Hash berubah: render ulang menu, lalu pindahkan fokus ke judul
+      // supaya pengguna keyboard/screen reader tidak kehilangan posisi.
+      window.addEventListener("hashchange", () => {
+        renderNav(container, window.__nmsMe || me);
+        const title = document.getElementById("view-title");
+        if (title) {
+          title.setAttribute("tabindex", "-1");
+          title.focus({ preventScroll: true });
+        }
+      });
       window.addEventListener("nms:problems-changed", refreshProblemsBadge);
       window.dispatchEvent(new CustomEvent("nms:me-ready"));
     } catch {

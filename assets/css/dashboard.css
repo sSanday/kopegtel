@@ -1696,6 +1696,11 @@ td strong {
     gap: 0.25rem;
   }
 
+  .nav__toggle {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
   .nav__group {
     display: contents;
   }

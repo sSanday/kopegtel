@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=2" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=3" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -70,9 +70,9 @@
               </label>
               <fieldset class="admin-field admin-field--full">
                 <legend class="admin-hint"><strong>MFA wajib untuk peran</strong> (TOTP / aplikasi autentikator)</legend>
-                <span class="check check--inline"><input type="checkbox" class="mfa-role" value="admin" id="mfa-role-admin" /> Administrator</span>
-                <span class="check check--inline"><input type="checkbox" class="mfa-role" value="operator" id="mfa-role-operator" /> Operator</span>
-                <span class="check check--inline"><input type="checkbox" class="mfa-role" value="viewer" id="mfa-role-viewer" /> Pengamat</span>
+                <label class="check check--inline"><input type="checkbox" class="mfa-role" value="admin" id="mfa-role-admin" /> Administrator</label>
+                <label class="check check--inline"><input type="checkbox" class="mfa-role" value="operator" id="mfa-role-operator" /> Operator</label>
+                <label class="check check--inline"><input type="checkbox" class="mfa-role" value="viewer" id="mfa-role-viewer" /> Pengamat</label>
                 <label class="admin-field field-narrow">
                   <span>Masa tenggang (hari)</span>
                   <input id="mfa-grace-days" type="number" min="0" max="365" step="1" inputmode="numeric" value="7" />
@@ -360,7 +360,7 @@
   <script src="assets/js/format.js?v=3" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=11" defer></script>
+  <script src="assets/js/nav.js?v=12" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
   <script src="assets/js/device-form.js?v=3" defer></script>
