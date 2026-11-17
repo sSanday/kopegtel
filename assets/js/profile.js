@@ -88,11 +88,22 @@
   });
 
   // ---------------- MFA setup ----------------
+  /** SVG (teks) → data URI base64 tanpa unescape() yang deprecated. */
+  function svgDataUri(svg) {
+    const bytes = new TextEncoder().encode(String(svg));
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return `data:image/svg+xml;base64,${btoa(binary)}`;
+  }
+
   $("mfa-start").addEventListener("click", async () => {
     try {
       const data = await window.apiFetch("/api/mfa/setup", { method: "POST" });
       $("mfa-qr").innerHTML = data.qr_svg
-        ? `<img alt="QR MFA" width="180" height="180" src="data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(data.qr_svg)))}" />`
+        ? `<img alt="QR MFA" width="180" height="180" src="${svgDataUri(data.qr_svg)}" />`
         : "";
       $("mfa-secret").textContent = data.secret || "";
       $("mfa-uri").textContent = data.otpauth_uri || "";
@@ -122,9 +133,10 @@
       });
       setupBlock.hidden = true;
       const list = $("mfa-recovery-list");
-      list.innerHTML = (data.recovery_codes || []).map((code) => `<li>${escapeHtml(code)}</li>`).join("");
+      const codes = data.recovery_codes || [];
+      list.innerHTML = codes.map((code) => `<li>${escapeHtml(code)}</li>`).join("");
       recoveryBlock.hidden = false;
-      statusEl.textContent = "MFA aktif. Sisa kode pemulihan: 10.";
+      statusEl.textContent = `MFA aktif. Sisa kode pemulihan: ${codes.length}.`;
     } catch (error) {
       note.textContent = error.message;
       note.classList.add("is-error");
