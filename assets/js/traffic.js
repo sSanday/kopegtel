@@ -51,8 +51,15 @@
 
   document.querySelectorAll("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
-      window.location.hash = button.dataset.tab;
-      activate(button.dataset.tab);
+      const tab = button.dataset.tab;
+      if (!TABS[tab]) return;
+      // Muat hanya lewat satu jalur: set hash → hashchange → activate().
+      // Klik tab yang sudah aktif tetap memuat ulang sekali (tanpa event hash).
+      if (window.location.hash === `#${tab}`) {
+        activate(tab);
+        return;
+      }
+      window.location.hash = tab;
     });
   });
   window.addEventListener("hashchange", () => activate(window.location.hash.slice(1)));
