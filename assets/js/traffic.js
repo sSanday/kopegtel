@@ -65,12 +65,17 @@
   window.addEventListener("hashchange", () => activate(window.location.hash.slice(1)));
   $("refresh").addEventListener("click", () => activate(currentTab));
 
-  $("flow-exporter").addEventListener("change", (event) => {
+  $("flow-exporter").addEventListener("change", async (event) => {
     currentExporter = event.target.value;
+    // Opsi interface milik eksporter lama — muat ulang agar tidak menyesatkan.
+    currentInterface = "";
+    await loadInterfaceOptions();
     activate(currentTab);
   });
-  $("flow-range").addEventListener("change", (event) => {
+  $("flow-range").addEventListener("change", async (event) => {
     currentRange = event.target.value;
+    currentInterface = "";
+    await loadInterfaceOptions();
     activate(currentTab);
   });
   $("flow-interface").addEventListener("change", (event) => {

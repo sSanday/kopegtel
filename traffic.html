@@ -29,7 +29,6 @@
       <div class="filters" role="group" aria-label="Rentang dan eksporter">
         <label class="admin-field"><span>Eksporter</span><select id="flow-exporter"><option value="">Semua eksporter</option></select></label>
         <label class="admin-field"><span>Rentang</span><select id="flow-range"><option value="1h" selected>1 jam terakhir</option><option value="24h">24 jam terakhir</option><option value="7d">7 hari terakhir</option></select></label>
-        <label class="admin-field" id="flow-interface-wrap"><span>Interface</span><select id="flow-interface"><option value="">Semua interface</option></select></label>
       </div>
 
       <nav class="filters" aria-label="Tab traffic">
@@ -70,7 +69,12 @@
         </div>
 
         <section class="panel" id="flow-if-panel" aria-labelledby="flow-if-title">
-          <div class="panel__head"><div><h2 class="panel__title" id="flow-if-title">Trafik per interface</h2><p class="panel__sub">ifIndex → nama interface dari snapshot terakhir.</p></div></div>
+          <div class="panel__head">
+            <div><h2 class="panel__title" id="flow-if-title">Trafik per interface</h2><p class="panel__sub">ifIndex → nama interface dari snapshot terakhir. Filter di sini hanya memengaruhi tabel ini.</p></div>
+            <div class="filters">
+              <label class="admin-field" id="flow-interface-wrap"><span>Interface</span><select id="flow-interface"><option value="">Semua interface</option></select></label>
+            </div>
+          </div>
           <div class="table-wrap">
             <table class="mon-table">
               <thead><tr><th>Interface</th><th>Arah</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
@@ -179,6 +183,6 @@
   <script src="assets/js/store.js?v=1" defer></script>
   <script src="assets/js/nav.js?v=10" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
-  <script src="assets/js/traffic.js?v=3" defer></script>
+  <script src="assets/js/traffic.js?v=4" defer></script>
 </body>
 </html>
