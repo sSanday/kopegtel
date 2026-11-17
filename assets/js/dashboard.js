@@ -24,10 +24,29 @@
   const activityList = document.getElementById("activity-list");
 
   const STATUS_WEIGHT = { offline: 0, unknown: 1, maintenance: 2, degraded: 3, online: 4 };
+  const DASHBOARD_ROWS = 8;
+  // Status yang diprioritaskan; diambil server-side agar perangkat offline
+  // tidak terlewat saat armada lebih dari satu halaman (per_page maks. 100).
+  const ATTENTION_STATUSES = ["offline", "degraded", "unknown", "maintenance"];
 
   function whenReady(fn) {
     if (window.__nmsMe) fn();
     else window.addEventListener("nms:me-ready", fn, { once: true });
+  }
+
+  async function fetchAttentionDevices() {
+    const results = await Promise.all(
+      ATTENTION_STATUSES.map((status) =>
+        window.NMSStore.cached(`devices:dashboard:${status}`, () =>
+          window.apiFetch(`/api/devices?status=${status}&per_page=100`)
+        )
+      )
+    );
+    const byId = new Map();
+    results.forEach((data) => {
+      (data.devices || []).forEach((device) => byId.set(device.id, device));
+    });
+    return [...byId.values()];
   }
 
   async function refresh() {
@@ -39,12 +58,23 @@
     let activity = [];
     let mtData = null;
     try {
-      [summary, { devices: devices }, { activity } = { activity: [] }, mtData] = await Promise.all([
+      const [summaryData, activityData, mikrotikData] = await Promise.all([
         window.NMSStore.cached("summary", () => window.apiFetch("/api/summary")),
-        window.NMSStore.cached("devices:dashboard", () => window.apiFetch("/api/devices?per_page=100")),
         window.NMSStore.cached("activity", () => window.apiFetch("/api/activity?limit=6")),
         window.NMSStore.cached("mikrotik:summary", () => window.apiFetch("/api/mikrotik/summary")).catch(() => null),
       ]);
+      summary = summaryData;
+      activity = activityData.activity || [];
+      mtData = mikrotikData;
+
+      devices = await fetchAttentionDevices();
+      if (devices.length < DASHBOARD_ROWS) {
+        const online = await window.NMSStore.cached("devices:dashboard:online", () =>
+          window.apiFetch("/api/devices?status=online&per_page=100")
+        );
+        const seen = new Set(devices.map((device) => device.id));
+        devices = devices.concat((online.devices || []).filter((device) => !seen.has(device.id)));
+      }
     } catch (error) {
       if (deviceRows) deviceRows.innerHTML = `<tr class="empty-row"><td colspan="4">Gagal memuat data: ${escapeHtml(error.message)}</td></tr>`;
       return;
@@ -99,11 +129,11 @@
     dashboardGrid.hidden = !hasDevices;
 
     if (hasDevices) {
-      // Urutkan: offline → degraded → yang lain; maks 8 baris.
+      // Urutkan: offline → unknown → maintenance → degraded → online; maks 8 baris.
       const sorted = devices
         .slice()
         .sort((a, b) => (STATUS_WEIGHT[a.status] ?? 9) - (STATUS_WEIGHT[b.status] ?? 9) || a.name.localeCompare(b.name))
-        .slice(0, 8);
+        .slice(0, DASHBOARD_ROWS);
       deviceRows.innerHTML = sorted
         .map((device) => {
           const meta = STATUS_META[device.status] || STATUS_META.unknown;
