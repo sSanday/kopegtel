@@ -7,10 +7,10 @@
 
   const DEVICE_TYPES = [
     ["mikrotik", "MikroTik"],
-    ["router", "Router"],
-    ["switch", "Switch"],
-    ["access-point", "Access Point"],
-    ["server", "Server"],
+    ["router", "Penghala"],
+    ["switch", "Sakelar"],
+    ["access-point", "Titik akses"],
+    ["server", "Peladen"],
     ["olt", "OLT"],
     ["ont", "ONT"],
     ["firewall", "Firewall"],
@@ -69,7 +69,7 @@
         <input id="df-location" name="location" type="text" autocomplete="off" placeholder="mis. Gedung Pusat, Lantai 2" />
       </label>
       <label class="admin-field">
-        <span>Uplink (parent)</span>
+        <span>Uplink (induk)</span>
         <select id="df-parent" name="parent_id"><option value="">Tanpa uplink</option></select>
       </label>
       <label class="admin-field">
@@ -83,7 +83,7 @@
       </label>
     </div>
 
-    <label class="check"><input id="df-snmp-enabled" type="checkbox" /> Gunakan SNMP (sysName, uptime, CPU, memori, storage, trafik)</label>
+    <label class="check"><input id="df-snmp-enabled" type="checkbox" /> Gunakan SNMP (sysName, waktu aktif, CPU, memori, penyimpanan, trafik)</label>
     <div class="form-sub" id="df-snmp-fields" hidden>
       <div class="admin-form__grid">
         <label class="admin-field">
@@ -107,32 +107,32 @@
       </div>
       <div class="admin-form__grid" id="df-snmp-v3-fields" hidden>
         <label class="admin-field">
-          <span>Username v3 *</span>
+          <span>Nama pengguna v3 *</span>
           <input id="df-snmp-v3-user" name="snmp_v3_user" type="text" autocomplete="off" />
           <span class="field-error" id="df-snmp-v3-user-error" hidden></span>
         </label>
         <label class="admin-field">
-          <span>Auth protocol</span>
+          <span>Protokol autentikasi</span>
           <select id="df-snmp-v3-auth-proto" name="snmp_v3_auth_proto">
             <option>MD5</option><option selected>SHA</option><option>SHA-224</option><option>SHA-256</option><option>SHA-384</option><option>SHA-512</option>
           </select>
         </label>
         <label class="admin-field">
-          <span>Auth password</span>
+          <span>Kata sandi autentikasi</span>
           <input id="df-snmp-v3-auth-password" name="snmp_v3_auth_password" type="password" autocomplete="off" placeholder="kosongkan bila tidak ada" />
         </label>
         <label class="admin-field">
-          <span>Priv protocol</span>
+          <span>Protokol privasi</span>
           <select id="df-snmp-v3-priv-proto" name="snmp_v3_priv_proto"><option selected>AES</option><option>DES</option></select>
         </label>
         <label class="admin-field">
-          <span>Priv password</span>
+          <span>Kata sandi privasi</span>
           <input id="df-snmp-v3-priv-password" name="snmp_v3_priv_password" type="password" autocomplete="off" placeholder="kosongkan bila tidak ada" />
         </label>
       </div>
     </div>
 
-    <label class="check"><input id="df-mikrotik-enabled" type="checkbox" /> Gunakan MikroTik RouterOS API (read-only)</label>
+    <label class="check"><input id="df-mikrotik-enabled" type="checkbox" /> Gunakan MikroTik RouterOS API (hanya baca)</label>
     <div class="form-sub" id="df-mikrotik-fields" hidden>
       <div class="admin-form__grid">
         <label class="admin-field">
@@ -140,13 +140,13 @@
           <input id="df-mikrotik-port" name="mikrotik_port" type="number" min="1" max="65535" step="1" value="8728" />
         </label>
         <label class="admin-field">
-          <span>User RouterOS *</span>
+          <span>Pengguna RouterOS *</span>
           <input id="df-mikrotik-user" name="mikrotik_user" type="text" autocomplete="off" />
           <span class="field-error" id="df-mikrotik-user-error" hidden></span>
         </label>
         <label class="admin-field">
-          <span>Password *</span>
-          <input id="df-mikrotik-password" name="mikrotik_password" type="password" autocomplete="off" placeholder="password RouterOS" />
+          <span>Kata sandi *</span>
+          <input id="df-mikrotik-password" name="mikrotik_password" type="password" autocomplete="off" placeholder="kata sandi RouterOS" />
           <span class="field-error" id="df-mikrotik-password-error" hidden></span>
         </label>
         <label class="admin-field">
@@ -251,7 +251,7 @@
       const v3 = document.getElementById("df-snmp-version").value === "v3";
       if (v3) {
         const user = document.getElementById("df-snmp-v3-user").value.trim();
-        setFieldError("df-snmp-v3-user", "df-snmp-v3-user-error", user ? "" : "Username SNMP v3 wajib diisi.");
+        setFieldError("df-snmp-v3-user", "df-snmp-v3-user-error", user ? "" : "Nama pengguna SNMP v3 wajib diisi.");
       } else {
         const community = document.getElementById("df-snmp-community").value.trim();
         const hasExisting = state.device && state.device.has_snmp_credential;
@@ -261,9 +261,9 @@
     if (document.getElementById("df-mikrotik-enabled").checked) {
       const user = document.getElementById("df-mikrotik-user").value.trim();
       const hasExisting = state.device && state.device.has_mikrotik_credential;
-      setFieldError("df-mikrotik-user", "df-mikrotik-user-error", user ? "" : "User RouterOS wajib diisi.");
+      setFieldError("df-mikrotik-user", "df-mikrotik-user-error", user ? "" : "Pengguna RouterOS wajib diisi.");
       const password = document.getElementById("df-mikrotik-password").value;
-      setFieldError("df-mikrotik-password", "df-mikrotik-password-error", password || hasExisting ? "" : "Password wajib diisi.");
+      setFieldError("df-mikrotik-password", "df-mikrotik-password-error", password || hasExisting ? "" : "Kata sandi wajib diisi.");
       const fingerprint = document.getElementById("df-mikrotik-ssl-fingerprint").value.trim();
       let fingerprintError = "";
       if (fingerprint) {

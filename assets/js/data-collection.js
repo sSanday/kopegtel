@@ -5,11 +5,11 @@
   const { escapeHtml, formatDateTime, TYPE_LABELS, STATUS_META, timeAgo } = window.NMSFormat;
 
   const VIEWS = {
-    "host-groups": { label: "Host groups", desc: "Kelompok logis perangkat untuk filter dan pemeliharaan." },
+    "host-groups": { label: "Grup perangkat", desc: "Kelompok logis perangkat untuk filter dan pemeliharaan." },
     profiles: { label: "Profil pemantauan", desc: "Interval polling dan ambang peringatan per tipe perangkat." },
-    hosts: { label: "Hosts", desc: "Daftar perangkat yang dipantau." },
-    maintenance: { label: "Maintenance", desc: "Jendela waktu pemeliharaan yang menekan problem dan notifikasi." },
-    discovery: { label: "Discovery", desc: "Pemindaian CIDR untuk menemukan perangkat baru." },
+    hosts: { label: "Perangkat", desc: "Daftar perangkat yang dipantau." },
+    maintenance: { label: "Pemeliharaan", desc: "Jendela waktu pemeliharaan yang menekan masalah dan notifikasi." },
+    discovery: { label: "Penemuan", desc: "Pemindaian CIDR untuk menemukan perangkat baru." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -35,7 +35,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Data collection · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Pengumpulan data");
     if (current === "host-groups") loadGroups();
     else if (current === "profiles") loadProfiles();
     else if (current === "hosts") loadHosts();
@@ -156,14 +156,14 @@
   const profileRows = document.getElementById("profile-rows");
   const profileNote = document.getElementById("profile-note");
   const PROFILE_FIELDS = [
-    ["cpu_warn", "CPU warn"],
-    ["cpu_crit", "CPU crit"],
-    ["mem_warn", "Memori warn"],
-    ["mem_crit", "Memori crit"],
-    ["storage_warn", "Storage warn"],
-    ["storage_crit", "Storage crit"],
-    ["temp_warn", "Suhu warn"],
-    ["temp_crit", "Suhu crit"],
+    ["cpu_warn", "CPU peringatan"],
+    ["cpu_crit", "CPU kritis"],
+    ["mem_warn", "Memori peringatan"],
+    ["mem_crit", "Memori kritis"],
+    ["storage_warn", "Penyimpanan peringatan"],
+    ["storage_crit", "Penyimpanan kritis"],
+    ["temp_warn", "Suhu peringatan"],
+    ["temp_crit", "Suhu kritis"],
   ];
 
   async function loadProfiles() {

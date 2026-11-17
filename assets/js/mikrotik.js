@@ -18,28 +18,28 @@
   // Gabungan severity RouterOS (info/warning/error/critical) dan severity masalah (disaster..information).
   const MT_SEVERITY_META = Object.assign(
     {
-      critical: { cls: "sev sev--high", label: "Critical", rank: 5 },
+      critical: { cls: "sev sev--high", label: "Kritis", rank: 5 },
       fatal: { cls: "sev sev--high", label: "Fatal", rank: 5 },
-      error: { cls: "sev sev--average", label: "Error", rank: 4 },
-      warning: { cls: "sev sev--warning", label: "Warning", rank: 2 },
-      warn: { cls: "sev sev--warning", label: "Warning", rank: 2 },
+      error: { cls: "sev sev--average", label: "Galat", rank: 4 },
+      warning: { cls: "sev sev--warning", label: "Peringatan", rank: 2 },
+      warn: { cls: "sev sev--warning", label: "Peringatan", rank: 2 },
       info: { cls: "sev sev--information", label: "Info", rank: 1 },
-      informational: { cls: "sev sev--information", label: "Info", rank: 1 },
-      low: { cls: "sev sev--information", label: "Low", rank: 0 },
+      informational: { cls: "sev sev--information", label: "Informasi", rank: 1 },
+      low: { cls: "sev sev--information", label: "Rendah", rank: 0 },
     },
     SEVERITY_META
   );
 
   const TABS = [
     ["ringkasan", "Ringkasan"],
-    ["interfaces", "Interface"],
-    ["routing", "Routing"],
+    ["interfaces", "Antarmuka"],
+    ["routing", "Perutean"],
     ["dhcp", "DHCP & ARP"],
     ["sessions", "Sesi"],
-    ["wireless", "Wireless"],
-    ["firewall", "Firewall & Queue"],
+    ["wireless", "Nirkabel"],
+    ["firewall", "Firewall & Antrean"],
     ["logs", "Log"],
-    ["neighbors", "Neighbor"],
+    ["neighbors", "Tetangga"],
     ["security", "Keamanan"],
   ];
   const TAB_LABELS = Object.fromEntries(TABS);
@@ -63,9 +63,9 @@
     disconnect_hotspot: "Putuskan sesi hotspot",
     address_list_add: "Tambah entri address-list",
     address_list_remove: "Hapus entri address-list",
-    interface_enable: "Aktifkan interface",
-    interface_disable: "Nonaktifkan interface",
-    reboot: "Reboot perangkat",
+    interface_enable: "Aktifkan antarmuka",
+    interface_disable: "Nonaktifkan antarmuka",
+    reboot: "Mulai ulang perangkat",
   };
 
   const viewTitle = document.getElementById("view-title");
@@ -153,7 +153,7 @@
   }
   function statusBadge(running, disabled) {
     if (disabled) return '<span class="avail avail--warn">Dinonaktifkan</span>';
-    if (running) return '<span class="avail avail--ok">Running</span>';
+    if (running) return '<span class="avail avail--ok">Berjalan</span>';
     return '<span class="avail avail--down">Tidak aktif</span>';
   }
   function boolCell(value) {
@@ -217,7 +217,7 @@
     if (route.view === "armada") {
       viewTitle.textContent = "Armada";
       viewDesc.textContent = "Perangkat RouterOS terdaftar: versi, firmware, beban, sesi, dan masalah.";
-      document.title = "MikroTik · NMS Kopegtel";
+      window.NMSFormat.setDocumentTitle("MikroTik");
       loadSummary();
       loadFleet();
       loadTopology();
@@ -477,7 +477,7 @@
     const meta = STATUS_META[device.status] || STATUS_META.unknown;
     viewTitle.textContent = device.name;
     viewDesc.textContent = `${device.ip} · ${system.model || device.mikrotik_model || "model —"} · RouterOS ${system.version || device.routeros_version || "—"}`;
-    document.title = `${device.name} · MikroTik · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(device.name, "MikroTik");
     deviceTitle.textContent = device.name;
     deviceSub.textContent =
       `${device.ip} · ${device.location || "tanpa lokasi"} · ` +
@@ -661,7 +661,7 @@
         ([key, value]) => `${escapeHtml(key)}: ${number(value)}`
       );
       note.innerHTML =
-        `Detail pelanggan disembunyikan untuk peran viewer. Total ${number(section.total)} baris` +
+        `Detail pelanggan disembunyikan untuk peran pengamat. Total ${number(section.total)} baris` +
         (summaryParts.length ? ` · ${summaryParts.join(" · ")}` : "") +
         ".";
       panel.appendChild(note);
@@ -685,8 +685,8 @@
 
     switch (section.key) {
       case "mt_interfaces": {
-        const headers = ["Interface", "Tipe", "Status", "MTU", "MAC", "RX", "TX", "Error", "Aksi"];
-        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada interface pada snapshot.") };
+        const headers = ["Antarmuka", "Tipe", "Status", "MTU", "MAC", "RX", "TX", "Galat", "Aksi"];
+        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada antarmuka pada snapshot.") };
         return {
           headers,
           rows: rows.map((row) => {
@@ -707,7 +707,7 @@
             }
             const action = actions.length ? `<span class="admin-actions">${actions.join(" ")}</span>` : "—";
             return (
-              `<tr><td><strong>${text(row.name)}</strong>${row.important ? '<span class="cell-sub">interface penting</span>' : ""}</td>` +
+              `<tr><td><strong>${text(row.name)}</strong>${row.important ? '<span class="cell-sub">antarmuka penting</span>' : ""}</td>` +
               `<td>${text(row.type)}</td>` +
               `<td>${statusBadge(row.running, row.disabled)}</td>` +
               `<td class="mono">${text(row.mtu)}</td>` +
@@ -721,7 +721,7 @@
         };
       }
       case "mt_ip_addresses": {
-        const headers = ["Interface", "Alamat", "Network", "Dinamis", "Disabled"];
+        const headers = ["Antarmuka", "Alamat", "Jaringan", "Dinamis", "Nonaktif"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada alamat IP pada snapshot.") };
         return {
           headers,
@@ -733,7 +733,7 @@
         };
       }
       case "mt_routes": {
-        const headers = ["Keluarga", "Tujuan", "Gateway", "Distance", "Aktif", "Dinamis", "Statis", "Disabled"];
+        const headers = ["Keluarga", "Tujuan", "Gateway", "Jarak", "Aktif", "Dinamis", "Statis", "Nonaktif"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada rute pada snapshot.") };
         return {
           headers,
@@ -747,8 +747,8 @@
         };
       }
       case "mt_routing_neighbors": {
-        const headers = ["Protokol", "Peer", "State", "Alamat", "Interface", "Uptime", "Prefix"];
-        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada neighbor routing (BGP/OSPF).") };
+        const headers = ["Protokol", "Peer", "Status", "Alamat", "Antarmuka", "Waktu aktif", "Prefix"];
+        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada tetangga perutean (BGP/OSPF).") };
         return {
           headers,
           rows: rows.map(
@@ -774,7 +774,7 @@
         };
       }
       case "mt_dhcp_leases": {
-        const headers = ["Alamat", "MAC", "Host", "Server", "Status", "Kedaluwarsa", "Dinamis", "Disabled"];
+        const headers = ["Alamat", "MAC", "Perangkat", "Server", "Status", "Kedaluwarsa", "Dinamis", "Nonaktif"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada DHCP lease.") };
         return {
           headers,
@@ -788,7 +788,7 @@
         };
       }
       case "mt_arp": {
-        const headers = ["Alamat", "MAC", "Interface", "Complete", "Dinamis", "Invalid"];
+        const headers = ["Alamat", "MAC", "Antarmuka", "Lengkap", "Dinamis", "Tidak valid"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada entri ARP.") };
         return {
           headers,
@@ -800,7 +800,7 @@
         };
       }
       case "mt_ppp_sessions": {
-        const headers = ["Pengguna", "Service", "Caller ID", "Alamat", "Uptime", "RX", "TX", "Aksi"];
+        const headers = ["Pengguna", "Layanan", "Caller ID", "Alamat", "Waktu aktif", "RX", "TX", "Aksi"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Tidak ada sesi PPP aktif.") };
         return {
           headers,
@@ -817,7 +817,7 @@
         };
       }
       case "mt_hotspot_sessions": {
-        const headers = ["Pengguna", "Alamat", "MAC", "Server", "Uptime", "RX", "TX", "Aksi"];
+        const headers = ["Pengguna", "Alamat", "MAC", "Server", "Waktu aktif", "RX", "TX", "Aksi"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Tidak ada sesi hotspot aktif.") };
         return {
           headers,
@@ -834,8 +834,8 @@
         };
       }
       case "mt_wireless_clients": {
-        const headers = ["Interface", "MAC", "Sinyal", "Tx rate", "Rx rate", "Uptime", "RX", "TX"];
-        if (!rows.length) return { headers, rows: empty(headers.length, "Tidak ada klien wireless terdaftar.") };
+        const headers = ["Antarmuka", "MAC", "Sinyal", "Laju Tx", "Laju Rx", "Waktu aktif", "RX", "TX"];
+        if (!rows.length) return { headers, rows: empty(headers.length, "Tidak ada klien nirkabel terdaftar.") };
         return {
           headers,
           rows: rows.map(
@@ -849,7 +849,7 @@
         };
       }
       case "mt_firewall_rules": {
-        const headers = ["Jenis", "Chain", "Aksi", "Komentar", "Paket", "Byte", "Disabled"];
+        const headers = ["Jenis", "Chain", "Aksi", "Komentar", "Paket", "Byte", "Nonaktif"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada aturan firewall.") };
         return {
           headers,
@@ -862,7 +862,7 @@
         };
       }
       case "mt_address_lists": {
-        const headers = ["List", "Alamat", "Timeout", "Komentar", "Dinamis", "Aksi"];
+        const headers = ["Daftar", "Alamat", "Batas waktu", "Komentar", "Dinamis", "Aksi"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada entri address-list.") };
         return {
           headers,
@@ -877,8 +877,8 @@
         };
       }
       case "mt_queues": {
-        const headers = ["Jenis", "Nama", "Target", "Max limit", "Rate", "Byte", "Dropped", "Disabled"];
-        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada queue.") };
+        const headers = ["Jenis", "Nama", "Target", "Batas maksimum", "Laju", "Byte", "Dibuang", "Nonaktif"];
+        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada antrean.") };
         return {
           headers,
           rows: rows.map(
@@ -891,7 +891,7 @@
         };
       }
       case "mt_logs": {
-        const headers = ["Waktu", "Severity", "Topik", "Pesan", "Pengguna", "Sumber IP", "Layanan"];
+        const headers = ["Waktu", "Keparahan", "Topik", "Pesan", "Pengguna", "Sumber IP", "Layanan"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada log yang tersimpan.") };
         return {
           headers,
@@ -901,15 +901,15 @@
               `<tr><td class="mono">${text(row.log_time || row.polled_at)}</td>` +
               `<td><span class="${escapeHtml(sev.cls)}">${escapeHtml(sev.label)}</span></td>` +
               `<td>${text(row.topics)}</td><td>${text(row.message)}</td>` +
-              `<td>${text(row.username)}${row.is_login_failure ? '<span class="cell-sub">login gagal</span>' : ""}</td>` +
+              `<td>${text(row.username)}${row.is_login_failure ? '<span class="cell-sub">masuk gagal</span>' : ""}</td>` +
               `<td class="mono">${text(row.source_ip)}</td><td>${text(row.service)}</td></tr>`
             );
           }),
         };
       }
       case "mt_neighbors": {
-        const headers = ["Identitas", "Platform", "Versi", "Alamat", "MAC", "Interface", "Board"];
-        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada neighbor MNDP/LLDP.") };
+        const headers = ["Identitas", "Platform", "Versi", "Alamat", "MAC", "Antarmuka", "Board"];
+        if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada tetangga MNDP/LLDP.") };
         return {
           headers,
           rows: rows.map(
@@ -921,7 +921,7 @@
         };
       }
       case "mt_security_findings": {
-        const headers = ["Severity", "Temuan", "Kategori", "Detail", "Saran perbaikan", "Status", "Aksi"];
+        const headers = ["Keparahan", "Temuan", "Kategori", "Detail", "Saran perbaikan", "Status", "Aksi"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Tidak ada temuan keamanan aktif.") };
         return {
           headers,
@@ -940,7 +940,7 @@
         };
       }
       case "mt_services": {
-        const headers = ["Layanan", "Port", "Batas alamat", "Disabled", "Invalid"];
+        const headers = ["Layanan", "Port", "Batas alamat", "Nonaktif", "Tidak valid"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada data layanan router.") };
         return {
           headers,
@@ -952,7 +952,7 @@
         };
       }
       case "mt_users": {
-        const headers = ["Pengguna", "Grup", "Batas alamat", "Terakhir login", "Disabled"];
+        const headers = ["Pengguna", "Grup", "Batas alamat", "Terakhir masuk", "Nonaktif"];
         if (!rows.length) return { headers, rows: empty(headers.length, "Belum ada data pengguna router.") };
         return {
           headers,
@@ -994,7 +994,7 @@
     const cards = [
       ["RouterOS", text(system.version || device.routeros_version)],
       ["Model", text(system.model || device.mikrotik_model)],
-      ["Uptime", text(device.uptime_s == null ? null : formatUptime(device.uptime_s))],
+      ["Waktu aktif", text(device.uptime_s == null ? null : formatUptime(device.uptime_s))],
       ["CPU", device.cpu_pct == null ? "—" : formatPercent(device.cpu_pct, 0)],
       ["Memori", device.mem_pct == null ? "—" : formatPercent(device.mem_pct, 0)],
       ["Sesi aktif", number(counts.active_sessions)],
@@ -1033,7 +1033,7 @@
 
     const problems = data.problems || [];
     const problemHtml = problems.length
-      ? `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Jenis</th><th>Severity</th><th>Pesan</th><th>Sejak</th><th>Status</th></tr></thead><tbody>${problems
+      ? `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Jenis</th><th>Keparahan</th><th>Pesan</th><th>Sejak</th><th>Status</th></tr></thead><tbody>${problems
           .map((row) => {
             const sev = MT_SEVERITY_META[row.severity] || MT_SEVERITY_META.informational;
             return (
@@ -1047,7 +1047,7 @@
 
     const findingRows = (findings.rows || []).slice(0, 8);
     const findingHtml = findingRows.length
-      ? `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Temuan</th><th>Severity</th><th>Status</th><th>Aksi</th></tr></thead><tbody>${findingRows
+      ? `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Temuan</th><th>Keparahan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>${findingRows
           .map((row) => {
             const sev = MT_SEVERITY_META[row.severity] || MT_SEVERITY_META.informational;
             const ignored = Boolean(row.ignored);
@@ -1096,8 +1096,8 @@
       `<section class="panel panel--nested"><div class="panel__head"><div><h3 class="panel__title">Temuan keamanan</h3>` +
       `<p class="panel__sub">${number(findings.open)} terbuka · ${number(findings.ignored)} diabaikan</span></p></div></div>${findingHtml}</section>` +
       `<section class="panel panel--nested"><div class="panel__head"><div><h3 class="panel__title">Status poll &amp; kapabilitas</h3>` +
-      `<p class="panel__sub">Layer fast/medium/slow dan probe yang tidak didukung.</p></div></div>` +
-      `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Layer</th><th>Terakhir jalan</th><th>Terakhir sukses</th><th>Error</th></tr></thead><tbody>${pollRows || emptyRow(4, "Belum ada poll MikroTik.")}</tbody></table></div>` +
+      `<p class="panel__sub">Lapisan fast/medium/slow dan probe yang tidak didukung.</p></div></div>` +
+      `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Lapisan</th><th>Terakhir jalan</th><th>Terakhir sukses</th><th>Galat</th></tr></thead><tbody>${pollRows || emptyRow(4, "Belum ada poll MikroTik.")}</tbody></table></div>` +
       (probeRows
         ? `<div class="table-wrap"><table class="mon-table"><thead><tr><th>Probe</th><th>Alasan</th><th>Detail</th><th>Coba lagi</th></tr></thead><tbody>${probeRows}</tbody></table></div>`
         : '<p class="note-info note-info--sm">Semua probe yang dicoba berhasil.</p>') +
@@ -1105,8 +1105,8 @@
       buildSettingsPanel(settings, write) +
       (canOperate() && write.available && isAdmin()
         ? `<section class="panel panel--nested"><div class="panel__head"><div><h3 class="panel__title">Aksi tulis</h3>` +
-          `<p class="panel__sub">Hanya aksi allowlist; setiap aksi dicatat di audit log.</p></div></div>` +
-          `<div class="admin-actions"><button class="btn btn--danger" id="mt-reboot" type="button">Reboot perangkat</button></div></section>`
+          `<p class="panel__sub">Hanya aksi allowlist; setiap aksi dicatat di log audit.</p></div></div>` +
+          `<div class="admin-actions"><button class="btn btn--danger" id="mt-reboot" type="button">Mulai ulang perangkat</button></div></section>`
         : "") +
       (canOperate() && data.actions
         ? `<section class="panel panel--nested"><div class="panel__head"><div><h3 class="panel__title">Log aksi terakhir</h3>` +
@@ -1125,8 +1125,8 @@
     const modules = settings.modules || {};
     const intervals = settings.intervals || {};
     const moduleLabels = {
-      ppp: "PPP", hotspot: "Hotspot", wireless: "Wireless", dhcp: "DHCP",
-      queue: "Queue", routing: "Routing", log: "Log", security: "Keamanan",
+      ppp: "PPP", hotspot: "Hotspot", wireless: "Nirkabel", dhcp: "DHCP",
+      queue: "Antrean", routing: "Perutean", log: "Log", security: "Keamanan",
     };
     const moduleHtml = Object.entries(moduleLabels)
       .map(
@@ -1151,7 +1151,7 @@
         `<label class="check"><input type="checkbox" id="mt-write-ssl" ${settings.write_ssl ? "checked" : ""} /> API tulis memakai SSL/TLS</label>` +
         `</div>` +
         `<h3 class="detail-subhead">Kredensial SSH &amp; backup (M6)</h3>` +
-        `<p class="admin-hint">SSH hanya untuk <code>/export hide-sensitive</code> (baca). Host key diverifikasi secara ketat; host yang tidak dikenal ditolak. Restore dari aplikasi tidak didukung.</p>` +
+        `<p class="admin-hint">SSH hanya untuk <code>/export hide-sensitive</code> (baca). Host key diverifikasi secara ketat; host yang tidak dikenal ditolak. Pemulihan dari aplikasi tidak didukung.</p>` +
         `<div class="admin-form__grid">` +
         `<label class="check"><input type="checkbox" id="mt-ssh-enabled" ${settings.ssh_enabled ? "checked" : ""} /> Aktifkan SSH</label>` +
         `<label class="check"><input type="checkbox" id="mt-backup-enabled" ${settings.backup_enabled ? "checked" : ""} /> Backup harian (/export hide-sensitive)</label>` +
@@ -1162,15 +1162,15 @@
         `<label class="admin-field admin-field--full"><span>Host key SSH * (SHA256:… atau baris public key)</span>` +
         `<input id="mt-ssh-host-key" type="text" value="${escapeHtml(settings.ssh_host_key || "")}" placeholder="SHA256:XXXX…" autocomplete="off" /></label>` +
         `</div>`
-      : `<p class="note-info note-info--sm">Kredensial tulis dan SSH hanya dapat diatur oleh admin. Operator dapat menandai interface penting.</p>`;
+      : `<p class="note-info note-info--sm">Kredensial tulis dan SSH hanya dapat diatur oleh admin. Operator dapat menandai antarmuka penting.</p>`;
 
     return (
       `<section class="panel panel--nested"><div class="panel__head"><div><h3 class="panel__title">Pengaturan modul</h3>` +
-      `<p class="panel__sub">Modul yang dinonaktifkan tidak dipoll; interface penting memicu masalah mt_interface_down.</p></div></div>` +
+      `<p class="panel__sub">Modul yang dinonaktifkan tidak dipoll; antarmuka penting memicu masalah mt_interface_down.</p></div></div>` +
       `<form class="admin-form" id="mt-settings-form" novalidate>` +
       `<h3 class="detail-subhead">Modul yang dipoll</h3><div class="mt-checks">${moduleHtml}</div>` +
       `<h3 class="detail-subhead">Interval layer</h3><div class="admin-form__grid">${intervalHtml}</div>` +
-      `<label class="admin-field admin-field--full"><span>Interface penting (dipisah koma)</span>` +
+      `<label class="admin-field admin-field--full"><span>Antarmuka penting (dipisah koma)</span>` +
       `<input id="mt-important" type="text" value="${escapeHtml((settings.important_interfaces || []).join(", "))}" placeholder="mis. ether1, sfp-sfpplus1" autocomplete="off" /></label>` +
       writeHtml +
       `<p class="form-note is-error" id="mt-settings-note" role="alert" hidden></p>` +
@@ -1248,7 +1248,7 @@
       ["7d", "7 hari"],
     ];
     panel.innerHTML =
-      `<div class="panel__head"><div><h3 class="panel__title">Trafik interface</h3>` +
+      `<div class="panel__head"><div><h3 class="panel__title">Trafik antarmuka</h3>` +
       `<p class="panel__sub">rx/tx bps dari counter perangkat · rentang 1 jam / 24 jam / 7 hari</p></div>` +
       `<div class="seg" role="group" aria-label="Rentang waktu grafik trafik">` +
       ranges
@@ -1258,9 +1258,9 @@
         )
         .join("") +
       `</div></div>` +
-      `<div class="chart-box"><label class="field"><span class="sr-only">Interface</span>` +
+      `<div class="chart-box"><label class="field"><span class="sr-only">Antarmuka</span>` +
       `<select id="mt-traffic-if"><option value="">Memuat…</option></select></label>` +
-      `<svg class="chart" id="mt-traffic-chart" viewBox="0 0 600 170" role="img" aria-label="Grafik trafik interface"><title>Grafik trafik interface</title></svg>` +
+      `<svg class="chart" id="mt-traffic-chart" viewBox="0 0 600 170" role="img" aria-label="Grafik trafik antarmuka"><title>Grafik trafik antarmuka</title></svg>` +
       `<p class="chart-summary" id="mt-traffic-summary">Memuat…</p></div>`;
     panel.querySelector(".seg").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-range]");
@@ -1322,7 +1322,7 @@
       return valid.length ? formatBps(Math.max(...valid)) : "—";
     };
     summary.textContent =
-      `Rx puncak ${peak(rxValues)} · Tx puncak ${peak(txValues)} · ${series.length} interface terlacak`;
+      `Rx puncak ${peak(rxValues)} · Tx puncak ${peak(txValues)} · ${series.length} antarmuka terlacak`;
   }
 
   function renderTrafficChart(svg, rxValues, txValues) {
@@ -1338,7 +1338,7 @@
     const max = Math.max(...allValues, 1);
     const xAt = (index) => PAD + ((W - 2 * PAD) * index) / (n - 1);
     const yAt = (value) => PAD + (H - 2 * PAD) * (1 - (value - min) / (max - min));
-    const parts = ["<title>Grafik trafik interface</title>"];
+    const parts = ["<title>Grafik trafik antarmuka</title>"];
     for (const fraction of [0, 0.5, 1]) {
       const y = yAt(min + (max - min) * fraction);
       parts.push(`<line class="chart__grid" x1="${PAD}" y1="${y.toFixed(1)}" x2="${W - PAD}" y2="${y.toFixed(1)}" />`);
@@ -1537,13 +1537,13 @@
           method: "PUT",
           body: { important_interfaces: Array.from(current) },
         });
-        toast(`Interface ${name} ${remove ? "dihapus dari daftar penting" : "ditandai penting"}.`);
+        toast(`Antarmuka ${name} ${remove ? "dihapus dari daftar penting" : "ditandai penting"}.`);
         if (state.detail.overview) {
           state.detail.overview.settings = result.settings;
         }
         loadTab();
       } catch (error) {
-        await window.NMSUi.alert(error.message || "Gagal menyimpan interface penting.");
+        await window.NMSUi.alert(error.message || "Gagal menyimpan antarmuka penting.");
         importantBtn.disabled = false;
       }
       return;

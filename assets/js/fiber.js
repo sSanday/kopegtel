@@ -587,8 +587,8 @@
       const trendA = data.trend_rx_a_db_per_week;
       const trendB = data.trend_rx_b_db_per_week;
       linkBaseline.textContent =
-        `Baseline Rx (median ${data.baseline_samples_a || 0} jam, jendela 7 hari): A ${fmtDbm(baselineA)} · B ${fmtDbm(baselineB)} — penurunan > 3 dB dari baseline memicu problem fiber_drop. ` +
-        `Tren (regresi 14 hari): A ${trendA == null ? "—" : `${trendA.toFixed(2)} dB/minggu`} · B ${trendB == null ? "—" : `${trendB.toFixed(2)} dB/minggu`} — memburuk ≥ 0,5 dB/minggu memicu problem fiber_trend.`;
+        `Acuan Rx (median ${data.baseline_samples_a || 0} jam, jendela 7 hari): A ${fmtDbm(baselineA)} · B ${fmtDbm(baselineB)} — penurunan > 3 dB dari acuan memicu masalah fiber_drop. ` +
+        `Tren (regresi 14 hari): A ${trendA == null ? "—" : `${trendA.toFixed(2)} dB/minggu`} · B ${trendB == null ? "—" : `${trendB.toFixed(2)} dB/minggu`} — memburuk ≥ 0,5 dB/minggu memicu masalah fiber_trend.`;
       linkDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
       showError(linkVerdict, error.message || "Gagal memuat detail link.");

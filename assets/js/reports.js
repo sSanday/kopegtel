@@ -13,13 +13,13 @@
   } = window.NMSFormat;
 
   const VIEWS = {
-    "system-information": { label: "System information", desc: "Versi, uptime, ukuran basis data, dan status poller." },
-    "availability-report": { label: "Availability report", desc: "Ketersediaan tiap perangkat dan unduhan CSV." },
-    "top-problems": { label: "Top problems", desc: "Jenis masalah yang paling sering terbuka." },
+    "system-information": { label: "Informasi sistem", desc: "Versi, waktu aktif, ukuran basis data, dan status poller." },
+    "availability-report": { label: "Laporan ketersediaan", desc: "Ketersediaan tiap perangkat dan unduhan CSV." },
+    "top-problems": { label: "Masalah teratas", desc: "Jenis masalah yang paling sering terbuka." },
     "fiber-attenuation": { label: "Laporan redaman", desc: "Margin Rx per link fiber, tren, dan unduhan CSV." },
-    "mikrotik-fleet": { label: "Armada MikroTik", desc: "Versi RouterOS, firmware, uptime, dan temuan keamanan armada." },
-    "audit-log": { label: "Audit log", desc: "Jejak aksi pengguna." },
-    "action-log": { label: "Action log", desc: "Hasil pengiriman notifikasi." },
+    "mikrotik-fleet": { label: "Armada MikroTik", desc: "Versi RouterOS, firmware, waktu aktif, dan temuan keamanan armada." },
+    "audit-log": { label: "Log audit", desc: "Jejak aksi pengguna." },
+    "action-log": { label: "Log aksi", desc: "Hasil pengiriman notifikasi." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -46,7 +46,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Reports · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Laporan");
     if (current === "system-information") loadSystemInfo();
     else if (current === "availability-report") loadAvailability();
     else if (current === "top-problems") loadTopProblems();
@@ -77,7 +77,7 @@
     high_latency: "Latensi tinggi / CPU tinggi",
     cpu_high: "CPU di atas ambang",
     mem_high: "Memori di atas ambang",
-    disk_high: "Storage di atas ambang",
+    disk_high: "Penyimpanan di atas ambang",
     temp_high: "Suhu di atas ambang",
     fiber_los: "LOS (kehilangan sinyal fiber)",
     fiber_rx_low: "Rx di bawah ambang",
@@ -117,7 +117,7 @@
       ["Versi aplikasi", info.app_version],
       ["Organisasi", info.org_name],
       ["Zona waktu", info.timezone],
-      ["Uptime server", formatUptimeLong(info.server_uptime_s || 0)],
+      ["Waktu aktif server", formatUptimeLong(info.server_uptime_s || 0)],
       ["Waktu server (UTC)", info.time_utc],
     ];
     if (info.python_version) items.push(["Python", info.python_version]);
@@ -141,10 +141,10 @@
       devices: "Perangkat",
       device_checks: "Pemeriksaan",
       device_metrics: "Metrik (baris)",
-      interface_stats: "Statistik interface",
-      events: "Event",
+      interface_stats: "Statistik antarmuka",
+      events: "Kejadian",
       problems: "Masalah",
-      audit_log: "Audit log",
+      audit_log: "Log audit",
       services: "Layanan",
       users: "Pengguna",
     };

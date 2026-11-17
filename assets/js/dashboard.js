@@ -136,7 +136,7 @@
     const highCount = summary.problems_high || 0;
 
     statDevicesTotal.textContent = String(total);
-    statDevicesMeta.textContent = `${summary.online || 0} online · ${(summary.degraded || 0) + (summary.offline || 0)} perlu perhatian`;
+    statDevicesMeta.textContent = `${summary.online || 0} tersambung · ${(summary.degraded || 0) + (summary.offline || 0)} perlu perhatian`;
     statProblemsTotal.textContent = String(problemCount);
     statProblemsMeta.textContent = problemCount === 0 ? "Tidak ada masalah terbuka" : `${highCount} prioritas tinggi`;
     statAvailability.textContent = summary.availability_24h == null ? "—" : formatPercent(summary.availability_24h);

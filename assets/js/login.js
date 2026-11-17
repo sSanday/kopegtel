@@ -110,7 +110,7 @@
         return;
       }
 
-      note.textContent = "Login berhasil. Mengalihkan…";
+      note.textContent = "Masuk berhasil. Mengalihkan…";
       note.classList.add("is-ok");
 
       const target = data.must_change_password ? "ganti-password.html" : "dashboard.html";
@@ -137,7 +137,7 @@
   function showMfaStep() {
     form.hidden = true;
     mfaForm.hidden = false;
-    mfaNote.textContent = "Masukkan kode 6 digit dari aplikasi authenticator (atau kode pemulihan).";
+    mfaNote.textContent = "Masukkan kode 6 digit dari aplikasi autentikator (atau kode pemulihan).";
     mfaNote.classList.remove("is-error", "is-ok");
     mfaCode.value = "";
     mfaCode.focus({ preventScroll: true });

@@ -5,10 +5,10 @@
   const { escapeHtml, SEVERITY_META } = window.NMSFormat;
 
   const VIEWS = {
-    actions: { label: "Actions", desc: "Aturan aksi otomatis saat masalah terbuka." },
-    "message-templates": { label: "Message templates", desc: "Template pesan notifikasi dengan placeholder." },
-    "media-types": { label: "Media types", desc: "Kanal pengiriman notifikasi." },
-    escalation: { label: "Eskalasi", desc: "Kebijakan kenaikan notifikasi bila problem masih terbuka dan belum diakui." },
+    actions: { label: "Aksi", desc: "Aturan aksi otomatis saat masalah terbuka." },
+    "message-templates": { label: "Template pesan", desc: "Template pesan notifikasi dengan placeholder." },
+    "media-types": { label: "Jenis media", desc: "Kanal pengiriman notifikasi." },
+    escalation: { label: "Eskalasi", desc: "Kebijakan kenaikan notifikasi bila masalah masih terbuka dan belum diakui." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -38,7 +38,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Alerts · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Peringatan");
     if (current === "actions") loadRules();
     else if (current === "message-templates") loadTemplates();
     else if (current === "media-types") loadChannels();
@@ -56,7 +56,7 @@
   function scopeLabel(rule) {
     if (rule.device_id) return `Perangkat: ${rule.device_name || rule.device_id}`;
     if (rule.group_id) return `Grup: ${rule.group_name || rule.group_id}`;
-    return "Global";
+    return "Semua perangkat";
   }
 
   function actionButtons(kind, id) {

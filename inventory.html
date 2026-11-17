@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Inventory · NMS Kopegtel</title>
+  <title>Inventaris · NMS Kopegtel</title>
   <meta name="description" content="Inventaris aset perangkat, host, dan infrastruktur NMS Kopegtel." />
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
@@ -21,7 +21,7 @@
       <header class="topbar">
         <div>
           <p class="topbar__eyebrow">Inventaris Jaringan</p>
-          <h1 class="topbar__title" id="view-title">Inventory</h1>
+          <h1 class="topbar__title" id="view-title">Inventaris</h1>
           <p class="topbar__sub"><span id="view-desc">Ringkasan aset perangkat dan infrastruktur.</span> · <span id="today">Memuat tanggal…</span></p>
         </div>
         <div class="topbar__actions">
@@ -47,14 +47,14 @@
             <p class="stat__meta" id="inv-total-meta">Terdaftar di NMS</p>
           </article>
           <article class="stat">
-            <p class="stat__label">Online</p>
+            <p class="stat__label">Tersambung</p>
             <p class="stat__value" id="inv-online">—</p>
             <p class="stat__meta"><b id="inv-online-pct">—</b> dari total</p>
           </article>
           <article class="stat">
             <p class="stat__label">Perlu Perhatian</p>
             <p class="stat__value" id="inv-attention">—</p>
-            <p class="stat__meta"><span class="is-warn">Offline / degradasi / tidak diketahui</span></p>
+            <p class="stat__meta"><span class="is-warn">Terputus / degradasi / tidak diketahui</span></p>
           </article>
           <article class="stat">
             <p class="stat__label">Pemeliharaan</p>
@@ -76,9 +76,9 @@
                 <tr>
                   <th scope="col">Tipe</th>
                   <th scope="col">Total</th>
-                  <th scope="col">Online</th>
+                  <th scope="col">Tersambung</th>
                   <th scope="col">Degradasi</th>
-                  <th scope="col">Offline</th>
+                  <th scope="col">Terputus</th>
                   <th scope="col">Tidak diketahui</th>
                   <th scope="col">Pemeliharaan</th>
                 </tr>
@@ -92,7 +92,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="attention-title">Aset perlu perhatian</h2>
-              <p class="panel__sub">Perangkat yang tidak online saat ini</p>
+              <p class="panel__sub">Perangkat yang tidak tersambung saat ini</p>
             </div>
             <span class="panel__hint" id="attention-count">—</span>
           </div>
@@ -127,8 +127,8 @@
                 <tr>
                   <th scope="col">Perangkat</th>
                   <th scope="col">Port</th>
-                  <th scope="col">Vendor</th>
-                  <th scope="col">Part number</th>
+                  <th scope="col">Pemasok</th>
+                  <th scope="col">Nomor bagian</th>
                   <th scope="col">Serial</th>
                   <th scope="col">λ</th>
                   <th scope="col">Tipe</th>
@@ -145,24 +145,24 @@
            Hosts
            ===================================================== -->
       <section class="view" data-view="hosts" aria-labelledby="hosts-title" hidden>
-        <section class="stats" aria-label="Ringkasan host">
+        <section class="stats" aria-label="Ringkasan perangkat">
           <article class="stat">
-            <p class="stat__label">Total Host</p>
+            <p class="stat__label">Total perangkat</p>
             <p class="stat__value" id="hosts-stat-total">—</p>
             <p class="stat__meta">Perangkat terdaftar di NMS</p>
           </article>
           <article class="stat">
-            <p class="stat__label">Online</p>
+            <p class="stat__label">Tersambung</p>
             <p class="stat__value" id="hosts-stat-online">—</p>
             <p class="stat__meta">Terjangkau saat ini</p>
           </article>
           <article class="stat">
-            <p class="stat__label">Offline</p>
+            <p class="stat__label">Terputus</p>
             <p class="stat__value" id="hosts-stat-offline">—</p>
             <p class="stat__meta">Tidak merespons ping</p>
           </article>
           <article class="stat">
-            <p class="stat__label">Degraded</p>
+            <p class="stat__label">Degradasi</p>
             <p class="stat__value" id="hosts-stat-degraded">—</p>
             <p class="stat__meta"><span class="is-warn">Latensi tinggi / CPU &gt; 90%</span></p>
           </article>
@@ -171,7 +171,7 @@
         <section class="panel" aria-labelledby="hosts-title">
           <div class="panel__head panel__head--stack">
             <div>
-              <h2 class="panel__title" id="hosts-title">Daftar host</h2>
+              <h2 class="panel__title" id="hosts-title">Daftar perangkat</h2>
               <p class="panel__sub" id="host-count">Memuat perangkat…</p>
             </div>
             <div class="filters">
@@ -184,9 +184,9 @@
                 <span class="sr-only">Status perangkat</span>
                 <select id="host-status">
                   <option value="">Semua status</option>
-                  <option value="online">Online</option>
+                  <option value="online">Tersambung</option>
                   <option value="degraded">Degradasi</option>
-                  <option value="offline">Offline</option>
+                  <option value="offline">Terputus</option>
                   <option value="maintenance">Pemeliharaan</option>
                   <option value="unknown">Belum diperiksa</option>
                 </select>
@@ -230,7 +230,7 @@
                   <th scope="col">Model</th>
                   <th scope="col">Grup</th>
                   <th scope="col">Lokasi</th>
-                  <th scope="col">Latency</th>
+                  <th scope="col">Latensi</th>
                   <th scope="col">CPU</th>
                   <th scope="col">Memori</th>
                   <th scope="col">Status</th>
@@ -267,7 +267,7 @@
               <span class="status status--warn" id="detail-status">Belum diperiksa</span>
               <button class="btn btn--ghost" id="detail-refresh" type="button">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
-                <span>Refresh sekarang</span>
+                <span>Muat ulang sekarang</span>
               </button>
             </div>
           </div>
@@ -299,7 +299,7 @@
                 <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-mem">Normal</span> <span id="d-mem-sub" class="metric-card__detail">—</span></p>
               </article>
               <article class="metric-card" id="card-storage">
-                <p class="metric-card__label">Storage</p>
+                <p class="metric-card__label">Penyimpanan</p>
                 <p class="metric-card__value"><span id="d-storage">—</span><small> %</small></p>
                 <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-storage"></span></div>
                 <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-storage">Normal</span> <span id="d-storage-sub" class="metric-card__detail">—</span></p>
@@ -315,9 +315,9 @@
                 <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-voltage-sub" class="metric-card__detail">Tegangan masuk</span></p>
               </article>
               <article class="metric-card">
-                <p class="metric-card__label">Uptime</p>
+                <p class="metric-card__label">Waktu aktif</p>
                 <p class="metric-card__value metric-card__value--text"><span id="d-uptime">—</span></p>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak terakhir boot</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak mulai ulang terakhir</span></p>
               </article>
             </div>
 
@@ -325,7 +325,7 @@
               <div class="panel__head">
                 <div>
                   <h3 class="panel__title" id="charts-title">Riwayat</h3>
-                  <p class="panel__sub">CPU, memori, dan trafik interface</p>
+                  <p class="panel__sub">CPU, memori, dan trafik antarmuka</p>
                 </div>
                 <div class="seg" role="group" aria-label="Rentang waktu grafik">
                   <button class="seg__btn is-active" type="button" data-range="1h" aria-pressed="true">1 jam</button>
@@ -346,9 +346,9 @@
                 </figure>
                 <figure class="chart-box chart-box--wide">
                   <div class="chart-box__head">
-                    <figcaption class="chart-box__title">Trafik interface</figcaption>
+                    <figcaption class="chart-box__title">Trafik antarmuka</figcaption>
                     <label class="field chart-box__select">
-                      <span class="sr-only">Pilih interface</span>
+                      <span class="sr-only">Pilih antarmuka</span>
                       <select id="traffic-if"></select>
                     </label>
                   </div>
@@ -361,15 +361,15 @@
             <section class="panel panel--nested" aria-labelledby="iface-title">
               <div class="panel__head">
                 <div>
-                  <h3 class="panel__title" id="iface-title">Interface</h3>
-                  <p class="panel__sub">Status dan trafik terakhir per interface</p>
+                  <h3 class="panel__title" id="iface-title">Antarmuka</h3>
+                  <p class="panel__sub">Status dan trafik terakhir per antarmuka</p>
                 </div>
               </div>
               <div class="table-wrap">
                 <table class="mon-table">
                   <thead>
                     <tr>
-                      <th scope="col">Interface</th>
+                      <th scope="col">Antarmuka</th>
                       <th scope="col">Status</th>
                       <th scope="col">RX</th>
                       <th scope="col">TX</th>
@@ -386,7 +386,7 @@
               <div class="panel__head">
                 <div>
                   <h3 class="panel__title" id="thresholds-title">Ambang peringatan</h3>
-                  <p class="panel__sub">Memicu event "Ambang:" saat terlewati. Berlaku hanya untuk perangkat ini.</p>
+                  <p class="panel__sub">Memicu kejadian "Ambang:" saat terlewati. Berlaku hanya untuk perangkat ini.</p>
                 </div>
               </div>
               <form class="admin-form" id="thresholds-form" novalidate>
@@ -395,8 +395,8 @@
                   <label class="admin-field"><span>CPU kritis %</span><input id="th-cpu-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
                   <label class="admin-field"><span>Memori peringatan %</span><input id="th-mem-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
                   <label class="admin-field"><span>Memori kritis %</span><input id="th-mem-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
-                  <label class="admin-field"><span>Storage peringatan %</span><input id="th-storage-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
-                  <label class="admin-field"><span>Storage kritis %</span><input id="th-storage-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Penyimpanan peringatan %</span><input id="th-storage-warn" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
+                  <label class="admin-field"><span>Penyimpanan kritis %</span><input id="th-storage-crit" type="number" min="1" max="100" step="1" inputmode="numeric" /></label>
                   <label class="admin-field"><span>Suhu peringatan °C</span><input id="th-temp-warn" type="number" min="1" max="150" step="1" inputmode="numeric" /></label>
                   <label class="admin-field"><span>Suhu kritis °C</span><input id="th-temp-crit" type="number" min="1" max="150" step="1" inputmode="numeric" /></label>
                 </div>
@@ -413,13 +413,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/device-form.js?v=2" defer></script>
-  <script src="assets/js/inventory.js?v=4" defer></script>
+  <script src="assets/js/device-form.js?v=3" defer></script>
+  <script src="assets/js/inventory.js?v=6" defer></script>
 </body>
 </html>

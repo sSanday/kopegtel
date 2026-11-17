@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Data collection · NMS Kopegtel</title>
+  <title>Pengumpulan data · NMS Kopegtel</title>
   <meta name="description" content="Grup host, profil pemantauan, jendela pemeliharaan, dan pemindaian jaringan NMS Kopegtel." />
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
@@ -21,7 +21,7 @@
       <header class="topbar">
         <div>
           <p class="topbar__eyebrow">Pengumpulan Data</p>
-          <h1 class="topbar__title" id="view-title">Host groups</h1>
+          <h1 class="topbar__title" id="view-title">Grup perangkat</h1>
           <p class="topbar__sub"><span id="view-desc">Kelompok logis perangkat untuk filter dan pemeliharaan.</span> · <span id="today">Memuat tanggal…</span></p>
         </div>
         <div class="topbar__actions">
@@ -43,7 +43,7 @@
         <section class="panel" aria-labelledby="groups-title">
           <div class="panel__head panel__head--stack">
             <div>
-              <h2 class="panel__title" id="groups-title">Grup host</h2>
+              <h2 class="panel__title" id="groups-title">Grup perangkat</h2>
               <p class="panel__sub" id="group-count">Memuat grup…</p>
             </div>
             <div class="filters">
@@ -103,7 +103,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="profiles-title">Profil pemantauan per tipe</h2>
-              <p class="panel__sub">Interval polling (≥ 10 dtk) dan ambang CPU/memori/storage/suhu</p>
+              <p class="panel__sub">Interval polling (≥ 10 dtk) dan ambang CPU/memori/penyimpanan/suhu</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -112,10 +112,10 @@
                 <tr>
                   <th scope="col">Tipe</th>
                   <th scope="col">Interval (dtk)</th>
-                  <th scope="col">CPU warn/crit %</th>
-                  <th scope="col">Mem warn/crit %</th>
-                  <th scope="col">Storage warn/crit %</th>
-                  <th scope="col">Suhu warn/crit °C</th>
+                  <th scope="col">CPU peringatan/kritis %</th>
+                  <th scope="col">Memori peringatan/kritis %</th>
+                  <th scope="col">Penyimpanan peringatan/kritis %</th>
+                  <th scope="col">Suhu peringatan/kritis °C</th>
                   <th scope="col">Aksi</th>
                 </tr>
               </thead>
@@ -133,7 +133,7 @@
         <section class="panel" aria-labelledby="dc-hosts-title">
           <div class="panel__head panel__head--stack">
             <div>
-              <h2 class="panel__title" id="dc-hosts-title">Host</h2>
+              <h2 class="panel__title" id="dc-hosts-title">Perangkat</h2>
               <p class="panel__sub" id="dc-host-count">Memuat perangkat…</p>
             </div>
             <div class="filters">
@@ -165,7 +165,7 @@
            Maintenance
            ===================================================== -->
       <section class="view" data-view="maintenance" aria-labelledby="maint-title" hidden>
-        <p class="hint-bar" role="status">Selama pemeliharaan: status perangkat menjadi “Pemeliharaan”, problem &amp; notifikasi ditekan, dan waktu tersebut dikecualikan dari perhitungan ketersediaan.</p>
+        <p class="hint-bar" role="status">Selama pemeliharaan: status perangkat menjadi “Pemeliharaan”, masalah &amp; notifikasi ditekan, dan waktu tersebut dikecualikan dari perhitungan ketersediaan.</p>
         <section class="panel" aria-labelledby="maint-title">
           <div class="panel__head panel__head--stack">
             <div>
@@ -256,7 +256,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="discovery-title">Pemindaian jaringan</h2>
-              <p class="panel__sub">Ping ke seluruh alamat; bila diisi, probe SNMP sysName. Password RouterOS tidak dikirim dalam pemindaian - cukup tambahkan perangkat lalu aktifkan MikroTik API di formulir perangkat.</p>
+              <p class="panel__sub">Ping ke seluruh alamat; bila diisi, probe SNMP sysName. Kata sandi RouterOS tidak dikirim dalam pemindaian - cukup tambahkan perangkat lalu aktifkan MikroTik API di formulir perangkat.</p>
             </div>
           </div>
           <form class="admin-form" id="scan-form">
@@ -287,7 +287,7 @@
                 <tr>
                   <th scope="col"><span class="sr-only">Pilih</span></th>
                   <th scope="col">Alamat IP</th>
-                  <th scope="col">Latency</th>
+                  <th scope="col">Latensi</th>
                   <th scope="col">sysName</th>
                   <th scope="col">Tipe</th>
                 </tr>
@@ -321,13 +321,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/device-form.js?v=2" defer></script>
-  <script src="assets/js/data-collection.js?v=3" defer></script>
+  <script src="assets/js/device-form.js?v=3" defer></script>
+  <script src="assets/js/data-collection.js?v=5" defer></script>
 </body>
 </html>

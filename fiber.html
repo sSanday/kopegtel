@@ -280,7 +280,7 @@
                 <input id="link-wavelength-b" type="number" min="800" max="1700" step="1" placeholder="Kosong = sama dengan A→B" inputmode="numeric" />
               </label>
               <label class="admin-field">
-                <span>Jumlah splice</span>
+                <span>Jumlah sambungan</span>
                 <input id="link-splices" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric" />
               </label>
               <label class="admin-field">
@@ -442,7 +442,7 @@
             <div class="panel__head">
               <div>
                 <h2 class="panel__title" id="calc-title">Kalkulator link budget</h2>
-                <p class="panel__sub">Parameter redaman diambil dari Pengaturan fiber (dapat diubah admin): α(1310) &amp; α(1550), redaman splice/konektor/splitter.</p>
+                <p class="panel__sub">Parameter redaman diambil dari Pengaturan fiber (dapat diubah admin): α(1310) &amp; α(1550), redaman sambungan/konektor/splitter.</p>
               </div>
             </div>
             <div class="admin-form">
@@ -461,7 +461,7 @@
                   </select>
                 </label>
                 <label class="admin-field">
-                  <span>Jumlah splice</span>
+                  <span>Jumlah sambungan</span>
                   <input id="calc-splices" type="number" min="0" max="10000" step="1" value="0" inputmode="numeric" />
                 </label>
                 <label class="admin-field">
@@ -537,7 +537,7 @@
             <div class="admin-form__grid">
               <label class="admin-field"><span>α 1310 nm (dB/km)</span><input id="set-fiber-alpha_1310" type="number" step="0.01" min="0.01" max="5" inputmode="decimal" /></label>
               <label class="admin-field"><span>α 1550 nm (dB/km)</span><input id="set-fiber-alpha_1550" type="number" step="0.01" min="0.01" max="5" inputmode="decimal" /></label>
-              <label class="admin-field"><span>Redaman splice (dB)</span><input id="set-fiber-splice_loss" type="number" step="0.01" min="0" max="5" inputmode="decimal" /></label>
+              <label class="admin-field"><span>Redaman sambungan (dB)</span><input id="set-fiber-splice_loss" type="number" step="0.01" min="0" max="5" inputmode="decimal" /></label>
               <label class="admin-field"><span>Redaman konektor (dB)</span><input id="set-fiber-connector_loss" type="number" step="0.01" min="0" max="5" inputmode="decimal" /></label>
             </div>
             <h3 class="detail-subhead">Redaman splitter (dB)</h3>
@@ -553,9 +553,9 @@
               <label class="admin-field"><span>Tren memburuk (dB/minggu)</span><input id="set-fiber-trend_db_per_week" type="number" step="0.05" min="0.05" max="20" inputmode="decimal" /></label>
               <label class="admin-field"><span>Histeresis pemulihan (dB)</span><input id="set-fiber-hysteresis_db" type="number" step="0.1" min="0" max="6" inputmode="decimal" /></label>
             </div>
-            <h3 class="detail-subhead">Baseline &amp; tren</h3>
+            <h3 class="detail-subhead">Acuan &amp; tren</h3>
             <div class="admin-form__grid">
-              <label class="admin-field"><span>Jendela baseline penurunan (hari)</span><input id="set-fiber-drop_baseline_days" type="number" step="1" min="1" max="90" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Jendela acuan penurunan (hari)</span><input id="set-fiber-drop_baseline_days" type="number" step="1" min="1" max="90" inputmode="numeric" /></label>
               <label class="admin-field"><span>Jendela tren (hari)</span><input id="set-fiber-trend_days" type="number" step="1" min="3" max="90" inputmode="numeric" /></label>
               <label class="admin-field"><span>Pembacaan berturut-turut untuk membuka masalah</span><input id="set-fiber-consec_required" type="number" step="1" min="1" max="10" inputmode="numeric" /></label>
               <label class="admin-field"><span>Jumlah pembacaan untuk rata-rata</span><input id="set-fiber-avg_readings" type="number" step="1" min="1" max="10" inputmode="numeric" /></label>
@@ -633,12 +633,12 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/fiber.js?v=2" defer></script>
+  <script src="assets/js/fiber.js?v=3" defer></script>
 </body>
 </html>

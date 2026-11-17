@@ -5,8 +5,8 @@
   const { escapeHtml, formatDateTime } = window.NMSFormat;
 
   const VIEWS = {
-    users: { label: "Users", desc: "Akun pengguna dan perannya." },
-    "user-roles": { label: "User roles", desc: "Matriks hak akses per peran." },
+    users: { label: "Pengguna", desc: "Akun pengguna dan perannya." },
+    "user-roles": { label: "Peran pengguna", desc: "Matriks hak akses per peran." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -28,7 +28,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Users · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Pengguna");
     if (current === "users") loadUsers();
     else if (current === "user-roles") renderMatrix();
   }
@@ -45,7 +45,7 @@
     return window.__nmsMe && window.__nmsMe.role === "admin";
   }
 
-  const ROLE_LABELS = { admin: "Administrator", operator: "Operator", viewer: "Viewer" };
+  const ROLE_LABELS = { admin: "Administrator", operator: "Operator", viewer: "Pengamat" };
 
   const userRows = document.getElementById("user-rows");
   const userCount = document.getElementById("user-count");
@@ -224,7 +224,7 @@
       if (password == null) return;
       try {
         await window.apiFetch(`/api/mfa/reset/${id}`, { method: "POST", body: { password } });
-        window.NMSUi.toast("MFA pengguna direset. Pengguna wajib mengaktifkan ulang MFA saat login.");
+        window.NMSUi.toast("MFA pengguna direset. Pengguna wajib mengaktifkan ulang MFA saat masuk.");
         await loadUsers();
       } catch (error) {
         window.NMSUi.toast(error.message || "Gagal mereset MFA.", { kind: "error" });
@@ -235,7 +235,7 @@
     if (button.dataset.action === "reset-password") {
       const user = usersCache.find((item) => item.id === id);
       const password = await window.NMSUi.prompt(
-        `Kata sandi baru untuk "${user ? user.username : id}". Pengguna wajib menggantinya saat login berikutnya.`,
+        `Kata sandi baru untuk "${user ? user.username : id}". Pengguna wajib menggantinya saat masuk berikutnya.`,
         {
           title: "Reset kata sandi",
           label: "Kata sandi baru * (min. 10 karakter)",
@@ -248,7 +248,7 @@
       if (password == null) return;
       try {
         await window.apiFetch(`/api/users/${id}`, { method: "PUT", body: { password } });
-        window.NMSUi.toast("Kata sandi direset. Pengguna wajib menggantinya saat login berikutnya.");
+        window.NMSUi.toast("Kata sandi direset. Pengguna wajib menggantinya saat masuk berikutnya.");
         await loadUsers();
       } catch (error) {
         window.NMSUi.toast(error.message || "Gagal mereset kata sandi.", { kind: "error" });
@@ -278,14 +278,14 @@
      ===================================================== */
 
   const CAPABILITIES = [
-    ["Melihat dasbor, monitoring, inventory, alerts, services, laporan", true, true, true],
+    ["Melihat dasbor, pemantauan, inventaris, peringatan, layanan, laporan", true, true, true],
     ["Menambah / mengubah / menghapus perangkat", true, true, false],
     ["Mengakui / membatalkan pengakuan masalah", true, true, false],
     ["Pemeliharaan (jendela & flag perangkat)", true, true, false],
     ["Pemindaian CIDR & penambahan massal", true, true, false],
     ["Uji kirim notifikasi & pengiriman uji kanal", true, true, false],
     ["Mengelola layanan & SLA", true, true, false],
-    ["Audit log & unduh CSV audit", true, false, false],
+    ["Log audit & unduh CSV audit", true, false, false],
     ["Kelola akun pengguna & peran", true, false, false],
     ["Pengaturan umum, retensi & informasi instalasi", true, false, false],
   ];

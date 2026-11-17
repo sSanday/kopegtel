@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Administration · NMS Kopegtel</title>
+  <title>Administrasi · NMS Kopegtel</title>
   <meta name="description" content="Pengaturan umum, retensi data, dan informasi instalasi NMS Kopegtel." />
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
@@ -22,7 +22,7 @@
         <div>
           <p class="topbar__eyebrow">Administrasi</p>
           <h1 class="topbar__title" id="view-title">Pengaturan umum</h1>
-          <p class="topbar__sub"><span id="view-desc">Organisasi, zona waktu, interval default, dan idle timeout.</span> · <span id="today">Memuat tanggal…</span></p>
+          <p class="topbar__sub"><span id="view-desc">Organisasi, zona waktu, interval bawaan, dan batas waktu menganggur.</span> · <span id="today">Memuat tanggal…</span></p>
         </div>
         <div class="topbar__actions">
           <button class="btn btn--ghost" id="refresh" type="button">
@@ -61,23 +61,23 @@
                 </select>
               </label>
               <label class="admin-field">
-                <span>Interval polling default (detik, ≥ 10)</span>
+                <span>Interval polling bawaan (detik, ≥ 10)</span>
                 <input id="set-default-interval" type="number" min="10" max="86400" step="1" inputmode="numeric" />
               </label>
               <label class="admin-field">
-                <span>Idle timeout sesi (menit, ≥ 5)</span>
+                <span>Batas waktu menganggur sesi (menit, ≥ 5)</span>
                 <input id="set-idle-timeout" type="number" min="5" max="1440" step="1" inputmode="numeric" />
               </label>
               <fieldset class="admin-field admin-field--full">
-                <legend class="admin-hint"><strong>MFA wajib untuk peran</strong> (TOTP / aplikasi authenticator)</legend>
+                <legend class="admin-hint"><strong>MFA wajib untuk peran</strong> (TOTP / aplikasi autentikator)</legend>
                 <span class="check check--inline"><input type="checkbox" class="mfa-role" value="admin" id="mfa-role-admin" /> Administrator</span>
                 <span class="check check--inline"><input type="checkbox" class="mfa-role" value="operator" id="mfa-role-operator" /> Operator</span>
-                <span class="check check--inline"><input type="checkbox" class="mfa-role" value="viewer" id="mfa-role-viewer" /> Viewer</span>
+                <span class="check check--inline"><input type="checkbox" class="mfa-role" value="viewer" id="mfa-role-viewer" /> Pengamat</span>
                 <label class="admin-field field-narrow">
                   <span>Masa tenggang (hari)</span>
                   <input id="mfa-grace-days" type="number" min="0" max="365" step="1" inputmode="numeric" value="7" />
                 </label>
-                <span class="admin-hint">Setelah masa tenggang habis, peran wajib tidak bisa login sebelum mengaktifkan MFA di menu Profil.</span>
+                <span class="admin-hint">Setelah masa tenggang habis, peran wajib tidak bisa masuk sebelum mengaktifkan MFA di menu Profil.</span>
               </fieldset>
             </div>
             <p class="form-note is-error" id="settings-note" role="alert" hidden></p>
@@ -105,7 +105,7 @@
               <label class="admin-field">
                 <span>Data mentah (hari)</span>
                 <input id="ret-raw" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint">Metrik &amp; statistik interface. <b id="ret-raw-preview">—</b> baris saat ini akan terhapus.</span>
+                <span class="admin-hint">Metrik &amp; statistik antarmuka. <b id="ret-raw-preview">—</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
                 <span>Riwayat pemeriksaan (hari)</span>
@@ -118,12 +118,12 @@
                 <span class="admin-hint"><b id="ret-hourly-preview">—</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
-                <span>Event (hari)</span>
+                <span>Kejadian (hari)</span>
                 <input id="ret-events" type="number" min="1" max="3650" step="1" inputmode="numeric" />
                 <span class="admin-hint"><b id="ret-events-preview">—</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
-                <span>Audit log (hari)</span>
+                <span>Log audit (hari)</span>
                 <input id="ret-audit" type="number" min="1" max="3650" step="1" inputmode="numeric" />
                 <span class="admin-hint"><b id="ret-audit-preview">—</b> baris saat ini akan terhapus.</span>
               </label>
@@ -144,19 +144,19 @@
            Penerima kejadian (admin) — E1
            ===================================================== -->
       <section class="view" data-view="ingest" aria-labelledby="ingest-title" hidden>
-        <p class="hint-bar" role="status">Penerima default MATI sampai diaktifkan. Hanya IP perangkat terdaftar yang diterima; pesan flow dibatasi laju &amp; ukurannya, dan flow mentah tidak disimpan (bucket 5 menit, top-N per kunci). Perintah MikroTik di bawah belum diuji pada versi RouterOS nyata — verifikasi di versi RouterOS-mu.</p>
+        <p class="hint-bar" role="status">Penerima bawaan MATI sampai diaktifkan. Hanya IP perangkat terdaftar yang diterima; pesan flow dibatasi laju &amp; ukurannya, dan flow mentah tidak disimpan (bucket 5 menit, N teratas per kunci). Perintah MikroTik di bawah belum diuji pada versi RouterOS nyata — verifikasi di versi RouterOS-mu.</p>
 
         <section class="panel" aria-labelledby="ingest-title">
           <div class="panel__head panel__head--stack">
             <div>
               <h2 class="panel__title" id="ingest-title">Penerima kejadian</h2>
-              <p class="panel__sub">Syslog UDP 5514 (opsional TCP), SNMP trap UDP 1162, NetFlow UDP 2055, IPFIX UDP 4739. Community trap tersimpan tersembunyi seperti password.</p>
+              <p class="panel__sub">Syslog UDP 5514 (opsional TCP), SNMP trap UDP 1162, NetFlow UDP 2055, IPFIX UDP 4739. Community trap tersimpan tersembunyi seperti kata sandi.</p>
             </div>
             <div class="filters"><a class="btn btn--ghost" href="events.html#status">Lihat status penerima</a></div>
           </div>
           <div class="table-wrap">
             <table class="mon-table" id="ingest-receiver-table">
-              <thead><tr><th>Penerima</th><th>Aktif</th><th>Port</th><th>Bind address</th><th>Lainnya</th><th></th></tr></thead>
+              <thead><tr><th>Penerima</th><th>Aktif</th><th>Port</th><th>Alamat pengikatan</th><th>Lainnya</th><th></th></tr></thead>
               <tbody id="ingest-receiver-rows"></tbody>
             </table>
           </div>
@@ -168,7 +168,7 @@
               <p><code>/system logging add topics=info action=nms</code> (ulangi untuk topics=warning,error,critical)</p>
               <p>Trap: <code>/snmp set enabled=yes contact=nms</code> &nbsp; <code>/snmp community add name=nms addresses=IP-NMS</code> &nbsp; <code>/snmp target add address=IP-NMS:1162 community=nms</code></p>
               <p>NetFlow: <code>/ip traffic-flow set enabled=yes cache-active-flow-timeout=01:00:00</code> &nbsp; <code>/ip traffic-flow target add address=IP-NMS:2055 version=9</code> (atau <code>version=ipfix</code> / port 4739)</p>
-              <p>Untuk ifIndex → nama interface, modul MikroTik harus menarik <code>/interface/print</code> (field if-index). Verifikasi di versi RouterOS-mu.</p>
+              <p>Untuk ifIndex → nama antarmuka, modul MikroTik harus menarik <code>/interface/print</code> (field if-index). Verifikasi di versi RouterOS-mu.</p>
             </div>
           </details>
         </section>
@@ -177,7 +177,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="ingest-settings-title">Retensi &amp; batas laju kejadian</h2>
-              <p class="panel__sub">Syslog default 14 hari, trap 30 hari. Antrean disimpan batch (default 200 baris/flush).</p>
+              <p class="panel__sub">Syslog bawaan 14 hari, trap 30 hari. Antrean disimpan per kelompok (bawaan 200 baris/kuras).</p>
             </div>
           </div>
           <div class="admin-form">
@@ -186,12 +186,12 @@
               <label class="admin-field"><span>Retensi trap (hari)</span><input id="ingest-ret-trap" type="number" min="1" max="3650" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Retensi flow 5 menit (hari)</span><input id="ingest-ret-flow" type="number" min="1" max="3650" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Retensi flow per jam (hari)</span><input id="ingest-ret-flow-hourly" type="number" min="1" max="3650" step="1" inputmode="numeric" /></label>
-              <label class="admin-field"><span>Top-N flow per kunci</span><input id="ingest-topn" type="number" min="2" max="1000" step="1" inputmode="numeric" /></label>
+              <label class="admin-field"><span>N teratas aliran per kunci</span><input id="ingest-topn" type="number" min="2" max="1000" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Laju maks/detik / sumber</span><input id="ingest-rate" type="number" min="1" max="10000" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Jendela laju (detik)</span><input id="ingest-window" type="number" min="1" max="120" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Ukuran antrean</span><input id="ingest-queue" type="number" min="100" max="100000" step="1" inputmode="numeric" /></label>
-              <label class="admin-field"><span>Ukuran batch</span><input id="ingest-batch" type="number" min="1" max="1000" step="1" inputmode="numeric" /></label>
-              <label class="admin-field"><span>Flush antrean (detik)</span><input id="ingest-flush" type="number" min="1" max="30" step="1" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Ukuran kelompok</span><input id="ingest-batch" type="number" min="1" max="1000" step="1" inputmode="numeric" /></label>
+              <label class="admin-field"><span>Kuras antrean (detik)</span><input id="ingest-flush" type="number" min="1" max="30" step="1" inputmode="numeric" /></label>
               <label class="admin-field"><span>Ukuran pesan maks (byte)</span><input id="ingest-maxbytes" type="number" min="512" max="65535" step="1" inputmode="numeric" /></label>
             </div>
             <p class="form-note is-error" id="ingest-settings-note" role="alert" hidden></p>
@@ -204,7 +204,7 @@
            Modul MikroTik (admin)
            ===================================================== -->
       <section class="view" data-view="mikrotik" aria-labelledby="mikrotik-title" hidden>
-        <p class="hint-bar" role="status">Pengaturan global modul MikroTik. Kredensial tulis (terpisah dari kredensial baca), toggle modul, interval, dan interface penting per perangkat diatur di halaman <a href="mikrotik.html">MikroTik</a> → detail perangkat.</p>
+        <p class="hint-bar" role="status">Pengaturan global modul MikroTik. Kredensial tulis (terpisah dari kredensial baca), sakelar modul, interval, dan antarmuka penting per perangkat diatur di halaman <a href="mikrotik.html">MikroTik</a> → detail perangkat.</p>
         <form class="panel" id="mikrotik-form" aria-labelledby="mikrotik-title">
           <div class="panel__head">
             <div>
@@ -216,7 +216,7 @@
             <div class="admin-form__grid">
               <label class="check admin-field--full">
                 <input id="mt-write-global" type="checkbox" />
-                Aktifkan aksi tulis (Tahap M5, default mati). Tanpa ini, tombol aksi tidak muncul meski kredensial tulis terpasang.
+                Aktifkan aksi tulis (Tahap M5, bawaan mati). Tanpa ini, tombol aksi tidak muncul meski kredensial tulis terpasang.
               </label>
               <label class="admin-field">
                 <span>Brute force: batas percobaan gagal</span>
@@ -247,9 +247,9 @@
                 <span class="admin-hint">mt_time_drift bila selisih melebihi nilai ini (memperhitungkan zona waktu router).</span>
               </label>
               <label class="admin-field">
-                <span>User router basi (hari)</span>
+                <span>Pengguna router basi (hari)</span>
                 <input id="mt-stale-user" type="number" min="7" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint">Temuan keamanan: user router yang tidak login selama lebih dari nilai ini.</span>
+                <span class="admin-hint">Temuan keamanan: pengguna router yang tidak masuk selama lebih dari nilai ini.</span>
               </label>
               <label class="admin-field">
                 <span>Retensi log router (hari)</span>
@@ -276,19 +276,19 @@
 
         <section class="panel" aria-labelledby="tokens-settings-title">
           <div class="panel__head">
-            <div><h2 class="panel__title" id="tokens-settings-title">Metrik Prometheus</h2><p class="panel__sub">Default MATI. Setelah aktif, /metrics menjawab 404 → 200.</p></div>
+            <div><h2 class="panel__title" id="tokens-settings-title">Metrik Prometheus</h2><p class="panel__sub">Bawaan MATI. Setelah aktif, /metrics menjawab 404 → 200.</p></div>
           </div>
           <form class="admin-form" id="metrics-settings-form">
             <div class="admin-form__grid">
-              <label class="check admin-field--full"><input id="metrics-enabled" type="checkbox" /> Aktifkan endpoint /metrics</label>
-              <label class="admin-field"><span>Kardinalitas interface</span>
+              <label class="check admin-field--full"><input id="metrics-enabled" type="checkbox" /> Aktifkan titik akhir /metrics</label>
+              <label class="admin-field"><span>Kardinalitas antarmuka</span>
                 <select id="metrics-interfaces">
-                  <option value="important">important (hanya interface penting)</option>
-                  <option value="all">all (semua interface)</option>
-                  <option value="none">none (tanpa metrik interface)</option>
+                  <option value="important">penting (hanya antarmuka penting)</option>
+                  <option value="all">semua (semua antarmuka)</option>
+                  <option value="none">tidak ada (tanpa metrik antarmuka)</option>
                 </select>
               </label>
-              <label class="admin-field"><span>Batas seri (default 20000)</span><input id="metrics-series-limit" type="number" min="10" max="100000" step="1" inputmode="numeric" value="20000" /></label>
+              <label class="admin-field"><span>Batas seri (bawaan 20000)</span><input id="metrics-series-limit" type="number" min="10" max="100000" step="1" inputmode="numeric" value="20000" /></label>
             </div>
             <p class="form-note" id="metrics-settings-note" role="status" hidden></p>
             <div class="admin-actions"><button class="btn btn--primary" type="submit">Simpan pengaturan metrik</button></div>
@@ -330,7 +330,7 @@
           <div class="admin-form">
             <label class="admin-field admin-field--full"><span>Token</span><input id="token-reveal-value" type="text" readonly /></label>
             <div class="admin-actions">
-              <button class="btn btn--primary" id="token-copy" type="button">Salin ke clipboard</button>
+              <button class="btn btn--primary" id="token-copy" type="button">Salin ke papan klip</button>
               <button class="btn btn--ghost" id="token-reveal-done" type="button">Selesai</button>
             </div>
             <p class="form-note" id="token-reveal-note" role="status" hidden></p>
@@ -357,13 +357,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/device-form.js?v=2" defer></script>
-  <script src="assets/js/administration.js?v=6" defer></script>
+  <script src="assets/js/device-form.js?v=3" defer></script>
+  <script src="assets/js/administration.js?v=8" defer></script>
 </body>
 </html>

@@ -71,6 +71,16 @@
     return formatDateTime(value);
   }
 
+  /** Judul tab: bagian unik + merek, tanpa segmen berulang. */
+  function setDocumentTitle(...parts) {
+    const unique = [];
+    for (const part of parts) {
+      const text = String(part == null ? "" : part).trim();
+      if (text && !unique.includes(text)) unique.push(text);
+    }
+    document.title = `${unique.join(" · ")} · NMS Kopegtel`;
+  }
+
   /** Persen dengan koma (id-ID). null/NaN → '—'. */
   function formatPercent(value, digits) {
     const n = Number(value);
@@ -120,19 +130,19 @@
 
   /** Metadata status → kelas + label (tanpa mengandalkan warna saja). */
   const STATUS_META = {
-    online: { cls: "status--ok", label: "Online" },
+    online: { cls: "status--ok", label: "Tersambung" },
     degraded: { cls: "status--warn", label: "Degradasi" },
-    offline: { cls: "status--down", label: "Offline" },
+    offline: { cls: "status--down", label: "Terputus" },
     maintenance: { cls: "status--idle", label: "Pemeliharaan" },
     unknown: { cls: "status--idle", label: "Tidak diketahui" },
   };
 
   const TYPE_LABELS = {
     mikrotik: "MikroTik",
-    router: "Router",
-    switch: "Switch",
-    "access-point": "Access Point",
-    server: "Server",
+    router: "Penghala",
+    switch: "Sakelar",
+    "access-point": "Titik akses",
+    server: "Peladen",
     olt: "OLT",
     ont: "ONT",
     firewall: "Firewall",
@@ -140,11 +150,11 @@
   };
 
   const SEVERITY_META = {
-    disaster: { cls: "sev sev--disaster", label: "Disaster", rank: 5 },
-    high: { cls: "sev sev--high", label: "High", rank: 4 },
-    average: { cls: "sev sev--average", label: "Average", rank: 3 },
-    warning: { cls: "sev sev--warning", label: "Warning", rank: 2 },
-    information: { cls: "sev sev--information", label: "Information", rank: 1 },
+    disaster: { cls: "sev sev--disaster", label: "Bencana", rank: 5 },
+    high: { cls: "sev sev--high", label: "Tinggi", rank: 4 },
+    average: { cls: "sev sev--average", label: "Sedang", rank: 3 },
+    warning: { cls: "sev sev--warning", label: "Peringatan", rank: 2 },
+    information: { cls: "sev sev--information", label: "Informasi", rank: 1 },
   };
 
   /** Sel berwarna nilai → kelas avail (--ok/--warn/--down) + label teks. */
@@ -167,6 +177,7 @@
     parseServerTs,
     formatDateTime,
     formatDateTimeFull,
+    setDocumentTitle,
     timeAgo,
     formatPercent,
     formatBytes,

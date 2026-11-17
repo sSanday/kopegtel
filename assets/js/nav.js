@@ -46,7 +46,7 @@
     '<circle cx="24" cy="24" r="4.2" fill="url(#markGradient)" />' +
     '<circle cx="15.5" cy="15" r="2.6" fill="#2fe0c4" /><circle cx="33" cy="18" r="2.6" fill="#5b8dff" /><circle cx="26" cy="34" r="2.6" fill="#2fe0c4" />' +
     "</svg>" +
-    '<span class="lockup__text"><span class="lockup__name">NMS KOPEGTEL</span><span class="lockup__sub">Network Management System</span></span>' +
+    '<span class="lockup__text"><span class="lockup__name">NMS KOPEGTEL</span><span class="lockup__sub">Sistem manajemen jaringan</span></span>' +
     "</a>";
 
   const CHEVRON =
@@ -56,26 +56,26 @@
   const MENU = [
     { label: "Dasbor", href: "dashboard.html", icon: "dashboard", roles: ["admin", "operator", "viewer"] },
     {
-      label: "Monitoring",
+      label: "Pemantauan",
       icon: "monitoring",
       id: "monitoring",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Problems", href: "monitoring.html#problems", badge: "problems" },
-        { label: "Hosts", href: "monitoring.html#hosts" },
-        { label: "Latest data", href: "monitoring.html#latest-data" },
-        { label: "Maps", href: "monitoring.html#maps" },
+        { label: "Masalah", href: "monitoring.html#problems", badge: "problems" },
+        { label: "Perangkat", href: "monitoring.html#hosts" },
+        { label: "Data terbaru", href: "monitoring.html#latest-data" },
+        { label: "Peta", href: "monitoring.html#maps" },
       ],
     },
     {
-      label: "Services",
+      label: "Layanan",
       icon: "services",
       id: "services",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Services", href: "services.html#services" },
+        { label: "Layanan", href: "services.html#services" },
         { label: "SLA", href: "services.html#sla" },
-        { label: "SLA report", href: "services.html#sla-report" },
+        { label: "Laporan SLA", href: "services.html#sla-report" },
       ],
     },
     {
@@ -102,13 +102,13 @@
       ],
     },
     {
-      label: "Traffic",
+      label: "Lalu lintas",
       icon: "traffic",
       id: "traffic",
       roles: ["admin", "operator", "viewer"],
       children: [
         { label: "Ringkasan", href: "traffic.html#summary" },
-        { label: "Top Talkers", href: "traffic.html#talkers", roles: ["admin", "operator"] },
+        { label: "Trafik teratas", href: "traffic.html#talkers", roles: ["admin", "operator"] },
         { label: "Aplikasi / Port", href: "traffic.html#apps", roles: ["admin", "operator"] },
         { label: "Percakapan", href: "traffic.html#conversations", roles: ["admin", "operator"] },
         { label: "Status eksporter", href: "traffic.html#status", roles: ["admin", "operator"] },
@@ -127,67 +127,67 @@
       ],
     },
     {
-      label: "Inventory",
+      label: "Inventaris",
       icon: "inventory",
       id: "inventory",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Overview", href: "inventory.html#overview" },
-        { label: "Hosts", href: "inventory.html#hosts" },
+        { label: "Ringkasan", href: "inventory.html#overview" },
+        { label: "Perangkat", href: "inventory.html#hosts" },
       ],
     },
     {
-      label: "Reports",
+      label: "Laporan",
       icon: "reports",
       id: "reports",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "System information", href: "reports.html#system-information" },
-        { label: "Availability report", href: "reports.html#availability-report" },
-        { label: "Top problems", href: "reports.html#top-problems" },
+        { label: "Informasi sistem", href: "reports.html#system-information" },
+        { label: "Laporan ketersediaan", href: "reports.html#availability-report" },
+        { label: "Masalah teratas", href: "reports.html#top-problems" },
         { label: "Laporan redaman", href: "reports.html#fiber-attenuation" },
         { label: "Armada MikroTik", href: "reports.html#mikrotik-fleet" },
-        { label: "Audit log", href: "reports.html#audit-log", roles: ["admin"] },
-        { label: "Action log", href: "reports.html#action-log" },
+        { label: "Log audit", href: "reports.html#audit-log", roles: ["admin"] },
+        { label: "Log aksi", href: "reports.html#action-log" },
       ],
     },
     {
-      label: "Data collection",
+      label: "Pengumpulan data",
       icon: "dataCollection",
       id: "data-collection",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Host groups", href: "data-collection.html#host-groups" },
+        { label: "Grup perangkat", href: "data-collection.html#host-groups" },
         { label: "Profil pemantauan", href: "data-collection.html#profiles" },
-        { label: "Hosts", href: "data-collection.html#hosts" },
-        { label: "Maintenance", href: "data-collection.html#maintenance" },
-        { label: "Discovery", href: "data-collection.html#discovery" },
+        { label: "Perangkat", href: "data-collection.html#hosts" },
+        { label: "Pemeliharaan", href: "data-collection.html#maintenance" },
+        { label: "Penemuan", href: "data-collection.html#discovery" },
       ],
     },
     {
-      label: "Alerts",
+      label: "Peringatan",
       icon: "alerts",
       id: "alerts",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Actions", href: "alerts.html#actions" },
-        { label: "Message templates", href: "alerts.html#message-templates" },
-        { label: "Media types", href: "alerts.html#media-types", roles: ["admin", "operator"] },
+        { label: "Aksi", href: "alerts.html#actions" },
+        { label: "Template pesan", href: "alerts.html#message-templates" },
+        { label: "Jenis media", href: "alerts.html#media-types", roles: ["admin", "operator"] },
         { label: "Eskalasi", href: "alerts.html#escalation", roles: ["admin", "operator"] },
       ],
     },
     {
-      label: "Users",
+      label: "Pengguna",
       icon: "users",
       id: "users",
       roles: ["admin"],
       children: [
-        { label: "Users", href: "users.html#users" },
-        { label: "User roles", href: "users.html#user-roles" },
+        { label: "Pengguna", href: "users.html#users" },
+        { label: "Peran pengguna", href: "users.html#user-roles" },
       ],
     },
     {
-      label: "Administration",
+      label: "Administrasi",
       icon: "administration",
       id: "administration",
       roles: ["admin"],

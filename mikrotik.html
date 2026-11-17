@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MikroTik · NMS Kopegtel</title>
-  <meta name="description" content="Modul MikroTik NMS Kopegtel: armada RouterOS, interface, routing, DHCP/ARP, sesi PPP/hotspot, wireless, firewall/queue, log, neighbor, temuan keamanan, dan aksi tulis terbatas." />
+  <meta name="description" content="Modul MikroTik NMS Kopegtel: armada RouterOS, antarmuka, perutean, DHCP/ARP, sesi PPP/hotspot, nirkabel, firewall/antrean, log, tetangga, temuan keamanan, dan aksi tulis terbatas." />
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
@@ -42,14 +42,14 @@
       <section class="view" data-view="armada" aria-labelledby="armada-title">
         <div class="stats" aria-label="Ringkasan armada MikroTik">
           <article class="stat">
-            <p class="stat__label">Router Terdaftar</p>
+            <p class="stat__label">Penghala terdaftar</p>
             <p class="stat__value" id="mt-router-count">—</p>
             <p class="stat__meta">Tipe MikroTik / API aktif</p>
           </article>
           <article class="stat">
             <p class="stat__label">Firmware Tertunda</p>
             <p class="stat__value" id="mt-firmware-pending">—</p>
-            <p class="stat__meta">RouterBoard perlu upgrade</p>
+            <p class="stat__meta">RouterBoard perlu pemutakhiran</p>
           </article>
           <article class="stat">
             <p class="stat__label">Temuan Keamanan</p>
@@ -79,9 +79,9 @@
                 <span class="sr-only">Status perangkat</span>
                 <select id="mt-status">
                   <option value="">Semua status</option>
-                  <option value="online">Online</option>
+                  <option value="online">Tersambung</option>
                   <option value="degraded">Degradasi</option>
-                  <option value="offline">Offline</option>
+                  <option value="offline">Terputus</option>
                   <option value="maintenance">Pemeliharaan</option>
                   <option value="unknown">Belum diperiksa</option>
                 </select>
@@ -114,10 +114,10 @@
                   <th scope="col">Model</th>
                   <th scope="col">RouterOS</th>
                   <th scope="col">Firmware</th>
-                  <th scope="col">Uptime</th>
+                  <th scope="col">Waktu aktif</th>
                   <th scope="col">CPU</th>
                   <th scope="col">Memori</th>
-                  <th scope="col">Interface</th>
+                  <th scope="col">Antarmuka</th>
                   <th scope="col">Sesi</th>
                   <th scope="col">Masalah</th>
                 </tr>
@@ -136,7 +136,7 @@
           <div class="panel__head panel__head--stack">
             <div>
               <h2 class="panel__title" id="mt-topology-title">Saran topologi (MNDP/LLDP)</h2>
-              <p class="panel__sub">Relasi induk–anak hanya dari neighbor yang benar-benar terlihat. Tidak pernah diterapkan otomatis.</p>
+              <p class="panel__sub">Relasi induk–anak hanya dari tetangga yang benar-benar terlihat. Tidak pernah diterapkan otomatis.</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -195,12 +195,12 @@
                 <input id="mt-tab-search" type="search" placeholder="Cari pada tab ini…" autocomplete="off" />
               </label>
               <label class="field" id="mt-log-severity-wrap" hidden>
-                <span class="sr-only">Severity log</span>
+                <span class="sr-only">Keparahan log</span>
                 <select id="mt-log-severity">
-                  <option value="">Semua severity</option>
-                  <option value="error">Error</option>
-                  <option value="critical">Critical</option>
-                  <option value="warning">Warning</option>
+                  <option value="">Semua keparahan</option>
+                  <option value="error">Galat</option>
+                  <option value="critical">Kritis</option>
+                  <option value="warning">Peringatan</option>
                   <option value="info">Info</option>
                 </select>
               </label>
@@ -220,12 +220,12 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/mikrotik.js?v=6" defer></script>
+  <script src="assets/js/mikrotik.js?v=8" defer></script>
 </body>
 </html>

@@ -5,9 +5,9 @@
   const { escapeHtml, formatPercent, availabilityClass } = window.NMSFormat;
 
   const VIEWS = {
-    services: { label: "Services", desc: "Layanan bisnis dan perangkat penopangnya." },
+    services: { label: "Layanan", desc: "Layanan bisnis dan perangkat penopangnya." },
     sla: { label: "SLA", desc: "Ketersediaan tiap layanan terhadap target SLA." },
-    "sla-report": { label: "SLA report", desc: "Laporan SLA per periode beserta unduhan CSV." },
+    "sla-report": { label: "Laporan SLA", desc: "Laporan SLA per periode beserta unduhan CSV." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -33,7 +33,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Services · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Layanan");
     if (current === "services") loadServices();
     else if (current === "sla") loadSla();
     else if (current === "sla-report") loadSlaReport();
@@ -302,7 +302,7 @@
       return;
     }
     if (services.length === 0) {
-      slaRows.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada layanan. Buat layanan di tab Services.</td></tr>';
+      slaRows.innerHTML = '<tr class="empty-row"><td colspan="5">Belum ada layanan. Buat layanan di tab Layanan.</td></tr>';
       return;
     }
     const results = await Promise.allSettled(

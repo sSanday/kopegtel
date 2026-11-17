@@ -5,12 +5,12 @@
   const { escapeHtml, formatBytes, formatDateTime } = window.NMSFormat;
 
   const VIEWS = {
-    general: { label: "Pengaturan umum", desc: "Organisasi, zona waktu, interval default, dan idle timeout." },
+    general: { label: "Pengaturan umum", desc: "Organisasi, zona waktu, interval bawaan, dan batas waktu menganggur." },
     housekeeping: { label: "Retensi data", desc: "Berapa lama data mentah dan ringkasan disimpan." },
     mikrotik: { label: "MikroTik", desc: "Aksi tulis global dan ambang deteksi masalah modul MikroTik." },
     ingest: { label: "Penerima kejadian", desc: "Syslog, SNMP trap, retensi dan batas laju kejadian." },
     tokens: { label: "Token API & metrik", desc: "Token baca-saja untuk /metrics dan pengaturan metrik Prometheus." },
-    installation: { label: "Informasi instalasi", desc: "Versi, uptime server, basis data, dan status poller." },
+    installation: { label: "Informasi instalasi", desc: "Versi, waktu aktif server, basis data, dan status poller." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -32,7 +32,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Administration · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Administrasi");
     if (current === "general") loadGeneral();
     else if (current === "housekeeping") loadRetention();
     else if (current === "mikrotik") loadMtSettings();
@@ -519,11 +519,11 @@
     tokenCopy.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(tokenRevealValue.value);
-        tokenRevealNote.textContent = "Token tersalin ke clipboard.";
+        tokenRevealNote.textContent = "Token tersalin ke papan klip.";
         tokenRevealNote.hidden = false;
       } catch {
         tokenRevealValue.select();
-        tokenRevealNote.textContent = "Clipboard diblokir — token dipilih; salin manual (Ctrl+C).";
+        tokenRevealNote.textContent = "Papan klip diblokir — token dipilih; salin manual (Ctrl+C).";
         tokenRevealNote.hidden = false;
       }
     });
@@ -582,7 +582,7 @@
       ["Zona waktu", info.timezone],
       ["Python", info.python_version],
       ["Flask", info.flask_version],
-      ["Uptime server", `${Math.floor((info.server_uptime_s || 0) / 86400)} hari ${Math.floor(((info.server_uptime_s || 0) % 86400) / 3600)} jam`],
+      ["Waktu aktif server", `${Math.floor((info.server_uptime_s || 0) / 86400)} hari ${Math.floor(((info.server_uptime_s || 0) % 86400) / 3600)} jam`],
       ["Basis data", `${info.db_path} (${formatBytes(info.db_size_bytes)})`],
       ["Poller", info.poller && info.poller.running ? `Berjalan (maks ${info.poller.max_workers} worker)` : "Tidak berjalan"],
       ["Waktu server (UTC)", info.time_utc],

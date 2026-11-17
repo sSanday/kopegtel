@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Traffic — NMS Kopegtel</title>
+  <title>Lalu lintas · NMS Kopegtel</title>
   <meta name="description" content="NetFlow/IPFIX: siapa dan aplikasi apa yang memakai bandwidth." />
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
@@ -18,9 +18,9 @@
     <main class="main" id="konten">
       <header class="topbar">
         <div>
-          <p class="topbar__eyebrow">Traffic</p>
+          <p class="topbar__eyebrow">Lalu lintas</p>
           <h1 class="topbar__title" id="view-title">Ringkasan</h1>
-          <p class="topbar__sub"><span id="view-desc">Total trafik per eksporter dan top talkers.</span> — <span id="today">Memuat tanggal.</span></p>
+          <p class="topbar__sub"><span id="view-desc">Total trafik per eksporter dan trafik teratas.</span> · <span id="today">Memuat tanggal.</span></p>
         </div>
         <div class="topbar__actions">
           <button class="btn btn--ghost" id="refresh" type="button">Muat ulang</button>
@@ -35,7 +35,7 @@
 
       <nav class="filters" aria-label="Tab traffic">
         <button class="btn btn--ghost" type="button" data-tab="summary">Ringkasan</button>
-        <button class="btn btn--ghost" type="button" data-tab="talkers">Top Talkers</button>
+        <button class="btn btn--ghost" type="button" data-tab="talkers">Trafik teratas</button>
         <button class="btn btn--ghost" type="button" data-tab="apps">Aplikasi / Port</button>
         <button class="btn btn--ghost" type="button" data-tab="conversations">Percakapan</button>
         <button class="btn btn--ghost" type="button" data-tab="status">Status eksporter</button>
@@ -50,7 +50,7 @@
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>Eksporter</th><th>Total</th><th>Packets</th><th>Flows</th><th>bps rata-rata (bucket terakhir)</th></tr></thead>
+              <thead><tr><th>Eksporter</th><th>Total</th><th>Paket</th><th>Aliran</th><th>bps rata-rata (bucket terakhir)</th></tr></thead>
               <tbody id="flow-exporter-rows"></tbody>
             </table>
           </div>
@@ -61,25 +61,25 @@
 
         <div class="flow-grid">
           <section class="panel" aria-labelledby="flow-top-talkers-title">
-            <div class="panel__head"><div><h2 class="panel__title" id="flow-top-talkers-title">Top 10 talkers</h2><p class="panel__sub">Berdasarkan bytes (src).</p></div></div>
+            <div class="panel__head"><div><h2 class="panel__title" id="flow-top-talkers-title">10 trafik teratas</h2><p class="panel__sub">Berdasarkan byte (sumber).</p></div></div>
             <div id="flow-talkers-bar" class="flow-bars"></div>
           </section>
           <section class="panel" aria-labelledby="flow-top-apps-title">
-            <div class="panel__head"><div><h2 class="panel__title" id="flow-top-apps-title">Top 10 aplikasi</h2><p class="panel__sub">Berdasarkan bytes.</p></div></div>
+            <div class="panel__head"><div><h2 class="panel__title" id="flow-top-apps-title">10 aplikasi teratas</h2><p class="panel__sub">Berdasarkan byte.</p></div></div>
             <div id="flow-apps-bar" class="flow-bars"></div>
           </section>
         </div>
 
         <section class="panel" id="flow-if-panel" aria-labelledby="flow-if-title">
           <div class="panel__head">
-            <div><h2 class="panel__title" id="flow-if-title">Trafik per interface</h2><p class="panel__sub">ifIndex → nama interface dari snapshot terakhir. Filter di sini hanya memengaruhi tabel ini.</p></div>
+            <div><h2 class="panel__title" id="flow-if-title">Trafik per antarmuka</h2><p class="panel__sub">ifIndex → nama antarmuka dari snapshot terakhir. Filter di sini hanya memengaruhi tabel ini.</p></div>
             <div class="filters">
-              <label class="admin-field" id="flow-interface-wrap"><span>Interface</span><select id="flow-interface"><option value="">Semua interface</option></select></label>
+              <label class="admin-field" id="flow-interface-wrap"><span>Antarmuka</span><select id="flow-interface"><option value="">Semua antarmuka</option></select></label>
             </div>
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>Interface</th><th>Arah</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
+              <thead><tr><th>Antarmuka</th><th>Arah</th><th>Byte</th><th>Paket</th><th>Aliran</th></tr></thead>
               <tbody id="flow-if-rows"></tbody>
             </table>
           </div>
@@ -94,7 +94,7 @@
       <section class="view" data-view="talkers" aria-labelledby="flow-talkers-title" hidden>
         <section class="panel" aria-labelledby="flow-talkers-title">
           <div class="panel__head panel__head--stack">
-            <div><h2 class="panel__title" id="flow-talkers-title">Top talkers</h2><p class="panel__sub">IP yang paling banyak mengirim/menerima.</p></div>
+            <div><h2 class="panel__title" id="flow-talkers-title">Trafik teratas</h2><p class="panel__sub">IP yang paling banyak mengirim/menerima.</p></div>
             <div class="filters">
               <select id="flow-talkers-dir" aria-label="Arah"><option value="src">Sumber</option><option value="dst">Tujuan</option></select>
               <button class="btn btn--ghost" id="flow-talkers-export" type="button">Ekspor CSV</button>
@@ -102,7 +102,7 @@
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>#</th><th>IP</th><th>Nama host (DHCP)</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
+              <thead><tr><th>#</th><th>IP</th><th>Nama perangkat (DHCP)</th><th>Byte</th><th>Paket</th><th>Aliran</th></tr></thead>
               <tbody id="flow-talkers-rows"></tbody>
             </table>
           </div>
@@ -112,19 +112,19 @@
       <section class="view" data-view="apps" aria-labelledby="flow-apps-title" hidden>
         <section class="panel" aria-labelledby="flow-apps-title">
           <div class="panel__head panel__head--stack">
-            <div><h2 class="panel__title" id="flow-apps-title">Aplikasi / Port</h2><p class="panel__sub">Pemetaan protokol+port lokal (tanpa lookup eksternal).</p></div>
+            <div><h2 class="panel__title" id="flow-apps-title">Aplikasi / Port</h2><p class="panel__sub">Pemetaan protokol+port lokal (tanpa pencarian eksternal).</p></div>
             <div class="filters"><button class="btn btn--ghost" id="flow-apps-export" type="button">Ekspor CSV</button></div>
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>#</th><th>Aplikasi</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
+              <thead><tr><th>#</th><th>Aplikasi</th><th>Byte</th><th>Paket</th><th>Aliran</th></tr></thead>
               <tbody id="flow-apps-rows"></tbody>
             </table>
           </div>
           <h3 class="panel__title mt-1">Protokol</h3>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>#</th><th>Protokol</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
+              <thead><tr><th>#</th><th>Protokol</th><th>Byte</th><th>Paket</th><th>Aliran</th></tr></thead>
               <tbody id="flow-protos-rows"></tbody>
             </table>
           </div>
@@ -139,7 +139,7 @@
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>#</th><th>Percakapan</th><th>Bytes</th><th>Packets</th><th>Flows</th></tr></thead>
+              <thead><tr><th>#</th><th>Percakapan</th><th>Byte</th><th>Paket</th><th>Aliran</th></tr></thead>
               <tbody id="flow-conv-rows"></tbody>
             </table>
           </div>
@@ -153,7 +153,7 @@
           </div>
           <div class="table-wrap">
             <table class="mon-table">
-              <thead><tr><th>Penerima</th><th>Status</th><th>Alamat</th><th>Paket terakhir</th><th>Flow (diterima)</th><th>Bytes</th><th>Dibuang (asing/laju/invalid/template)</th><th>Template</th></tr></thead>
+              <thead><tr><th>Penerima</th><th>Status</th><th>Alamat</th><th>Paket terakhir</th><th>Aliran (diterima)</th><th>Byte</th><th>Dibuang (asing/laju/tidak valid/template)</th><th>Template</th></tr></thead>
               <tbody id="flow-status-rows"></tbody>
             </table>
           </div>
@@ -171,12 +171,12 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=1" defer></script>
-  <script src="assets/js/api.js?v=2" defer></script>
+  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=10" defer></script>
+  <script src="assets/js/nav.js?v=11" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/traffic.js?v=4" defer></script>
+  <script src="assets/js/traffic.js?v=6" defer></script>
 </body>
 </html>

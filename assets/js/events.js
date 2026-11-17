@@ -4,12 +4,12 @@
 
   const { escapeHtml, formatDateTime } = window.NMSFormat;
   const SEVERITIES = ["information", "warning", "average", "high", "disaster"];
-  const SYSLOG_SEVERITY = ["Emergency", "Alert", "Critical", "Error", "Warning", "Notice", "Info", "Debug"];
+  const SYSLOG_SEVERITY = ["Darurat", "Siaga", "Kritis", "Galat", "Peringatan", "Pemberitahuan", "Info", "Debug"];
 
   const TABS = {
     syslog: { title: "Syslog", desc: "Pesan syslog terbaru dari perangkat terdaftar." },
     traps: { title: "Trap", desc: "SNMP trap/inform yang lolos verifikasi community." },
-    rules: { title: "Aturan", desc: "Kondisi kejadian yang membuka problem dan memicu poll cepat." },
+    rules: { title: "Aturan", desc: "Kondisi kejadian yang membuka masalah dan memicu poll cepat." },
     status: { title: "Status penerima", desc: "Berjalan/berhenti, paket terakhir, laju, dan jumlah dibuang." },
   };
 
@@ -36,7 +36,7 @@
     const meta = TABS[currentTab];
     $("view-title").textContent = meta.title;
     $("view-desc").textContent = meta.desc;
-    document.title = `${meta.title} — Kejadian — NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.title, "Kejadian");
     if (currentTab === "syslog") loadSyslog();
     if (currentTab === "traps") loadTraps();
     if (currentTab === "rules") loadRules();

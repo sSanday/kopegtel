@@ -17,8 +17,8 @@
   } = window.NMSFormat;
 
   const VIEWS = {
-    overview: { label: "Inventory", desc: "Ringkasan aset perangkat dan infrastruktur." },
-    hosts: { label: "Hosts", desc: "Daftar host terdaftar beserta konfigurasi dan statusnya." },
+    overview: { label: "Ringkasan", desc: "Ringkasan aset perangkat dan infrastruktur." },
+    hosts: { label: "Perangkat", desc: "Daftar perangkat terdaftar beserta konfigurasi dan statusnya." },
     host: { label: "Detail perangkat", desc: "Metrik sumber daya dan trafik perangkat." },
   };
 
@@ -49,7 +49,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Inventory · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Inventaris");
 
     if (parsed.name === "overview") loadOverview();
     else if (parsed.name === "hosts") showHosts();
@@ -168,7 +168,7 @@
             );
           })
           .join("")
-      : '<tr class="empty-row"><td colspan="7">Belum ada perangkat. Tambahkan perangkat pertama lewat menu Hosts.</td></tr>';
+      : '<tr class="empty-row"><td colspan="7">Belum ada perangkat. Tambahkan perangkat pertama lewat menu Perangkat.</td></tr>';
 
     attentionCount.textContent = attention.length === 0 ? "Tidak ada" : `${attention.length} perangkat`;
     attentionRows.innerHTML = attention.length
@@ -185,7 +185,7 @@
             );
           })
           .join("")
-      : '<tr class="empty-row"><td colspan="6">Semua perangkat online. Tidak ada yang perlu perhatian.</td></tr>';
+      : '<tr class="empty-row"><td colspan="6">Semua perangkat tersambung. Tidak ada yang perlu perhatian.</td></tr>';
   }
 
   /* =====================================================
@@ -531,7 +531,7 @@
       const status = iface.disabled
         ? { label: "Dinonaktifkan", cls: "avail avail--warn" }
         : iface.running
-          ? { label: "Running", cls: "avail avail--ok" }
+          ? { label: "Berjalan", cls: "avail avail--ok" }
           : { label: "Tidak aktif", cls: "avail avail--down" };
       const tr = document.createElement("tr");
       tr.innerHTML =
@@ -638,7 +638,7 @@
     detailEls.voltage.textContent = metrics.voltage == null ? "—" : metrics.voltage.toFixed(1);
     detailEls.voltageSub.textContent = "Tegangan masuk";
     detailEls.uptime.textContent = formatUptime(metrics.uptime_s);
-    detailEls.uptimeSub.textContent = metrics.ping_ms != null ? `Ping ${Math.round(metrics.ping_ms)} ms` : "Sejak terakhir boot";
+    detailEls.uptimeSub.textContent = metrics.ping_ms != null ? `Ping ${Math.round(metrics.ping_ms)} ms` : "Sejak mulai ulang terakhir";
     detailEls.updated.textContent = `Terakhir diperbarui ${fmtAgo(metrics.ts)}`;
 
     const cpuValues = (metricsData && metricsData.points.map((p) => p.cpu_pct)) || [];
@@ -689,7 +689,7 @@
     const metricsData = results[0].status === "fulfilled" ? results[0].value : null;
     const interfacesData = results[1].status === "fulfilled" ? results[1].value : null;
     if (results[0].status === "rejected") showDetailError(results[0].reason.message || "Grafik riwayat tidak dapat dimuat.");
-    if (results[1].status === "rejected") showDetailError(results[1].reason.message || "Daftar interface tidak dapat dimuat.");
+    if (results[1].status === "rejected") showDetailError(results[1].reason.message || "Daftar antarmuka tidak dapat dimuat.");
 
     renderDeviceDetail(snapshot, metricsData, interfacesData);
   }
@@ -730,7 +730,7 @@
     const pairs = [
       [detailEls.thCpuWarn, detailEls.thCpuCrit, "CPU"],
       [detailEls.thMemWarn, detailEls.thMemCrit, "Memori"],
-      [detailEls.thStorageWarn, detailEls.thStorageCrit, "Storage"],
+      [detailEls.thStorageWarn, detailEls.thStorageCrit, "Penyimpanan"],
       [detailEls.thTempWarn, detailEls.thTempCrit, "Suhu"],
     ];
     for (const [warnInput, critInput, label] of pairs) {

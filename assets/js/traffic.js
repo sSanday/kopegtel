@@ -5,8 +5,8 @@
   const { escapeHtml, formatBytes, formatBps } = window.NMSFormat;
 
   const TABS = {
-    summary: { title: "Ringkasan", desc: "Total trafik per eksporter dan top talkers." },
-    talkers: { title: "Top Talkers", desc: "IP yang paling banyak mengirim/menerima." },
+    summary: { title: "Ringkasan", desc: "Total trafik per eksporter dan trafik teratas." },
+    talkers: { title: "Trafik teratas", desc: "IP yang paling banyak mengirim/menerima." },
     apps: { title: "Aplikasi / Port", desc: "Pemetaan protokol+port lokal." },
     conversations: { title: "Percakapan", desc: "Pasangan IP sumber > tujuan." },
     status: { title: "Status eksporter", desc: "Berjalan/berhenti, paket, flow diterima/dibuang, template." },
@@ -41,7 +41,7 @@
     const meta = TABS[currentTab];
     $("view-title").textContent = meta.title;
     $("view-desc").textContent = meta.desc;
-    document.title = `${meta.title} — Traffic — NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.title, "Lalu lintas");
     if (currentTab === "summary") loadSummary();
     if (currentTab === "talkers") loadTalkers();
     if (currentTab === "apps") loadApps();
@@ -100,7 +100,7 @@
 
   function renderExporters(data) {
     $("flow-summary-total").textContent =
-      `Total: ${formatBytes(data.total_bytes)} · ${data.total_packets.toLocaleString("id-ID")} paket · ${data.total_flows.toLocaleString("id-ID")} flow`;
+      `Total: ${formatBytes(data.total_bytes)} · ${data.total_packets.toLocaleString("id-ID")} paket · ${data.total_flows.toLocaleString("id-ID")} aliran`;
     $("flow-exporter-rows").innerHTML = (data.exporters || []).map((exporter) => `
       <tr>
         <td>${escapeHtml(exporter.name || exporter.device_id)}<br><span class="panel__sub">${escapeHtml(exporter.ip || "")}</span></td>
@@ -223,7 +223,7 @@
   }
 
   function renderDetailForbidden(id, colspan) {
-    $(id).innerHTML = `<tr class="empty-row"><td colspan="${colspan}">Detail hanya untuk operator/admin. Viewer hanya melihat total.</td></tr>`;
+    $(id).innerHTML = `<tr class="empty-row"><td colspan="${colspan}">Detail hanya untuk operator/admin. Pengamat hanya melihat total.</td></tr>`;
   }
 
   async function loadStatus() {
@@ -257,7 +257,7 @@
     try {
       const data = await window.apiFetch(`/api/flow/interfaces?${queryString()}`);
       const names = [...new Set((data.entries || []).map((entry) => entry.interface))].sort();
-      $("flow-interface").innerHTML = '<option value="">Semua interface</option>' + names
+      $("flow-interface").innerHTML = '<option value="">Semua antarmuka</option>' + names
         .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
       $("flow-interface-wrap").hidden = names.length === 0;
     } catch (error) {

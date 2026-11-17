@@ -15,10 +15,10 @@
   } = window.NMSFormat;
 
   const VIEWS = {
-    problems: { label: "Problems", desc: "Pantau seluruh masalah aktif di jaringan." },
-    hosts: { label: "Hosts", desc: "Daftar host terdaftar beserta ketersediaan 24 jam." },
-    "latest-data": { label: "Latest data", desc: "Nilai terakhir yang dikumpulkan dari seluruh host." },
-    maps: { label: "Maps", desc: "Topologi jaringan berdasarkan uplink (parent)." },
+    problems: { label: "Masalah", desc: "Pantau seluruh masalah aktif di jaringan." },
+    hosts: { label: "Perangkat", desc: "Daftar perangkat terdaftar beserta ketersediaan 24 jam." },
+    "latest-data": { label: "Data terbaru", desc: "Nilai terakhir yang dikumpulkan dari seluruh perangkat." },
+    maps: { label: "Peta", desc: "Topologi jaringan berdasarkan uplink (induk)." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -40,7 +40,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    document.title = `${meta.label} · Monitoring · NMS Kopegtel`;
+    window.NMSFormat.setDocumentTitle(meta.label, "Pemantauan");
     if (current === "problems") loadProblems();
     else if (current === "hosts") loadHosts();
     else if (current === "latest-data") loadLatest();

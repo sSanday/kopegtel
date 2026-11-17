@@ -92,7 +92,7 @@
           window.location.replace("index.html");
         }
       }
-      let message = "Belum login.";
+      let message = "Belum masuk.";
       try {
         message = (await response.json()).error || message;
       } catch {
