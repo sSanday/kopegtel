@@ -130,7 +130,7 @@
     ports: { title: "Port optik", desc: "Daya DDM per port optik (nilai nyata, “-” bila tidak terukur)." },
     links: { title: "Link & redaman", desc: "Anggaran rancangan vs redaman terukur per link." },
     measurements: { title: "Pengukuran manual", desc: "Catatan OTDR / power meter lapangan per link." },
-    calculator: { title: "Kalkulator", desc: "Anggaran link budget interaktif." },
+    calculator: { title: "Kalkulator", desc: "Anggaran link interaktif." },
     settings: { title: "Pengaturan fiber", desc: "Parameter redaman & profil optik (khusus admin)." },
   };
 

@@ -1,4 +1,4 @@
-/* Reports: informasi sistem, ketersediaan, masalah terlaris, audit log, action log. */
+/* Reports: informasi sistem, ketersediaan, masalah teratas, audit log, action log. */
 (function () {
   "use strict";
 
