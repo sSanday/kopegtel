@@ -343,7 +343,7 @@
   async function loadPortDetail(portId) {
     currentPortId = portId;
     const port = portsCache.find((item) => item.id === portId);
-    portDetail.hidden = false;
+    window.NMSUi.openSheet(portDetail);
     portDetailSub.textContent = port
       ? `${port.device_name} · ${port.if_name} · ${moduleBrief(port.module)}`
       : `Port #${portId}`;
@@ -368,7 +368,6 @@
       } else {
         portThresholds.textContent = "Port belum tergabung link/profil — ambang tidak digambar. Nilai tetap ditampilkan.";
       }
-      portDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
       portChartSummary.textContent = error.message || "Gagal memuat riwayat port.";
     }
@@ -490,8 +489,7 @@
     fillPortDatalist(document.getElementById("link-device-a").value, "link-ports-a");
     fillPortDatalist(document.getElementById("link-device-b").value, "link-ports-b");
     linkFormNote.hidden = true;
-    linkFormPanel.hidden = false;
-    linkFormPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.NMSUi.openSheet(linkFormPanel);
     document.getElementById("link-name").focus({ preventScroll: true });
   }
 
@@ -532,7 +530,7 @@
     try {
       const url = editingLinkId ? `/api/fiber-links/${editingLinkId}` : "/api/fiber-links";
       await apiFetch(url, { method: editingLinkId ? "PUT" : "POST", body: payload });
-      linkFormPanel.hidden = true;
+      window.NMSUi.closeSheet(linkFormPanel);
       toast(editingLinkId ? "Link fiber diperbarui." : "Link fiber ditambahkan.");
       await loadLinks();
     } catch (error) {
@@ -542,7 +540,7 @@
 
   async function openLinkDetail(linkId) {
     currentLinkId = linkId;
-    linkDetail.hidden = false;
+    window.NMSUi.openSheet(linkDetail);
     try {
       const data = await apiFetch(`/api/fiber-links/${linkId}?range=${encodeURIComponent(currentLinkRange)}`);
       const link = data.link;
@@ -589,7 +587,6 @@
       linkBaseline.textContent =
         `Acuan Rx (median ${data.baseline_samples_a || 0} jam, jendela 7 hari): A ${fmtDbm(baselineA)} · B ${fmtDbm(baselineB)} — penurunan > 3 dB dari acuan memicu masalah fiber_drop. ` +
         `Tren (regresi 14 hari): A ${trendA == null ? "—" : `${trendA.toFixed(2)} dB/minggu`} · B ${trendB == null ? "—" : `${trendB.toFixed(2)} dB/minggu`} — memburuk ≥ 0,5 dB/minggu memicu masalah fiber_trend.`;
-      linkDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
       showError(linkVerdict, error.message || "Gagal memuat detail link.");
     }
@@ -682,8 +679,7 @@
     document.getElementById("meas-value-dbm").value = row && row.value_dbm != null ? row.value_dbm : "";
     document.getElementById("meas-notes").value = row ? row.notes || "" : "";
     measFormNote.hidden = true;
-    measFormPanel.hidden = false;
-    measFormPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.NMSUi.openSheet(measFormPanel);
     document.getElementById("meas-measured-at").focus({ preventScroll: true });
   }
 
@@ -707,7 +703,7 @@
       } else {
         await apiFetch(base, { method: "POST", body: payload });
       }
-      measFormPanel.hidden = true;
+      window.NMSUi.closeSheet(measFormPanel);
       toast(currentMeasurementId ? "Pengukuran diperbarui." : "Pengukuran tercatat.");
       await loadMeasurements();
     } catch (error) {
@@ -887,8 +883,7 @@
       document.getElementById(`profile-${key}`).value = profile && profile[key] != null ? profile[key] : "";
     }
     profileFormNote.hidden = true;
-    profileFormPanel.hidden = false;
-    profileFormPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.NMSUi.openSheet(profileFormPanel);
     document.getElementById("profile-name").focus({ preventScroll: true });
   }
 
@@ -938,7 +933,7 @@
     try {
       const url = editingProfileId ? `/api/optical/profiles/${editingProfileId}` : "/api/optical/profiles";
       await apiFetch(url, { method: editingProfileId ? "PUT" : "POST", body: payload });
-      profileFormPanel.hidden = true;
+      window.NMSUi.closeSheet(profileFormPanel);
       toast(editingProfileId ? "Profil diperbarui." : "Profil ditambahkan.");
       const data = await apiFetch("/api/optical/profiles");
       profilesCache = data.profiles || [];
@@ -977,7 +972,7 @@
       if (button) loadPortDetail(Number(button.getAttribute("data-port-detail")));
     });
     document.getElementById("port-detail-close").addEventListener("click", () => {
-      portDetail.hidden = true;
+      window.NMSUi.closeSheet(portDetail);
     });
     document.getElementById("port-range").addEventListener("click", (event) => {
       const button = event.target.closest("[data-range]");
@@ -1029,9 +1024,9 @@
       syncLinkEndBFields();
       fillPortDatalist(event.target.value, "link-ports-b");
     });
-    document.getElementById("link-cancel").addEventListener("click", () => { linkFormPanel.hidden = true; });
+    document.getElementById("link-cancel").addEventListener("click", () => { window.NMSUi.closeSheet(linkFormPanel); });
     linkFormPanel.addEventListener("submit", submitLinkForm);
-    document.getElementById("link-detail-close").addEventListener("click", () => { linkDetail.hidden = true; });
+    document.getElementById("link-detail-close").addEventListener("click", () => { window.NMSUi.closeSheet(linkDetail); });
     document.getElementById("link-range").addEventListener("click", (event) => {
       const button = event.target.closest("[data-range]");
       if (!button) return;
@@ -1067,7 +1062,7 @@
         }
       }
     });
-    document.getElementById("meas-cancel").addEventListener("click", () => { measFormPanel.hidden = true; });
+    document.getElementById("meas-cancel").addEventListener("click", () => { window.NMSUi.closeSheet(measFormPanel); });
     measFormPanel.addEventListener("submit", submitMeasurementForm);
 
     calcForm.addEventListener("submit", submitCalcForm);
@@ -1102,7 +1097,7 @@
         }
       }
     });
-    document.getElementById("profile-cancel").addEventListener("click", () => { profileFormPanel.hidden = true; });
+    document.getElementById("profile-cancel").addEventListener("click", () => { window.NMSUi.closeSheet(profileFormPanel); });
     profileFormPanel.addEventListener("submit", submitProfileForm);
   }
 

@@ -481,7 +481,7 @@
 
   if (tokenAdd) {
     tokenAdd.addEventListener("click", () => {
-      $("token-form").hidden = false;
+      window.NMSUi.openSheet(tokenForm);
       document.getElementById("token-name").value = "";
       document.getElementById("token-expires").value = "";
       document.getElementById("token-ips").value = "";
@@ -489,7 +489,7 @@
       document.getElementById("token-name").focus({ preventScroll: true });
     });
   }
-  if (tokenCancel) tokenCancel.addEventListener("click", () => { tokenForm.hidden = true; });
+  if (tokenCancel) tokenCancel.addEventListener("click", () => { window.NMSUi.closeSheet(tokenForm); });
 
   if (tokenForm) {
     tokenForm.addEventListener("submit", async (event) => {
@@ -502,10 +502,10 @@
         const body = { name, allowed_ips: ips };
         if (expiresRaw) body.expires_in_days = Number(expiresRaw);
         const data = await window.apiFetch("/api/metrics/tokens", { method: "POST", body });
-        tokenForm.hidden = true;
+        window.NMSUi.closeSheet(tokenForm);
         tokenRevealValue.value = data.token;
         tokenRevealNote.hidden = true;
-        tokenReveal.hidden = false;
+        window.NMSUi.openSheet(tokenReveal);
         await loadTokens();
       } catch (error) {
         tokenNote.textContent = error.message;
@@ -531,7 +531,7 @@
   const tokenRevealDone = document.getElementById("token-reveal-done");
   if (tokenRevealDone) {
     tokenRevealDone.addEventListener("click", () => {
-      tokenReveal.hidden = true;
+      window.NMSUi.closeSheet(tokenReveal);
       tokenRevealValue.value = "";
     });
   }

@@ -419,9 +419,9 @@
     $("rule-resolves").value = rule && rule.resolves_rule_id ? String(rule.resolves_rule_id) : "";
     $("rule-enabled").value = rule && !rule.enabled ? "0" : "1";
     $("rule-note").textContent = "";
-    $("rule-form").hidden = false;
-    $("rule-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    window.NMSUi.openSheet("rule-form");
     syncKind();
+    $("rule-name").focus({ preventScroll: true });
   }
 
   function syncKind() {
@@ -431,7 +431,7 @@
   }
   $("rule-kind").addEventListener("change", syncKind);
   $("rule-add").addEventListener("click", () => openRuleForm(null));
-  $("rule-cancel").addEventListener("click", () => { $("rule-form").hidden = true; editingRuleId = null; });
+  $("rule-cancel").addEventListener("click", () => { window.NMSUi.closeSheet("rule-form"); editingRuleId = null; });
 
   async function deleteRule(rule) {
     if (!(await window.NMSUi.confirm(`Hapus aturan "${rule.name}"?`, {
@@ -468,7 +468,7 @@
     try {
       const url = editingRuleId ? `/api/events/rules/${editingRuleId}` : "/api/events/rules";
       await window.apiFetch(url, { method: editingRuleId ? "PUT" : "POST", body: payload });
-      $("rule-form").hidden = true;
+      window.NMSUi.closeSheet("rule-form");
       editingRuleId = null;
       await loadRules();
     } catch (error) {

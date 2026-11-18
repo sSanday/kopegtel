@@ -6,6 +6,8 @@
  *   NMSUi.confirm(pesan, opsi)      -> Promise<boolean>
  *   NMSUi.prompt(pesan, opsi)       -> Promise<string | null>
  *   NMSUi.dialog(opsi)              -> Promise<string | "confirmed" | null>
+ *   NMSUi.openSheet(elemen | id)    -> buka <dialog class="sheet-dialog">
+ *   NMSUi.closeSheet(elemen | id)   -> tutup lembar form/detail
  *
  * Dialog memakai satu elemen <dialog> yang dibuat saat pertama dibutuhkan.
  * Esc, klik backdrop, dan tombol tutup dianggap batal; fokus dikembalikan ke
@@ -261,5 +263,74 @@
     });
   }
 
-  window.NMSUi = { toast, alert, confirm, prompt, dialog };
+  /* Lembar form/detail memakai <dialog> statis di halaman. Panel di dalamnya
+   * tetap memiliki id semula agar kode halaman tidak perlu tahu soal dialog. */
+  function sheetDialog(target) {
+    if (!target) return null;
+    const el = typeof target === "string" ? document.getElementById(target) : target;
+    if (!el) return null;
+    if (el.tagName === "DIALOG") return el;
+    return el.closest("dialog.sheet-dialog");
+  }
+
+  function syncSheetLock() {
+    document.body.classList.toggle("sheet-open", Boolean(document.querySelector("dialog.sheet-dialog[open]")));
+  }
+
+  function openSheet(target) {
+    const sheet = sheetDialog(target);
+    if (!sheet || sheet.closest("[hidden]")) return null;
+    const panel = sheet.querySelector(".panel");
+    if (panel) panel.hidden = false;
+    if (sheet.open) return sheet;
+    if (typeof sheet.showModal !== "function") {
+      sheet.setAttribute("open", "");
+    } else {
+      try {
+        sheet.showModal();
+      } catch {
+        sheet.setAttribute("open", "");
+      }
+    }
+    syncSheetLock();
+    return sheet;
+  }
+
+  function closeSheet(target) {
+    const sheet = sheetDialog(target);
+    if (!sheet) return;
+    if (typeof sheet.close === "function" && sheet.open) sheet.close();
+    else sheet.removeAttribute("open");
+    syncSheetLock();
+  }
+
+  function enhanceSheets() {
+    document.querySelectorAll("dialog.sheet-dialog").forEach((sheet) => {
+      if (sheet.dataset.sheetReady) return;
+      sheet.dataset.sheetReady = "1";
+
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "sheet-dialog__close";
+      close.dataset.sheetClose = "";
+      close.setAttribute("aria-label", "Tutup dialog");
+      close.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>';
+      close.addEventListener("click", () => closeSheet(sheet));
+      sheet.appendChild(close);
+
+      sheet.addEventListener("click", (event) => {
+        if (event.target === sheet) closeSheet(sheet);
+      });
+      sheet.addEventListener("close", syncSheetLock);
+    });
+  }
+
+  enhanceSheets();
+
+  window.addEventListener("hashchange", () => {
+    document.querySelectorAll("dialog.sheet-dialog[open]").forEach((sheet) => closeSheet(sheet));
+  });
+
+  window.NMSUi = { toast, alert, confirm, prompt, dialog, openSheet, closeSheet };
 })();

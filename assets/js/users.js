@@ -124,14 +124,14 @@
     usrEmail.value = editing ? user.email || "" : "";
     usrTelegramChatId.value = editing ? user.telegram_chat_id || "" : "";
     usrNote.hidden = true;
-    userForm.hidden = false;
+    window.NMSUi.openSheet(userForm);
     (editing ? usrEmail : usrUsername).focus({ preventScroll: true });
   }
 
   document.getElementById("user-add")?.addEventListener("click", () => openUserForm(null));
 
   document.getElementById("usr-cancel")?.addEventListener("click", () => {
-    userForm.hidden = true;
+    window.NMSUi.closeSheet(userForm);
   });
 
   userForm?.addEventListener("submit", async (event) => {
@@ -171,7 +171,7 @@
           },
         });
       }
-      userForm.hidden = true;
+      window.NMSUi.closeSheet(userForm);
       editingUserId = null;
       await loadUsers();
     } catch (error) {

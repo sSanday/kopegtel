@@ -172,12 +172,12 @@
     if (ruleEscalation) ruleEscalation.value = rule && rule.escalation_policy_id ? String(rule.escalation_policy_id) : "";
     ruleNote.hidden = true;
     syncScopeVisibility();
-    ruleForm.hidden = false;
+    window.NMSUi.openSheet(ruleForm);
     ruleName.focus({ preventScroll: true });
   }
 
   function closeRuleForm() {
-    ruleForm.hidden = true;
+    window.NMSUi.closeSheet(ruleForm);
     editingRuleId = null;
   }
 
@@ -282,13 +282,13 @@
     tplName.value = tpl ? tpl.name : "";
     tplBody.value = tpl ? tpl.body : "";
     tplNote.hidden = true;
-    templateForm.hidden = false;
+    window.NMSUi.openSheet(templateForm);
     tplName.focus({ preventScroll: true });
   }
 
   document.getElementById("template-add").addEventListener("click", () => openTemplateForm(null));
   tplCancel.addEventListener("click", () => {
-    templateForm.hidden = true;
+    window.NMSUi.closeSheet(templateForm);
     editingTemplateId = null;
   });
 
@@ -310,7 +310,7 @@
       } else {
         await window.apiFetch("/api/templates", { method: "POST", body: { name, body } });
       }
-      templateForm.hidden = true;
+      window.NMSUi.closeSheet(templateForm);
       editingTemplateId = null;
       await loadTemplates();
     } catch (error) {
@@ -466,14 +466,14 @@
     chNote.hidden = true;
     chTestResult.hidden = true;
     syncChannelTypeFields();
-    channelForm.hidden = false;
+    window.NMSUi.openSheet(channelForm);
     chName.focus({ preventScroll: true });
   }
 
   chType.addEventListener("change", syncChannelTypeFields);
   document.getElementById("channel-add").addEventListener("click", () => openChannelForm(null));
   chCancel.addEventListener("click", () => {
-    channelForm.hidden = true;
+    window.NMSUi.closeSheet(channelForm);
     editingChannelId = null;
   });
 
@@ -540,7 +540,7 @@
       } else {
         await window.apiFetch("/api/channels", { method: "POST", body: { ...common, config } });
       }
-      channelForm.hidden = true;
+      window.NMSUi.closeSheet(channelForm);
       editingChannelId = null;
       await loadChannels();
     } catch (error) {
@@ -767,13 +767,13 @@
       : [{ delay_minutes: 0, target_type: "channel", target_id: "", business_hours_only: false }];
     steps.forEach(addStepRow);
     escNote.hidden = true;
-    escalationForm.hidden = false;
+    window.NMSUi.openSheet(escalationForm);
     escName.focus({ preventScroll: true });
   }
 
   if (escStepAdd) escStepAdd.addEventListener("click", () => addStepRow(null));
   if (escalationAdd) escalationAdd.addEventListener("click", () => openPolicyForm(null));
-  if (escCancel) escCancel.addEventListener("click", () => { escalationForm.hidden = true; editingPolicyId = null; });
+  if (escCancel) escCancel.addEventListener("click", () => { window.NMSUi.closeSheet(escalationForm); editingPolicyId = null; });
 
   if (escalationForm) {
     escalationForm.addEventListener("submit", async (event) => {
@@ -805,7 +805,7 @@
       try {
         const url = editingPolicyId ? `/api/escalation-policies/${editingPolicyId}` : "/api/escalation-policies";
         await window.apiFetch(url, { method: editingPolicyId ? "PUT" : "POST", body: payload });
-        escalationForm.hidden = true;
+        window.NMSUi.closeSheet(escalationForm);
         editingPolicyId = null;
         policiesCache = [];
         await loadEscalation();

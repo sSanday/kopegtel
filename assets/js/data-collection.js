@@ -109,13 +109,13 @@
     grpName.value = group ? group.name : "";
     grpDescription.value = group ? group.description || "" : "";
     grpNote.hidden = true;
-    groupForm.hidden = false;
+    window.NMSUi.openSheet(groupForm);
     grpName.focus({ preventScroll: true });
   }
 
   document.getElementById("group-add").addEventListener("click", () => openGroupForm(null));
   document.getElementById("grp-cancel").addEventListener("click", () => {
-    groupForm.hidden = true;
+    window.NMSUi.closeSheet(groupForm);
     editingGroupId = null;
   });
 
@@ -138,7 +138,7 @@
       } else {
         await window.apiFetch("/api/groups", { method: "POST", body: payload });
       }
-      groupForm.hidden = true;
+      window.NMSUi.closeSheet(groupForm);
       editingGroupId = null;
       await loadGroups();
     } catch (error) {
@@ -357,12 +357,12 @@
     mntEnd.value = "";
     mntNote.value = "";
     mntNoteError.hidden = true;
-    maintenanceForm.hidden = false;
+    window.NMSUi.openSheet(maintenanceForm);
     mntName.focus({ preventScroll: true });
   });
 
   document.getElementById("mnt-cancel").addEventListener("click", () => {
-    maintenanceForm.hidden = true;
+    window.NMSUi.closeSheet(maintenanceForm);
   });
 
   maintenanceForm.addEventListener("submit", async (event) => {
@@ -399,7 +399,7 @@
         throw new Error("Pilih grup untuk skop ini.");
       }
       await window.apiFetch("/api/maintenance", { method: "POST", body: payload });
-      maintenanceForm.hidden = true;
+      window.NMSUi.closeSheet(maintenanceForm);
       await loadMaintenance();
     } catch (error) {
       mntNoteError.textContent = error.message || "Gagal menyimpan jadwal.";

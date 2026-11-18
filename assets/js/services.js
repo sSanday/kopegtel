@@ -183,13 +183,13 @@
     svcMode.value = service ? service.mode : "all";
     svcDescription.value = service ? service.description || "" : "";
     svcNote.hidden = true;
-    serviceFormPanel.hidden = false;
+    window.NMSUi.openSheet(serviceFormPanel);
     renderDevicePicker(service ? service.devices || [] : []);
     svcName.focus({ preventScroll: true });
   }
 
   function closeForm() {
-    serviceFormPanel.hidden = true;
+    window.NMSUi.closeSheet(serviceFormPanel);
     editingId = null;
   }
 

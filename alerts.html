@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=13" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -80,7 +80,8 @@
           </div>
         </section>
 
-        <form class="panel" id="rule-form" aria-labelledby="rule-form-title" hidden>
+        <dialog class="sheet-dialog" aria-labelledby="rule-form-title">
+        <form class="panel" id="rule-form" aria-labelledby="rule-form-title">
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="rule-form-title">Tambah aturan aksi</h2>
@@ -143,6 +144,7 @@
             </div>
           </div>
         </form>
+        </dialog>
       </section>
 
       <!-- =====================================================
@@ -176,7 +178,8 @@
           </div>
         </section>
 
-        <form class="panel" id="template-form" aria-labelledby="template-form-title" hidden>
+        <dialog class="sheet-dialog" aria-labelledby="template-form-title">
+        <form class="panel" id="template-form" aria-labelledby="template-form-title">
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="template-form-title">Tambah template</h2>
@@ -199,6 +202,7 @@
             </div>
           </div>
         </form>
+        </dialog>
       </section>
 
       <!-- =====================================================
@@ -229,7 +233,8 @@
           </div>
         </section>
 
-        <form class="panel" id="escalation-form" aria-labelledby="escalation-form-title" hidden>
+        <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="escalation-form-title">
+        <form class="panel" id="escalation-form" aria-labelledby="escalation-form-title">
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="escalation-form-title">Tambah kebijakan</h2>
@@ -263,6 +268,7 @@
             </div>
           </div>
         </form>
+        </dialog>
       </section>
 
       <!-- =====================================================
@@ -301,7 +307,8 @@
           <p class="channel-test-result" id="channel-test-result" role="status" hidden></p>
         </section>
 
-        <form class="panel" id="channel-form" aria-labelledby="channel-form-title" hidden>
+        <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="channel-form-title">
+        <form class="panel" id="channel-form" aria-labelledby="channel-form-title">
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="channel-form-title">Tambah kanal</h2>
@@ -410,6 +417,7 @@
             </div>
           </div>
         </form>
+        </dialog>
       </section>
 
       <footer class="foot">© 2026, NMS Kopegtel</footer>
@@ -421,8 +429,8 @@
   <script src="assets/js/store.js?v=2" defer></script>
   <script src="assets/js/nav.js?v=13" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
-  <script src="assets/js/ui.js?v=2" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
   <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/alerts.js?v=8" defer></script>
+  <script src="assets/js/alerts.js?v=9" defer></script>
 </body>
 </html>

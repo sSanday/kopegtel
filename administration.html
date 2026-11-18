@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=13" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -318,8 +318,9 @@
           <p class="panel__sub" id="token-empty" hidden>Belum ada token. Buat token, lalu konfigurasikan Prometheus untuk scrape <code>/metrics</code> (contoh di <code>docs/INTEGRASI.md</code>).</p>
         </section>
 
-        <form class="panel" id="token-form" hidden>
-          <div class="panel__head"><div><h2 class="panel__title">Buat token API</h2><p class="panel__sub">Token ditampilkan SEKALI — salin segera. Cakupan: metrics (baca-saja).</p></div></div>
+        <dialog class="sheet-dialog" aria-labelledby="token-form-title">
+        <form class="panel" id="token-form">
+          <div class="panel__head"><div><h2 class="panel__title" id="token-form-title">Buat token API</h2><p class="panel__sub">Token ditampilkan SEKALI — salin segera. Cakupan: metrics (baca-saja).</p></div></div>
           <div class="admin-form">
             <div class="admin-form__grid">
               <label class="admin-field"><span>Nama token *</span><input id="token-name" type="text" maxlength="80" autocomplete="off" placeholder="mis. prometheus-prod" /></label>
@@ -333,9 +334,11 @@
             </div>
           </div>
         </form>
+        </dialog>
 
-        <section class="panel" id="token-reveal" hidden>
-          <div class="panel__head"><div><h2 class="panel__title">Token dibuat — salin sekarang</h2><p class="panel__sub">Token tidak akan ditampilkan lagi.</p></div></div>
+        <dialog class="sheet-dialog" aria-labelledby="token-reveal-title">
+        <section class="panel" id="token-reveal">
+          <div class="panel__head"><div><h2 class="panel__title" id="token-reveal-title">Token dibuat — salin sekarang</h2><p class="panel__sub">Token tidak akan ditampilkan lagi.</p></div></div>
           <div class="admin-form">
             <label class="admin-field admin-field--full"><span>Token</span><input id="token-reveal-value" type="text" readonly /></label>
             <div class="admin-actions">
@@ -345,6 +348,7 @@
             <p class="form-note" id="token-reveal-note" role="status" hidden></p>
           </div>
         </section>
+        </dialog>
       </section>
 
       <!-- =====================================================
@@ -371,8 +375,8 @@
   <script src="assets/js/store.js?v=2" defer></script>
   <script src="assets/js/nav.js?v=13" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
-  <script src="assets/js/ui.js?v=2" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
   <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/administration.js?v=8" defer></script>
+  <script src="assets/js/administration.js?v=9" defer></script>
 </body>
 </html>
