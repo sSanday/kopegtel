@@ -245,7 +245,7 @@
     const devices = data.devices || [];
     dcHostCount.textContent = `${devices.length} perangkat`;
     if (devices.length === 0) {
-      dcHostRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada perangkat. Tambahkan lewat tombol “Tambah perangkat”.</td></tr>';
+      dcHostRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada perangkat. Tambahkan lewat tombol Tambah perangkat.</td></tr>';
       return;
     }
     dcHostRows.innerHTML = devices

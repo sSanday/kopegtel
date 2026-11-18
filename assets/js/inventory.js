@@ -168,7 +168,7 @@
             );
           })
           .join("")
-      : '<tr class="empty-row"><td colspan="7">Belum ada perangkat. Tambahkan perangkat pertama lewat menu Perangkat.</td></tr>';
+      : '<tr class="empty-row"><td colspan="7">Belum ada perangkat. Tambahkan perangkat pertama lewat tombol Tambah perangkat.</td></tr>';
 
     attentionCount.textContent = attention.length === 0 ? "Tidak ada" : `${attention.length} perangkat`;
     attentionRows.innerHTML = attention.length
