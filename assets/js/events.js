@@ -2,9 +2,18 @@
 (function () {
   "use strict";
 
-  const { escapeHtml, formatDateTime } = window.NMSFormat;
+  const { escapeHtml, formatDateTime, parseServerTs } = window.NMSFormat;
   const SEVERITIES = ["information", "warning", "average", "high", "disaster"];
-  const SYSLOG_SEVERITY = ["Darurat", "Siaga", "Kritis", "Galat", "Peringatan", "Pemberitahuan", "Info", "Debug"];
+  const SYSLOG_LEVELS = [
+    { label: "Darurat", cls: "sev--emergency" },
+    { label: "Siaga", cls: "sev--alert" },
+    { label: "Kritis", cls: "sev--critical" },
+    { label: "Galat", cls: "sev--error" },
+    { label: "Peringatan", cls: "sev--warning" },
+    { label: "Pemberitahuan", cls: "sev--notice" },
+    { label: "Info", cls: "sev--information" },
+    { label: "Debug", cls: "sev--debug" },
+  ];
 
   const TABS = {
     syslog: { title: "Syslog", desc: "Pesan syslog terbaru dari perangkat terdaftar." },
@@ -24,14 +33,18 @@
 
   const $ = (id) => document.getElementById(id);
   const canEdit = () => window.__nmsMe && ["admin", "operator"].includes(window.__nmsMe.role);
+  const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
 
   function activate(tab) {
     currentTab = TABS[tab] ? tab : "syslog";
     document.querySelectorAll("[data-view]").forEach((panel) => {
       panel.hidden = panel.dataset.view !== currentTab;
     });
-    document.querySelectorAll("[data-tab]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.tab === currentTab);
+    tabButtons.forEach((button) => {
+      const active = button.dataset.tab === currentTab;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
     });
     const meta = TABS[currentTab];
     $("view-title").textContent = meta.title;
@@ -43,20 +56,52 @@
     if (currentTab === "status") loadStatus();
   }
 
-  document.querySelectorAll("[data-tab]").forEach((button) => {
+  function selectTab(tab) {
+    if (!TABS[tab]) return;
+    // Muat hanya lewat satu jalur: set hash → hashchange → activate().
+    if (window.location.hash === `#${tab}`) {
+      activate(tab);
+      return;
+    }
+    window.location.hash = tab;
+  }
+
+  function focusTabSoon(button) {
+    // nav.js memindahkan fokus ke judul pada hashchange; kembalikan fokus ke tab
+    // agar navigasi panah tetap sesuai pola ARIA tablist.
+    window.setTimeout(() => button.focus({ preventScroll: true }), 0);
+  }
+
+  tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      const tab = button.dataset.tab;
-      if (!TABS[tab]) return;
-      // Muat hanya lewat satu jalur: set hash → hashchange → activate().
-      if (window.location.hash === `#${tab}`) {
-        activate(tab);
-        return;
-      }
-      window.location.hash = tab;
+      selectTab(button.dataset.tab);
+      focusTabSoon(button);
     });
+  });
+  document.querySelector("[role='tablist']").addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = Math.max(0, tabButtons.indexOf(document.activeElement));
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabButtons.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabButtons.length - 1;
+    const next = tabButtons[nextIndex];
+    next.focus();
+    selectTab(next.dataset.tab);
+    focusTabSoon(next);
   });
   window.addEventListener("hashchange", () => activate(window.location.hash.slice(1)));
   $("refresh").addEventListener("click", () => activate(currentTab));
+
+  function inputToUtcIso(value) {
+    if (!value) return "";
+    const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00` : value;
+    const date = new Date(`${normalized}+07:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
 
   function queryFrom(prefix) {
     const params = new URLSearchParams();
@@ -68,9 +113,59 @@
     if (device) params.set("device_id", device);
     if (severity) params.set("severity", severity);
     if (q) params.set("q", q);
-    if (from) params.set("from", from.replace("T", "T") + ":00Z");
-    if (to) params.set("to", to + ":00Z");
+    if (from) params.set("from", inputToUtcIso(from));
+    if (to) params.set("to", inputToUtcIso(to));
     return params;
+  }
+
+  function timeZone() {
+    return (window.__nmsMe && window.__nmsMe.timezone) || "Asia/Jakarta";
+  }
+
+  function formatLogTime(value) {
+    const date = parseServerTs(value);
+    if (!date) return null;
+    const zone = timeZone();
+    try {
+      return {
+        date: new Intl.DateTimeFormat("id-ID", {
+          day: "2-digit", month: "short", year: "numeric", timeZone: zone,
+        }).format(date),
+        clock: new Intl.DateTimeFormat("id-ID", {
+          hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: zone,
+        }).format(date),
+        full: new Intl.DateTimeFormat("id-ID", {
+          dateStyle: "medium", timeStyle: "medium", timeZone: zone,
+        }).format(date),
+      };
+    } catch {
+      return { date: date.toISOString().slice(0, 10), clock: date.toISOString().slice(11, 19), full: date.toISOString() };
+    }
+  }
+
+  function logTimeCell(value) {
+    const parts = formatLogTime(value);
+    if (!parts) return '<td class="log-time"><span class="cell-muted">—</span></td>';
+    return `<td class="log-time" title="${escapeHtml(parts.full)}"><span class="log-time__date">${escapeHtml(parts.date)}</span><span class="log-time__clock">${escapeHtml(parts.clock)}</span></td>`;
+  }
+
+  function deviceCell(row) {
+    const name = row.device_name || row.device_id || "—";
+    const ip = row.device_ip ? `<span class="cell-sub">${escapeHtml(row.device_ip)}</span>` : "";
+    return `<td class="log-device"><span class="log-device__name">${escapeHtml(name)}</span>${ip}</td>`;
+  }
+
+  function severityCell(value) {
+    const level = value === null || value === undefined || value === "" ? NaN : Number(value);
+    const meta = Number.isInteger(level) ? SYSLOG_LEVELS[level] : null;
+    if (!meta) return '<td><span class="cell-muted">—</span></td>';
+    return `<td><span class="sev ${meta.cls}" title="Keparahan ${level} — ${escapeHtml(meta.label)}">${escapeHtml(meta.label)}</span></td>`;
+  }
+
+  function tagCell(value) {
+    const tag = String(value || "").trim();
+    if (!tag) return '<td><span class="cell-muted">—</span></td>';
+    return `<td><span class="log-tag">${escapeHtml(tag)}</span></td>`;
   }
 
   async function loadOptions() {
@@ -101,52 +196,173 @@
   fillSeveritySelect("rule-problem-severity");
   $("rule-problem-severity").value = "warning";
 
+  function hasSyslogFilter() {
+    return Boolean(
+      ($("syslog-device") && $("syslog-device").value)
+      || ($("syslog-severity") && $("syslog-severity").value)
+      || ($("syslog-q") && $("syslog-q").value.trim())
+      || ($("syslog-from") && $("syslog-from").value)
+      || ($("syslog-to") && $("syslog-to").value)
+    );
+  }
+
+  function syncSyslogEmpty(filtered) {
+    $("syslog-empty-title").textContent = filtered ? "Tidak ada syslog yang cocok" : "Belum ada syslog masuk";
+    $("syslog-empty-desc").textContent = filtered
+      ? "Coba longgarkan kata kunci, keparahan, perangkat, atau rentang waktu."
+      : "Pesan syslog akan tampil di sini setelah penerima aktif dan perangkat mengirimkannya.";
+    $("syslog-setup").hidden = filtered;
+    $("syslog-empty-cta").hidden = filtered;
+    $("syslog-empty-reset").hidden = !filtered;
+    $("syslog-reset").disabled = !filtered;
+  }
+
+  function showSyslogLoading() {
+    $("syslog-table-wrap").hidden = false;
+    if (!$("syslog-rows").querySelector("tr:not(.table-state)")) {
+      $("syslog-rows").innerHTML = '<tr class="table-state"><td colspan="5"><span class="table-state__spinner" aria-hidden="true"></span>Memuat syslog…</td></tr>';
+    }
+  }
+
   async function loadSyslog() {
     const params = queryFrom("syslog");
     params.set("page", String(syslogPage));
     params.set("per_page", "50");
+    $("syslog-error").hidden = true;
+    $("syslog-count").textContent = "Memuat kejadian…";
+    $("syslog-table-wrap").setAttribute("aria-busy", "true");
+    showSyslogLoading();
     try {
       const data = await window.apiFetch(`/api/events/syslog?${params.toString()}`);
-      $("syslog-count").textContent = `${data.total.toLocaleString("id-ID")} kejadian`;
-      $("syslog-page").textContent = `Halaman ${data.page}`;
-      $("syslog-empty").hidden = data.total > 0;
-      $("syslog-rows").innerHTML = (data.entries || []).map((row) => `
+      const entries = data.entries || [];
+      const total = Number(data.total) || 0;
+      const page = Number(data.page) || 1;
+      const perPage = Number(data.per_page) || 50;
+      const pages = Math.max(1, Math.ceil(total / perPage));
+      const filtered = hasSyslogFilter();
+      $("syslog-count").textContent = `${total.toLocaleString("id-ID")} kejadian${filtered ? " · filter aktif" : ""}`;
+      $("syslog-page").textContent = `Halaman ${page} dari ${pages}`;
+      $("syslog-empty").hidden = total > 0;
+      $("syslog-table-wrap").hidden = total === 0;
+      $("syslog-pager").hidden = total === 0;
+      $("syslog-export").disabled = total === 0;
+      $("syslog-rows").innerHTML = entries.map((row) => `
         <tr>
-          <td>${escapeHtml(formatDateTime(row.ts))}</td>
-          <td>${escapeHtml(row.device_name || row.device_id)}<br><span class="panel__sub">${escapeHtml(row.device_ip || "")}</span></td>
-          <td>${escapeHtml(SYSLOG_SEVERITY[row.severity] || row.severity || "-")}</td>
-          <td>${escapeHtml(row.tag || "-")}</td>
-          <td class="mono">${escapeHtml(row.message || "")}</td>
+          ${logTimeCell(row.ts)}
+          ${deviceCell(row)}
+          ${severityCell(row.severity)}
+          ${tagCell(row.tag)}
+          <td class="log-message">${escapeHtml(row.message || "—")}</td>
         </tr>`).join("");
-      $("syslog-prev").disabled = data.page <= 1;
-      $("syslog-next").disabled = data.entries.length < data.per_page;
+      syncSyslogEmpty(filtered);
+      $("syslog-prev").disabled = page <= 1;
+      $("syslog-next").disabled = page >= pages || total === 0;
     } catch (error) {
-      $("syslog-count").textContent = error.message;
+      $("syslog-count").textContent = "Gagal memuat syslog.";
+      $("syslog-error-text").textContent = error.message || "Syslog gagal dimuat.";
+      $("syslog-error").hidden = false;
+      $("syslog-empty").hidden = true;
+      $("syslog-table-wrap").hidden = true;
+      $("syslog-pager").hidden = true;
+      $("syslog-export").disabled = true;
+    } finally {
+      $("syslog-table-wrap").removeAttribute("aria-busy");
     }
+  }
+
+  function resetSyslogFilter() {
+    ["syslog-device", "syslog-severity", "syslog-q", "syslog-from", "syslog-to"].forEach((id) => {
+      $(id).value = "";
+    });
+    syslogPage = 1;
+    loadSyslog();
+  }
+
+  function hasTrapsFilter() {
+    return Boolean(
+      ($("traps-device") && $("traps-device").value)
+      || ($("traps-q") && $("traps-q").value.trim())
+    );
+  }
+
+  function syncTrapsEmpty(filtered) {
+    $("traps-empty-title").textContent = filtered ? "Tidak ada trap yang cocok" : "Belum ada trap masuk";
+    $("traps-empty-desc").textContent = filtered
+      ? "Coba ubah perangkat atau kata kunci, lalu terapkan kembali."
+      : "Trap SNMP akan tampil di sini setelah penerima aktif dan perangkat mengirimkannya.";
+    $("traps-setup").hidden = filtered;
+    $("traps-empty-cta").hidden = filtered;
+    $("traps-empty-reset").hidden = !filtered;
+    $("traps-reset").disabled = !filtered;
+  }
+
+  function trapVarbindCell(row) {
+    const text = String(row.varbinds || "").trim();
+    if (!text || text === "[]" || text === "null") return '<span class="cell-muted">—</span>';
+    let pretty = escapeHtml(row.varbinds);
+    let count = 0;
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) count = parsed.length;
+      else if (parsed && typeof parsed === "object") count = Object.keys(parsed).length;
+      pretty = escapeHtml(JSON.stringify(parsed, null, 2));
+    } catch (_error) {
+      // Bukan JSON: tampilkan varbind apa adanya.
+    }
+    const label = count ? `Lihat ${count} varbind` : "Lihat varbind";
+    return `<details class="trap-varbind"><summary>${escapeHtml(label)}</summary><pre class="code-block code-block--compact">${pretty}</pre></details>`;
   }
 
   async function loadTraps() {
     const params = queryFrom("traps");
     params.set("page", String(trapsPage));
     params.set("per_page", "50");
+    $("traps-error").hidden = true;
+    $("traps-count").textContent = "Memuat trap…";
+    $("traps-table-wrap").setAttribute("aria-busy", "true");
     try {
       const data = await window.apiFetch(`/api/events/traps?${params.toString()}`);
-      $("traps-count").textContent = `${data.total.toLocaleString("id-ID")} trap`;
-      $("traps-page").textContent = `Halaman ${data.page}`;
-      $("traps-empty").hidden = data.total > 0;
-      $("traps-rows").innerHTML = (data.entries || []).map((row) => `
+      const entries = data.entries || [];
+      const total = Number(data.total) || 0;
+      const page = Number(data.page) || 1;
+      const perPage = Number(data.per_page) || 50;
+      const pages = Math.max(1, Math.ceil(total / perPage));
+      const filtered = hasTrapsFilter();
+      $("traps-count").textContent = `${total.toLocaleString("id-ID")} trap${filtered ? " · filter aktif" : ""}`;
+      $("traps-page").textContent = `Halaman ${page} dari ${pages}`;
+      $("traps-empty").hidden = total > 0;
+      $("traps-table-wrap").hidden = total === 0;
+      $("traps-pager").hidden = total === 0;
+      $("traps-export").disabled = total === 0;
+      $("traps-rows").innerHTML = entries.map((row) => `
         <tr>
-          <td>${escapeHtml(formatDateTime(row.ts))}</td>
-          <td>${escapeHtml(row.device_name || row.device_id)}<br><span class="panel__sub">${escapeHtml(row.device_ip || "")}</span></td>
-          <td class="mono">${escapeHtml(row.trap_oid || "")}</td>
-          <td>${escapeHtml(row.trap_name || "-")}</td>
-          <td class="mono">${escapeHtml(row.varbinds || "[]")}</td>
+          ${logTimeCell(row.ts)}
+          ${deviceCell(row)}
+          <td class="mono traps-oid">${escapeHtml(row.trap_oid || "—")}</td>
+          <td class="traps-name">${escapeHtml(row.trap_name || "—")}</td>
+          <td class="traps-varbind">${trapVarbindCell(row)}</td>
         </tr>`).join("");
-      $("traps-prev").disabled = data.page <= 1;
-      $("traps-next").disabled = data.entries.length < data.per_page;
+      syncTrapsEmpty(filtered);
+      $("traps-prev").disabled = page <= 1;
+      $("traps-next").disabled = page >= pages || total === 0;
     } catch (error) {
-      $("traps-count").textContent = error.message;
+      $("traps-count").textContent = "Gagal memuat trap.";
+      $("traps-error-text").textContent = error.message || "Trap gagal dimuat.";
+      $("traps-error").hidden = false;
+      $("traps-empty").hidden = true;
+      $("traps-table-wrap").hidden = true;
+      $("traps-pager").hidden = true;
+      $("traps-export").disabled = true;
+    } finally {
+      $("traps-table-wrap").removeAttribute("aria-busy");
     }
+  }
+
+  function resetTrapsFilter() {
+    $("traps-device").value = "";
+    $("traps-q").value = "";
+    trapsPage = 1;
+    loadTraps();
   }
 
   function conditionLabel(rule) {
@@ -284,10 +500,26 @@
 
   $("syslog-filter").addEventListener("submit", (event) => { event.preventDefault(); syslogPage = 1; loadSyslog(); });
   $("traps-filter").addEventListener("submit", (event) => { event.preventDefault(); trapsPage = 1; loadTraps(); });
+  ["syslog-device", "syslog-severity", "syslog-q", "syslog-from", "syslog-to"].forEach((id) => {
+    const updateReset = () => { $("syslog-reset").disabled = !hasSyslogFilter(); };
+    $(id).addEventListener("input", updateReset);
+    $(id).addEventListener("change", updateReset);
+  });
+  ["traps-device", "traps-q"].forEach((id) => {
+    const updateReset = () => { $("traps-reset").disabled = !hasTrapsFilter(); };
+    $(id).addEventListener("input", updateReset);
+    $(id).addEventListener("change", updateReset);
+  });
   $("syslog-prev").addEventListener("click", () => { syslogPage = Math.max(1, syslogPage - 1); loadSyslog(); });
   $("syslog-next").addEventListener("click", () => { syslogPage += 1; loadSyslog(); });
   $("traps-prev").addEventListener("click", () => { trapsPage = Math.max(1, trapsPage - 1); loadTraps(); });
   $("traps-next").addEventListener("click", () => { trapsPage += 1; loadTraps(); });
+  $("syslog-reset").addEventListener("click", resetSyslogFilter);
+  $("syslog-empty-reset").addEventListener("click", resetSyslogFilter);
+  $("syslog-retry").addEventListener("click", loadSyslog);
+  $("traps-reset").addEventListener("click", resetTrapsFilter);
+  $("traps-empty-reset").addEventListener("click", resetTrapsFilter);
+  $("traps-retry").addEventListener("click", loadTraps);
   $("syslog-export").addEventListener("click", () => { window.location.href = `/api/events/syslog.csv?${queryFrom("syslog").toString()}`; });
   $("traps-export").addEventListener("click", () => { window.location.href = `/api/events/traps.csv?${queryFrom("traps").toString()}`; });
 
