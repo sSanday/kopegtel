@@ -24,12 +24,14 @@
     --ink: light-dark(#0f172a, #f1f5f9);
     --ink-soft: light-dark(#334155, #cbd5e1);
     --muted: light-dark(#55657c, #94a3b8);
-    --ink-faint: light-dark(#64748b, #64748b);
+    --ink-faint: light-dark(#5b6b80, #7b8aa1);
 
     /* Garis & permukaan transparan */
     --line: light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.07));
     --line-strong: light-dark(rgba(15, 23, 42, 0.18), rgba(255, 255, 255, 0.14));
     --line-emphasis: light-dark(rgba(15, 23, 42, 0.28), rgba(255, 255, 255, 0.22));
+    /* Batas kontrol formulir harus terbaca 3:1 di kedua tema. */
+    --field-line: light-dark(#7c8799, #657186);
     --surface-1: light-dark(rgba(15, 23, 42, 0.025), rgba(255, 255, 255, 0.02));
     --surface-2: light-dark(rgba(15, 23, 42, 0.04), rgba(255, 255, 255, 0.03));
     --surface-3: light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.05));

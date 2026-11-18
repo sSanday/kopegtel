@@ -37,6 +37,24 @@ a {
   color: inherit;
 }
 
+button:not(:disabled),
+a[href],
+select:not(:disabled),
+summary,
+label[for],
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="tab"] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 85%, transparent);
   outline-offset: 2px;
@@ -408,7 +426,7 @@ a {
   width: 100%;
   height: 50px;
   padding: 0 0.95rem;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--field-line);
   border-radius: var(--radius-sm);
   background: var(--field-bg);
   color: var(--ink);
@@ -425,19 +443,24 @@ a {
 }
 
 .field input:hover {
-  border-color: var(--line-emphasis);
+  border-color: color-mix(in srgb, var(--field-line) 65%, var(--accent));
 }
 
 .field input:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--accent) 72%, transparent);
+  border-color: var(--accent);
   background: var(--field-bg-focus);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .field input[aria-invalid="true"] {
-  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  box-shadow: none;
+}
+
+.field input[aria-invalid="true"]:focus {
+  outline-color: var(--danger);
 }
 
 .field input:-webkit-autofill,
@@ -510,7 +533,7 @@ a {
   flex: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--field-line);
   border-radius: 6px;
   background: var(--field-bg);
   cursor: pointer;
@@ -753,6 +776,34 @@ a {
 
   .brand__lead {
     font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .toggle {
+    width: 44px;
+    height: 44px;
+    right: 0.25rem;
+  }
+
+  .remember {
+    min-height: 44px;
+  }
+
+  .remember label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .lockup {
+    min-height: 44px;
+  }
+
+  .skip-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 }
 

@@ -467,10 +467,12 @@
       if (open) {
         const first = focusable()[0];
         if (first) first.focus({ preventScroll: true });
-      } else if (restoreFocus && restoreFocus.isConnected && restoreFocus !== document.body) {
-        restoreFocus.focus({ preventScroll: true });
+      } else {
+        if (restoreFocus && restoreFocus.isConnected && restoreFocus !== document.body) {
+          restoreFocus.focus({ preventScroll: true });
+        }
+        restoreFocus = null;
       }
-      restoreFocus = null;
     }
 
     trigger.addEventListener("click", () => setOpen(!open));

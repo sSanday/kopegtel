@@ -55,6 +55,24 @@ button {
   font-family: inherit;
 }
 
+button:not(:disabled),
+a[href],
+select:not(:disabled),
+summary,
+label[for],
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="tab"] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 85%, transparent);
   outline-offset: 2px;
@@ -998,7 +1016,7 @@ td strong {
 
 /* Kontrol formulir bersama: filter (.field) dan form admin (.admin-field). */
 :is(.field, .admin-field) :is(input:not([type="checkbox"]):not([type="radio"]), select) {
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: var(--radius-sm);
   background-color: var(--surface-2);
   color: var(--ink);
@@ -1015,13 +1033,15 @@ td strong {
 }
 
 :is(.field, .admin-field) :is(input:not([type="checkbox"]):not([type="radio"]), select):hover {
-  border-color: var(--line-strong);
+  border-color: color-mix(in srgb, var(--field-line) 65%, var(--accent));
 }
 
 :is(.field, .admin-field) :is(input:not([type="checkbox"]):not([type="radio"]), select):focus {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: var(--accent);
   background-color: color-mix(in srgb, var(--accent) 4%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 :is(.field, .admin-field) select {
@@ -1035,8 +1055,12 @@ td strong {
 }
 
 :is(.field, .admin-field) :is(input:not([type="checkbox"]):not([type="radio"]), select)[aria-invalid="true"] {
-  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  box-shadow: none;
+}
+
+:is(.field, .admin-field) :is(input:not([type="checkbox"]):not([type="radio"]), select)[aria-invalid="true"]:focus {
+  outline-color: var(--danger);
 }
 
 .field input:not([type="checkbox"]):not([type="radio"]) {
@@ -1423,6 +1447,10 @@ td strong {
   fill: var(--map-node-hover);
   stroke: color-mix(in srgb, var(--accent) 80%, transparent);
   filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 22%, transparent));
+}
+
+.map-node:focus-visible rect {
+  stroke-width: 2;
 }
 
 .map-node--warn rect {
@@ -2441,7 +2469,7 @@ td strong {
 .chart-box__select select {
   height: 30px;
   padding: 0 0.5rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--ink);
@@ -3669,7 +3697,7 @@ td strong {
   width: 52px;
   height: 30px;
   padding: 0 0.35rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: 6px;
   background: var(--surface-2);
   color: var(--ink);
@@ -3736,7 +3764,7 @@ td strong {
   height: 30px;
   margin-right: 0.35rem;
   padding: 0 0.4rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--ink);
@@ -4216,7 +4244,7 @@ td strong {
 
 .flow-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -4631,6 +4659,65 @@ td strong {
   }
 }
 
+/* Target sentuh minimal 44px pada layar sentuh dan ponsel. */
+@media (max-width: 640px), (pointer: coarse) {
+  .btn,
+  .page-tabs .btn,
+  .flow-tabs .btn,
+  .mt-tab,
+  .seg__btn,
+  .logout,
+  .lockup,
+  .nav__link,
+  .nav__sublink,
+  .nav__toggle,
+  .nav__sublink--toggle,
+  .ack-toggle,
+  .role-select,
+  .chart-box__select select,
+  .mon-table--dense input,
+  .field input:not([type="checkbox"]):not([type="radio"]),
+  .field select,
+  .admin-field input:not([type="checkbox"]):not([type="radio"]),
+  .admin-field select {
+    min-height: 44px;
+  }
+
+  .nav-trigger,
+  .nav-close,
+  .modal__close,
+  .sheet-dialog__close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .check {
+    min-height: 44px;
+  }
+
+  .panel__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .linklike,
+  .setup-guide > summary {
+    padding-block: 0.8rem;
+  }
+
+  .skip-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .sheet-dialog__close {
+    top: 8px;
+    right: 8px;
+  }
+}
+
 /* Hormati preferensi gerak minimal. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -4671,28 +4758,5 @@ td strong {
 
   .progress-fill {
     width: 0;
-  }
-
-  /* Target sentuh minimal 44px pada perangkat sentuh (DESIGN.md §5.6). */
-  @media (pointer: coarse) {
-    .btn,
-    .nav__link,
-    .nav__sublink,
-    .mt-tab,
-    .field input,
-    .field select,
-    .admin-field input,
-    .admin-field select {
-      min-height: 44px;
-    }
-
-    .nav-trigger,
-    .nav-close,
-    .sheet-dialog__close {
-      width: 44px;
-      height: 44px;
-      min-width: 44px;
-      min-height: 44px;
-    }
   }
 }
