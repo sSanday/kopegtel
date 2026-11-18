@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=4" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -312,12 +312,12 @@
               <article class="metric-card">
                 <p class="metric-card__label">Voltase</p>
                 <p class="metric-card__value"><span id="d-voltage">—</span><small> V</small></p>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-voltage-sub" class="metric-card__detail">Tegangan masuk</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--muted" id="chip-voltage">Tanpa data</span> <span id="d-voltage-sub" class="metric-card__detail">Tegangan masuk</span></p>
               </article>
               <article class="metric-card">
                 <p class="metric-card__label">Waktu aktif</p>
                 <p class="metric-card__value metric-card__value--text"><span id="d-uptime">—</span></p>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok">Normal</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak mulai ulang terakhir</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--muted" id="chip-uptime">Tanpa data</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak mulai ulang terakhir</span></p>
               </article>
             </div>
 
@@ -420,6 +420,6 @@
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=1" defer></script>
   <script src="assets/js/device-form.js?v=3" defer></script>
-  <script src="assets/js/inventory.js?v=6" defer></script>
+  <script src="assets/js/inventory.js?v=7" defer></script>
 </body>
 </html>

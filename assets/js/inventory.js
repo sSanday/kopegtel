@@ -408,6 +408,8 @@
     chipMem: document.getElementById("chip-mem"),
     chipStorage: document.getElementById("chip-storage"),
     chipTemp: document.getElementById("chip-temp"),
+    chipVoltage: document.getElementById("chip-voltage"),
+    chipUptime: document.getElementById("chip-uptime"),
     ifaceRows: document.getElementById("detail-interfaces"),
     trafficIf: document.getElementById("traffic-if"),
     chartCpu: document.getElementById("chart-cpu"),
@@ -445,10 +447,16 @@
   }
 
   function chipClassFor(value, warn, crit) {
-    if (value == null) return { text: "Tanpa data", cls: "chip--ok", bar: "is-ok" };
+    if (value == null) return { text: "Tanpa data", cls: "chip--muted", bar: "is-ok" };
     if (value >= crit) return { text: "Kritis", cls: "chip--down", bar: "is-down" };
     if (value >= warn) return { text: "Peringatan", cls: "chip--warn", bar: "is-warn" };
     return { text: "Normal", cls: "chip--ok", bar: "is-ok" };
+  }
+
+  function setPresenceChip(chipEl, hasData, okText) {
+    if (!chipEl) return;
+    chipEl.textContent = hasData ? okText : "Tanpa data";
+    chipEl.className = `metric-chip ${hasData ? "chip--ok" : "chip--muted"}`;
   }
 
   function setResourceCard(valueEl, barEl, chipEl, value, warn, crit) {
@@ -637,8 +645,10 @@
 
     detailEls.voltage.textContent = metrics.voltage == null ? "—" : metrics.voltage.toFixed(1);
     detailEls.voltageSub.textContent = "Tegangan masuk";
+    setPresenceChip(detailEls.chipVoltage, metrics.voltage != null, "Normal");
     detailEls.uptime.textContent = formatUptime(metrics.uptime_s);
     detailEls.uptimeSub.textContent = metrics.ping_ms != null ? `Ping ${Math.round(metrics.ping_ms)} ms` : "Sejak mulai ulang terakhir";
+    setPresenceChip(detailEls.chipUptime, metrics.uptime_s != null, "Aktif");
     detailEls.updated.textContent = `Terakhir diperbarui ${fmtAgo(metrics.ts)}`;
 
     const cpuValues = (metricsData && metricsData.points.map((p) => p.cpu_pct)) || [];

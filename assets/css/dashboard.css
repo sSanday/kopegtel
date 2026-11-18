@@ -2296,6 +2296,11 @@ td strong {
   color: var(--danger);
 }
 
+.chip--muted {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
 .seg {
   display: inline-flex;
   gap: 0.25rem;
