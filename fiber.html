@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -50,46 +50,46 @@
            ===================================================== -->
       <section class="view" data-view="ringkasan" aria-labelledby="ringkasan-title">
         <p class="note-info" role="note">
-          Sistem <b>tidak mengukur redaman fiber secara langsung</b> — nilai redaman <b>diturunkan</b> dari daya optik transceiver (DDM/DOM) di kedua ujung link:
+          Sistem <b>tidak mengukur redaman fiber secara langsung</b>. Nilai redaman <b>diturunkan</b> dari daya optik transceiver (DDM/DOM) di kedua ujung link:
           <b>Redaman A→B = Tx (ujung A) − Rx (ujung B)</b>. Hasil pengukuran lapangan (OTDR / power meter) dicatat pada tab
-          <b>Pengukuran manual</b> sebagai pembanding. Angka yang tampil selalu dari pembacaan nyata; tanpa data tampil “—”.
+          <b>Pengukuran manual</b> sebagai pembanding. Angka yang tampil selalu dari pembacaan nyata; tanpa data tampil “-”.
         </p>
         <div class="stats stats--five" aria-label="Ringkasan fiber">
           <article class="stat">
             <p class="stat__label">Port Optik</p>
-            <p class="stat__value" id="fib-ports">—</p>
+            <p class="stat__value" id="fib-ports">-</p>
             <p class="stat__meta" id="fib-ports-meta">Terdeteksi di perangkat terpantau</p>
           </article>
           <article class="stat">
             <p class="stat__label">Link Normal</p>
-            <p class="stat__value" id="fib-normal">—</p>
+            <p class="stat__value" id="fib-normal">-</p>
             <p class="stat__meta">Semua ambang terpenuhi</p>
           </article>
           <article class="stat">
             <p class="stat__label">Waspada</p>
-            <p class="stat__value" id="fib-warn">—</p>
+            <p class="stat__value" id="fib-warn">-</p>
             <p class="stat__meta">Melewati ambang peringatan</p>
           </article>
           <article class="stat">
             <p class="stat__label">Kritis</p>
-            <p class="stat__value" id="fib-crit">—</p>
+            <p class="stat__value" id="fib-crit">-</p>
             <p class="stat__meta"><span class="is-warn">Perlu tindakan</span></p>
           </article>
           <article class="stat">
             <p class="stat__label">Rata-rata Rx</p>
-            <p class="stat__value" id="fib-avg-rx">—</p>
+            <p class="stat__value" id="fib-avg-rx">-</p>
             <p class="stat__meta">Seluruh port optik DDM</p>
           </article>
         </div>
         <div class="stats" aria-label="Redaman">
           <article class="stat">
             <p class="stat__label">Redaman Terbesar</p>
-            <p class="stat__value" id="fib-max-att">—</p>
+            <p class="stat__value" id="fib-max-att">-</p>
             <p class="stat__meta">Lintas A→B atau B→A</p>
           </article>
           <article class="stat">
             <p class="stat__label">Link Terdaftar</p>
-            <p class="stat__value" id="fib-total">—</p>
+            <p class="stat__value" id="fib-total">-</p>
             <p class="stat__meta">Rentang fiber antar perangkat</p>
           </article>
         </div>
@@ -175,7 +175,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="port-detail-title">Riwayat port</h2>
-              <p class="panel__sub" id="port-detail-sub">—</p>
+              <p class="panel__sub" id="port-detail-sub">-</p>
             </div>
             <div class="seg" role="group" aria-label="Rentang waktu" id="port-range">
               <button class="seg__btn is-active" type="button" data-range="24h" aria-pressed="true">24 jam</button>
@@ -186,7 +186,7 @@
           </div>
           <div class="port-detail__body">
             <svg id="port-chart" class="chart" role="img" aria-label="Grafik riwayat Rx perangkat port optik" xmlns="http://www.w3.org/2000/svg"></svg>
-            <p class="chart__meta" id="port-chart-summary">—</p>
+            <p class="chart__meta" id="port-chart-summary">-</p>
             <p class="note-info note-info--sm" id="port-thresholds">Garis ambang mengikuti profil optik link (bila port tergabung link).</p>
             <div class="admin-actions">
               <button class="btn btn--ghost" id="port-detail-close" type="button">Tutup</button>
@@ -244,7 +244,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="link-form-title">Tambah link fiber</h2>
-              <p class="panel__sub">Ujung B boleh berupa label teks bila bukan perangkat terpantau (redaman B→A tampil “—”, beserta alasannya).</p>
+              <p class="panel__sub">Ujung B boleh berupa label teks bila bukan perangkat terpantau (redaman B→A tampil “-”, beserta alasannya).</p>
             </div>
           </div>
           <div class="admin-form">
@@ -288,7 +288,7 @@
                 <input id="link-wavelength" type="number" min="800" max="1700" step="1" value="1310" inputmode="numeric" />
               </label>
               <label class="admin-field">
-                <span>Panjang gelombang B→A (nm) — untuk BiDi</span>
+                <span>Panjang gelombang B→A (nm), untuk BiDi</span>
                 <input id="link-wavelength-b" type="number" min="800" max="1700" step="1" placeholder="Kosong = sama dengan A→B" inputmode="numeric" />
               </label>
               <label class="admin-field">
@@ -334,7 +334,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="link-detail-title">Detail link</h2>
-              <p class="panel__sub" id="link-detail-sub">—</p>
+              <p class="panel__sub" id="link-detail-sub">-</p>
             </div>
             <div class="seg" role="group" aria-label="Rentang riwayat" id="link-range">
               <button class="seg__btn is-active" type="button" data-range="30d" aria-pressed="true">30 hari</button>
@@ -348,8 +348,8 @@
             <ol class="calc-steps" id="link-steps"></ol>
             <h3 class="detail-subhead">Riwayat redaman (per jam)</h3>
             <svg id="link-chart" class="chart" role="img" aria-label="Grafik riwayat redaman link fiber" xmlns="http://www.w3.org/2000/svg"></svg>
-            <p class="chart__meta" id="link-chart-summary">—</p>
-            <p class="note-info note-info--sm" id="link-baseline">—</p>
+            <p class="chart__meta" id="link-chart-summary">-</p>
+            <p class="note-info note-info--sm" id="link-baseline">-</p>
             <div class="admin-actions">
               <button class="btn btn--ghost" id="link-detail-close" type="button">Tutup</button>
             </div>
@@ -366,7 +366,7 @@
           <div class="panel__head panel__head--stack">
             <div>
               <h2 class="panel__title" id="meas-title">Pengukuran lapangan (OTDR / power meter)</h2>
-              <p class="panel__sub">Catatan teknisi — dibandingkan dengan nilai terpantau saat ini (A→B <b id="meas-live-ab">—</b> · B→A <b id="meas-live-ba">—</b>)</p>
+              <p class="panel__sub">Catatan teknisi, dibandingkan dengan nilai terpantau saat ini (A→B <b id="meas-live-ab">-</b> · B→A <b id="meas-live-ba">-</b>)</p>
             </div>
             <div class="filters">
               <label class="field">
@@ -498,11 +498,11 @@
                   </select>
                 </label>
                 <label class="admin-field">
-                  <span>Daya Tx (dBm) — opsional</span>
+                  <span>Daya Tx (dBm), opsional</span>
                   <input id="calc-tx" type="number" min="-100" max="100" step="0.1" placeholder="mis. -1.5" inputmode="decimal" />
                 </label>
                 <label class="admin-field">
-                  <span>Sensitivitas penerima (dBm) — opsional</span>
+                  <span>Sensitivitas penerima (dBm), opsional</span>
                   <input id="calc-sensitivity" type="number" min="-100" max="100" step="0.1" placeholder="mis. -24" inputmode="decimal" />
                 </label>
               </div>
@@ -525,10 +525,10 @@
               <p class="empty-state" id="calc-empty">Belum ada perhitungan. Isi panjang serat lalu tekan Hitung.</p>
               <div id="calc-output" hidden>
                 <dl class="detail-list detail-list--calc">
-                  <div><dt>Redaman rancangan</dt><dd id="calc-total">—</dd></div>
-                  <div><dt>α(λ) yang dipakai</dt><dd id="calc-alpha">—</dd></div>
-                  <div><dt>Rx perkiraan</dt><dd id="calc-rx">—</dd></div>
-                  <div><dt>Margin perkiraan</dt><dd id="calc-margin">—</dd></div>
+                  <div><dt>Redaman rancangan</dt><dd id="calc-total">-</dd></div>
+                  <div><dt>α(λ) yang dipakai</dt><dd id="calc-alpha">-</dd></div>
+                  <div><dt>Rx perkiraan</dt><dd id="calc-rx">-</dd></div>
+                  <div><dt>Margin perkiraan</dt><dd id="calc-margin">-</dd></div>
                 </dl>
                 <h3 class="detail-subhead">Rincian</h3>
                 <ul class="calc-steps calc-steps--flat" id="calc-steps"></ul>
@@ -546,7 +546,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="settings-title">Pengaturan fiber</h2>
-              <p class="panel__sub">Parameter redaman, ambang deviasi/margin/asimetri, penurunan &amp; tren. Nilai contoh adalah awalan — sesuaikan dengan datasheet SFP Anda.</p>
+              <p class="panel__sub">Parameter redaman, ambang deviasi/margin/asimetri, penurunan &amp; tren. Nilai contoh adalah awalan, sesuaikan dengan datasheet SFP Anda.</p>
             </div>
           </div>
           <div class="admin-form">
@@ -589,7 +589,7 @@
           <div class="panel__head panel__head--stack">
             <div>
               <h2 class="panel__title" id="profiles-title">Profil optik</h2>
-              <p class="panel__sub">Ambang Rx, suhu, sensitivitas penerima &amp; overload per jenis SFP. Profil bawaan adalah <b>nilai awal umum</b> — sesuaikan dengan datasheet.</p>
+              <p class="panel__sub">Ambang Rx, suhu, sensitivitas penerima &amp; overload per jenis SFP. Profil bawaan adalah <b>nilai awal umum</b>. Sesuaikan dengan datasheet.</p>
             </div>
             <div class="filters">
               <button class="btn btn--primary" id="profile-add" type="button">
@@ -622,7 +622,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="profile-form-title">Tambah profil optik</h2>
-              <p class="panel__sub">Kosongkan ambang yang tidak ingin dipakai (tetap tampil “—” di evaluasi).</p>
+              <p class="panel__sub">Kosongkan ambang yang tidak ingin dipakai (tetap tampil “-” di evaluasi).</p>
             </div>
           </div>
           <div class="admin-form">
@@ -652,12 +652,12 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/fiber.js?v=4" defer></script>
+  <script src="assets/js/fiber.js?v=5" defer></script>
 </body>
 </html>

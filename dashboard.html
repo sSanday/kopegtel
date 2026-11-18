@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -35,32 +35,32 @@
       <section class="stats" aria-label="Statistik jaringan">
         <article class="stat">
           <p class="stat__label">Perangkat</p>
-          <p class="stat__value" id="stat-devices-total">—</p>
+          <p class="stat__value" id="stat-devices-total">-</p>
           <p class="stat__meta" id="stat-devices-meta">Memuat ringkasan…</p>
         </article>
         <article class="stat">
           <p class="stat__label">Masalah Aktif</p>
-          <p class="stat__value" id="stat-problems-total">—</p>
+          <p class="stat__value" id="stat-problems-total">-</p>
           <p class="stat__meta" id="stat-problems-meta">Memuat masalah…</p>
         </article>
         <article class="stat">
           <p class="stat__label">Ketersediaan 24 jam</p>
-          <p class="stat__value" id="stat-availability">—</p>
+          <p class="stat__value" id="stat-availability">-</p>
           <p class="stat__meta" id="stat-availability-meta">Rata-rata semua perangkat</p>
         </article>
         <article class="stat">
           <p class="stat__label">Pemeliharaan</p>
-          <p class="stat__value" id="stat-maintenance">—</p>
+          <p class="stat__value" id="stat-maintenance">-</p>
           <p class="stat__meta">Dalam jendela pemeliharaan</p>
         </article>
         <a class="stat stat--fiber" id="stat-fiber" href="fiber.html" hidden>
           <p class="stat__label">Fiber</p>
-          <p class="stat__value" id="stat-fiber-value">—</p>
+          <p class="stat__value" id="stat-fiber-value">-</p>
           <p class="stat__meta" id="stat-fiber-meta">Link waspada/kritis</p>
         </a>
         <a class="stat stat--mikrotik" id="stat-mikrotik" href="mikrotik.html#armada" hidden>
           <p class="stat__label">MikroTik</p>
-          <p class="stat__value" id="stat-mikrotik-value">—</p>
+          <p class="stat__value" id="stat-mikrotik-value">-</p>
           <p class="stat__meta" id="stat-mikrotik-meta">Penghala · firmware · temuan keamanan</p>
         </a>
       </section>
@@ -81,7 +81,7 @@
       <div class="grid" id="dashboard-grid">
         <section class="panel" aria-labelledby="perangkat-title">
           <div class="panel__head">
-            <h2 class="panel__title" id="perangkat-title">Status Perangkat</h2>
+            <h2 class="panel__title" id="perangkat-title">Status perangkat</h2>
             <a class="panel__hint panel__link" href="monitoring.html#hosts">Lihat semua</a>
           </div>
           <div class="table-wrap">
@@ -101,7 +101,7 @@
 
         <section class="panel" aria-labelledby="aktivitas-title">
           <div class="panel__head">
-            <h2 class="panel__title" id="aktivitas-title">Aktivitas Terbaru</h2>
+            <h2 class="panel__title" id="aktivitas-title">Aktivitas terbaru</h2>
             <span class="panel__hint">Tercatat otomatis</span>
           </div>
           <ul class="activity" id="activity-list"></ul>
@@ -112,13 +112,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/dashboard.js?v=7" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/dashboard.js?v=9" defer></script>
 </body>
 </html>

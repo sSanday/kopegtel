@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -43,22 +43,22 @@
         <div class="stats" aria-label="Ringkasan armada MikroTik">
           <article class="stat">
             <p class="stat__label">Penghala terdaftar</p>
-            <p class="stat__value" id="mt-router-count">—</p>
+            <p class="stat__value" id="mt-router-count">-</p>
             <p class="stat__meta">Tipe MikroTik / API aktif</p>
           </article>
           <article class="stat">
             <p class="stat__label">Firmware Tertunda</p>
-            <p class="stat__value" id="mt-firmware-pending">—</p>
+            <p class="stat__value" id="mt-firmware-pending">-</p>
             <p class="stat__meta">RouterBoard perlu pemutakhiran</p>
           </article>
           <article class="stat">
             <p class="stat__label">Temuan Keamanan</p>
-            <p class="stat__value" id="mt-security-open">—</p>
+            <p class="stat__value" id="mt-security-open">-</p>
             <p class="stat__meta">Terbuka &amp; belum diabaikan</p>
           </article>
           <article class="stat">
             <p class="stat__label">Sesi Aktif</p>
-            <p class="stat__value" id="mt-active-sessions">—</p>
+            <p class="stat__value" id="mt-active-sessions">-</p>
             <p class="stat__meta">PPP + hotspot (snapshot terakhir)</p>
           </article>
         </div>
@@ -127,7 +127,7 @@
           </div>
           <div class="table-foot">
             <button class="btn btn--ghost" id="mt-fleet-prev" type="button">Sebelumnya</button>
-            <span class="table-foot__info" id="mt-fleet-page-info">Halaman —</span>
+            <span class="table-foot__info" id="mt-fleet-page-info">Halaman -</span>
             <button class="btn btn--ghost" id="mt-fleet-next" type="button">Berikutnya</button>
           </div>
         </section>
@@ -209,7 +209,7 @@
             <div class="mt-sections" id="mt-tab-sections"></div>
             <div class="table-foot" id="mt-tab-foot" hidden>
               <button class="btn btn--ghost" id="mt-tab-prev" type="button">Sebelumnya</button>
-              <span class="table-foot__info" id="mt-tab-page-info">Halaman —</span>
+              <span class="table-foot__info" id="mt-tab-page-info">Halaman -</span>
               <button class="btn btn--ghost" id="mt-tab-next" type="button">Berikutnya</button>
             </div>
           </div>
@@ -220,12 +220,12 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/mikrotik.js?v=8" defer></script>
+  <script src="assets/js/mikrotik.js?v=9" defer></script>
 </body>
 </html>

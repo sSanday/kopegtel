@@ -1,5 +1,5 @@
 /* =========================================================
-   NMS Kopegtel — Dashboard
+   NMS Kopegtel · Dashboard
    Token warna/tipografi ada di assets/css/tokens.css.
    ========================================================= */
 
@@ -222,6 +222,10 @@ body.sheet-open {
 .nav__link.is-active svg {
   opacity: 1;
   color: var(--accent);
+}
+
+.nav__link--profile {
+  margin-top: 0.35rem;
 }
 
 /* Grup navigasi yang bisa dilipat (Monitoring) ---------------- */
@@ -1271,6 +1275,32 @@ td strong {
   white-space: normal;
 }
 
+/* Di layar sempit tabel lebar membuat pesan tengah tak terlihat. */
+@media (max-width: 640px) {
+  .table-wrap table:has(tbody tr.empty-row) {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+
+  .table-wrap table:has(tbody tr.empty-row) thead {
+    display: none;
+  }
+
+  .table-wrap table:has(tbody tr.empty-row) tbody,
+  .table-wrap table:has(tbody tr.empty-row) tr,
+  .table-wrap table:has(tbody tr.empty-row) td {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+
+  .table-wrap table:has(tbody tr.empty-row) td {
+    padding: 1.25rem 1rem;
+    text-align: left;
+  }
+}
+
 /* Metrik --------------------------------------------------- */
 
 .spark {
@@ -1854,7 +1884,7 @@ td strong {
 
 @media (max-width: 520px) {
   .stats {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stats--five {
@@ -2788,6 +2818,21 @@ td strong {
 
 .page-tabs::-webkit-scrollbar {
   display: none;
+}
+
+.page-tabs[data-fade-start="true"] {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+
+.page-tabs[data-fade-end="true"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.page-tabs[data-fade-start="true"][data-fade-end="true"] {
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
 }
 
 .page-tabs .btn {
@@ -4128,7 +4173,7 @@ td strong {
 }
 
 /* ---------------------------------------------------------
-   Profil — penyiapan MFA
+   Profil: penyiapan MFA
    --------------------------------------------------------- */
 
 .mfa-setup {
@@ -4166,7 +4211,7 @@ td strong {
 }
 
 /* ---------------------------------------------------------
-   Lalu lintas — bilah flow
+   Lalu lintas: bilah flow
    --------------------------------------------------------- */
 
 .flow-grid {

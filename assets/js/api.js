@@ -67,13 +67,13 @@
             response = await rawFetch(path, options, currentCsrf());
           }
         } catch {
-          /* abaikan — biarkan 403 asli diteruskan */
+          /* abaikan, biarkan 403 asli diteruskan */
         }
       }
     }
 
     if (response.status >= 500) {
-      // Server hidup tapi rusaknya parah — anggap backend tidak dapat dihubungi.
+      // Server hidup tapi rusaknya parah. Anggap backend tidak dapat dihubungi.
       notifyBackendDown();
     }
 

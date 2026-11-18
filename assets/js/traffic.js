@@ -1,4 +1,4 @@
-/* Traffic: NetFlow/IPFIX — ringkasan, talkers, aplikasi, percakapan, status. */
+/* Traffic: NetFlow/IPFIX. Ringkasan, talkers, aplikasi, percakapan, status. */
 (function () {
   "use strict";
 
@@ -100,7 +100,7 @@
 
   $("flow-exporter").addEventListener("change", async (event) => {
     currentExporter = event.target.value;
-    // Opsi interface milik eksporter lama — muat ulang agar tidak menyesatkan.
+    // Opsi interface milik eksporter lama. Muat ulang agar tidak menyesatkan.
     currentInterface = "";
     await loadInterfaceOptions();
     activate(currentTab);
@@ -195,7 +195,7 @@
             <td class="num">${formatBytes(Number(exporter.bytes) || 0)}</td>
             <td class="num">${counts(exporter.packets)}</td>
             <td class="num">${counts(exporter.flows)}</td>
-            <td class="num mono">${bps == null ? "—" : formatBps(bps)}</td>
+            <td class="num mono">${bps == null ? "-" : formatBps(bps)}</td>
           </tr>`;
       }).join("");
     }
@@ -247,7 +247,7 @@
       $("flow-if-rows").innerHTML = filtered.map((entry) => `
         <tr>
           <td class="mono">${escapeHtml(entry.interface)}</td>
-          <td>${escapeHtml((entry.direction || "").toUpperCase() || "—")}</td>
+          <td>${escapeHtml((entry.direction || "").toUpperCase() || "-")}</td>
           <td class="num">${formatBytes(Number(entry.bytes) || 0)}</td>
           <td class="num">${counts(entry.packets)}</td>
           <td class="num">${counts(entry.flows)}</td>
@@ -268,7 +268,7 @@
 
   function resetStats() {
     ["flow-stat-bytes", "flow-stat-rate", "flow-stat-flows", "flow-stat-packets"].forEach((id) => {
-      $(id).textContent = "—";
+      $(id).textContent = "-";
     });
     $("flow-stat-bytes-meta").textContent = "Menunggu data";
     $("flow-stat-rate-meta").textContent = rangeLabel();
@@ -324,7 +324,7 @@
           <tr>
             <td class="flow-rank">${index + 1}</td>
             <td class="mono">${escapeHtml(entry.key)}</td>
-            <td>${entry.host ? escapeHtml(entry.host) : "—"}</td>
+            <td>${entry.host ? escapeHtml(entry.host) : "-"}</td>
             <td class="num">${formatBytes(Number(entry.bytes) || 0)}</td>
             <td class="num">${counts(entry.packets)}</td>
             <td class="num">${counts(entry.flows)}</td>
@@ -344,7 +344,7 @@
       return `
         <tr>
           <td class="flow-rank">${index + 1}</td>
-          <td class="flow-key">${escapeHtml(entry.key || "—")}</td>
+          <td class="flow-key">${escapeHtml(entry.key || "-")}</td>
           <td class="flow-num">${formatBytes(bytes)}</td>
           <td class="flow-num">${(Number(entry.packets) || 0).toLocaleString("id-ID")}</td>
           <td class="flow-num">${(Number(entry.flows) || 0).toLocaleString("id-ID")}</td>
@@ -440,15 +440,15 @@
             <tr>
               <td>${escapeHtml(labels[kind] || kind)}</td>
               <td><span class="status ${running ? "status--ok" : "status--down"}">${running ? "Berjalan" : "Berhenti"}</span></td>
-              <td class="mono">${escapeHtml(item.bind_address || "—")}:${escapeHtml(item.port || "—")}</td>
-              <td>${item.last_packet_at ? escapeHtml(window.NMSFormat.formatDateTime(item.last_packet_at)) : "—"}</td>
+              <td class="mono">${escapeHtml(item.bind_address || "-")}:${escapeHtml(item.port || "-")}</td>
+              <td>${item.last_packet_at ? escapeHtml(window.NMSFormat.formatDateTime(item.last_packet_at)) : "-"}</td>
               <td class="num">${counts(item.flows)}</td>
               <td class="num">${escapeHtml(formatBytes(item.bytes || 0))}</td>
               <td>${Number(item.dropped_unknown || 0)} / ${Number(item.dropped_rate || 0)} / ${Number(item.dropped_invalid || 0)} / ${Number(item.dropped_no_template || 0)}</td>
               <td class="num">${Number((data.receivers.templates && Object.values(data.receivers.templates).reduce((a, b) => a + b, 0)) || 0)}</td>
             </tr>`;
         }).join("")
-        : '<tr class="empty-row"><td colspan="8">Belum ada penerima flow yang dikonfigurasi.</td></tr>';
+        : '<tr class="empty-row"><td colspan="8">Belum ada penerima flow yang dikonfigurasi. Aktifkan NetFlow/IPFIX di Administrasi.</td></tr>';
       const totals = data.counts || {};
       const anyRunning = rows.some(([, item]) => item && item.running);
       $("flow-status-empty").hidden = anyRunning;

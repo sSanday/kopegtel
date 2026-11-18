@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -67,14 +67,14 @@
                 <span>Keparahan</span>
                 <select id="syslog-severity">
                   <option value="">Semua keparahan</option>
-                  <option value="0">0 — Darurat</option>
-                  <option value="1">1 — Siaga</option>
-                  <option value="2">2 — Kritis</option>
-                  <option value="3">3 — Galat</option>
-                  <option value="4">4 — Peringatan</option>
-                  <option value="5">5 — Pemberitahuan</option>
-                  <option value="6">6 — Info</option>
-                  <option value="7">7 — Debug</option>
+                  <option value="0">0 · Darurat</option>
+                  <option value="1">1 · Siaga</option>
+                  <option value="2">2 · Kritis</option>
+                  <option value="3">3 · Galat</option>
+                  <option value="4">4 · Peringatan</option>
+                  <option value="5">5 · Pemberitahuan</option>
+                  <option value="6">6 · Info</option>
+                  <option value="7">7 · Debug</option>
                 </select>
               </label>
             </div>
@@ -113,7 +113,7 @@
               </ol>
               <pre class="code-block"><code>/system logging action add name=nms target=remote remote=IP-NMS remote-port=5514
 /system logging add topics=info action=nms</code></pre>
-              <p class="setup-guide__note">Contoh perintah—sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
+              <p class="setup-guide__note">Contoh perintah. Sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
             </div>
             <div class="empty-state__actions">
               <a class="btn btn--primary" id="syslog-empty-cta" href="administration.html#ingest">Buka pengaturan penerima</a>
@@ -195,7 +195,7 @@
               </ol>
               <pre class="code-block"><code>/snmp community add name=nms addresses=IP-NMS
 /snmp target add address=IP-NMS:1162 community=nms</code></pre>
-              <p class="setup-guide__note">Contoh perintah—sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
+              <p class="setup-guide__note">Contoh perintah. Sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
             </div>
             <div class="empty-state__actions">
               <a class="btn btn--primary" id="traps-empty-cta" href="administration.html#ingest">Buka pengaturan penerima</a>
@@ -250,7 +250,7 @@
               <label class="admin-field"><span>Jeda notifikasi (detik)</span><input id="rule-cooldown" type="number" min="0" max="86400" value="60" /></label>
               <label class="admin-field"><span>Selesai otomatis (menit, 0=mati)</span><input id="rule-auto" type="number" min="0" max="10080" value="30" /></label>
               <label class="admin-field"><span>Pola pemulihan (opsional)</span><input id="rule-recovery" type="text" maxlength="200" autocomplete="off" /></label>
-              <label class="admin-field"><span>Selesaikan aturan lain</span><select id="rule-resolves"><option value="">—</option></select></label>
+              <label class="admin-field"><span>Selesaikan aturan lain</span><select id="rule-resolves"><option value="">Tidak ada</option></select></label>
               <label class="admin-field"><span>Aktif</span><select id="rule-enabled"><option value="1">Ya</option><option value="0">Tidak</option></select></label>
             </div>
             <p class="panel__sub" id="rule-note" role="status"></p>
@@ -279,13 +279,13 @@
       <footer class="foot">© 2026, NMS Kopegtel</footer>
     </main>
   </div>
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/events.js?v=12" defer></script>
+  <script src="assets/js/events.js?v=13" defer></script>
 </body>
 </html>
 

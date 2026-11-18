@@ -1,5 +1,5 @@
 /* Halaman Fiber Optik: port DDM, link & redaman, pengukuran, kalkulator, pengaturan.
- * Semua nilai dari API nyata; tanpa data tampil "—" / empty state, tidak pernah angka karangan.
+ * Semua nilai dari API nyata; tanpa data tampil "-" / empty state, tidak pernah angka karangan.
  */
 (function () {
   "use strict";
@@ -11,7 +11,7 @@
   /* ---------- util ---------- */
 
   function fmtNum(value, digits, unit) {
-    if (value == null || Number.isNaN(Number(value))) return "—";
+    if (value == null || Number.isNaN(Number(value))) return "-";
     return `${Number(value).toFixed(digits == null ? 2 : digits)}${unit ? ` ${unit}` : ""}`;
   }
   const fmtDbm = (v) => fmtNum(v, 2, "dBm");
@@ -116,7 +116,7 @@
 
   function chartSummary(values, format) {
     const valid = (values || []).filter((v) => v != null);
-    if (valid.length === 0) return "min — · rata-rata — · maks —";
+    if (valid.length === 0) return "min - · rata-rata - · maks -";
     const min = Math.min(...valid);
     const max = Math.max(...valid);
     const avg = valid.reduce((sum, v) => sum + v, 0) / valid.length;
@@ -127,7 +127,7 @@
 
   const VIEWS = {
     ringkasan: { title: "Ringkasan", desc: "Kondisi link fiber dari daya optik transceiver (DDM)." },
-    ports: { title: "Port optik", desc: "Daya DDM per port optik (nilai nyata, “—” bila tidak terukur)." },
+    ports: { title: "Port optik", desc: "Daya DDM per port optik (nilai nyata, “-” bila tidak terukur)." },
     links: { title: "Link & redaman", desc: "Anggaran rancangan vs redaman terukur per link." },
     measurements: { title: "Pengukuran manual", desc: "Catatan OTDR / power meter lapangan per link." },
     calculator: { title: "Kalkulator", desc: "Anggaran link budget interaktif." },
@@ -217,7 +217,7 @@
         .map((iface) => `<option value="${escapeHtml(iface.if_name)}"></option>`)
         .join("");
     } catch {
-      /* datalist bersifat membantu — gagal memuat tidak menghalangi input manual */
+      /* datalist bersifat membantu; gagal memuat tidak menghalangi input manual */
     }
   }
 
@@ -233,9 +233,9 @@
       document.getElementById("fib-warn").textContent = String(summary.links_warn ?? 0);
       document.getElementById("fib-crit").textContent = String(summary.links_crit ?? 0);
       document.getElementById("fib-total").textContent = String(summary.links_total ?? 0);
-      document.getElementById("fib-avg-rx").textContent = summary.avg_rx_dbm == null ? "—" : fmtDbm(summary.avg_rx_dbm);
+      document.getElementById("fib-avg-rx").textContent = summary.avg_rx_dbm == null ? "-" : fmtDbm(summary.avg_rx_dbm);
       document.getElementById("fib-max-att").textContent =
-        summary.max_attenuation_db == null ? "—" : fmtDb(summary.max_attenuation_db);
+        summary.max_attenuation_db == null ? "-" : fmtDb(summary.max_attenuation_db);
 
       const rows = summary.problem_links || [];
       const tbody = document.getElementById("fib-problem-rows");
@@ -319,7 +319,7 @@
           const detailId = port.id;
           const detailBtn = detailId
             ? `<button class="btn btn--ghost btn--sm" type="button" data-port-detail="${detailId}">Riwayat</button>`
-            : "—";
+            : "-";
           return (
             `<tr><td>${escapeHtml(port.device_name)}</td>` +
             `<td class="mono">${escapeHtml(port.if_name)}</td>` +
@@ -366,7 +366,7 @@
           `Garis ambang profil: waspada < ${fmtDbm(thresholds.rx_warn_low)} · kritis < ${fmtDbm(thresholds.rx_crit_low)}. ` +
           "Suhu dan voltase mengikuti pembacaan DDM terakhir.";
       } else {
-        portThresholds.textContent = "Port belum tergabung link/profil — ambang tidak digambar. Nilai tetap ditampilkan.";
+        portThresholds.textContent = "Port belum tergabung link/profil. Ambang tidak digambar; nilai tetap ditampilkan.";
       }
     } catch (error) {
       portChartSummary.textContent = error.message || "Gagal memuat riwayat port.";
@@ -396,7 +396,7 @@
       return `${link.device_a_name || "?"} · ${link.port_a}`;
     }
     if (link.device_b_id) return `${link.device_b_name || "?"} · ${link.port_b}`;
-    return link.end_b_label || "—";
+    return link.end_b_label || "-";
   }
 
   function worstMargin(metrics) {
@@ -440,9 +440,9 @@
           `<td class="mono">${escapeHtml(fmtNum(link.length_km, link.length_km < 1 ? 3 : 2, "km"))}</td>` +
           `<td class="mono">${fmtDb(metrics.attenuation_ab_db)}</td>` +
           `<td class="mono">${fmtDb(metrics.attenuation_ba_db)}</td>` +
-          `<td class="mono">${budget == null ? "—" : fmtDb(budget)}</td>` +
-          `<td class="mono">${deviation == null ? "—" : fmtDb(deviation)}</td>` +
-          `<td class="mono">${margin == null ? "—" : fmtDb(margin)}</td>` +
+          `<td class="mono">${budget == null ? "-" : fmtDb(budget)}</td>` +
+          `<td class="mono">${deviation == null ? "-" : fmtDb(deviation)}</td>` +
+          `<td class="mono">${margin == null ? "-" : fmtDb(margin)}</td>` +
           `<td><span class="${meta.cls}">${escapeHtml(meta.label)}</span></td>` +
           `<td class="row-actions">${actions}</td></tr>`
         );
@@ -558,8 +558,8 @@
         `<span class="${meta.cls}">${escapeHtml(meta.label)}</span> · ` +
         `Redaman A→B <b>${escapeHtml(fmtDb(metrics.attenuation_ab_db))}</b> · B→A <b>${escapeHtml(fmtDb(metrics.attenuation_ba_db))}</b> · ` +
         `Asimetri <b>${escapeHtml(fmtDb(metrics.asymmetry_db))}</b> · ` +
-        `Deviasi <b>${deviationWorst == null ? "—" : escapeHtml(fmtDb(deviationWorst))}</b> · ` +
-        `Margin min <b>${marginMin == null ? "—" : escapeHtml(fmtDb(marginMin))}</b>`;
+        `Deviasi <b>${deviationWorst == null ? "-" : escapeHtml(fmtDb(deviationWorst))}</b> · ` +
+        `Margin min <b>${marginMin == null ? "-" : escapeHtml(fmtDb(marginMin))}</b>`;
 
       linkSteps.innerHTML = (evaluation.steps || [])
         .map((step) => {
@@ -585,8 +585,8 @@
       const trendA = data.trend_rx_a_db_per_week;
       const trendB = data.trend_rx_b_db_per_week;
       linkBaseline.textContent =
-        `Acuan Rx (median ${data.baseline_samples_a || 0} jam, jendela 7 hari): A ${fmtDbm(baselineA)} · B ${fmtDbm(baselineB)} — penurunan > 3 dB dari acuan memicu masalah fiber_drop. ` +
-        `Tren (regresi 14 hari): A ${trendA == null ? "—" : `${trendA.toFixed(2)} dB/minggu`} · B ${trendB == null ? "—" : `${trendB.toFixed(2)} dB/minggu`} — memburuk ≥ 0,5 dB/minggu memicu masalah fiber_trend.`;
+        `Acuan Rx (median ${data.baseline_samples_a || 0} jam, jendela 7 hari): A ${fmtDbm(baselineA)} · B ${fmtDbm(baselineB)}. Penurunan > 3 dB dari acuan memicu masalah fiber_drop. ` +
+        `Tren (regresi 14 hari): A ${trendA == null ? "-" : `${trendA.toFixed(2)} dB/minggu`} · B ${trendB == null ? "-" : `${trendB.toFixed(2)} dB/minggu`}. Memburuk ≥ 0,5 dB/minggu memicu masalah fiber_trend.`;
     } catch (error) {
       showError(linkVerdict, error.message || "Gagal memuat detail link.");
     }
@@ -626,8 +626,8 @@
     measAddBtn.disabled = !hasLink || !canOperate();
     if (!hasLink) {
       measRows.innerHTML = emptyRow(8, "Pilih link untuk melihat/mencatat pengukuran.");
-      measLiveAb.textContent = "—";
-      measLiveBa.textContent = "—";
+      measLiveAb.textContent = "-";
+      measLiveBa.textContent = "-";
       return;
     }
     try {
@@ -652,12 +652,12 @@
             : "";
           return (
             `<tr><td>${escapeHtml(String(row.measured_at).slice(0, 10))}</td>` +
-            `<td>${escapeHtml(row.technician || "—")}</td>` +
-            `<td>${escapeHtml(row.point || "—")}</td>` +
+            `<td>${escapeHtml(row.technician || "-")}</td>` +
+            `<td>${escapeHtml(row.point || "-")}</td>` +
             `<td>${escapeHtml(methodLabel)}</td>` +
             `<td class="mono">${fmtDb(row.value_db)}</td>` +
             `<td class="mono">${fmtDbm(row.value_dbm)}</td>` +
-            `<td>${escapeHtml(row.notes || "—")}</td>` +
+            `<td>${escapeHtml(row.notes || "-")}</td>` +
             `<td class="row-actions">${actions}</td></tr>`
           );
         })
@@ -751,9 +751,9 @@
       document.getElementById("calc-total").textContent = fmtDb(result.budget_db);
       document.getElementById("calc-alpha").textContent = `${result.alpha_db_per_km} dB/km`;
       document.getElementById("calc-rx").textContent =
-        result.rx_estimate_dbm == null ? "—" : fmtDbm(result.rx_estimate_dbm);
+        result.rx_estimate_dbm == null ? "-" : fmtDbm(result.rx_estimate_dbm);
       document.getElementById("calc-margin").textContent =
-        result.margin_db == null ? "—" : fmtDb(result.margin_db);
+        result.margin_db == null ? "-" : fmtDb(result.margin_db);
       document.getElementById("calc-steps").innerHTML = (result.steps || [])
         .map((step) => `<li>${escapeHtml(step.label)}<span class="calc-steps__value">${escapeHtml(fmtDb(step.value_db))}</span></li>`)
         .join("");

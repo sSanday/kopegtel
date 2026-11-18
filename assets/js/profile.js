@@ -45,7 +45,7 @@
       return;
     }
     statusEl.textContent = status.required_by_policy
-      ? "MFA belum aktif — wajib untuk peran Anda (masa tenggang berjalan)."
+      ? "MFA belum aktif. Wajib untuk peran Anda (masa tenggang berjalan)."
       : "MFA belum aktif (opsional).";
     offBlock.hidden = false;
   }

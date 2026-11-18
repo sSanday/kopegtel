@@ -39,7 +39,7 @@
 
   /**
    * Jenis aktivitas untuk ikon. Utamakan field kind/severity dari API bila
-   * tersedia (belum ada — lihat BACKEND-TODO.md); fallback eksplisit dari
+   * tersedia (belum ada, lihat BACKEND-TODO.md); fallback eksplisit dari
    * transisi old_status/new_status, bukan menebak isi pesan.
    */
   function activityKind(entry) {
@@ -81,13 +81,13 @@
     }
     if (dashboardEmpty) dashboardEmpty.hidden = true;
 
-    statDevicesTotal.textContent = "—";
+    statDevicesTotal.textContent = "-";
     statDevicesMeta.textContent = "Data tidak tersedia";
-    statProblemsTotal.textContent = "—";
+    statProblemsTotal.textContent = "-";
     statProblemsMeta.textContent = "Data tidak tersedia";
-    statAvailability.textContent = "—";
+    statAvailability.textContent = "-";
     statAvailabilityMeta.textContent = "Data tidak tersedia";
-    statMaintenance.textContent = "—";
+    statMaintenance.textContent = "-";
     if (statFiber) statFiber.hidden = true;
     if (statMikrotik) statMikrotik.hidden = true;
 
@@ -139,7 +139,7 @@
     statDevicesMeta.textContent = `${summary.online || 0} tersambung · ${(summary.degraded || 0) + (summary.offline || 0)} perlu perhatian`;
     statProblemsTotal.textContent = String(problemCount);
     statProblemsMeta.textContent = problemCount === 0 ? "Tidak ada masalah terbuka" : `${highCount} prioritas tinggi`;
-    statAvailability.textContent = summary.availability_24h == null ? "—" : formatPercent(summary.availability_24h);
+    statAvailability.textContent = summary.availability_24h == null ? "-" : formatPercent(summary.availability_24h);
     statAvailabilityMeta.textContent = summary.availability_24h == null ? "Belum ada pemeriksaan" : "Rata-rata semua perangkat";
     statMaintenance.textContent = String(summary.maintenance || 0);
 
@@ -153,7 +153,7 @@
         statFiber.hidden = false;
         statFiberValue.textContent = String(warn + crit);
         statFiberMeta.textContent =
-          `${warn} waspada · ${crit} kritis · redaman maks ${fiber.max_attenuation_db == null ? "—" : `${Number(fiber.max_attenuation_db).toFixed(2)} dB`} · dari ${fiberLinks} link`;
+          `${warn} waspada · ${crit} kritis · redaman maks ${fiber.max_attenuation_db == null ? "-" : `${Number(fiber.max_attenuation_db).toFixed(2)} dB`} · dari ${fiberLinks} link`;
       } else {
         statFiber.hidden = true;
       }
@@ -185,17 +185,19 @@
         .slice()
         .sort((a, b) => (STATUS_WEIGHT[a.status] ?? 9) - (STATUS_WEIGHT[b.status] ?? 9) || a.name.localeCompare(b.name))
         .slice(0, DASHBOARD_ROWS);
-      deviceRows.innerHTML = sorted
-        .map((device) => {
-          const meta = STATUS_META[device.status] || STATUS_META.unknown;
-          return (
-            `<tr><td><strong>${escapeHtml(device.name)}</strong></td>` +
-            `<td>${escapeHtml(device.location || "—")}</td>` +
-            `<td class="mono">${escapeHtml(device.ip)}</td>` +
-            `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td></tr>`
-          );
-        })
-        .join("");
+      deviceRows.innerHTML = sorted.length
+        ? sorted
+            .map((device) => {
+              const meta = STATUS_META[device.status] || STATUS_META.unknown;
+              return (
+                `<tr><td><strong>${escapeHtml(device.name)}</strong></td>` +
+                `<td>${escapeHtml(device.location || "-")}</td>` +
+                `<td class="mono">${escapeHtml(device.ip)}</td>` +
+                `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td></tr>`
+              );
+            })
+            .join("")
+        : '<tr class="empty-row"><td colspan="4">Tidak ada perangkat untuk ditampilkan saat ini.</td></tr>';
 
       const items = activity || [];
       activityList.innerHTML = items.length

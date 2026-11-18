@@ -272,7 +272,7 @@
 
   function receiverExtraCell(kind, receiver) {
     if (kind !== "snmp_trap") {
-      return '<span class="panel__sub">—</span>';
+      return '<span class="panel__sub">-</span>';
     }
     const communities = Number(receiver.communities_count || 0);
     return `<div class="admin-field">
@@ -421,7 +421,7 @@
 
   function formatTokenRow(token) {
     const expires = token.expires_at ? escapeHtml(formatDateTime(token.expires_at)) : "Tidak pernah";
-    const used = token.last_used_at ? escapeHtml(formatDateTime(token.last_used_at)) : "—";
+    const used = token.last_used_at ? escapeHtml(formatDateTime(token.last_used_at)) : "-";
     const ips = token.allowed_ips && token.allowed_ips.length ? escapeHtml(token.allowed_ips.join(", ")) : "Semua";
     const scopes = escapeHtml((token.scopes || []).join(", "));
     const status = token.revoked ? '<span class="status status--idle">Dicabut</span>' : '<span class="status status--ok">Aktif</span>';
@@ -523,7 +523,7 @@
         tokenRevealNote.hidden = false;
       } catch {
         tokenRevealValue.select();
-        tokenRevealNote.textContent = "Papan klip diblokir — token dipilih; salin manual (Ctrl+C).";
+        tokenRevealNote.textContent = "Papan klip diblokir. Token dipilih; salin manual (Ctrl+C).";
         tokenRevealNote.hidden = false;
       }
     });
@@ -588,7 +588,7 @@
       ["Waktu server (UTC)", info.time_utc],
     ];
     installationList.innerHTML = items
-      .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "—" : String(value))}</dd></div>`)
+      .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "-" : String(value))}</dd></div>`)
       .join("");
   }
 

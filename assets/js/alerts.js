@@ -5,9 +5,9 @@
   const { escapeHtml, SEVERITY_META } = window.NMSFormat;
 
   const VIEWS = {
-    actions: { label: "Aksi", desc: "Aturan aksi otomatis saat masalah terbuka." },
+    actions: { label: "Aturan aksi", desc: "Aturan aksi otomatis saat masalah terbuka." },
     "message-templates": { label: "Template pesan", desc: "Template pesan notifikasi dengan placeholder." },
-    "media-types": { label: "Jenis media", desc: "Kanal pengiriman notifikasi." },
+    "media-types": { label: "Kanal notifikasi", desc: "Telegram, SMTP, dan Webhook untuk mengirim notifikasi." },
     escalation: { label: "Eskalasi", desc: "Kebijakan kenaikan notifikasi bila masalah masih terbuka dan belum diakui." },
   };
 
@@ -38,7 +38,7 @@
     });
     viewTitle.textContent = meta.label;
     viewDesc.textContent = meta.desc;
-    window.NMSFormat.setDocumentTitle(meta.label, "Peringatan");
+    window.NMSFormat.setDocumentTitle(meta.label, "Notifikasi");
     if (current === "actions") loadRules();
     else if (current === "message-templates") loadTemplates();
     else if (current === "media-types") loadChannels();
@@ -63,7 +63,7 @@
     return canEdit()
       ? `<button class="ack-toggle" type="button" data-kind="${kind}" data-action="edit" data-id="${id}">Ubah</button> ` +
         `<button class="ack-toggle" type="button" data-kind="${kind}" data-action="delete" data-id="${id}">Hapus</button>`
-      : "—";
+      : "-";
   }
 
   /* =====================================================
@@ -111,7 +111,7 @@
     ruleTemplate.innerHTML = '<option value="">Pilih template…</option>' + templatesCache.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
     const esc = document.getElementById("rule-escalation");
     if (esc) {
-      esc.innerHTML = '<option value="">— tidak pakai / kirim langsung —</option>'
+      esc.innerHTML = '<option value="">Tanpa eskalasi, kirim langsung</option>'
         + policiesCache.filter((p) => p.enabled).map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
     }
   }
@@ -137,7 +137,7 @@
           `<td>${escapeHtml(scopeLabel(rule))}</td>` +
           `<td>${escapeHtml(rule.channel_name || "-")}</td>` +
           `<td>${escapeHtml(rule.template_name || "-")}</td>` +
-          `<td>${escapeHtml(rule.escalation_policy_name || "—")}</td>` +
+          `<td>${escapeHtml(rule.escalation_policy_name || "-")}</td>` +
           `<td>${rule.enabled ? '<span class="status status--ok">Aktif</span>' : '<span class="status status--idle">Nonaktif</span>'}</td>` +
           `<td>${actionButtons("rule", rule.id)}</td>` +
           `</tr>`
@@ -414,7 +414,7 @@
     const cfg = channel && channel.config ? channel.config : {};
     const editing = !!channel;
     const keepPlaceholder = (present, fallback) =>
-      (editing && present ? "Tersimpan — kosongkan untuk mempertahankan" : fallback);
+      (editing && present ? "Tersimpan. Kosongkan untuk mempertahankan" : fallback);
 
     const chBotToken = document.getElementById("ch-bot-token");
     chBotToken.value = "";
@@ -449,7 +449,7 @@
     const chWebhookHeaders = document.getElementById("ch-webhook-headers");
     chWebhookHeaders.value = "";
     chWebhookHeaders.placeholder = editing && cfg.has_headers
-      ? "Header tersimpan — kosongkan untuk mempertahankan"
+      ? "Header tersimpan. Kosongkan untuk mempertahankan"
       : '{"Authorization": "Bearer ..."}';
     const chSmtpPrivate = document.getElementById("ch-smtp-private");
     chSmtpPrivate.checked = !!cfg.allow_private;

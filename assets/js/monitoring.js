@@ -1,4 +1,4 @@
-/* Monitoring: problems, hosts, latest data, maps — semua dari API. */
+/* Monitoring: problems, hosts, latest data, maps. Semua dari API. */
 (function () {
   "use strict";
 
@@ -16,7 +16,7 @@
 
   const VIEWS = {
     problems: { label: "Masalah", desc: "Pantau seluruh masalah aktif di jaringan." },
-    hosts: { label: "Perangkat", desc: "Daftar perangkat terdaftar beserta ketersediaan 24 jam." },
+    hosts: { label: "Daftar Host", desc: "Daftar host terdaftar beserta ketersediaan 24 jam." },
     "latest-data": { label: "Data terbaru", desc: "Nilai terakhir yang dikumpulkan dari seluruh perangkat." },
     maps: { label: "Peta", desc: "Topologi jaringan berdasarkan uplink (induk)." },
   };
@@ -79,7 +79,7 @@
 
   function problemDuration(startedAt) {
     const start = window.NMSFormat.parseServerTs(startedAt);
-    if (!start) return "—";
+    if (!start) return "-";
     const minutes = Math.max(0, Math.floor((Date.now() - start.getTime()) / 60000));
     const days = Math.floor(minutes / 1440);
     const hours = Math.floor((minutes % 1440) / 60);
@@ -240,7 +240,10 @@
     hostInterval.textContent = String(hostState.interval);
 
     if (devices.length === 0) {
-      hostRows.innerHTML = '<tr class="empty-row"><td colspan="7">Tidak ada host yang cocok dengan filter saat ini.</td></tr>';
+      const filtered = hostSearch.value.trim() || hostStatus.value || hostGroup.value;
+      hostRows.innerHTML = filtered
+        ? '<tr class="empty-row"><td colspan="7">Tidak ada host yang cocok dengan filter saat ini.</td></tr>'
+        : '<tr class="empty-row"><td colspan="7">Belum ada host. Tambahkan perangkat pertama lewat tombol Tambah perangkat.</td></tr>';
     } else {
       hostRows.innerHTML = devices
         .map((device) => {
@@ -248,10 +251,10 @@
           return (
             `<tr data-status="${escapeHtml(device.status)}">` +
             `<td><a class="cell-link" href="inventory.html#host/${device.id}">${escapeHtml(device.name)}</a><span class="cell-sub">${escapeHtml(TYPE_LABELS[device.type] || device.type)}</span></td>` +
-            `<td data-avail="${device.availability_24h == null ? "" : device.availability_24h}"><span class="avail ${availabilityClass(device.availability_24h)}">${device.availability_24h == null ? "—" : formatPercent(device.availability_24h)}</span></td>` +
+            `<td data-avail="${device.availability_24h == null ? "" : device.availability_24h}"><span class="avail ${availabilityClass(device.availability_24h)}">${device.availability_24h == null ? "-" : formatPercent(device.availability_24h)}</span></td>` +
             `<td class="mono">${escapeHtml(device.ip)}</td>` +
-            `<td>${escapeHtml(device.group_name || "—")}</td>` +
-            `<td>${escapeHtml(device.location || "—")}</td>` +
+            `<td>${escapeHtml(device.group_name || "-")}</td>` +
+            `<td>${escapeHtml(device.location || "-")}</td>` +
             `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
             `<td class="mono">${escapeHtml(timeAgo(device.last_seen))}</td>` +
             `</tr>`
@@ -270,7 +273,7 @@
       document.getElementById("host-online").textContent = String(summary.online || 0);
       document.getElementById("host-online-meta").textContent = summary.total
         ? `${formatPercent((summary.online / summary.total) * 100, 1)} ketersediaan`
-        : "—";
+        : "-";
       document.getElementById("host-down").textContent = String((summary.offline || 0) + (summary.degraded || 0));
       document.getElementById("host-maintenance").textContent = String(summary.maintenance || 0);
     } catch {
@@ -317,11 +320,11 @@
     }
     latestRows.innerHTML = devices
       .map((device) => {
-        const cpu = device.cpu_pct == null ? "—" : formatPercent(device.cpu_pct, 0);
-        const mem = device.mem_pct == null ? "—" : formatPercent(device.mem_pct, 0);
-        const storage = device.storage_pct == null ? "—" : formatPercent(device.storage_pct, 0);
-        const temp = device.temp_c == null ? "—" : `${Number(device.temp_c).toFixed(1)} °C`;
-        const latency = device.latency_ms == null ? "—" : `${Number(device.latency_ms).toFixed(0)} ms`;
+        const cpu = device.cpu_pct == null ? "-" : formatPercent(device.cpu_pct, 0);
+        const mem = device.mem_pct == null ? "-" : formatPercent(device.mem_pct, 0);
+        const storage = device.storage_pct == null ? "-" : formatPercent(device.storage_pct, 0);
+        const temp = device.temp_c == null ? "-" : `${Number(device.temp_c).toFixed(1)} °C`;
+        const latency = device.latency_ms == null ? "-" : `${Number(device.latency_ms).toFixed(0)} ms`;
         return (
           `<tr>` +
           `<td><a class="cell-link" href="inventory.html#host/${device.id}">${escapeHtml(device.name)}</a><span class="cell-sub">${escapeHtml(TYPE_LABELS[device.type] || device.type)}</span></td>` +
@@ -339,7 +342,7 @@
   }
 
   /* =====================================================
-     Maps — topologi dinamis dari /api/topology
+     Maps: topologi dinamis dari /api/topology
      ===================================================== */
 
   const svg = document.getElementById("topology-svg");
@@ -426,7 +429,7 @@
       : "Pada topologi";
     const online = nodes.filter((n) => n.status === "online").length;
     document.getElementById("map-online").textContent = String(online);
-    document.getElementById("map-online-pct").textContent = nodes.length ? `${Math.round((online / nodes.length) * 100)}%` : "—";
+    document.getElementById("map-online-pct").textContent = nodes.length ? `${Math.round((online / nodes.length) * 100)}%` : "-";
     document.getElementById("map-degraded").textContent = String(nodes.filter((n) => n.status === "degraded").length);
     document.getElementById("map-offline").textContent = String(nodes.filter((n) => n.status === "offline").length);
 
@@ -501,7 +504,7 @@
         svg
       );
       el("title", {}, path).textContent =
-        `${fiber.name} · A→B ${fiber.attenuation_ab_db == null ? "—" : `${Number(fiber.attenuation_ab_db).toFixed(2)} dB`}`;
+        `${fiber.name} · A→B ${fiber.attenuation_ab_db == null ? "-" : `${Number(fiber.attenuation_ab_db).toFixed(2)} dB`}`;
     }
 
     for (const node of nodes) {
@@ -547,9 +550,9 @@
     document.getElementById("map-detail-type").textContent = `${TYPE_LABELS[node.type] || node.type}${node.location ? ` · ${node.location}` : ""}`;
     document.getElementById("map-detail-ip").textContent = node.ip;
     document.getElementById("map-detail-status").textContent = meta.label;
-    document.getElementById("map-detail-latency").textContent = node.latency_ms == null ? "—" : `${Number(node.latency_ms).toFixed(0)} ms`;
-    document.getElementById("map-detail-group").textContent = node.group_name || "—";
-    document.getElementById("map-detail-location").textContent = node.location || "—";
+    document.getElementById("map-detail-latency").textContent = node.latency_ms == null ? "-" : `${Number(node.latency_ms).toFixed(0)} ms`;
+    document.getElementById("map-detail-group").textContent = node.group_name || "-";
+    document.getElementById("map-detail-location").textContent = node.location || "-";
     document.getElementById("map-detail-link").href = `inventory.html#host/${node.id}`;
 
     // Link fiber yang melibatkan perangkat ini (redaman A→B / B→A), termasuk ujung B non-perangkat.
@@ -575,7 +578,7 @@
           const statusCls = fiber.status === "crit" ? "avail avail--down" : fiber.status === "warn" ? "avail avail--warn" : fiber.status === "unknown" ? "avail" : "avail avail--ok";
           return (
             `<li><a class="linklike" href="fiber.html#links/${fiber.id}">${escapeHtml(fiber.name)}</a>` +
-            `<span class="fiber-link-meta">${escapeHtml(direction)} · lawan: ${escapeHtml(bLabel)} · redaman <b>${att == null ? "—" : `${Number(att).toFixed(2)} dB`}</b> · ${escapeHtml(String(fiber.length_km))} km</span>` +
+            `<span class="fiber-link-meta">${escapeHtml(direction)} · lawan: ${escapeHtml(bLabel)} · redaman <b>${att == null ? "-" : `${Number(att).toFixed(2)} dB`}</b> · ${escapeHtml(String(fiber.length_km))} km</span>` +
             `<span class="${statusCls}">${escapeHtml(meta)}</span></li>`
           );
         })
@@ -612,7 +615,7 @@
     activateView();
     loadGroupOptions();
     loadHostStats();
-    // Pengaturan (interval default) — opsional.
+    // Pengaturan (interval default), opsional.
     window.apiFetch("/api/settings").then((res) => { window.__nmsSettings = res.settings || {}; }).catch(() => {});
     window.NMSStore.startAutoRefresh(() => {
       if (current === "problems") loadProblems();

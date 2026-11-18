@@ -125,7 +125,7 @@
     if (info.db_path) items.push(["Basis data", `${info.db_path} (${formatBytes(info.db_size_bytes)})`]);
     items.push(["Poller", info.poller && info.poller.running ? `Berjalan (maks ${info.poller.max_workers} worker)` : "Tidak berjalan"]);
     sysinfoList.innerHTML = items
-      .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "—" : String(value))}</dd></div>`)
+      .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value == null ? "-" : String(value))}</dd></div>`)
       .join("");
 
     const countsPanel = document.getElementById("table-counts-panel");
@@ -173,7 +173,7 @@
     }
     const rows = report.rows || [];
     if (rows.length === 0) {
-      availRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada perangkat.</td></tr>';
+      availRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada perangkat. Tambahkan perangkat di Inventaris agar laporan terisi.</td></tr>';
       return;
     }
     availRows.innerHTML = rows
@@ -181,10 +181,10 @@
         `<tr>` +
         `<td>${escapeHtml(row.device)}</td>` +
         `<td class="mono">${escapeHtml(row.ip)}</td>` +
-        `<td>${escapeHtml(row.group_name || "—")}</td>` +
+        `<td>${escapeHtml(row.group_name || "-")}</td>` +
         `<td class="mono">${row.checks}</td>` +
         `<td class="mono">${row.up}</td>` +
-        `<td><span class="${availabilityClass(row.pct)}">${row.pct == null ? "—" : formatPercent(row.pct, 2)}</span></td>` +
+        `<td><span class="${availabilityClass(row.pct)}">${row.pct == null ? "-" : formatPercent(row.pct, 2)}</span></td>` +
         `</tr>`
       ))
       .join("");
@@ -246,13 +246,13 @@
       fiberReportRows.innerHTML = '<tr class="empty-row"><td colspan="10">Belum ada link fiber terdaftar. Tambahkan lewat halaman Fiber → Link &amp; redaman.</td></tr>';
       return;
     }
-    const fmtDb = (value) => (value == null ? "—" : `${Number(value).toFixed(2)} dB`);
-    const fmtTrend = (value) => (value == null ? "—" : `${Number(value).toFixed(2)} dB/mgg`);
+    const fmtDb = (value) => (value == null ? "-" : `${Number(value).toFixed(2)} dB`);
+    const fmtTrend = (value) => (value == null ? "-" : `${Number(value).toFixed(2)} dB/mgg`);
     const statusMeta = (status) => {
       if (status === "crit") return { cls: "avail avail--down", label: "Kritis" };
       if (status === "warn") return { cls: "avail avail--warn", label: "Waspada" };
       if (status === "ok") return { cls: "avail avail--ok", label: "Normal" };
-      return { cls: "avail", label: "—" };
+      return { cls: "avail", label: "-" };
     };
     fiberReportRows.innerHTML = rows
       .map((row) => {
@@ -303,7 +303,7 @@
     mtFleetReportCount.textContent =
       `${rows.length} perangkat RouterOS · versi, firmware, uptime, dan temuan terbuka`;
     if (rows.length === 0) {
-      mtFleetReportRows.innerHTML = '<tr class="empty-row"><td colspan="14">Belum ada perangkat MikroTik terdaftar.</td></tr>';
+      mtFleetReportRows.innerHTML = '<tr class="empty-row"><td colspan="14">Belum ada perangkat MikroTik terdaftar. Tambahkan perangkat MikroTik di Inventaris.</td></tr>';
       return;
     }
     mtFleetReportRows.innerHTML = rows
@@ -317,18 +317,18 @@
           `<td><a class="cell-link" href="mikrotik.html#perangkat-${row.id}-ringkasan">${escapeHtml(row.name)}</a>` +
           `<span class="cell-sub">${escapeHtml(row.location || "tanpa lokasi")}</span></td>` +
           `<td class="mono">${escapeHtml(row.ip)}</td>` +
-          `<td>${escapeHtml(model || "—")}</td>` +
-          `<td class="mono">${escapeHtml(version || "—")}</td>` +
-          `<td class="mono">${escapeHtml(system.current_firmware || row.mikrotik_firmware || "—")}</td>` +
+          `<td>${escapeHtml(model || "-")}</td>` +
+          `<td class="mono">${escapeHtml(version || "-")}</td>` +
+          `<td class="mono">${escapeHtml(system.current_firmware || row.mikrotik_firmware || "-")}</td>` +
           `<td><span class="${firmware.cls}">${escapeHtml(firmware.label)}</span></td>` +
           `<td>${escapeHtml(formatUptime(row.uptime_s))}</td>` +
-          `<td class="mono">${row.cpu_pct == null ? "—" : escapeHtml(formatPercent(row.cpu_pct, 0))}</td>` +
-          `<td class="mono">${row.mem_pct == null ? "—" : escapeHtml(formatPercent(row.mem_pct, 0))}</td>` +
-          `<td class="mono">${row.interfaces_total ? `${row.interfaces_up}/${row.interfaces_total}` : "—"}</td>` +
+          `<td class="mono">${row.cpu_pct == null ? "-" : escapeHtml(formatPercent(row.cpu_pct, 0))}</td>` +
+          `<td class="mono">${row.mem_pct == null ? "-" : escapeHtml(formatPercent(row.mem_pct, 0))}</td>` +
+          `<td class="mono">${row.interfaces_total ? `${row.interfaces_up}/${row.interfaces_total}` : "-"}</td>` +
           `<td class="mono">${row.active_sessions || 0}</td>` +
           `<td class="mono">${row.security_open ? `<span class="avail avail--warn">${row.security_open}</span>` : "0"}</td>` +
           `<td class="mono">${row.open_problems ? `<span class="avail avail--down">${row.open_problems}</span>` : "0"}</td>` +
-          `<td class="mono">${escapeHtml(row.metrics_ts ? formatDateTime(row.metrics_ts) : "—")}</td>` +
+          `<td class="mono">${escapeHtml(row.metrics_ts ? formatDateTime(row.metrics_ts) : "-")}</td>` +
           `</tr>`
         );
       })
@@ -416,7 +416,7 @@
     }
     const entries = data.entries || [];
     if (entries.length === 0) {
-      actionLogRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada pengiriman notifikasi.</td></tr>';
+      actionLogRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada pengiriman notifikasi. Atur aturan aksi di halaman Notifikasi agar pengiriman tercatat.</td></tr>';
       return;
     }
     actionLogRows.innerHTML = entries
@@ -425,9 +425,9 @@
         return (
           `<tr>` +
           `<td class="mono">${escapeHtml(formatDateTime(entry.ts))}</td>` +
-          `<td>${escapeHtml(entry.rule_name || "—")}</td>` +
-          `<td>${escapeHtml(entry.channel_name ? `${entry.channel_name} (${entry.channel_type || ""})` : "—")}</td>` +
-          `<td>${escapeHtml(entry.device_name || "—")}</td>` +
+          `<td>${escapeHtml(entry.rule_name || "-")}</td>` +
+          `<td>${escapeHtml(entry.channel_name ? `${entry.channel_name} (${entry.channel_type || ""})` : "-")}</td>` +
+          `<td>${escapeHtml(entry.device_name || "-")}</td>` +
           `<td><span class="${status.cls}">${escapeHtml(status.label)}</span></td>` +
           `<td>${escapeHtml(entry.detail)}</td>` +
           `</tr>`

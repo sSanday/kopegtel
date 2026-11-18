@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -114,31 +114,31 @@
               <label class="admin-field">
                 <span>Data mentah (hari)</span>
                 <input id="ret-raw" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint">Metrik &amp; statistik antarmuka. <b id="ret-raw-preview">—</b> baris saat ini akan terhapus.</span>
+                <span class="admin-hint">Metrik &amp; statistik antarmuka. <b id="ret-raw-preview">-</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
                 <span>Riwayat pemeriksaan (hari)</span>
                 <input id="ret-checks" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint"><b id="ret-checks-preview">—</b> baris saat ini akan terhapus. Minimal 30 hari agar laporan ketersediaan 30 hari tetap lengkap.</span>
+                <span class="admin-hint"><b id="ret-checks-preview">-</b> baris saat ini akan terhapus. Minimal 30 hari agar laporan ketersediaan 30 hari tetap lengkap.</span>
               </label>
               <label class="admin-field">
                 <span>Ringkasan per jam (hari)</span>
                 <input id="ret-hourly" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint"><b id="ret-hourly-preview">—</b> baris saat ini akan terhapus.</span>
+                <span class="admin-hint"><b id="ret-hourly-preview">-</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
                 <span>Kejadian (hari)</span>
                 <input id="ret-events" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint"><b id="ret-events-preview">—</b> baris saat ini akan terhapus.</span>
+                <span class="admin-hint"><b id="ret-events-preview">-</b> baris saat ini akan terhapus.</span>
               </label>
               <label class="admin-field">
                 <span>Log audit (hari)</span>
                 <input id="ret-audit" type="number" min="1" max="3650" step="1" inputmode="numeric" />
-                <span class="admin-hint"><b id="ret-audit-preview">—</b> baris saat ini akan terhapus.</span>
+                <span class="admin-hint"><b id="ret-audit-preview">-</b> baris saat ini akan terhapus.</span>
               </label>
               <div class="admin-field admin-field--full">
                 <span>Pembacaan optik (DDM)</span>
-                <span class="admin-hint"><b id="ret-optical-preview">—</b> baris mentah (ikut retensi data mentah) · <b id="ret-optical-hourly-preview">—</b> rata-rata per jam (90 hari) saat ini akan terhapus.</span>
+                <span class="admin-hint"><b id="ret-optical-preview">-</b> baris mentah (ikut retensi data mentah) · <b id="ret-optical-hourly-preview">-</b> rata-rata per jam (90 hari) saat ini akan terhapus.</span>
               </div>
             </div>
             <p class="form-note is-error" id="retention-note" role="alert" hidden></p>
@@ -150,10 +150,10 @@
       </section>
 
       <!-- =====================================================
-           Penerima kejadian (admin) — E1
+           Penerima kejadian (admin), E1
            ===================================================== -->
       <section class="view" data-view="ingest" aria-labelledby="ingest-title" hidden>
-        <p class="hint-bar" role="status">Penerima bawaan MATI sampai diaktifkan. Hanya IP perangkat terdaftar yang diterima; pesan flow dibatasi laju &amp; ukurannya, dan flow mentah tidak disimpan (bucket 5 menit, N teratas per kunci). Perintah MikroTik di bawah belum diuji pada versi RouterOS nyata — verifikasi di versi RouterOS-mu.</p>
+        <p class="hint-bar" role="status">Penerima bawaan MATI sampai diaktifkan. Hanya IP perangkat terdaftar yang diterima; pesan flow dibatasi laju &amp; ukurannya, dan flow mentah tidak disimpan (bucket 5 menit, N teratas per kunci). Perintah MikroTik di bawah belum diuji pada versi RouterOS nyata. Verifikasi di versi RouterOS-mu.</p>
 
         <section class="panel" aria-labelledby="ingest-title">
           <div class="panel__head panel__head--stack">
@@ -278,10 +278,10 @@
       </section>
 
       <!-- =====================================================
-           Token API & metrik Prometheus (admin) — E4
+           Token API & metrik Prometheus (admin), E4
            ===================================================== -->
       <section class="view" data-view="tokens" aria-labelledby="tokens-title" hidden>
-        <p class="hint-bar" role="status">Token baca-saja untuk <code>/metrics</code> (Prometheus). Ditampilkan SEKALI saat dibuat; tersimpan sebagai hash SHA-256. Scrape hanya membaca snapshot DB — tidak pernah menanyai perangkat.</p>
+        <p class="hint-bar" role="status">Token baca-saja untuk <code>/metrics</code> (Prometheus). Ditampilkan SEKALI saat dibuat; tersimpan sebagai hash SHA-256. Scrape hanya membaca snapshot DB, tidak pernah menanyai perangkat.</p>
 
         <section class="panel" aria-labelledby="tokens-settings-title">
           <div class="panel__head">
@@ -320,7 +320,7 @@
 
         <dialog class="sheet-dialog" aria-labelledby="token-form-title">
         <form class="panel" id="token-form">
-          <div class="panel__head"><div><h2 class="panel__title" id="token-form-title">Buat token API</h2><p class="panel__sub">Token ditampilkan SEKALI — salin segera. Cakupan: metrics (baca-saja).</p></div></div>
+          <div class="panel__head"><div><h2 class="panel__title" id="token-form-title">Buat token API</h2><p class="panel__sub">Token ditampilkan SEKALI. Salin segera. Cakupan: metrics (baca-saja).</p></div></div>
           <div class="admin-form">
             <div class="admin-form__grid">
               <label class="admin-field"><span>Nama token *</span><input id="token-name" type="text" maxlength="80" autocomplete="off" placeholder="mis. prometheus-prod" /></label>
@@ -338,7 +338,7 @@
 
         <dialog class="sheet-dialog" aria-labelledby="token-reveal-title">
         <section class="panel" id="token-reveal">
-          <div class="panel__head"><div><h2 class="panel__title" id="token-reveal-title">Token dibuat — salin sekarang</h2><p class="panel__sub">Token tidak akan ditampilkan lagi.</p></div></div>
+          <div class="panel__head"><div><h2 class="panel__title" id="token-reveal-title">Token dibuat. Salin sekarang</h2><p class="panel__sub">Token tidak akan ditampilkan lagi.</p></div></div>
           <div class="admin-form">
             <label class="admin-field admin-field--full"><span>Token</span><input id="token-reveal-value" type="text" readonly /></label>
             <div class="admin-actions">
@@ -370,13 +370,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/administration.js?v=9" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/administration.js?v=10" defer></script>
 </body>
 </html>

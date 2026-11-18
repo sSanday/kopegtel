@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -38,7 +38,7 @@
 
       <nav class="page-tabs" role="tablist" aria-label="Bagian pemantauan">
         <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="problems">Masalah</button>
-        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Perangkat</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Daftar Host</button>
         <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="latest-data">Data terbaru</button>
         <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="maps">Peta</button>
       </nav>
@@ -50,28 +50,28 @@
         <div class="stats stats--five" role="group" aria-label="Jumlah masalah per tingkat keparahan">
           <button class="stat stat--filter stat--disaster" type="button" data-sev="disaster" aria-pressed="false">
             <span class="stat__label">Bencana</span>
-            <span class="stat__value" id="sev-disaster">—</span>
-            <span class="stat__meta" id="sev-disaster-meta">—</span>
+            <span class="stat__value" id="sev-disaster">-</span>
+            <span class="stat__meta" id="sev-disaster-meta">-</span>
           </button>
           <button class="stat stat--filter stat--high" type="button" data-sev="high" aria-pressed="false">
             <span class="stat__label">Tinggi</span>
-            <span class="stat__value" id="sev-high">—</span>
-            <span class="stat__meta" id="sev-high-meta">—</span>
+            <span class="stat__value" id="sev-high">-</span>
+            <span class="stat__meta" id="sev-high-meta">-</span>
           </button>
           <button class="stat stat--filter stat--average" type="button" data-sev="average" aria-pressed="false">
             <span class="stat__label">Sedang</span>
-            <span class="stat__value" id="sev-average">—</span>
-            <span class="stat__meta" id="sev-average-meta">—</span>
+            <span class="stat__value" id="sev-average">-</span>
+            <span class="stat__meta" id="sev-average-meta">-</span>
           </button>
           <button class="stat stat--filter stat--warning" type="button" data-sev="warning" aria-pressed="false">
             <span class="stat__label">Peringatan</span>
-            <span class="stat__value" id="sev-warning">—</span>
-            <span class="stat__meta" id="sev-warning-meta">—</span>
+            <span class="stat__value" id="sev-warning">-</span>
+            <span class="stat__meta" id="sev-warning-meta">-</span>
           </button>
           <button class="stat stat--filter stat--information" type="button" data-sev="information" aria-pressed="false">
             <span class="stat__label">Informasi</span>
-            <span class="stat__value" id="sev-information">—</span>
-            <span class="stat__meta" id="sev-information-meta">—</span>
+            <span class="stat__value" id="sev-information">-</span>
+            <span class="stat__meta" id="sev-information-meta">-</span>
           </button>
         </div>
 
@@ -129,22 +129,22 @@
         <section class="stats" aria-label="Ringkasan perangkat">
           <article class="stat">
             <p class="stat__label">Total perangkat</p>
-            <p class="stat__value" id="host-total">—</p>
+            <p class="stat__value" id="host-total">-</p>
             <p class="stat__meta" id="host-total-meta">Terdaftar di semua grup</p>
           </article>
           <article class="stat">
             <p class="stat__label">Tersedia</p>
-            <p class="stat__value" id="host-online">—</p>
-            <p class="stat__meta" id="host-online-meta">—</p>
+            <p class="stat__value" id="host-online">-</p>
+            <p class="stat__meta" id="host-online-meta">-</p>
           </article>
           <article class="stat">
             <p class="stat__label">Tidak Tersedia</p>
-            <p class="stat__value" id="host-down">—</p>
+            <p class="stat__value" id="host-down">-</p>
             <p class="stat__meta"><span class="is-warn">Perlu tindakan</span></p>
           </article>
           <article class="stat">
             <p class="stat__label">Pemeliharaan</p>
-            <p class="stat__value" id="host-maintenance">—</p>
+            <p class="stat__value" id="host-maintenance">-</p>
             <p class="stat__meta">Masalah ditekan</p>
           </article>
         </section>
@@ -152,8 +152,8 @@
         <section class="panel" aria-labelledby="hosts-title">
           <div class="panel__head panel__head--stack">
             <div>
-              <h2 class="panel__title" id="hosts-title">Daftar perangkat</h2>
-              <p class="panel__sub"><span id="host-count">Memuat…</span> · interval bawaan <span id="host-interval">—</span> dtk</p>
+              <h2 class="panel__title" id="hosts-title">Daftar Host</h2>
+              <p class="panel__sub"><span id="host-count">Memuat…</span> · interval bawaan <span id="host-interval">-</span> dtk</p>
             </div>
             <div class="filters">
               <label class="field field--search">
@@ -197,7 +197,7 @@
           </div>
           <div class="table-foot">
             <button class="btn btn--ghost" id="host-prev" type="button">Sebelumnya</button>
-            <span class="table-foot__info" id="host-page-info">Halaman —</span>
+            <span class="table-foot__info" id="host-page-info">Halaman -</span>
             <button class="btn btn--ghost" id="host-next" type="button">Berikutnya</button>
           </div>
         </section>
@@ -211,7 +211,7 @@
           <div class="panel__head">
             <div>
               <h2 class="panel__title" id="latest-title">Data terbaru</h2>
-              <p class="panel__sub">Nilai terakhir yang dikumpulkan per perangkat ("—" bila metrik tidak tersedia)</p>
+              <p class="panel__sub">Nilai terakhir yang dikumpulkan per perangkat ("-" bila metrik tidak tersedia)</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -241,22 +241,22 @@
         <section class="stats" aria-label="Ringkasan topologi">
           <article class="stat">
             <p class="stat__label">Total Perangkat</p>
-            <p class="stat__value" id="map-total">—</p>
+            <p class="stat__value" id="map-total">-</p>
             <p class="stat__meta" id="map-total-meta">Pada topologi</p>
           </article>
           <article class="stat">
             <p class="stat__label">Tersambung</p>
-            <p class="stat__value" id="map-online">—</p>
-            <p class="stat__meta"><b id="map-online-pct">—</b> perangkat tersedia</p>
+            <p class="stat__value" id="map-online">-</p>
+            <p class="stat__meta"><b id="map-online-pct">-</b> perangkat tersedia</p>
           </article>
           <article class="stat">
             <p class="stat__label">Degradasi</p>
-            <p class="stat__value" id="map-degraded">—</p>
+            <p class="stat__value" id="map-degraded">-</p>
             <p class="stat__meta">Perlu perhatian</p>
           </article>
           <article class="stat">
             <p class="stat__label">Terputus</p>
-            <p class="stat__value" id="map-offline">—</p>
+            <p class="stat__value" id="map-offline">-</p>
             <p class="stat__meta">Tidak merespons</p>
           </article>
         </section>
@@ -282,20 +282,20 @@
               <span><span class="legend-dot legend-dot--warn"></span>Degradasi</span>
               <span><span class="legend-dot legend-dot--down"></span>Terputus</span>
               <span><span class="legend-line legend-line--fiber"></span>Link fiber (warna = status)</span>
-              <span class="map-legend__hint" id="map-empty-hint" hidden>Belum ada perangkat — tambahkan lewat halaman Inventaris.</span>
+              <span class="map-legend__hint" id="map-empty-hint" hidden>Belum ada perangkat. Tambahkan lewat halaman Inventaris.</span>
             </div>
           </section>
 
           <aside class="panel map-detail" aria-labelledby="map-detail-title" id="map-detail" hidden>
             <div class="map-detail__body">
-              <h2 class="map-detail__name" id="map-detail-title">—</h2>
-              <p class="map-detail__type" id="map-detail-type">—</p>
+              <h2 class="map-detail__name" id="map-detail-title">-</h2>
+              <p class="map-detail__type" id="map-detail-type">-</p>
               <dl class="detail-list">
-                <div><dt>Alamat IP</dt><dd id="map-detail-ip">—</dd></div>
-                <div><dt>Status</dt><dd id="map-detail-status">—</dd></div>
-                <div><dt>Latensi</dt><dd id="map-detail-latency">—</dd></div>
-                <div><dt>Grup</dt><dd id="map-detail-group">—</dd></div>
-                <div><dt>Lokasi</dt><dd id="map-detail-location">—</dd></div>
+                <div><dt>Alamat IP</dt><dd id="map-detail-ip">-</dd></div>
+                <div><dt>Status</dt><dd id="map-detail-status">-</dd></div>
+                <div><dt>Latensi</dt><dd id="map-detail-latency">-</dd></div>
+                <div><dt>Grup</dt><dd id="map-detail-group">-</dd></div>
+                <div><dt>Lokasi</dt><dd id="map-detail-location">-</dd></div>
               </dl>
               <div class="map-fiber" id="map-fiber" hidden>
                 <h3 class="detail-subhead">Link fiber</h3>
@@ -313,13 +313,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/monitoring.js?v=5" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/monitoring.js?v=6" defer></script>
 </body>
 </html>

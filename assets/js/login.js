@@ -14,7 +14,7 @@
     { input: password, error: document.getElementById("password-error"), message: "Kata sandi wajib diisi." }
   ];
 
-  // Muat nama organisasi & versi (jika tersedia) — tanpa placeholder palsu.
+  // Muat nama organisasi & versi (jika tersedia), tanpa placeholder palsu.
   fetch("/api/public-config", { credentials: "same-origin" })
     .then((res) => (res.ok ? res.json() : null))
     .then((cfg) => {

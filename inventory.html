@@ -9,7 +9,7 @@
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=16" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=19" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -38,7 +38,7 @@
 
       <nav class="page-tabs" role="tablist" aria-label="Bagian inventaris">
         <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="overview">Ringkasan</button>
-        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Perangkat</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Daftar Host</button>
       </nav>
 
       <!-- =====================================================
@@ -48,22 +48,22 @@
         <div class="stats" aria-label="Ringkasan inventaris">
           <article class="stat">
             <p class="stat__label">Total Perangkat</p>
-            <p class="stat__value" id="inv-total">—</p>
+            <p class="stat__value" id="inv-total">-</p>
             <p class="stat__meta" id="inv-total-meta">Terdaftar di NMS</p>
           </article>
           <article class="stat">
             <p class="stat__label">Tersambung</p>
-            <p class="stat__value" id="inv-online">—</p>
-            <p class="stat__meta"><b id="inv-online-pct">—</b> dari total</p>
+            <p class="stat__value" id="inv-online">-</p>
+            <p class="stat__meta"><b id="inv-online-pct">-</b> dari total</p>
           </article>
           <article class="stat">
             <p class="stat__label">Perlu Perhatian</p>
-            <p class="stat__value" id="inv-attention">—</p>
+            <p class="stat__value" id="inv-attention">-</p>
             <p class="stat__meta"><span class="is-warn">Terputus / degradasi / tidak diketahui</span></p>
           </article>
           <article class="stat">
             <p class="stat__label">Pemeliharaan</p>
-            <p class="stat__value" id="inv-maintenance">—</p>
+            <p class="stat__value" id="inv-maintenance">-</p>
             <p class="stat__meta">Dalam jendela pemeliharaan</p>
           </article>
         </div>
@@ -99,7 +99,7 @@
               <h2 class="panel__title" id="attention-title">Aset perlu perhatian</h2>
               <p class="panel__sub">Perangkat yang tidak tersambung saat ini</p>
             </div>
-            <span class="panel__hint" id="attention-count">—</span>
+            <span class="panel__hint" id="attention-count">-</span>
           </div>
           <div class="table-wrap">
             <table class="mon-table">
@@ -124,7 +124,7 @@
               <h2 class="panel__title" id="modules-title">Modul optik (SFP)</h2>
               <p class="panel__sub">Modul transceiver yang terdeteksi di port optik perangkat terpantau</p>
             </div>
-            <span class="panel__hint" id="modules-count">—</span>
+            <span class="panel__hint" id="modules-count">-</span>
           </div>
           <div class="table-wrap">
             <table class="mon-table">
@@ -153,22 +153,22 @@
         <section class="stats" aria-label="Ringkasan perangkat">
           <article class="stat">
             <p class="stat__label">Total perangkat</p>
-            <p class="stat__value" id="hosts-stat-total">—</p>
+            <p class="stat__value" id="hosts-stat-total">-</p>
             <p class="stat__meta">Perangkat terdaftar di NMS</p>
           </article>
           <article class="stat">
             <p class="stat__label">Tersambung</p>
-            <p class="stat__value" id="hosts-stat-online">—</p>
+            <p class="stat__value" id="hosts-stat-online">-</p>
             <p class="stat__meta">Terjangkau saat ini</p>
           </article>
           <article class="stat">
             <p class="stat__label">Terputus</p>
-            <p class="stat__value" id="hosts-stat-offline">—</p>
+            <p class="stat__value" id="hosts-stat-offline">-</p>
             <p class="stat__meta">Tidak merespons ping</p>
           </article>
           <article class="stat">
             <p class="stat__label">Degradasi</p>
-            <p class="stat__value" id="hosts-stat-degraded">—</p>
+            <p class="stat__value" id="hosts-stat-degraded">-</p>
             <p class="stat__meta"><span class="is-warn">Latensi tinggi / CPU &gt; 90%</span></p>
           </article>
         </section>
@@ -176,7 +176,7 @@
         <section class="panel" aria-labelledby="hosts-title">
           <div class="panel__head panel__head--stack">
             <div>
-              <h2 class="panel__title" id="hosts-title">Daftar perangkat</h2>
+              <h2 class="panel__title" id="hosts-title">Daftar Host</h2>
               <p class="panel__sub" id="host-count">Memuat perangkat…</p>
             </div>
             <div class="filters">
@@ -247,7 +247,7 @@
           </div>
           <div class="table-foot">
             <button class="btn btn--ghost" id="host-prev" type="button">Sebelumnya</button>
-            <span class="table-foot__info" id="host-page-info">Halaman —</span>
+            <span class="table-foot__info" id="host-page-info">Halaman -</span>
             <button class="btn btn--ghost" id="host-next" type="button">Berikutnya</button>
           </div>
         </section>
@@ -276,8 +276,8 @@
               </button>
             </div>
           </div>
-          <p class="detail-updated" id="detail-updated" aria-live="polite">Terakhir diperbarui —</p>
-          <p class="detail-updated detail-availability" id="detail-availability">Ketersediaan — 24 jam: — · 7 hari: — · 30 hari: —</p>
+          <p class="detail-updated" id="detail-updated" aria-live="polite">Terakhir diperbarui -</p>
+          <p class="detail-updated detail-availability" id="detail-availability">Ketersediaan 24 jam: - · 7 hari: - · 30 hari: -</p>
 
           <div class="table-error" id="detail-error" role="alert" hidden>
             <p class="table-error__text" id="detail-error-text">Gagal memuat metrik perangkat.</p>
@@ -293,35 +293,35 @@
             <div class="detail-grid" aria-label="Metrik sumber daya">
               <article class="metric-card" id="card-cpu">
                 <p class="metric-card__label">CPU</p>
-                <p class="metric-card__value"><span id="d-cpu">—</span><small> %</small></p>
+                <p class="metric-card__value"><span id="d-cpu">-</span><small> %</small></p>
                 <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-cpu"></span></div>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-cpu">Normal</span> <span id="d-cpu-sub" class="metric-card__detail">—</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-cpu">Normal</span> <span id="d-cpu-sub" class="metric-card__detail">-</span></p>
               </article>
               <article class="metric-card" id="card-mem">
                 <p class="metric-card__label">Memori</p>
-                <p class="metric-card__value"><span id="d-mem">—</span><small> %</small></p>
+                <p class="metric-card__value"><span id="d-mem">-</span><small> %</small></p>
                 <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-mem"></span></div>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-mem">Normal</span> <span id="d-mem-sub" class="metric-card__detail">—</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-mem">Normal</span> <span id="d-mem-sub" class="metric-card__detail">-</span></p>
               </article>
               <article class="metric-card" id="card-storage">
                 <p class="metric-card__label">Penyimpanan</p>
-                <p class="metric-card__value"><span id="d-storage">—</span><small> %</small></p>
+                <p class="metric-card__value"><span id="d-storage">-</span><small> %</small></p>
                 <div class="metric-card__bar" aria-hidden="true"><span class="is-ok progress-fill" id="bar-storage"></span></div>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-storage">Normal</span> <span id="d-storage-sub" class="metric-card__detail">—</span></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-storage">Normal</span> <span id="d-storage-sub" class="metric-card__detail">-</span></p>
               </article>
               <article class="metric-card">
                 <p class="metric-card__label">Suhu</p>
-                <p class="metric-card__value"><span id="d-temp">—</span><small> °C</small></p>
-                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-temp">Normal</span> <span id="d-temp-sub" class="metric-card__detail">Suhu CPU —</span></p>
+                <p class="metric-card__value"><span id="d-temp">-</span><small> °C</small></p>
+                <p class="metric-card__sub"><span class="metric-chip chip--ok" id="chip-temp">Normal</span> <span id="d-temp-sub" class="metric-card__detail">Suhu CPU -</span></p>
               </article>
               <article class="metric-card">
                 <p class="metric-card__label">Voltase</p>
-                <p class="metric-card__value"><span id="d-voltage">—</span><small> V</small></p>
+                <p class="metric-card__value"><span id="d-voltage">-</span><small> V</small></p>
                 <p class="metric-card__sub"><span class="metric-chip chip--muted" id="chip-voltage">Tanpa data</span> <span id="d-voltage-sub" class="metric-card__detail">Tegangan masuk</span></p>
               </article>
               <article class="metric-card">
                 <p class="metric-card__label">Waktu aktif</p>
-                <p class="metric-card__value metric-card__value--text"><span id="d-uptime">—</span></p>
+                <p class="metric-card__value metric-card__value--text"><span id="d-uptime">-</span></p>
                 <p class="metric-card__sub"><span class="metric-chip chip--muted" id="chip-uptime">Tanpa data</span> <span id="d-uptime-sub" class="metric-card__detail">Sejak mulai ulang terakhir</span></p>
               </article>
             </div>
@@ -358,7 +358,7 @@
                     </label>
                   </div>
                   <svg class="chart" id="chart-traffic" viewBox="0 0 600 170" role="img" aria-labelledby="chart-traffic-title"><title id="chart-traffic-title">Grafik riwayat trafik (RX/TX)</title></svg>
-                  <p class="chart-summary" id="chart-traffic-summary"><span class="chart-legend chart-legend--rx">RX</span> <span id="traffic-rx-summary">—</span> · <span class="chart-legend chart-legend--tx">TX</span> <span id="traffic-tx-summary">—</span></p>
+                  <p class="chart-summary" id="chart-traffic-summary"><span class="chart-legend chart-legend--rx">RX</span> <span id="traffic-rx-summary">-</span> · <span class="chart-legend chart-legend--tx">TX</span> <span id="traffic-tx-summary">-</span></p>
                 </figure>
               </div>
             </section>
@@ -418,13 +418,13 @@
     </main>
   </div>
 
-  <script src="assets/js/format.js?v=3" defer></script>
+  <script src="assets/js/format.js?v=4" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=13" defer></script>
+  <script src="assets/js/nav.js?v=16" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
   <script src="assets/js/ui.js?v=5" defer></script>
-  <script src="assets/js/device-form.js?v=4" defer></script>
-  <script src="assets/js/inventory.js?v=7" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/inventory.js?v=8" defer></script>
 </body>
 </html>

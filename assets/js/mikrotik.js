@@ -1,5 +1,5 @@
 /* Halaman Modul MikroTik (M1–M5).
- * Semua nilai berasal dari API nyata; tanpa data tampil "—" / empty state.
+ * Semua nilai berasal dari API nyata; tanpa data tampil "-" / empty state.
  * Tidak ada aksi tulis di luar allowlist dan hanya tampil bila kredensial tulis aktif.
  */
 (function () {
@@ -49,7 +49,7 @@
     auth_failed: "Autentikasi RouterOS gagal.",
     no_permission: "Pengguna API tidak memiliki izin membaca bagian ini.",
     timeout: "RouterOS tidak menjawab dalam batas waktu.",
-    tls_error: "Verifikasi TLS ke RouterOS gagal — periksa sertifikat dan fingerprint perangkat.",
+    tls_error: "Verifikasi TLS ke RouterOS gagal. Periksa sertifikat dan fingerprint perangkat.",
     tls_fingerprint_mismatch: "Fingerprint sertifikat RouterOS tidak cocok dengan pengaturan perangkat.",
     unsupported: "Fitur ini tidak aktif atau tidak didukung di perangkat ini.",
     disabled: "Modul ini dinonaktifkan pada pengaturan perangkat.",
@@ -136,17 +136,17 @@
     };
   }
   function text(value) {
-    return value == null || value === "" ? "—" : escapeHtml(value);
+    return value == null || value === "" ? "-" : escapeHtml(value);
   }
   function number(value, digits) {
-    if (value == null || Number.isNaN(Number(value))) return "—";
+    if (value == null || Number.isNaN(Number(value))) return "-";
     return Number(value).toLocaleString("id-ID", {
       minimumFractionDigits: digits || 0,
       maximumFractionDigits: digits || 0,
     });
   }
   function percentCell(value, warn, crit) {
-    if (value == null || Number.isNaN(Number(value))) return '<td class="mono">—</td>';
+    if (value == null || Number.isNaN(Number(value))) return '<td class="mono">-</td>';
     const n = Number(value);
     const cls = n >= crit ? "avail avail--down" : n >= warn ? "avail avail--warn" : "avail avail--ok";
     return `<td><span class="${cls}" title="${escapeHtml(formatPercent(n, 0))}">${escapeHtml(formatPercent(n, 0))}</span></td>`;
@@ -269,7 +269,7 @@
       document.getElementById("mt-active-sessions").textContent = String(summary.active_sessions ?? 0);
     } catch {
       ["mt-router-count", "mt-firmware-pending", "mt-security-open", "mt-active-sessions"].forEach((id) => {
-        document.getElementById(id).textContent = "—";
+        document.getElementById(id).textContent = "-";
       });
     }
   }
@@ -309,7 +309,7 @@
       fleetCount.textContent = "Gagal memuat";
       fleetPrev.disabled = true;
       fleetNext.disabled = true;
-      fleetPageInfo.textContent = "Halaman —";
+      fleetPageInfo.textContent = "Halaman -";
     }
   }
 
@@ -330,7 +330,7 @@
           const version = system.version || device.routeros_version;
           const iface = device.interfaces_total
             ? `${number(device.interfaces_up)}/${number(device.interfaces_total)}`
-            : "—";
+            : "-";
           const problems = device.open_problems || 0;
           return (
             `<tr>` +
@@ -461,7 +461,7 @@
       state.detail.overview = null;
       showError(error.message || "Perangkat MikroTik tidak ditemukan.");
       deviceTitle.textContent = "Detail perangkat";
-      deviceSub.textContent = "—";
+      deviceSub.textContent = "-";
       tabsEl.innerHTML = "";
       tabSections.innerHTML = "";
       tabState.hidden = true;
@@ -476,12 +476,12 @@
     const system = data.system || {};
     const meta = STATUS_META[device.status] || STATUS_META.unknown;
     viewTitle.textContent = device.name;
-    viewDesc.textContent = `${device.ip} · ${system.model || device.mikrotik_model || "model —"} · RouterOS ${system.version || device.routeros_version || "—"}`;
+    viewDesc.textContent = `${device.ip} · ${system.model || device.mikrotik_model || "model -"} · RouterOS ${system.version || device.routeros_version || "-"}`;
     window.NMSFormat.setDocumentTitle(device.name, "MikroTik");
     deviceTitle.textContent = device.name;
     deviceSub.textContent =
       `${device.ip} · ${device.location || "tanpa lokasi"} · ` +
-      `poll terakhir ${data.poll_state && data.poll_state.length ? timeAgo(maxPoll(data.poll_state)) : "—"}`;
+      `poll terakhir ${data.poll_state && data.poll_state.length ? timeAgo(maxPoll(data.poll_state)) : "-"}`;
     deviceStatus.textContent = meta.label;
     deviceStatus.className = `status ${meta.cls}`;
     pollButton.hidden = !canOperate() || !device.mikrotik_enabled;
@@ -705,7 +705,7 @@
                 );
               }
             }
-            const action = actions.length ? `<span class="admin-actions">${actions.join(" ")}</span>` : "—";
+            const action = actions.length ? `<span class="admin-actions">${actions.join(" ")}</span>` : "-";
             return (
               `<tr><td><strong>${text(row.name)}</strong>${row.important ? '<span class="cell-sub">antarmuka penting</span>' : ""}</td>` +
               `<td>${text(row.type)}</td>` +
@@ -769,7 +769,7 @@
             (row) =>
               `<tr><td><strong>${text(row.name)}</strong></td><td class="mono">${text(row.ranges)}</td>` +
               `<td class="mono">${text(row.capacity)}</td><td class="mono">${text(row.used)}</td>` +
-              `<td>${row.usage_pct == null ? "—" : `<span class="${row.usage_pct >= 90 ? "avail avail--down" : row.usage_pct >= 75 ? "avail avail--warn" : "avail avail--ok"}">${escapeHtml(formatPercent(row.usage_pct, 1))}</span>`}</td></tr>`
+              `<td>${row.usage_pct == null ? "-" : `<span class="${row.usage_pct >= 90 ? "avail avail--down" : row.usage_pct >= 75 ? "avail avail--warn" : "avail avail--ok"}">${escapeHtml(formatPercent(row.usage_pct, 1))}</span>`}</td></tr>`
           ),
         };
       }
@@ -811,7 +811,7 @@
               `<td class="mono">${text(row.caller_id)}</td><td class="mono">${text(row.address)}</td>` +
               `<td>${text(row.uptime)}</td><td class="mono">${escapeHtml(formatBytes(row.bytes_in))}</td>` +
               `<td class="mono">${escapeHtml(formatBytes(row.bytes_out))}</td>` +
-              `<td>${canDisconnect ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="disconnect_ppp" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(row.name || row.router_id)}">Putuskan</button>` : "—"}</td></tr>`
+              `<td>${canDisconnect ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="disconnect_ppp" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(row.name || row.router_id)}">Putuskan</button>` : "-"}</td></tr>`
             );
           }),
         };
@@ -828,7 +828,7 @@
               `<td class="mono">${text(row.mac)}</td><td>${text(row.server)}</td><td>${text(row.uptime)}</td>` +
               `<td class="mono">${escapeHtml(formatBytes(row.bytes_in))}</td>` +
               `<td class="mono">${escapeHtml(formatBytes(row.bytes_out))}</td>` +
-              `<td>${canDisconnect ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="disconnect_hotspot" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(row.user || row.router_id)}">Putuskan</button>` : "—"}</td></tr>`
+              `<td>${canDisconnect ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="disconnect_hotspot" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(row.user || row.router_id)}">Putuskan</button>` : "-"}</td></tr>`
             );
           }),
         };
@@ -871,7 +871,7 @@
             return (
               `<tr><td>${text(row.list)}</td><td class="mono">${text(row.address)}</td>` +
               `<td>${text(row.timeout)}</td><td>${text(row.comment)}</td>` + boolCell(row.dynamic) +
-              `<td>${canRemove ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="address_list_remove" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(`${row.list || "?"}:${row.address || "?"}`)}">Hapus</button>` : "—"}</td></tr>`
+              `<td>${canRemove ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="address_list_remove" data-target="${escapeHtml(row.router_id)}" data-label="${escapeHtml(`${row.list || "?"}:${row.address || "?"}`)}">Hapus</button>` : "-"}</td></tr>`
             );
           }),
         };
@@ -934,7 +934,7 @@
               `<td><strong>${text(row.title)}</strong></td><td>${text(row.category)}</td>` +
               `<td>${text(row.detail)}</td><td>${text(row.remediation)}</td>` +
               `<td>${ignored ? `<span class="status status--idle">Diabaikan</span><span class="cell-sub">${text(row.ignore_reason)}</span>` : '<span class="status status--warn">Terbuka</span>'}</td>` +
-              `<td>${canIgnore ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="${ignored ? "finding_unignore" : "finding_ignore"}" data-target="${row.id}">${ignored ? "Aktifkan" : "Abaikan"}</button>` : "—"}</td></tr>`
+              `<td>${canIgnore ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="${ignored ? "finding_unignore" : "finding_ignore"}" data-target="${row.id}">${ignored ? "Aktifkan" : "Abaikan"}</button>` : "-"}</td></tr>`
             );
           }),
         };
@@ -995,8 +995,8 @@
       ["RouterOS", text(system.version || device.routeros_version)],
       ["Model", text(system.model || device.mikrotik_model)],
       ["Waktu aktif", text(device.uptime_s == null ? null : formatUptime(device.uptime_s))],
-      ["CPU", device.cpu_pct == null ? "—" : formatPercent(device.cpu_pct, 0)],
-      ["Memori", device.mem_pct == null ? "—" : formatPercent(device.mem_pct, 0)],
+      ["CPU", device.cpu_pct == null ? "-" : formatPercent(device.cpu_pct, 0)],
+      ["Memori", device.mem_pct == null ? "-" : formatPercent(device.mem_pct, 0)],
       ["Sesi aktif", number(counts.active_sessions)],
     ];
     const cardHtml = cards
@@ -1055,7 +1055,7 @@
               `<tr><td><strong>${text(row.title)}</strong><span class="cell-sub">${text(row.detail)}</span></td>` +
               `<td><span class="${escapeHtml(sev.cls)}">${escapeHtml(sev.label)}</span></td>` +
               `<td>${ignored ? "Diabaikan" : "Terbuka"}</td>` +
-              `<td>${canOperate() ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="${ignored ? "finding_unignore" : "finding_ignore"}" data-target="${row.id}">${ignored ? "Aktifkan" : "Abaikan"}</button>` : "—"}</td></tr>`
+              `<td>${canOperate() ? `<button class="btn btn--sm btn--ghost" type="button" data-mt-action="${ignored ? "finding_unignore" : "finding_ignore"}" data-target="${row.id}">${ignored ? "Aktifkan" : "Abaikan"}</button>` : "-"}</td></tr>`
             );
           })
           .join("")}</tbody></table></div>`
@@ -1082,7 +1082,7 @@
         (row) =>
           `<tr><td>${text(timeAgo(row.ts))}</td><td>${text(row.username)}</td><td>${text(ACTION_LABELS[row.action] || row.action)}</td>` +
           `<td class="mono">${text(row.target)}</td><td>${text(row.result)}</td>` +
-          `<td>${row.verified === true ? "Terverifikasi" : row.verified === false ? "Belum terverifikasi" : "—"}</td></tr>`
+          `<td>${row.verified === true ? "Terverifikasi" : row.verified === false ? "Belum terverifikasi" : "-"}</td></tr>`
       )
       .join("");
 
@@ -1300,7 +1300,7 @@
     if (!series.length) {
       select.innerHTML = '<option value="">Tidak ada interface</option>';
       svg.innerHTML = '<title>Grafik trafik interface</title><text class="chart__empty" x="300" y="85" text-anchor="middle">Belum ada data trafik untuk rentang ini.</text>';
-      summary.textContent = "—";
+      summary.textContent = "-";
       return;
     }
     const current =
@@ -1319,7 +1319,7 @@
     renderTrafficChart(svg, rxValues, txValues);
     const peak = (values) => {
       const valid = values.filter((v) => v != null);
-      return valid.length ? formatBps(Math.max(...valid)) : "—";
+      return valid.length ? formatBps(Math.max(...valid)) : "-";
     };
     summary.textContent =
       `Rx puncak ${peak(rxValues)} · Tx puncak ${peak(txValues)} · ${series.length} antarmuka terlacak`;
@@ -1422,7 +1422,7 @@
     renderTrafficChart(svg, pppValues, hotspotValues);
     const peak = (values) => {
       const valid = values.filter((v) => v != null);
-      return valid.length ? number(Math.max(...valid)) : "—";
+      return valid.length ? number(Math.max(...valid)) : "-";
     };
     summary.textContent = `PPP maks ${peak(pppValues)} · Hotspot maks ${peak(hotspotValues)} · biru = PPP, kuning = hotspot`;
   }

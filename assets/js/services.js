@@ -56,7 +56,7 @@
   }
 
   /* =====================================================
-     Services — daftar & CRUD
+     Services: daftar & CRUD
      ===================================================== */
 
   const serviceRows = document.getElementById("service-rows");
@@ -127,11 +127,11 @@
         }
         const deviceList = devices.length
           ? devices.map((d) => d.name).join(", ")
-          : "—";
+          : "-";
         return (
           `<tr>` +
           `<td><strong>${escapeHtml(service.name)}</strong></td>` +
-          `<td>${escapeHtml(service.division || "—")}</td>` +
+          `<td>${escapeHtml(service.division || "-")}</td>` +
           `<td class="mono">${escapeHtml(formatPercent(service.sla_target, 2))}</td>` +
           `<td>${escapeHtml(modeLabel)}</td>` +
           `<td title="${escapeHtml(deviceList)}">${devices.length} perangkat</td>` +
@@ -139,7 +139,7 @@
           `<td>${editable
             ? `<button class="ack-toggle" type="button" data-action="edit" data-id="${service.id}">Ubah</button> ` +
               `<button class="ack-toggle" type="button" data-action="delete" data-id="${service.id}">Hapus</button>`
-            : "—"}</td>` +
+            : "-"}</td>` +
           `</tr>`
         );
       })
@@ -170,7 +170,7 @@
       document.getElementById("svc-missed").textContent = String(missed);
       document.getElementById("svc-nodata").textContent = String(nodata);
     } catch {
-      document.getElementById("svc-met").textContent = "—";
+      document.getElementById("svc-met").textContent = "-";
     }
   }
 
@@ -320,7 +320,7 @@
         return (
           `<tr>` +
           `<td><strong>${escapeHtml(service.name)}</strong></td>` +
-          `<td><span class="${availabilityClass(pct)}">${pct == null ? "—" : formatPercent(pct, 2)}</span></td>` +
+          `<td><span class="${availabilityClass(pct)}">${pct == null ? "-" : formatPercent(pct, 2)}</span></td>` +
           `<td class="mono">${escapeHtml(formatPercent(service.sla_target, 2))}</td>` +
           `<td>${pct == null ? '<span class="status status--idle">Tanpa data</span>' : met ? '<span class="status status--ok">Tercapai</span>' : '<span class="status status--down">Tidak tercapai</span>'}</td>` +
           `<td class="mono">${stats.cycles}</td>` +
@@ -361,20 +361,20 @@
     }
     const rows = report.rows || [];
     if (rows.length === 0) {
-      slaReportRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada layanan.</td></tr>';
+      slaReportRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada layanan. Tambahkan layanan dan target SLA lewat tombol Tambah layanan.</td></tr>';
       return;
     }
     slaReportRows.innerHTML = rows
       .map((row) => {
         const pct = row.availability_pct;
         const met = row.met;
-        const downtime = row.downtime_minutes == null ? "—" : `${Math.round(row.downtime_minutes)} menit`;
+        const downtime = row.downtime_minutes == null ? "-" : `${Math.round(row.downtime_minutes)} menit`;
         return (
           `<tr>` +
           `<td><strong>${escapeHtml(row.service)}</strong></td>` +
-          `<td>${escapeHtml(row.division || "—")}</td>` +
+          `<td>${escapeHtml(row.division || "-")}</td>` +
           `<td class="mono">${escapeHtml(formatPercent(row.sla_target, 2))}</td>` +
-          `<td><span class="${availabilityClass(pct)}">${pct == null ? "—" : formatPercent(pct, 2)}</span></td>` +
+          `<td><span class="${availabilityClass(pct)}">${pct == null ? "-" : formatPercent(pct, 2)}</span></td>` +
           `<td class="mono">${escapeHtml(downtime)}</td>` +
           `<td>${met == null ? '<span class="status status--idle">Tanpa data</span>' : met ? '<span class="status status--ok">Tercapai</span>' : '<span class="status status--down">Tidak tercapai</span>'}</td>` +
           `</tr>`

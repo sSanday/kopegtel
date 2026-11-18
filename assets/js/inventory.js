@@ -18,7 +18,7 @@
 
   const VIEWS = {
     overview: { label: "Ringkasan", desc: "Ringkasan aset perangkat dan infrastruktur." },
-    hosts: { label: "Perangkat", desc: "Daftar perangkat terdaftar beserta konfigurasi dan statusnya." },
+    hosts: { label: "Daftar Host", desc: "Daftar host terdaftar beserta konfigurasi dan statusnya." },
     host: { label: "Detail perangkat", desc: "Metrik sumber daya dan trafik perangkat." },
   };
 
@@ -109,7 +109,7 @@
       data = await window.apiFetch("/api/optical/modules");
     } catch (error) {
       moduleRows.innerHTML = `<tr class="empty-row"><td colspan="8">Gagal memuat modul optik: ${escapeHtml(error.message)}</td></tr>`;
-      modulesCount.textContent = "—";
+      modulesCount.textContent = "-";
       return;
     }
     const modules = data.modules || [];
@@ -119,11 +119,11 @@
           .map((mod) => (
             `<tr><td><a class="cell-link" href="inventory.html#host/${mod.device_id}">${escapeHtml(mod.device_name)}</a></td>` +
             `<td class="mono">${escapeHtml(mod.if_name)}</td>` +
-            `<td>${escapeHtml(mod.vendor || "—")}</td>` +
-            `<td>${escapeHtml(mod.part_no || "—")}</td>` +
-            `<td class="mono">${escapeHtml(mod.serial || "—")}</td>` +
-            `<td class="mono">${mod.wavelength_nm == null ? "—" : `${mod.wavelength_nm} nm`}</td>` +
-            `<td>${escapeHtml(mod.type || "—")}</td>` +
+            `<td>${escapeHtml(mod.vendor || "-")}</td>` +
+            `<td>${escapeHtml(mod.part_no || "-")}</td>` +
+            `<td class="mono">${escapeHtml(mod.serial || "-")}</td>` +
+            `<td class="mono">${mod.wavelength_nm == null ? "-" : `${mod.wavelength_nm} nm`}</td>` +
+            `<td>${escapeHtml(mod.type || "-")}</td>` +
             `<td class="mono">${escapeHtml(timeAgo(mod.last_seen))}</td></tr>`
           ))
           .join("")
@@ -149,7 +149,7 @@
     invTotal.textContent = String(total);
     invTotalMeta.textContent = `${byType.length} tipe perangkat`;
     invOnline.textContent = String(online);
-    invOnlinePct.textContent = total ? formatPercent((online / total) * 100, 1) : "—";
+    invOnlinePct.textContent = total ? formatPercent((online / total) * 100, 1) : "-";
     invAttention.textContent = String(attention.length);
     invMaintenance.textContent = String(maintenance);
 
@@ -179,7 +179,7 @@
               `<tr><td><a class="cell-link" href="inventory.html#host/${device.id}">${escapeHtml(device.name)}</a></td>` +
               `<td>${escapeHtml(TYPE_LABELS[device.type] || device.type)}</td>` +
               `<td class="mono">${escapeHtml(device.ip)}</td>` +
-              `<td>${escapeHtml(device.location || "—")}</td>` +
+              `<td>${escapeHtml(device.location || "-")}</td>` +
               `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
               `<td class="mono">${escapeHtml(timeAgo(device.last_seen))}</td></tr>`
             );
@@ -251,7 +251,7 @@
   }
 
   function metricCell(pct, warn, crit) {
-    if (pct == null) return '<td class="mono">—</td>';
+    if (pct == null) return '<td class="mono">-</td>';
     const tier = tierAvail(pct, warn, crit);
     return `<td><span class="${escapeHtml(tier.cls)}" title="${pct.toFixed(1)}% (ambang peringatan ${warn}%, kritis ${crit}%)">${escapeHtml(tier.label)}</span></td>`;
   }
@@ -292,7 +292,10 @@
       .catch(() => {});
 
     if (devices.length === 0) {
-      hostRows.innerHTML = '<tr class="empty-row"><td colspan="12">Tidak ada perangkat yang cocok dengan filter saat ini.</td></tr>';
+      const filtered = hostSearch.value.trim() || hostStatus.value || hostGroup.value || hostType.value || hostRouteros.value || hostModel.value;
+      hostRows.innerHTML = filtered
+        ? '<tr class="empty-row"><td colspan="12">Tidak ada perangkat yang cocok dengan filter saat ini.</td></tr>'
+        : '<tr class="empty-row"><td colspan="12">Belum ada perangkat. Tambahkan perangkat pertama lewat tombol Tambah perangkat.</td></tr>';
     } else {
       const editable = canEdit();
       hostRows.innerHTML = devices
@@ -305,17 +308,17 @@
             `<td><a class="cell-link" href="inventory.html#host/${device.id}">${escapeHtml(device.name)}</a><span class="cell-sub">${escapeHtml(TYPE_LABELS[device.type] || device.type)}</span></td>` +
             `<td class="mono">${escapeHtml(device.ip)}</td>` +
             `<td>${escapeHtml(TYPE_LABELS[device.type] || device.type)}</td>` +
-            `<td class="mono">${escapeHtml(device.routeros_version || "—")}</td>` +
-            `<td>${escapeHtml(device.mikrotik_model || "—")}</td>` +
-            `<td>${escapeHtml(device.group_name || "—")}</td>` +
-            `<td>${escapeHtml(device.location || "—")}</td>` +
-            `<td class="mono">${device.latency_ms == null ? "—" : `${Number(device.latency_ms).toFixed(0)} ms`}</td>` +
+            `<td class="mono">${escapeHtml(device.routeros_version || "-")}</td>` +
+            `<td>${escapeHtml(device.mikrotik_model || "-")}</td>` +
+            `<td>${escapeHtml(device.group_name || "-")}</td>` +
+            `<td>${escapeHtml(device.location || "-")}</td>` +
+            `<td class="mono">${device.latency_ms == null ? "-" : `${Number(device.latency_ms).toFixed(0)} ms`}</td>` +
             cpu + mem +
             `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
             `<td>${editable
               ? `<button class="ack-toggle" type="button" data-action="edit" data-id="${device.id}">Ubah</button> ` +
                 `<button class="ack-toggle" type="button" data-action="delete" data-id="${device.id}">Hapus</button>`
-              : "—"}</td>` +
+              : "-"}</td>` +
             `</tr>`
           );
         })
@@ -436,7 +439,7 @@
     auth_failed: "Kredensial API ditolak oleh perangkat (auth_failed).",
     timeout: "Koneksi ke API RouterOS timeout (timeout).",
     unreachable: "Port API RouterOS tidak terjangkau (unreachable).",
-    tls_error: "Verifikasi TLS ke RouterOS gagal — periksa sertifikat dan fingerprint perangkat (tls_error).",
+    tls_error: "Verifikasi TLS ke RouterOS gagal. Periksa sertifikat dan fingerprint perangkat (tls_error).",
     tls_fingerprint_mismatch: "Fingerprint sertifikat RouterOS tidak cocok dengan pengaturan perangkat (tls_fingerprint_mismatch).",
     snmp_no_response: "RouterOS API gagal dan SNMP tidak merespons (snmp_no_response).",
     error: "Terjadi galat saat membaca metrik (error).",
@@ -461,7 +464,7 @@
 
   function setResourceCard(valueEl, barEl, chipEl, value, warn, crit) {
     const tier = chipClassFor(value, warn, crit);
-    valueEl.textContent = value == null ? "—" : value.toFixed(0);
+    valueEl.textContent = value == null ? "-" : value.toFixed(0);
     if (barEl) {
       barEl.style.width = `${Math.max(0, Math.min(100, value ?? 0))}%`;
       barEl.className = tier.bar;
@@ -514,7 +517,7 @@
 
   function chartSummary(values, format) {
     const valid = values.filter((v) => v != null);
-    if (valid.length === 0) return "min — · rata-rata — · maks —";
+    if (valid.length === 0) return "min - · rata-rata - · maks -";
     const min = Math.min(...valid);
     const max = Math.max(...valid);
     const avg = valid.reduce((sum, v) => sum + v, 0) / valid.length;
@@ -561,7 +564,7 @@
     const txValues = current2 ? current2.points.map((p) => p.tx_bps) : [];
     renderLineChart(detailEls.chartTraffic, [{ values: rxValues }, { values: txValues }], { min: 0, noArea: true });
     const fmt = (v) => formatBps(v);
-    const peak = (values) => (values.filter((v) => v != null).length ? fmt(Math.max(...values.filter((v) => v != null))) : "—");
+    const peak = (values) => (values.filter((v) => v != null).length ? fmt(Math.max(...values.filter((v) => v != null))) : "-");
     detailEls.trafficRxSummary.textContent = peak(rxValues);
     detailEls.trafficTxSummary.textContent = peak(txValues);
   }
@@ -591,7 +594,7 @@
 
     detailEls.title.textContent = device.name;
     const model = device.mikrotik_model || device.mikrotik_board || "model tidak tersedia";
-    const version = device.routeros_version ? `RouterOS ${device.routeros_version}` : "RouterOS —";
+    const version = device.routeros_version ? `RouterOS ${device.routeros_version}` : "RouterOS -";
     detailEls.sub.textContent = `${device.ip} · ${model} · ${version}${device.mikrotik_serial ? ` · SN ${device.mikrotik_serial}` : ""}`;
 
     const meta = STATUS_META[device.status] || STATUS_META.unknown;
@@ -599,9 +602,9 @@
     detailEls.status.className = `status ${meta.cls}`;
 
     const avail = device.availability || {};
-    const fmtAvail = (a) => (a && a.pct != null ? formatPercent(a.pct) : "—");
+    const fmtAvail = (a) => (a && a.pct != null ? formatPercent(a.pct) : "-");
     if (detailEls.availability) {
-      detailEls.availability.textContent = `Ketersediaan — 24 jam: ${fmtAvail(avail.h24)} · 7 hari: ${fmtAvail(avail.h7d)} · 30 hari: ${fmtAvail(avail.h30d)}`;
+      detailEls.availability.textContent = `Ketersediaan 24 jam: ${fmtAvail(avail.h24)} · 7 hari: ${fmtAvail(avail.h7d)} · 30 hari: ${fmtAvail(avail.h30d)}`;
     }
 
     if (device.metrics_error) {
@@ -616,7 +619,7 @@
       detailEls.emptyDesc.textContent = device.mikrotik_enabled || device.snmp_enabled
         ? "Metrik akan tampil setelah poller berhasil menghubungi perangkat minimal satu kali."
         : "Perangkat ini belum memiliki sumber metrik. Aktifkan MikroTik API atau SNMP pada pengaturan perangkat.";
-      detailEls.updated.textContent = "Terakhir diperbarui —";
+      detailEls.updated.textContent = "Terakhir diperbarui -";
       return;
     }
     detailEls.empty.hidden = true;
@@ -632,18 +635,18 @@
     detailEls.cpuSub.textContent = `${cpuCores}${cpuFreq}`;
     detailEls.memSub.textContent = metrics.mem_total != null
       ? `${formatBytes(metrics.mem_used)} / ${formatBytes(metrics.mem_total)} terpakai`
-      : "—";
+      : "-";
     detailEls.storageSub.textContent = metrics.disk_total != null
       ? `${formatBytes(metrics.disk_used)} / ${formatBytes(metrics.disk_total)} terpakai`
-      : "—";
+      : "-";
 
     const tempTier = chipClassFor(metrics.temp_c, thresholds.temp_warn, thresholds.temp_crit);
-    detailEls.temp.textContent = metrics.temp_c == null ? "—" : metrics.temp_c.toFixed(1);
+    detailEls.temp.textContent = metrics.temp_c == null ? "-" : metrics.temp_c.toFixed(1);
     detailEls.chipTemp.textContent = tempTier.text;
     detailEls.chipTemp.className = `metric-chip ${tempTier.cls}`;
-    detailEls.tempSub.textContent = metrics.cpu_temp_c != null ? `Suhu CPU ${metrics.cpu_temp_c.toFixed(1)} °C` : "Suhu CPU —";
+    detailEls.tempSub.textContent = metrics.cpu_temp_c != null ? `Suhu CPU ${metrics.cpu_temp_c.toFixed(1)} °C` : "Suhu CPU -";
 
-    detailEls.voltage.textContent = metrics.voltage == null ? "—" : metrics.voltage.toFixed(1);
+    detailEls.voltage.textContent = metrics.voltage == null ? "-" : metrics.voltage.toFixed(1);
     detailEls.voltageSub.textContent = "Tegangan masuk";
     setPresenceChip(detailEls.chipVoltage, metrics.voltage != null, "Normal");
     detailEls.uptime.textContent = formatUptime(metrics.uptime_s);

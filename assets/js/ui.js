@@ -41,7 +41,7 @@
     }, opts.duration || TOAST_DURATION);
   }
 
-  /* Markup statis — tidak ada nilai dinamis di dalamnya. */
+  /* Markup statis. Tidak ada nilai dinamis di dalamnya. */
   const DIALOG_MARKUP = `
     <form class="admin-form" id="nms-ui-form" novalidate>
       <div class="modal__head">

@@ -145,12 +145,12 @@
 
   function logTimeCell(value) {
     const parts = formatLogTime(value);
-    if (!parts) return '<td class="log-time"><span class="cell-muted">—</span></td>';
+    if (!parts) return '<td class="log-time"><span class="cell-muted">-</span></td>';
     return `<td class="log-time" title="${escapeHtml(parts.full)}"><span class="log-time__date">${escapeHtml(parts.date)}</span><span class="log-time__clock">${escapeHtml(parts.clock)}</span></td>`;
   }
 
   function deviceCell(row) {
-    const name = row.device_name || row.device_id || "—";
+    const name = row.device_name || row.device_id || "-";
     const ip = row.device_ip ? `<span class="cell-sub">${escapeHtml(row.device_ip)}</span>` : "";
     return `<td class="log-device"><span class="log-device__name">${escapeHtml(name)}</span>${ip}</td>`;
   }
@@ -158,13 +158,13 @@
   function severityCell(value) {
     const level = value === null || value === undefined || value === "" ? NaN : Number(value);
     const meta = Number.isInteger(level) ? SYSLOG_LEVELS[level] : null;
-    if (!meta) return '<td><span class="cell-muted">—</span></td>';
-    return `<td><span class="sev ${meta.cls}" title="Keparahan ${level} — ${escapeHtml(meta.label)}">${escapeHtml(meta.label)}</span></td>`;
+    if (!meta) return '<td><span class="cell-muted">-</span></td>';
+    return `<td><span class="sev ${meta.cls}" title="Keparahan ${level}: ${escapeHtml(meta.label)}">${escapeHtml(meta.label)}</span></td>`;
   }
 
   function tagCell(value) {
     const tag = String(value || "").trim();
-    if (!tag) return '<td><span class="cell-muted">—</span></td>';
+    if (!tag) return '<td><span class="cell-muted">-</span></td>';
     return `<td><span class="log-tag">${escapeHtml(tag)}</span></td>`;
   }
 
@@ -252,7 +252,7 @@
           ${deviceCell(row)}
           ${severityCell(row.severity)}
           ${tagCell(row.tag)}
-          <td class="log-message">${escapeHtml(row.message || "—")}</td>
+          <td class="log-message">${escapeHtml(row.message || "-")}</td>
         </tr>`).join("");
       syncSyslogEmpty(filtered);
       $("syslog-prev").disabled = page <= 1;
@@ -298,7 +298,7 @@
 
   function trapVarbindCell(row) {
     const text = String(row.varbinds || "").trim();
-    if (!text || text === "[]" || text === "null") return '<span class="cell-muted">—</span>';
+    if (!text || text === "[]" || text === "null") return '<span class="cell-muted">-</span>';
     let pretty = escapeHtml(row.varbinds);
     let count = 0;
     try {
@@ -338,8 +338,8 @@
         <tr>
           ${logTimeCell(row.ts)}
           ${deviceCell(row)}
-          <td class="mono traps-oid">${escapeHtml(row.trap_oid || "—")}</td>
-          <td class="traps-name">${escapeHtml(row.trap_name || "—")}</td>
+          <td class="mono traps-oid">${escapeHtml(row.trap_oid || "-")}</td>
+          <td class="traps-name">${escapeHtml(row.trap_name || "-")}</td>
           <td class="traps-varbind">${trapVarbindCell(row)}</td>
         </tr>`).join("");
       syncTrapsEmpty(filtered);
@@ -382,12 +382,12 @@
           <td class="mono">${escapeHtml(conditionLabel(rule))}</td>
           <td>${escapeHtml(rule.problem_severity)}</td>
           <td>${Number(rule.cooldown_seconds)} dtk</td>
-          <td>${Number(rule.auto_resolve_minutes) || "—"}${Number(rule.auto_resolve_minutes) ? " mnt" : ""}</td>
+          <td>${Number(rule.auto_resolve_minutes) || "-"}${Number(rule.auto_resolve_minutes) ? " mnt" : ""}</td>
           <td>${rule.enabled ? "Ya" : "Tidak"}</td>
           <td>${canEdit() ? `<button class="ack-toggle" type="button" data-rule-action="edit" data-id="${rule.id}">Ubah</button> <button class="ack-toggle" type="button" data-rule-action="delete" data-id="${rule.id}">Hapus</button>` : "-"}</td>
         </tr>`).join("");
       const resolves = $("rule-resolves");
-      resolves.innerHTML = '<option value="">—</option>' + rules.map((rule) => `<option value="${rule.id}">${escapeHtml(rule.name)}</option>`).join("");
+      resolves.innerHTML = '<option value="">Tidak ada</option>' + rules.map((rule) => `<option value="${rule.id}">${escapeHtml(rule.name)}</option>`).join("");
       document.querySelectorAll("[data-rule-action]").forEach((button) => {
         button.addEventListener("click", () => {
           const rule = rules.find((item) => String(item.id) === button.dataset.id);
@@ -485,14 +485,14 @@
           <td>${escapeHtml(labels[kind] || kind)}</td>
           <td>${item.running ? "Berjalan" : "Berhenti"}</td>
           <td class="mono">${escapeHtml(item.bind_address || "-")}:${escapeHtml(item.port || "-")}</td>
-          <td>${escapeHtml(item.last_packet_at ? formatDateTime(item.last_packet_at) : "—")}</td>
+          <td>${escapeHtml(item.last_packet_at ? formatDateTime(item.last_packet_at) : "-")}</td>
           <td>${Number(item.accepted || 0).toLocaleString("id-ID")}</td>
           <td>${Number(item.rate_per_sec || 0).toFixed(1)}</td>
           <td>${Number(item.dropped_unknown || 0)} / ${Number(item.dropped_rate || 0)} / ${Number(item.dropped_auth || 0)} / ${Number(item.dropped_queue || 0)}</td>
           <td>${Number((item.queue || {}).queue_size || 0)} / ditulis ${Number((item.queue || {}).written || 0)}</td>
         </tr>`).join("");
       const counts = data.counts || {};
-      $("status-note").textContent = `Tersimpan: ${counts.syslog_events || 0} syslog, ${counts.snmp_traps || 0} trap. ${Object.values(data.receivers || {}).some((item) => item.last_error) ? "Ada galat bind — periksa port." : ""}`;
+      $("status-note").textContent = `Tersimpan: ${counts.syslog_events || 0} syslog, ${counts.snmp_traps || 0} trap. ${Object.values(data.receivers || {}).some((item) => item.last_error) ? "Ada galat bind. Periksa port." : ""}`;
     } catch (error) {
       $("status-note").textContent = error.message;
     }

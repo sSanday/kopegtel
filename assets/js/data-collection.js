@@ -5,11 +5,11 @@
   const { escapeHtml, formatDateTime, TYPE_LABELS, STATUS_META, timeAgo } = window.NMSFormat;
 
   const VIEWS = {
-    "host-groups": { label: "Grup perangkat", desc: "Kelompok logis perangkat untuk filter dan pemeliharaan." },
-    profiles: { label: "Profil pemantauan", desc: "Interval polling dan ambang peringatan per tipe perangkat." },
-    hosts: { label: "Perangkat", desc: "Daftar perangkat yang dipantau." },
+    "host-groups": { label: "Grup Host", desc: "Kelompok logis host untuk filter dan pemeliharaan." },
+    profiles: { label: "Profil pemantauan", desc: "Interval polling dan ambang peringatan per tipe host." },
+    hosts: { label: "Daftar Host", desc: "Daftar host yang dipantau." },
     maintenance: { label: "Pemeliharaan", desc: "Jendela waktu pemeliharaan yang menekan masalah dan notifikasi." },
-    discovery: { label: "Penemuan", desc: "Pemindaian CIDR untuk menemukan perangkat baru." },
+    discovery: { label: "Pemindaian", desc: "Pemindaian CIDR untuk menemukan host baru." },
   };
 
   const views = document.querySelectorAll("[data-view]");
@@ -55,7 +55,7 @@
     return canEdit()
       ? `<button class="ack-toggle" type="button" data-kind="${kind}" data-action="edit" data-id="${id}">Ubah</button> ` +
         `<button class="ack-toggle" type="button" data-kind="${kind}" data-action="delete" data-id="${id}">Hapus</button>`
-      : "—";
+      : "-";
   }
 
   /* =====================================================
@@ -77,14 +77,14 @@
   function renderGroups() {
     groupCount.textContent = `${groupsCache.length} grup terdaftar`;
     if (groupsCache.length === 0) {
-      groupRows.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada grup. Buat grup untuk mengelompokkan perangkat.</td></tr>';
+      groupRows.innerHTML = '<tr class="empty-row"><td colspan="4">Belum ada grup. Buat grup untuk mengelompokkan host.</td></tr>';
       return;
     }
     groupRows.innerHTML = groupsCache
       .map((group) => (
         `<tr>` +
         `<td><strong>${escapeHtml(group.name)}</strong></td>` +
-        `<td>${escapeHtml(group.description || "—")}</td>` +
+        `<td>${escapeHtml(group.description || "-")}</td>` +
         `<td class="mono">${group.device_count}</td>` +
         `<td>${editButtons("group", group.id)}</td>` +
         `</tr>`
@@ -193,7 +193,7 @@
           `<td>${input("mem_warn")} ${input("mem_crit")}</td>` +
           `<td>${input("storage_warn")} ${input("storage_crit")}</td>` +
           `<td>${input("temp_warn")} ${input("temp_crit")}</td>` +
-          `<td>${canEdit() ? `<button class="ack-toggle" type="button" data-save-profile="${escapeHtml(type)}">Simpan</button>` : "—"}</td>` +
+          `<td>${canEdit() ? `<button class="ack-toggle" type="button" data-save-profile="${escapeHtml(type)}">Simpan</button>` : "-"}</td>` +
           `</tr>`
         );
       })
@@ -256,7 +256,7 @@
           `<td><a class="cell-link" href="inventory.html#host/${device.id}">${escapeHtml(device.name)}</a></td>` +
           `<td>${escapeHtml(TYPE_LABELS[device.type] || device.type)}</td>` +
           `<td class="mono">${escapeHtml(device.ip)}</td>` +
-          `<td>${escapeHtml(device.group_name || "—")}</td>` +
+          `<td>${escapeHtml(device.group_name || "-")}</td>` +
           `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
           `<td>${editButtons("host", device.id)}</td>` +
           `</tr>`
@@ -306,7 +306,7 @@
   function renderMaintenance(windows) {
     maintenanceCount.textContent = `${windows.length} jadwal`;
     if (windows.length === 0) {
-      maintenanceRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada jadwal pemeliharaan.</td></tr>';
+      maintenanceRows.innerHTML = '<tr class="empty-row"><td colspan="6">Belum ada jadwal pemeliharaan. Buat jadwal lewat tombol Tambah jadwal.</td></tr>';
       return;
     }
     maintenanceRows.innerHTML = windows
@@ -316,8 +316,8 @@
         `<td>${escapeHtml(scopeLabelOf(w))}</td>` +
         `<td class="mono">${escapeHtml(formatDateTime(w.starts_at))}</td>` +
         `<td class="mono">${escapeHtml(formatDateTime(w.ends_at))}</td>` +
-        `<td>${escapeHtml(w.note || "—")}</td>` +
-        `<td>${canEdit() ? `<button class="ack-toggle" type="button" data-kind="maintenance" data-action="delete" data-id="${w.id}">Hapus</button>` : "—"}</td>` +
+        `<td>${escapeHtml(w.note || "-")}</td>` +
+        `<td>${canEdit() ? `<button class="ack-toggle" type="button" data-kind="maintenance" data-action="delete" data-id="${w.id}">Hapus</button>` : "-"}</td>` +
         `</tr>`
       ))
       .join("");
@@ -454,8 +454,8 @@
       const data = await window.apiFetch("/api/discovery/scans");
       const scans = data.scans || [];
       scanHistoryList.innerHTML = scans.length
-        ? scans.map((scan) => `<li><span class="mono">${escapeHtml(scan.cidr)}</span> — ${scan.status === "running" ? "berjalan" : scan.status === "error" ? "gagal" : "selesai"} · ${scan.found} hidup dari ${scan.total} alamat · ${escapeHtml(formatDateTime(scan.created_at))}</li>`).join("")
-        : "<li>Belum ada pemindaian.</li>";
+        ? scans.map((scan) => `<li><span class="mono">${escapeHtml(scan.cidr)}</span> · ${scan.status === "running" ? "berjalan" : scan.status === "error" ? "gagal" : "selesai"} · ${scan.found} hidup dari ${scan.total} alamat · ${escapeHtml(formatDateTime(scan.created_at))}</li>`).join("")
+        : "<li>Belum ada pemindaian. Mulai pemindaian di atas untuk menemukan host baru.</li>";
     } catch {
       scanHistoryList.innerHTML = "<li>Gagal memuat riwayat pemindaian.</li>";
     }
@@ -477,9 +477,9 @@
         `<tr>` +
         `<td><input type="checkbox" class="scan-pick" value="${escapeHtml(entry.ip)}" aria-label="Pilih ${escapeHtml(entry.ip)}" /></td>` +
         `<td class="mono">${escapeHtml(entry.ip)}</td>` +
-        `<td class="mono">${entry.latency_ms == null ? "—" : `${Number(entry.latency_ms).toFixed(0)} ms`}</td>` +
-        `<td>${escapeHtml(entry.sysname || "—")}</td>` +
-        `<td>${escapeHtml(entry.type_hint || "—")}</td>` +
+        `<td class="mono">${entry.latency_ms == null ? "-" : `${Number(entry.latency_ms).toFixed(0)} ms`}</td>` +
+        `<td>${escapeHtml(entry.sysname || "-")}</td>` +
+        `<td>${escapeHtml(entry.type_hint || "-")}</td>` +
         `</tr>`
       ))
       .join("");
@@ -496,9 +496,9 @@
         scanProgressBar.style.width = `${pct}%`;
         scanProgressPct.textContent = `${pct}%`;
         scanProgressText.textContent = job.status === "running"
-          ? `Memindai ${job.completed}/${job.total} alamat — ${job.found} hidup`
+          ? `Memindai ${job.completed}/${job.total} alamat · ${job.found} hidup`
           : job.status === "error"
-            ? "Pemindaian gagal — periksa log server."
+            ? "Pemindaian gagal. Periksa log server."
             : `Selesai: ${job.found} perangkat hidup dari ${job.total} alamat`;
         if (job.status !== "running") {
           stopScanPolling();
@@ -564,7 +564,7 @@
       const checkbox = row.querySelector("input.scan-pick");
       const ip = row.children[1] && row.children[1].textContent.trim();
       const sysname = row.children[3] && row.children[3].textContent.trim();
-      if (checkbox && checkbox.checked && ip && sysname && sysname !== "—") {
+      if (checkbox && checkbox.checked && ip && sysname && sysname !== "-") {
         names[ip] = sysname;
       }
     });

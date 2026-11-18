@@ -1,5 +1,5 @@
 /* Sidebar bersama: dirender dari satu konfigurasi sesuai peran pengguna.
- * Tidak ada tautan mati — semua item menu menuju file & view yang ada.
+ * Tidak ada tautan mati. Semua item menu menuju file & view yang ada.
  */
 (function () {
   "use strict";
@@ -62,7 +62,7 @@
       roles: ["admin", "operator", "viewer"],
       children: [
         { label: "Masalah", href: "monitoring.html#problems", badge: "problems" },
-        { label: "Perangkat", href: "monitoring.html#hosts" },
+        { label: "Daftar Host", href: "monitoring.html#hosts" },
         { label: "Data terbaru", href: "monitoring.html#latest-data" },
         { label: "Peta", href: "monitoring.html#maps" },
       ],
@@ -133,7 +133,7 @@
       roles: ["admin", "operator", "viewer"],
       children: [
         { label: "Ringkasan", href: "inventory.html#overview" },
-        { label: "Perangkat", href: "inventory.html#hosts" },
+        { label: "Daftar Host", href: "inventory.html#hosts" },
       ],
     },
     {
@@ -152,27 +152,27 @@
       ],
     },
     {
-      label: "Pengumpulan data",
+      label: "Pengumpulan Data",
       icon: "dataCollection",
       id: "data-collection",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Grup perangkat", href: "data-collection.html#host-groups" },
+        { label: "Grup Host", href: "data-collection.html#host-groups" },
         { label: "Profil pemantauan", href: "data-collection.html#profiles" },
-        { label: "Perangkat", href: "data-collection.html#hosts" },
+        { label: "Daftar Host", href: "data-collection.html#hosts" },
         { label: "Pemeliharaan", href: "data-collection.html#maintenance" },
-        { label: "Penemuan", href: "data-collection.html#discovery" },
+        { label: "Pemindaian", href: "data-collection.html#discovery" },
       ],
     },
     {
-      label: "Peringatan",
+      label: "Notifikasi",
       icon: "alerts",
       id: "alerts",
       roles: ["admin", "operator", "viewer"],
       children: [
-        { label: "Aksi", href: "alerts.html#actions" },
+        { label: "Aturan aksi", href: "alerts.html#actions" },
         { label: "Template pesan", href: "alerts.html#message-templates" },
-        { label: "Jenis media", href: "alerts.html#media-types", roles: ["admin", "operator"] },
+        { label: "Kanal notifikasi", href: "alerts.html#media-types", roles: ["admin", "operator"] },
         { label: "Eskalasi", href: "alerts.html#escalation", roles: ["admin", "operator"] },
       ],
     },
@@ -263,7 +263,7 @@
         `<span class="user__avatar" id="user-avatar" aria-hidden="true">${escapeHtml((me.username || "?").charAt(0).toUpperCase())}</span>` +
         '<span class="user__meta"><span class="user__name" id="user-name"></span><span class="user__role" id="user-role"></span></span>' +
       "</div>" +
-      `<a class="nav__link" href="profile.html" style="margin-top: .35rem;">${ICONS.profile}<span class="nav__toggle-label">Profil</span></a>` +
+      `<a class="nav__link nav__link--profile" href="profile.html">${ICONS.profile}<span class="nav__toggle-label">Profil</span></a>` +
       `<button class="logout" id="logout" type="button" aria-label="Keluar">${ICONS.logout}<span>Keluar</span></button>` +
       "</div>"
     );
@@ -331,6 +331,18 @@
 
     const tabs = Array.from(bar.querySelectorAll("[data-tab]"));
     if (!tabs.length) return;
+
+    // Petunjuk gulir: tepi kanan/kiri meredup hanya saat masih ada tab tersembunyi.
+    const updateTabFade = () => {
+      const max = bar.scrollWidth - bar.clientWidth;
+      bar.dataset.fadeStart = String(bar.scrollLeft > 1);
+      bar.dataset.fadeEnd = String(max > 1 && bar.scrollLeft < max - 1);
+    };
+    bar.addEventListener("scroll", updateTabFade, { passive: true });
+    window.addEventListener("resize", updateTabFade);
+    if ("ResizeObserver" in window) new ResizeObserver(updateTabFade).observe(bar);
+    requestAnimationFrame(updateTabFade);
+    updateTabFade();
 
     const views = new Map();
     document.querySelectorAll("[data-view]").forEach((view) => {

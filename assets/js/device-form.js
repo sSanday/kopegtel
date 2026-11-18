@@ -1,4 +1,4 @@
-/* Formulir perangkat (<dialog> native) — bisa dibuka dari semua halaman.
+/* Formulir perangkat (<dialog> native). Bisa dibuka dari semua halaman.
  * Memuat grup & uplink dari API; uji koneksi nyata via /api/devices/test.
  * API: window.openDeviceForm({ device?, onSaved? })
  */
@@ -331,7 +331,7 @@
         parentSelect.appendChild(option);
       }
     } catch {
-      /* daftar opsional — biarkan kosong */
+      /* daftar opsional, biarkan kosong */
     }
   }
 
@@ -356,7 +356,7 @@
         const detail = res.detail || res.reason || (ok ? "OK" : "gagal");
         const li = document.createElement("li");
         li.className = `test-results__item test-results__item--${ok ? "ok" : "down"}`;
-        li.textContent = `${label[method] || method}: ${ok ? "Berhasil" : `Gagal — ${detail}`}`;
+        li.textContent = `${label[method] || method}: ${ok ? "Berhasil" : `Gagal: ${detail}`}`;
         list.appendChild(li);
       }
       document.getElementById("df-test-results").hidden = false;

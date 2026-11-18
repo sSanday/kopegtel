@@ -22,7 +22,7 @@
 
   function formatDateTime(value, timeZone) {
     const d = parseServerTs(value);
-    if (!d) return "—";
+    if (!d) return "-";
     try {
       return new Intl.DateTimeFormat("id-ID", {
         day: "2-digit",
@@ -39,7 +39,7 @@
 
   function formatDateTimeFull(value, timeZone) {
     const d = parseServerTs(value);
-    if (!d) return "—";
+    if (!d) return "-";
     try {
       return new Intl.DateTimeFormat("id-ID", {
         weekday: "long",
@@ -58,7 +58,7 @@
 
   function timeAgo(value) {
     const d = parseServerTs(value);
-    if (!d) return "—";
+    if (!d) return "-";
     const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
     if (diffSec < 10) return "baru saja";
     if (diffSec < 60) return `${diffSec} detik yang lalu`;
@@ -81,17 +81,17 @@
     document.title = `${unique.join(" · ")} · NMS Kopegtel`;
   }
 
-  /** Persen dengan koma (id-ID). null/NaN → '—'. */
+  /** Persen dengan koma (id-ID). null/NaN → '-'. */
   function formatPercent(value, digits) {
     const n = Number(value);
-    if (value == null || Number.isNaN(n)) return "—";
+    if (value == null || Number.isNaN(n)) return "-";
     const fractionDigits = digits == null ? 1 : digits;
     return `${n.toLocaleString("id-ID", { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })}%`;
   }
 
   function formatBytes(bytes) {
     const n = Number(bytes);
-    if (bytes == null || Number.isNaN(n)) return "—";
+    if (bytes == null || Number.isNaN(n)) return "-";
     const units = ["B", "KB", "MB", "GB", "TB", "PB"];
     let value = n;
     let index = 0;
@@ -105,7 +105,7 @@
 
   function formatBps(bps) {
     const n = Number(bps);
-    if (bps == null || Number.isNaN(n)) return "—";
+    if (bps == null || Number.isNaN(n)) return "-";
     const units = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"];
     let value = n;
     let index = 0;
@@ -119,7 +119,7 @@
 
   function formatUptime(seconds) {
     const n = Number(seconds);
-    if (seconds == null || Number.isNaN(n)) return "—";
+    if (seconds == null || Number.isNaN(n)) return "-";
     const days = Math.floor(n / 86400);
     const hours = Math.floor((n % 86400) / 3600);
     const minutes = Math.floor((n % 3600) / 60);
@@ -159,7 +159,7 @@
 
   /** Sel berwarna nilai → kelas avail (--ok/--warn/--down) + label teks. */
   function availMeta(pct, warn, crit) {
-    if (pct == null) return { cls: "avail", label: "—" };
+    if (pct == null) return { cls: "avail", label: "-" };
     if (pct >= crit) return { cls: "avail avail--down", label: formatPercent(pct, 0) };
     if (pct >= warn) return { cls: "avail avail--warn", label: formatPercent(pct, 0) };
     return { cls: "avail avail--ok", label: formatPercent(pct, 0) };
