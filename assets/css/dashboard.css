@@ -1060,6 +1060,18 @@ td strong {
   vertical-align: middle;
 }
 
+.mon-table th.num,
+.mon-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-rank {
+  width: 3rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .cell-sub {
   display: block;
   margin-top: 0.12rem;
@@ -2615,7 +2627,8 @@ td strong {
 
 /* Kejadian: tab, filter, dan tabel ------------------------- */
 
-.events-tabs {
+.events-tabs,
+.flow-tabs {
   width: fit-content;
   max-width: 100%;
   padding: 0.28rem;
@@ -2627,11 +2640,13 @@ td strong {
   scrollbar-width: none;
 }
 
-.events-tabs::-webkit-scrollbar {
+.events-tabs::-webkit-scrollbar,
+.flow-tabs::-webkit-scrollbar {
   display: none;
 }
 
-.events-tabs .btn {
+.events-tabs .btn,
+.flow-tabs .btn {
   height: 34px;
   padding: 0 0.85rem;
   border-color: transparent;
@@ -2640,13 +2655,15 @@ td strong {
   color: var(--muted);
 }
 
-.events-tabs .btn:hover {
+.events-tabs .btn:hover,
+.flow-tabs .btn:hover {
   border-color: transparent;
   background: var(--surface-2);
   color: var(--ink);
 }
 
-.events-tabs .btn[data-tab].is-active {
+.events-tabs .btn[data-tab].is-active,
+.flow-tabs .btn[data-tab].is-active {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--ink);
@@ -2654,13 +2671,15 @@ td strong {
 }
 
 #syslog-export:disabled,
-#traps-export:disabled {
+#traps-export:disabled,
+#flow-apps-export:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
 #syslog-export:disabled:hover,
-#traps-export:disabled:hover {
+#traps-export:disabled:hover,
+#flow-apps-export:disabled:hover {
   border-color: var(--line);
   background: var(--surface-2);
   color: var(--ink-soft);
@@ -3975,40 +3994,410 @@ td strong {
   margin-bottom: 0;
 }
 
+.flow-tabs {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.flow-tabs .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.flow-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  flex-wrap: wrap;
+}
+
+.flow-toolbar__filters {
+  align-items: flex-end;
+}
+
+.flow-toolbar__filters .admin-field {
+  width: clamp(160px, 18vw, 220px);
+}
+
+.flow-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.flow-note svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.15rem;
+  color: var(--accent);
+}
+
+.flow-note p {
+  margin: 0;
+}
+
+.flow-note strong {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.flow-note__link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.flow-note__link:hover {
+  text-decoration: underline;
+}
+
+.flow-chart__body {
+  padding: 0.9rem 1.15rem 1.15rem;
+}
+
+.flow-chart__body svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 140px;
+}
+
+.flow-chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.flow-chart__baseline {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.flow-chart__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.flow-chart__area {
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.flow-chart__label {
+  fill: var(--muted);
+  font-family: var(--font);
+  font-size: 10px;
+}
+
+.flow-head-actions {
+  width: auto;
+  margin-left: auto;
+}
+
+.flow-app-table,
+.flow-proto-table {
+  min-width: 560px;
+}
+
+.flow-app-table .flow-rank,
+.flow-proto-table .flow-rank {
+  width: 3rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-app-table .flow-key,
+.flow-proto-table .flow-key {
+  min-width: 180px;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.flow-app-table .flow-num,
+.flow-proto-table .flow-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.flow-subhead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.35rem;
+  padding: 1.15rem 1.15rem 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.flow-subhead .panel__sub {
+  margin: 0.2rem 0 0;
+}
+
+@media (max-width: 640px) {
+  .flow-subhead {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 .flow-bars {
   display: grid;
-  gap: 0.35rem;
-  padding: 0.25rem 0;
+  gap: 0.55rem;
+  padding: 0.9rem 1.15rem 1.1rem;
 }
 
 .flow-bar {
   display: grid;
-  grid-template-columns: minmax(90px, 160px) 1fr 70px;
+  grid-template-columns: 1.6rem minmax(96px, 170px) minmax(80px, 1fr) 74px;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  gap: 0.55rem;
+  font-size: 0.8rem;
+}
+
+.flow-bar__rank {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.flow-bar__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow-bar__track {
-  height: 10px;
+  height: 8px;
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: 999px;
   background: var(--track);
 }
 
 .flow-bar__fill {
+  display: block;
   height: 100%;
+  border-radius: inherit;
   background: linear-gradient(90deg, var(--accent-fill-a), var(--accent-fill-b));
+  transition: width 0.3s var(--ease);
+}
+
+.flow-bar__value {
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flow-bars__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 1.7rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.flow-bars__state--error {
+  color: var(--danger);
+}
+
+.panel__foot-note {
+  padding: 0 1.15rem 1rem;
+  line-height: 1.55;
+}
+
+.setup-guide > summary {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.setup-guide > summary:hover {
+  text-decoration: underline;
+}
+
+.setup-guide[open] > summary {
+  margin-bottom: 0.55rem;
+}
+
+.setup-guide a {
+  color: var(--accent);
+}
+
+@media (max-width: 1340px) {
+  .flow-toolbar__filters {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .flow-toolbar__filters .admin-field {
+    flex: 1 1 180px;
+    width: auto;
+    max-width: 320px;
+  }
 }
 
 @media (max-width: 720px) {
+  .flow-toolbar__filters {
+    width: 100%;
+  }
+
+  .flow-toolbar__filters .admin-field {
+    flex: 1 1 150px;
+    width: auto;
+  }
+
   .flow-bar {
-    grid-template-columns: 1fr;
-    row-gap: 0.1rem;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    row-gap: 0.25rem;
   }
 
   .flow-bar__track {
-    order: 2;
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  /* Tabel aplikasi/protokol menjadi kartu agar kolom byte, paket, dan
+     aliran tetap terbaca tanpa menggeser tabel ke samping. */
+  .flow-app-table,
+  .flow-proto-table {
+    min-width: 0;
+  }
+
+  .flow-app-table thead,
+  .flow-proto-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .flow-app-table tbody,
+  .flow-proto-table tbody {
+    display: block;
+  }
+
+  .flow-app-table tbody tr,
+  .flow-proto-table tbody tr {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+    gap: 0.25rem 0.55rem;
+    padding: 0.8rem 1rem;
+  }
+
+  .flow-app-table tbody tr + tr,
+  .flow-proto-table tbody tr + tr {
+    border-top: 1px solid var(--line);
+  }
+
+  .flow-app-table tbody td,
+  .flow-proto-table tbody td {
+    display: block;
+    padding: 0;
+    border-top: 0;
+    white-space: normal;
+  }
+
+  .flow-app-table .flow-rank,
+  .flow-proto-table .flow-rank {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    align-self: center;
+  }
+
+  .flow-app-table .flow-key,
+  .flow-proto-table .flow-key {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    align-self: center;
+  }
+
+  .flow-app-table td:nth-child(3),
+  .flow-proto-table td:nth-child(3) {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
+  }
+
+  .flow-app-table td:nth-child(4),
+  .flow-proto-table td:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+    color: var(--muted);
+    font-size: 0.72rem;
+    justify-self: start;
+  }
+
+  .flow-app-table td:nth-child(5),
+  .flow-proto-table td:nth-child(5) {
+    grid-column: 3;
+    grid-row: 2;
+    color: var(--muted);
+    font-size: 0.72rem;
+    justify-self: end;
+  }
+
+  .flow-app-table td:nth-child(4)::before,
+  .flow-proto-table td:nth-child(4)::before {
+    content: "Paket ";
+  }
+
+  .flow-app-table td:nth-child(5)::before,
+  .flow-proto-table td:nth-child(5)::before {
+    content: "Aliran ";
+  }
+
+  .flow-app-table tbody tr.empty-row,
+  .flow-proto-table tbody tr.empty-row,
+  .flow-app-table tbody tr.table-state,
+  .flow-proto-table tbody tr.table-state {
+    display: block;
+    padding: 0;
+  }
+
+  .flow-app-table tbody tr.empty-row td,
+  .flow-proto-table tbody tr.empty-row td {
+    display: block;
+    padding: 1.5rem 1rem;
+    text-align: center;
+  }
+
+  .flow-app-table tbody tr.table-state td,
+  .flow-proto-table tbody tr.table-state td {
+    display: block;
+    padding: 2rem 1rem;
+    text-align: center;
   }
 }
 
