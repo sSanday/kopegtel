@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="assets/css/tokens.css?v=1" />
-  <link rel="stylesheet" href="assets/css/dashboard.css?v=3" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=2" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=13" />
 </head>
 <body>
   <a class="skip-link" href="#konten">Lewati ke konten utama</a>
@@ -35,6 +35,14 @@
           </span>
         </div>
       </header>
+
+      <nav class="page-tabs" role="tablist" aria-label="Bagian pengumpulan data">
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="host-groups">Grup perangkat</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="profiles">Profil</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Perangkat</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="maintenance">Pemeliharaan</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="discovery">Penemuan</button>
+      </nav>
 
       <!-- =====================================================
            Host groups
@@ -324,10 +332,10 @@
   <script src="assets/js/format.js?v=3" defer></script>
   <script src="assets/js/api.js?v=1" defer></script>
   <script src="assets/js/store.js?v=2" defer></script>
-  <script src="assets/js/nav.js?v=12" defer></script>
+  <script src="assets/js/nav.js?v=13" defer></script>
   <script src="assets/js/shell.js?v=1" defer></script>
-  <script src="assets/js/ui.js?v=1" defer></script>
-  <script src="assets/js/device-form.js?v=3" defer></script>
+  <script src="assets/js/ui.js?v=2" defer></script>
+  <script src="assets/js/device-form.js?v=4" defer></script>
   <script src="assets/js/data-collection.js?v=5" defer></script>
 </body>
 </html>

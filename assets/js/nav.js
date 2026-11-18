@@ -210,8 +210,7 @@
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-  function childHtml(child, role, index, pageName, hash) {
-    const roles = child.roles || ["admin", "operator", "viewer"];
+  function childHtml(child, role, index, pageName, hash) {    const roles = child.roles || ["admin", "operator", "viewer"];
     if (!roles.includes(role)) return "";
     const [childPage, childHash] = child.href.split("#");
     // Tanpa hash, tampilan pertama adalah tampilan bawaan halaman.
@@ -319,6 +318,192 @@
     }
   }
 
+  /** Tab halaman generik: sinkron dengan location.hash dan peran pengguna. */
+  function setupPageTabs(me) {
+    const bar = document.querySelector(".page-tabs");
+    if (!bar) return;
+
+    const role = me && me.role ? me.role : "viewer";
+    bar.querySelectorAll("[data-tab]").forEach((button) => {
+      const roles = (button.dataset.role || "").split(/\s+/).filter(Boolean);
+      if (roles.length && !roles.includes(role)) button.remove();
+    });
+
+    const tabs = Array.from(bar.querySelectorAll("[data-tab]"));
+    if (!tabs.length) return;
+
+    const views = new Map();
+    document.querySelectorAll("[data-view]").forEach((view) => {
+      const key = view.dataset.view;
+      if (!key) return;
+      if (!view.id) view.id = `page-view-${key}`;
+      view.setAttribute("role", "tabpanel");
+      views.set(key, view);
+    });
+
+    tabs.forEach((button) => {
+      const key = button.dataset.tab;
+      if (!button.id) button.id = `page-tab-${key}`;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", "false");
+      button.tabIndex = -1;
+      const view = views.get(key);
+      if (view) {
+        view.setAttribute("aria-labelledby", button.id);
+        button.setAttribute("aria-controls", view.id);
+      }
+      button.addEventListener("click", () => {
+        if (window.location.hash === `#${key}`) activate();
+        else window.location.hash = key;
+      });
+    });
+
+    function activate() {
+      const hash = window.location.hash.replace(/^#\/?/, "");
+      const active = tabs.find((button) => button.dataset.tab === hash) || tabs[0];
+      tabs.forEach((button) => {
+        const on = button === active;
+        button.setAttribute("aria-selected", String(on));
+        button.classList.toggle("is-active", on);
+        button.tabIndex = on ? 0 : -1;
+      });
+      if (pendingFocus) {
+        const target = pendingFocus;
+        pendingFocus = null;
+        window.setTimeout(() => target.focus({ preventScroll: true }), 0);
+      }
+    }
+
+    let pendingFocus = null;
+
+    bar.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const index = tabs.indexOf(document.activeElement);
+      let next = index;
+      if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+      const target = tabs[next];
+      pendingFocus = target;
+      target.focus({ preventScroll: true });
+      if (window.location.hash === `#${target.dataset.tab}`) activate();
+      else window.location.hash = target.dataset.tab;
+    });
+
+    window.addEventListener("hashchange", activate);
+    activate();
+  }
+
+  /** Drawer navigasi untuk layar < 1024px (DESIGN.md §5.1). */
+  function setupDrawer(container) {
+    const shell = document.querySelector(".shell");
+    const topbar = document.querySelector(".topbar");
+    if (!shell || !topbar || document.getElementById("nav-open")) return;
+
+    const mobile = window.matchMedia("(max-width: 1023px)");
+    container.id = "sidebar-nav";
+
+    const trigger = document.createElement("button");
+    trigger.className = "nav-trigger";
+    trigger.id = "nav-open";
+    trigger.type = "button";
+    trigger.setAttribute("aria-controls", "sidebar-nav");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-label", "Buka menu navigasi");
+    trigger.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>';
+    topbar.prepend(trigger);
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "nav-backdrop";
+    backdrop.hidden = true;
+    backdrop.setAttribute("aria-hidden", "true");
+    shell.appendChild(backdrop);
+
+    const close = document.createElement("button");
+    close.className = "nav-close";
+    close.type = "button";
+    close.setAttribute("aria-label", "Tutup menu navigasi");
+    close.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>';
+    container.prepend(close);
+
+    let open = false;
+    let restoreFocus = null;
+
+    function focusable() {
+      return Array.from(
+        container.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.hidden && el.offsetParent !== null);
+    }
+
+    function setOpen(next) {
+      if (!mobile.matches) next = false;
+      open = next;
+      if (open) restoreFocus = document.activeElement;
+      shell.classList.toggle("is-nav-open", open);
+      document.body.classList.toggle("nav-open", open);
+      trigger.setAttribute("aria-expanded", String(open));
+      trigger.setAttribute("aria-label", open ? "Tutup menu navigasi" : "Buka menu navigasi");
+      backdrop.hidden = !open;
+      container.inert = mobile.matches && !open;
+      if (mobile.matches) container.setAttribute("aria-hidden", String(!open));
+      else container.removeAttribute("aria-hidden");
+
+      if (open) {
+        const first = focusable()[0];
+        if (first) first.focus({ preventScroll: true });
+      } else if (restoreFocus && restoreFocus.isConnected && restoreFocus !== document.body) {
+        restoreFocus.focus({ preventScroll: true });
+      }
+      restoreFocus = null;
+    }
+
+    trigger.addEventListener("click", () => setOpen(!open));
+    backdrop.addEventListener("click", () => setOpen(false));
+    close.addEventListener("click", () => setOpen(false));
+
+    container.addEventListener("click", (event) => {
+      if (event.target.closest("a[href]")) setOpen(false);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (!open) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+
+    mobile.addEventListener("change", () => {
+      if (!mobile.matches) setOpen(false);
+      else if (!open) {
+        container.inert = true;
+        container.setAttribute("aria-hidden", "true");
+      }
+    });
+
+    if (mobile.matches) {
+      container.inert = true;
+      container.setAttribute("aria-hidden", "true");
+    }
+  }
+
   async function init() {
     const container = document.querySelector(".sidebar");
     if (!container) return;
@@ -327,6 +512,8 @@
       window.__nmsMe = me;
       window.rememberCsrf(me.csrf_token);
       renderNav(container, me);
+      setupDrawer(container);
+      setupPageTabs(me);
       refreshProblemsBadge();
       // Hash berubah: render ulang menu, lalu pindahkan fokus ke judul
       // supaya pengguna keyboard/screen reader tidak kehilangan posisi.
