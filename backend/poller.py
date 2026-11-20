@@ -883,10 +883,25 @@ METRICS = {
     "poll_started_at": time.time(),
 }
 
+# Durasi poll terakhir per perangkat (detik). Hanya di memori; dipakai untuk
+# diagnosis perangkat lambat (mis. run_check yang melewati interval).
+_POLL_DURATION_BY_DEVICE = {}
+
 
 def poller_stats():
     with _lock:
         return dict(METRICS)
+
+
+def poll_duration(device_id):
+    """Kembalikan durasi poll terakhir untuk device_id (detik), atau None."""
+    with _lock:
+        return _POLL_DURATION_BY_DEVICE.get(device_id)
+
+
+def _record_poll_duration(device_id, duration_seconds):
+    with _lock:
+        _POLL_DURATION_BY_DEVICE[device_id] = round(duration_seconds, 3)
 
 
 def _note_poll_metrics(duration_seconds, error):
@@ -905,13 +920,26 @@ def run_check(device_id, force_mikrotik=False):
     try:
         device = db.get_device(device_id, include_secrets=True)
         if device is None:
+            _record_poll_duration(device_id, time.monotonic() - _started)
             log.warning("Device %s tidak ditemukan; job poller dilepas.", device_id)
             unschedule_device(device_id)
             return
         _run_check_body(device, force_mikrotik)
-        _note_poll_metrics(time.monotonic() - _started, error=False)
+        _duration = time.monotonic() - _started
+        _note_poll_metrics(_duration, error=False)
+        _record_poll_duration(device_id, _duration)
+        _interval = max(MIN_INTERVAL_SECONDS, int(device.get("poll_interval") or DEFAULT_INTERVAL_SECONDS))
+        if _duration >= _interval:
+            log.warning(
+                "Poll perangkat %s selesai dalam %.3f detik (melewati interval %s detik).",
+                device_id, _duration, _interval,
+            )
+        else:
+            log.debug("Poll perangkat %s selesai dalam %.3f detik.", device_id, _duration)
     except Exception:
-        _note_poll_metrics(time.monotonic() - _started, error=True)
+        _duration = time.monotonic() - _started
+        _note_poll_metrics(_duration, error=True)
+        _record_poll_duration(device_id, _duration)
         log.exception("run_check untuk perangkat %s gagal.", device_id)
         raise
 
@@ -1032,6 +1060,8 @@ def schedule_device(device):
 
 
 def unschedule_device(device_id):
+    with _lock:
+        _POLL_DURATION_BY_DEVICE.pop(device_id, None)
     if _scheduler is None:
         return
     try:
