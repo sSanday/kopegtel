@@ -58,12 +58,12 @@ def get_fiber_settings():
         elif key in _FIBER_INT_KEYS:
             try:
                 parsed[key] = int(float(value))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 parsed[key] = int(default)
         else:
             try:
                 parsed[key] = float(value)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 parsed[key] = float(default)
     return parsed
 

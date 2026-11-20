@@ -31,7 +31,7 @@ RETENTION_MAX_DAYS = 3650
 def _clamp_days(value, default):
     try:
         days = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     if days < 1:
         return default
@@ -92,15 +92,12 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
     events_days = resolved["retention_events_days"] if events_days is None else _clamp_days(events_days, resolved["retention_events_days"])
     audit_days = resolved["retention_audit_days"] if audit_days is None else _clamp_days(audit_days, resolved["retention_audit_days"])
     fiber = get_fiber_settings()
-    optical_hourly_days = int(fiber.get("retention_optical_hourly_days", 90))
     try:
-        syslog_days = int(settings.get("retention_syslog_days", 14))
-    except (TypeError, ValueError):
-        syslog_days = 14
-    try:
-        trap_days = int(settings.get("retention_trap_days", 30))
-    except (TypeError, ValueError):
-        trap_days = 30
+        optical_hourly_days = int(fiber.get("retention_optical_hourly_days", 90))
+    except (TypeError, ValueError, OverflowError):
+        optical_hourly_days = 90
+    syslog_days = _clamp_days(settings.get("retention_syslog_days", 14), 14)
+    trap_days = _clamp_days(settings.get("retention_trap_days", 30), 30)
 
     raw_cutoff = retention_cutoff(days)
     hourly_cutoff = retention_cutoff(hourly_days, hourly=True)
