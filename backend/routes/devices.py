@@ -110,14 +110,19 @@ def _validate_device(data, existing_id=None):
         parent = db.get_device(parent_id)
         if parent is None:
             return {}, "Perangkat uplink tidak ditemukan."
-        # Cegah siklus: uplink tidak boleh berada di bawah dirinya.
-        cursor_id, depth = parent_id, 0
-        while cursor_id is not None and depth < 50:
+        # Cegah siklus: uplink tidak boleh berada di bawah dirinya. Pakai
+        # himpunan node yang sudah dikunjungi agar siklus panjang (>50 tingkat)
+        # tetap terdeteksi tanpa batas kedalaman arbitrer.
+        cursor_id = parent_id
+        visited = set()
+        while cursor_id is not None:
+            if cursor_id in visited:
+                return {}, "Uplink ini membuat siklus rantai uplink."
+            visited.add(cursor_id)
             ancestor = db.get_device(cursor_id)
             cursor_id = (ancestor or {}).get("parent_id")
             if existing_id and cursor_id == existing_id:
                 return {}, "Uplink ini membuat siklus rantai uplink."
-            depth += 1
 
     settings = db.get_settings()
     default_interval = settings.get("default_poll_interval", "60")
