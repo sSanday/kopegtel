@@ -121,7 +121,7 @@ def api_start_scan():
     if size > 1024:
         return jsonify({"error": "Maksimal 1024 alamat per pemindaian."}), 400
     if size < 2:
-        return jsonify({"error": "Rentang terlalu kecil."}), 400
+        return jsonify({"error": "Rentang terlalu kecil (minimal /31, 2 alamat)."}), 400
 
     if ALLOWED_NETWORKS:
         for addr in network:

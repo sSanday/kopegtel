@@ -613,6 +613,20 @@
       detailEls.error.hidden = true;
     }
 
+    // Ambang peringatan tidak bergantung pada ketersediaan metrik terakhir:
+    // tetap dimuat agar dapat dilihat/diubah meski perangkat belum pernah
+    // berhasil dipolling.
+    if (detailEls.thresholdsForm && !detailEls.thresholdsForm.contains(document.activeElement)) {
+      detailEls.thCpuWarn.value = device.threshold_cpu_warn ?? 70;
+      detailEls.thCpuCrit.value = device.threshold_cpu_crit ?? 90;
+      detailEls.thMemWarn.value = device.threshold_mem_warn ?? 70;
+      detailEls.thMemCrit.value = device.threshold_mem_crit ?? 90;
+      detailEls.thStorageWarn.value = device.threshold_storage_warn ?? 70;
+      detailEls.thStorageCrit.value = device.threshold_storage_crit ?? 90;
+      detailEls.thTempWarn.value = device.threshold_temp_warn ?? 60;
+      detailEls.thTempCrit.value = device.threshold_temp_crit ?? 75;
+    }
+
     if (!metrics) {
       detailEls.empty.hidden = false;
       detailEls.body.hidden = true;
@@ -665,16 +679,6 @@
     renderTrafficChart();
     renderInterfaces(interfacesData ? interfacesData.interfaces : null);
 
-    if (!detailEls.thresholdsForm.contains(document.activeElement)) {
-      detailEls.thCpuWarn.value = device.threshold_cpu_warn ?? 70;
-      detailEls.thCpuCrit.value = device.threshold_cpu_crit ?? 90;
-      detailEls.thMemWarn.value = device.threshold_mem_warn ?? 70;
-      detailEls.thMemCrit.value = device.threshold_mem_crit ?? 90;
-      detailEls.thStorageWarn.value = device.threshold_storage_warn ?? 70;
-      detailEls.thStorageCrit.value = device.threshold_storage_crit ?? 90;
-      detailEls.thTempWarn.value = device.threshold_temp_warn ?? 60;
-      detailEls.thTempCrit.value = device.threshold_temp_crit ?? 75;
-    }
   }
 
   async function loadDeviceDetail() {
