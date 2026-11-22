@@ -132,7 +132,7 @@ teks putih di atas maroon tetap terbaca.
 
 | Pasangan | Rasio |
 |---|---|
-| Emas `#d9b36c` di kanvas `#0c0609` | 10.20:1 |
+| Emas `#d9b36c` di kanvas `#0c0609` | 10.15:1 |
 | Emas `#d9b36c` di panel `#1c0a10` | 9.65:1 |
 | Rose `#ff4d6d` di panel `#1c0a10` | 5.94:1 |
 | Putih di maroon `#8b1a2e` | 9.19:1 |

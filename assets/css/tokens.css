@@ -3,6 +3,7 @@
    Satu sumber warna, bayangan, radius, dan tipografi.
    Tema mengikuti preferensi OS; override manual lewat
    <html data-theme="light"> atau data-theme="dark".
+   Identitas visual: Kopegtel Malang (maroon, emas, krem, rose).
    ========================================================= */
 
 @layer tokens, base, components, utilities;
@@ -12,47 +13,47 @@
     color-scheme: light dark;
 
     /* Kanvas & permukaan (DESIGN.md: panel rgba, bukan warna padat) */
-    --bg: light-dark(#f3f6fb, #060a14);
-    --panel: light-dark(#ffffff, rgba(13, 20, 36, 0.78));
-    --panel-2: light-dark(#f8fafd, rgba(18, 28, 49, 0.88));
-    --panel-deep-start: light-dark(#ffffff, #08111f);
-    --panel-deep-mid: light-dark(#f3f8fd, #070d18);
-    --panel-deep-end: light-dark(#eaf1fa, #060a13);
-    --login-panel: light-dark(#f7fafd, #070c16);
+    --bg: light-dark(#f7f5f5, #0c0609);
+    --panel: light-dark(#ffffff, rgba(28, 10, 16, 0.78));
+    --panel-2: light-dark(#faf8f7, rgba(40, 14, 22, 0.88));
+    --panel-deep-start: light-dark(#ffffff, #170a10);
+    --panel-deep-mid: light-dark(#f7f2ef, #10060a);
+    --panel-deep-end: light-dark(#f0e9e5, #0b0407);
+    --login-panel: light-dark(#fbf9f8, #0f060a);
 
     /* Teks */
-    --ink: light-dark(#0f172a, #f1f5f9);
-    --ink-soft: light-dark(#334155, #cbd5e1);
-    --muted: light-dark(#55657c, #94a3b8);
-    --ink-faint: light-dark(#5b6b80, #7b8aa1);
+    --ink: light-dark(#1f1f1f, #f7f1ec);
+    --ink-soft: light-dark(#3f3a36, #d9cbc2);
+    --muted: light-dark(#6b625b, #ab9a91);
+    --ink-faint: light-dark(#75695f, #8d7c74);
 
     /* Garis & permukaan transparan */
-    --line: light-dark(rgba(15, 23, 42, 0.1), rgba(255, 255, 255, 0.07));
-    --line-strong: light-dark(rgba(15, 23, 42, 0.18), rgba(255, 255, 255, 0.14));
-    --line-emphasis: light-dark(rgba(15, 23, 42, 0.28), rgba(255, 255, 255, 0.22));
+    --line: light-dark(rgba(31, 31, 31, 0.10), rgba(255, 241, 236, 0.08));
+    --line-strong: light-dark(rgba(31, 31, 31, 0.18), rgba(255, 241, 236, 0.15));
+    --line-emphasis: light-dark(rgba(31, 31, 31, 0.28), rgba(255, 241, 236, 0.24));
     /* Batas kontrol formulir harus terbaca 3:1 di kedua tema. */
-    --field-line: light-dark(#7c8799, #657186);
-    --surface-1: light-dark(rgba(15, 23, 42, 0.025), rgba(255, 255, 255, 0.02));
-    --surface-2: light-dark(rgba(15, 23, 42, 0.04), rgba(255, 255, 255, 0.03));
-    --surface-3: light-dark(rgba(15, 23, 42, 0.06), rgba(255, 255, 255, 0.05));
-    --surface-4: light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.08));
-    --surface-5: light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.12));
-    --track: light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.08));
-    --scrollbar: light-dark(rgba(15, 23, 42, 0.18), rgba(255, 255, 255, 0.12));
+    --field-line: light-dark(#8a7d74, #75675f);
+    --surface-1: light-dark(rgba(31, 31, 31, 0.025), rgba(255, 241, 236, 0.02));
+    --surface-2: light-dark(rgba(31, 31, 31, 0.04), rgba(255, 241, 236, 0.03));
+    --surface-3: light-dark(rgba(31, 31, 31, 0.06), rgba(255, 241, 236, 0.05));
+    --surface-4: light-dark(rgba(31, 31, 31, 0.08), rgba(255, 241, 236, 0.08));
+    --surface-5: light-dark(rgba(31, 31, 31, 0.12), rgba(255, 241, 236, 0.12));
+    --track: light-dark(rgba(31, 31, 31, 0.08), rgba(255, 241, 236, 0.08));
+    --scrollbar: light-dark(rgba(31, 31, 31, 0.18), rgba(255, 241, 236, 0.14));
     --highlight: light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.06));
     --highlight-strong: light-dark(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.34));
-    --muted-divider: light-dark(rgba(15, 23, 42, 0.22), rgba(255, 255, 255, 0.22));
+    --muted-divider: light-dark(rgba(31, 31, 31, 0.22), rgba(255, 241, 236, 0.22));
 
-    /* Aksen: --accent untuk teks/ikon, --accent-fill-* untuk bidang terisi. */
-    --accent: light-dark(#0b7a6c, #2fe0c4);
-    --accent-2: light-dark(#2563eb, #5b8dff);
-    --accent-fill-a: #2fe0c4;
-    --accent-fill-b: #5b8dff;
-    --accent-fill-c: #5ce0a5;
-    --accent-fill-a-hover: #46e6cd;
-    --accent-fill-b-hover: #6f9bff;
-    --on-accent: #04120f;
-    --on-accent-soft: rgba(4, 20, 15, 0.28);
+    /* Aksen: --accent emas/maroon untuk teks/ikon, --accent-fill-* untuk bidang terisi. */
+    --accent: light-dark(#8b1a2e, #d9b36c);
+    --accent-2: light-dark(#736953, #ff4d6d);
+    --accent-fill-a: #8b1a2e;
+    --accent-fill-b: #710014;
+    --accent-fill-c: #8a6d3b;
+    --accent-fill-a-hover: #a02138;
+    --accent-fill-b-hover: #8b1a2e;
+    --on-accent: #ffffff;
+    --on-accent-soft: rgba(255, 255, 255, 0.28);
 
     /* Status (DESIGN.md: online #10b981, waspada #f59e0b, kritis #f43f5e) */
     --danger: light-dark(#c0264a, #f43f5e);
@@ -71,29 +72,29 @@
     --sev-info: light-dark(#1d4ed8, #8fb3ff);
 
     /* Komponen khusus */
-    --map-node: light-dark(#ffffff, #0c1729);
-    --map-node-hover: light-dark(#f1f5f9, #101f38);
-    --map-grid-dot: light-dark(rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0.07));
-    --field-bg: light-dark(rgba(255, 255, 255, 0.9), rgba(8, 13, 25, 0.85));
-    --field-bg-focus: light-dark(#ffffff, rgba(8, 13, 25, 0.95));
-    --field-autofill: light-dark(#eef4fb, #0a1222);
-    --backdrop: light-dark(rgba(15, 23, 42, 0.45), rgba(4, 7, 15, 0.76));
-    --toast-bg: light-dark(rgba(255, 255, 255, 0.98), rgba(10, 20, 34, 0.96));
-    --code-bg: light-dark(rgba(15, 23, 42, 0.06), rgba(0, 0, 0, 0.25));
-    --card-bg-from: light-dark(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.065));
-    --card-bg-to: light-dark(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.018));
+    --map-node: light-dark(#ffffff, #14080d);
+    --map-node-hover: light-dark(#f5f0ec, #1c0c12);
+    --map-grid-dot: light-dark(rgba(31, 31, 31, 0.12), rgba(255, 241, 236, 0.08));
+    --field-bg: light-dark(rgba(255, 255, 255, 0.90), rgba(18, 8, 13, 0.85));
+    --field-bg-focus: light-dark(#ffffff, rgba(18, 8, 13, 0.95));
+    --field-autofill: light-dark(#f3eeea, #150a0f);
+    --backdrop: light-dark(rgba(31, 15, 20, 0.45), rgba(5, 2, 4, 0.76));
+    --toast-bg: light-dark(rgba(255, 255, 255, 0.98), rgba(22, 9, 14, 0.96));
+    --code-bg: light-dark(rgba(31, 31, 31, 0.06), rgba(0, 0, 0, 0.28));
+    --card-bg-from: light-dark(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.07));
+    --card-bg-to: light-dark(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.02));
 
-    /* Gradien & glow */
-    --glow-blue: light-dark(rgba(37, 99, 235, 0.1), rgba(91, 141, 255, 0.12));
-    --glow-teal: light-dark(rgba(13, 148, 136, 0.08), rgba(47, 224, 196, 0.08));
-    --glow-teal-strong: light-dark(rgba(13, 148, 136, 0.12), rgba(47, 224, 196, 0.1));
-    --glow-input: light-dark(rgba(13, 148, 136, 0.12), rgba(91, 141, 255, 0.1));
-    --grid-line: light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.045));
+    /* Gradien & glow: nama token lama dipertahankan agar kompatibel; nilainya emas/maroon. */
+    --glow-blue: light-dark(rgba(184, 164, 126, 0.12), rgba(217, 179, 108, 0.10));
+    --glow-teal: light-dark(rgba(139, 26, 46, 0.08), rgba(139, 26, 46, 0.18));
+    --glow-teal-strong: light-dark(rgba(139, 26, 46, 0.12), rgba(139, 26, 46, 0.24));
+    --glow-input: light-dark(rgba(139, 26, 46, 0.12), rgba(217, 179, 108, 0.10));
+    --grid-line: light-dark(rgba(31, 31, 31, 0.05), rgba(255, 241, 236, 0.05));
 
     /* Bayangan (warna saja; komposisi di komponen) */
-    --shadow-soft-color: light-dark(rgba(15, 23, 42, 0.16), rgba(0, 0, 0, 0.4));
-    --shadow-modal-color: light-dark(rgba(15, 23, 42, 0.22), rgba(0, 0, 0, 0.5));
-    --shadow-card-color: light-dark(rgba(15, 23, 42, 0.35), rgba(0, 0, 0, 0.95));
+    --shadow-soft-color: light-dark(rgba(49, 20, 28, 0.16), rgba(0, 0, 0, 0.4));
+    --shadow-modal-color: light-dark(rgba(49, 20, 28, 0.22), rgba(0, 0, 0, 0.5));
+    --shadow-card-color: light-dark(rgba(49, 20, 28, 0.35), rgba(0, 0, 0, 0.95));
 
     /* Tipografi & gerak */
     --font: "Plus Jakarta Sans", "Inter", "Segoe UI Variable Text", "Segoe UI",
@@ -108,9 +109,9 @@
     --dur: 0.18s;
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
 
-    /* Ikon data URI. Abu netral ini terbaca di kanvas gelap maupun terang. */
-    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23061019' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+    /* Ikon data URI. Abu netral hangat, terbaca di kanvas gelap maupun terang. */
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a7d74' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
   }
 
   :root[data-theme="light"] {
