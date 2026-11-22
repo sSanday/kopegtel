@@ -166,9 +166,10 @@ body.sheet-open {
 }
 
 .lockup__mark {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex: none;
+  object-fit: contain;
 }
 
 .lockup__text {
