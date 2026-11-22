@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MikroTik · NMS Kopegtel</title>
+  <meta name="description" content="Modul MikroTik NMS Kopegtel: armada RouterOS, antarmuka, perutean, DHCP/ARP, sesi PPP/hotspot, nirkabel, firewall/antrean, log, tetangga, temuan keamanan, dan aksi tulis terbatas." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Modul MikroTik</p>
+          <h1 class="topbar__title" id="view-title">Armada</h1>
+          <p class="topbar__sub"><span id="view-desc">Perangkat RouterOS yang terdaftar di NMS.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- =====================================================
+           Armada MikroTik
+           ===================================================== -->
+      <section class="view" data-view="armada" aria-labelledby="armada-title">
+        <div class="stats" aria-label="Ringkasan armada MikroTik">
+          <article class="stat">
+            <p class="stat__label">Penghala terdaftar</p>
+            <p class="stat__value" id="mt-router-count">-</p>
+            <p class="stat__meta">Tipe MikroTik / API aktif</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Firmware Tertunda</p>
+            <p class="stat__value" id="mt-firmware-pending">-</p>
+            <p class="stat__meta">RouterBoard perlu pemutakhiran</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Temuan Keamanan</p>
+            <p class="stat__value" id="mt-security-open">-</p>
+            <p class="stat__meta">Terbuka &amp; belum diabaikan</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Sesi Aktif</p>
+            <p class="stat__value" id="mt-active-sessions">-</p>
+            <p class="stat__meta">PPP + hotspot (snapshot terakhir)</p>
+          </article>
+        </div>
+
+        <section class="panel" aria-labelledby="armada-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="armada-title">Armada RouterOS</h2>
+              <p class="panel__sub" id="mt-fleet-count">Memuat perangkat…</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari perangkat MikroTik</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="mt-search" type="search" placeholder="Cari nama, IP, model, atau versi…" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span class="sr-only">Status perangkat</span>
+                <select id="mt-status">
+                  <option value="">Semua status</option>
+                  <option value="online">Tersambung</option>
+                  <option value="degraded">Degradasi</option>
+                  <option value="offline">Terputus</option>
+                  <option value="maintenance">Pemeliharaan</option>
+                  <option value="unknown">Belum diperiksa</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Status firmware</span>
+                <select id="mt-firmware">
+                  <option value="">Semua firmware</option>
+                  <option value="pending">Tertunda</option>
+                  <option value="up-to-date">Terbaru</option>
+                  <option value="unknown">Tidak diketahui</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Versi RouterOS</span>
+                <select id="mt-version"><option value="">Semua versi</option></select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Model</span>
+                <select id="mt-model"><option value="">Semua model</option></select>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">RouterOS</th>
+                  <th scope="col">Firmware</th>
+                  <th scope="col">Waktu aktif</th>
+                  <th scope="col">CPU</th>
+                  <th scope="col">Memori</th>
+                  <th scope="col">Antarmuka</th>
+                  <th scope="col">Sesi</th>
+                  <th scope="col">Masalah</th>
+                </tr>
+              </thead>
+              <tbody id="mt-fleet-rows"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <button class="btn btn--ghost" id="mt-fleet-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="mt-fleet-page-info">Halaman -</span>
+            <button class="btn btn--ghost" id="mt-fleet-next" type="button">Berikutnya</button>
+          </div>
+        </section>
+
+        <section class="panel" id="mt-topology-panel" aria-labelledby="mt-topology-title" hidden>
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="mt-topology-title">Saran topologi (MNDP/LLDP)</h2>
+              <p class="panel__sub">Relasi induk–anak hanya dari tetangga yang benar-benar terlihat. Tidak pernah diterapkan otomatis.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Anak</th>
+                  <th scope="col">Induk</th>
+                  <th scope="col">Keyakinan</th>
+                  <th scope="col">Alasan</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="mt-topology-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Detail perangkat: #perangkat-<id>-<tab>
+           ===================================================== -->
+      <section class="view" data-view="perangkat" aria-labelledby="mt-device-title" hidden>
+        <a class="back-link" href="mikrotik.html#armada">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+          Kembali ke armada
+        </a>
+
+        <section class="panel" aria-labelledby="mt-device-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="mt-device-title">Detail perangkat</h2>
+              <p class="panel__sub" id="mt-device-sub">Memuat informasi perangkat…</p>
+            </div>
+            <div class="detail-head__actions">
+              <span class="status status--idle" id="mt-device-status">Belum diperiksa</span>
+              <button class="btn btn--ghost" id="mt-poll" type="button" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+                <span>Poll MikroTik sekarang</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-tabs" id="mt-tabs" role="tablist" aria-label="Bagian MikroTik"></div>
+
+          <div class="table-error" id="mt-detail-error" role="alert" hidden>
+            <p class="table-error__text" id="mt-detail-error-text">Gagal memuat data MikroTik.</p>
+            <button class="btn btn--ghost" id="mt-detail-retry" type="button">Coba lagi</button>
+          </div>
+
+          <div class="mt-tab-panel" id="mt-tab-panel" role="tabpanel">
+            <div class="mt-tab-toolbar" id="mt-tab-toolbar" hidden>
+              <label class="field field--search">
+                <span class="sr-only">Cari pada tab ini</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="mt-tab-search" type="search" placeholder="Cari pada tab ini…" autocomplete="off" />
+              </label>
+              <label class="field" id="mt-log-severity-wrap" hidden>
+                <span class="sr-only">Keparahan log</span>
+                <select id="mt-log-severity">
+                  <option value="">Semua keparahan</option>
+                  <option value="error">Galat</option>
+                  <option value="critical">Kritis</option>
+                  <option value="warning">Peringatan</option>
+                  <option value="info">Info</option>
+                </select>
+              </label>
+            </div>
+            <p class="mt-tab-state" id="mt-tab-state" hidden></p>
+            <div class="mt-sections" id="mt-tab-sections"></div>
+            <div class="table-foot" id="mt-tab-foot" hidden>
+              <button class="btn btn--ghost" id="mt-tab-prev" type="button">Sebelumnya</button>
+              <span class="table-foot__info" id="mt-tab-page-info">Halaman -</span>
+              <button class="btn btn--ghost" id="mt-tab-next" type="button">Berikutnya</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/mikrotik.js?v=9" defer></script>
+</body>
+</html>

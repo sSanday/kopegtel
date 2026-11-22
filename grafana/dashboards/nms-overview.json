@@ -1,0 +1,239 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Ringkasan armada",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Perangkat online",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "graphMode": "area", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "expr": "sum(nms_device_up{device=~\"$device\", group=~\"$group\"})", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Problem terbuka",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "graphMode": "area", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "expr": "sum(nms_problems_open)", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Poller berjalan",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "expr": "nms_poller_running", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Ukuran DB",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "expr": "nms_database_size_bytes", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "CPU / Memori / Disk / Latensi",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "CPU per perangkat",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_device_cpu_percent{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Memori terpakai",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_device_memory_used_bytes{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Latensi ping",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_device_latency_ms{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Disk terpakai",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "displayMode": "basic", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "expr": "nms_device_disk_used_bytes{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Trafik interface",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Rx interface (bps)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "bps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_interface_rx_bps{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}/{{interface}}", "refId": "A" }]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Tx interface (bps)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "bps" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_interface_tx_bps{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}/{{interface}}", "refId": "A" }]
+    },
+    {
+      "id": 14,
+      "type": "row",
+      "title": "Fiber optik",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Rx optik (dBm)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "dBm", "min": -40, "max": 5 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_fiber_optical_rx_dbm{device=~\"$device\", group=~\"$group\"}", "legendFormat": "{{device}}/{{interface}}", "refId": "A" }]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Redaman link fiber (dB)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "fieldConfig": { "defaults": { "unit": "dB" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_fiber_link_attenuation_db", "legendFormat": "{{link}} {{direction}}", "refId": "A" }]
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Margin redaman (dB)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "fieldConfig": { "defaults": { "unit": "dB" }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "asc" } },
+      "targets": [{ "expr": "nms_fiber_link_margin_db", "legendFormat": "{{link}} {{direction}}", "refId": "A" }]
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Problem terbuka per severity",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "nms_problems_open", "legendFormat": "{{severity}}", "refId": "A" }]
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Poller & ingest",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "nms_poller_poll_duration_seconds", "legendFormat": "poll duration (s)", "refId": "A" },
+        { "expr": "rate(nms_poller_poll_error_total[5m])", "legendFormat": "poll error/s", "refId": "B" },
+        { "expr": "rate(nms_ingest_messages_total[5m])", "legendFormat": "{{kind}} {{result}}/s", "refId": "C" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["nms", "kopegtel", "prometheus"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "label": "Datasource",
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "label": "Perangkat",
+        "name": "device",
+        "options": [],
+        "query": "label_values(nms_device_up, device)",
+        "refresh": 1,
+        "regex": "",
+        "includeAll": true,
+        "multi": true,
+        "type": "query"
+      },
+      {
+        "current": { "text": "Semua", "value": "$__all" },
+        "hide": 0,
+        "label": "Grup",
+        "name": "group",
+        "options": [],
+        "query": "label_values(nms_device_up, group)",
+        "refresh": 1,
+        "regex": "",
+        "includeAll": true,
+        "multi": true,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "NMS Kopegtel — Overview",
+  "version": 1,
+  "weekStart": ""
+}

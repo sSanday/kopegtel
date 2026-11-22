@@ -1,14 +1,22 @@
-flask==3.1.3
-apscheduler==3.11.3
-requests==2.33.0
-python-dotenv==1.2.3
-gunicorn==26.2.0
-flask-login==0.6.3
-psutil==7.2.2
-urllib3==2.8.0
-paramiko==5.1.0
-flask-limiter==4.1.1
-dnspython==2.6.1
-pyotp==2.10.0
-segno==1.6.6
-psycopg[binary]>=3.2,<4
+flask>=3.0
+apscheduler>=3.10,<4
+werkzeug>=3.0
+# waitress (3.0.2, ZPL-2.1): server WSGI produksi yang dipakai backend/serve.py.
+# Tanpa paket ini, `python backend/serve.py` gagal ImportError saat start.
+waitress>=3.0,<4
+cryptography>=42.0
+pysnmp>=7.0
+# pyasn1 dipakai langsung oleh backend/ingest/traps.py (decoder/encoder BER),
+# jadi dideklarasikan eksplisit dan tidak hanya mengandalkan dependensi pysnmp.
+pyasn1>=0.6,<1
+# prometheus_client (0.26.0, Apache-2.0, resmi Prometheus): render format teks
+# dengan escaping label yang benar lewat custom collector.
+prometheus_client>=0.21,<1
+# netflow (0.12.2, MIT, tanpa dependensi): parse NetFlow v5/v9/IPFIX termasuk
+# template v9/IPFIX. Dipilih dibanding parser sendiri karena stateful template
+# v9/IPFIX kompleks; dipin di requirements.lock. Alasan lengkap di docs/TEMUAN.md.
+netflow>=0.12.2,<0.13
+librouteros>=3.1.0
+paramiko>=3.4
+python-dotenv>=1.0
+segno>=1.6,<2

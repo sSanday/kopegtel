@@ -1,30 +1,25 @@
+# Rahasia & data lokal
 .env
-.env.bak*
-.env.backup*
-env/
-venv/
-env_new/
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Basis data & cadangan
+*.db
+*.db-wal
+*.db-shm
+*.bak*
+backups/
+
+# Lingkungan & cache
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-.coverage
-htmlcov/
-network.db
-network.db-journal
-network.db-wal
-network.db-shm
-network.db.corrupt-*
-*.bak
-backups/
-_refactor_wip/
-.vscode/
-agent-cron.log
-logs/*.log
-*.sqlite3-shm
-*.sqlite3-wal
-# Log eksekusi server (jangan dilacak; periksa lokal bila perlu)
-server.err
-server.log
-*.err
+.freebuff/
+dist/
+logs/
+
+# Berkas log
 *.log

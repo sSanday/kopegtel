@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notifikasi · NMS Kopegtel</title>
+  <meta name="description" content="Kanal notifikasi, template pesan, dan aturan aksi otomatis NMS Kopegtel." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Notifikasi</p>
+          <h1 class="topbar__title" id="view-title">Aksi</h1>
+          <p class="topbar__sub"><span id="view-desc">Aturan aksi otomatis saat masalah terbuka.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <nav class="page-tabs" role="tablist" aria-label="Bagian notifikasi">
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="actions">Aturan aksi</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="message-templates">Template pesan</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="media-types" data-role="admin operator">Kanal notifikasi</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="escalation" data-role="admin operator">Eskalasi</button>
+      </nav>
+
+      <!-- =====================================================
+           Actions
+           ===================================================== -->
+      <section class="view" data-view="actions" aria-labelledby="actions-title">
+        <p class="hint-bar" id="actions-hint" role="status">Notifikasi dikirim saat masalah BARU terbuka. Kanal pemeliharaan ditekan otomatis.</p>
+        <section class="panel" aria-labelledby="actions-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="actions-title">Aturan aksi</h2>
+              <p class="panel__sub" id="rule-count">Memuat aturan…</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="rule-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah aturan</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Aturan</th>
+                  <th scope="col">Keparahan min.</th>
+                  <th scope="col">Skop</th>
+                  <th scope="col">Kanal</th>
+                  <th scope="col">Template</th>
+                  <th scope="col">Eskalasi</th>
+                  <th scope="col">Aktif</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="rule-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog class="sheet-dialog" aria-labelledby="rule-form-title">
+        <form class="panel" id="rule-form" aria-labelledby="rule-form-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="rule-form-title">Tambah aturan aksi</h2>
+              <p class="panel__sub">Saat masalah memenuhi syarat: keparahan ≥ minimum, skop cocok (perangkat / grup / semua perangkat).</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field">
+                <span>Nama aturan *</span>
+                <input id="rule-name" type="text" placeholder="mis. Alert tim NOC" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Keparahan minimum *</span>
+                <select id="rule-min-severity">
+                  <option value="information">Informasi</option>
+                  <option value="warning" selected>Peringatan</option>
+                  <option value="average">Sedang</option>
+                  <option value="high">Tinggi</option>
+                  <option value="disaster">Bencana</option>
+                </select>
+              </label>
+              <label class="admin-field">
+                <span>Skop</span>
+                <select id="rule-scope">
+                  <option value="global" selected>Semua perangkat</option>
+                  <option value="group">Per grup</option>
+                  <option value="device">Per perangkat</option>
+                </select>
+              </label>
+              <label class="admin-field" id="rule-scope-group-wrap" hidden>
+                <span>Grup</span>
+                <select id="rule-group"><option value="">Pilih grup…</option></select>
+              </label>
+              <label class="admin-field" id="rule-scope-device-wrap" hidden>
+                <span>Perangkat</span>
+                <select id="rule-device"><option value="">Pilih perangkat…</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Kanal *</span>
+                <select id="rule-channel"><option value="">Pilih kanal…</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Template pesan *</span>
+                <select id="rule-template"><option value="">Pilih template…</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Kebijakan eskalasi</span>
+                <select id="rule-escalation"><option value="">Tanpa eskalasi, kirim langsung</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Status</span>
+                <span class="check check--inline"><input id="rule-enabled" type="checkbox" checked /> Aturan aktif</span>
+              </label>
+            </div>
+            <p class="form-note is-error" id="rule-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="rule-save" type="submit">Simpan aturan</button>
+              <button class="btn btn--ghost" id="rule-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <!-- =====================================================
+           Message templates
+           ===================================================== -->
+      <section class="view" data-view="message-templates" aria-labelledby="templates-title" hidden>
+        <section class="panel" aria-labelledby="templates-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="templates-title">Template pesan</h2>
+              <p class="panel__sub" id="template-count">Memuat template…</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="template-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah template</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Template</th>
+                  <th scope="col">Pesan</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="template-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog class="sheet-dialog" aria-labelledby="template-form-title">
+        <form class="panel" id="template-form" aria-labelledby="template-form-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="template-form-title">Tambah template</h2>
+              <p class="panel__sub">Penanda: <code>{perangkat}</code> <code>{ip}</code> <code>{severity}</code> <code>{pesan}</code> <code>{waktu}</code></p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <label class="admin-field">
+              <span>Nama template *</span>
+              <input id="tpl-name" type="text" placeholder="mis. Alert standar NOC" autocomplete="off" />
+            </label>
+            <label class="admin-field">
+              <span>Isi pesan *</span>
+              <textarea id="tpl-body" rows="4" placeholder="[{severity}] {perangkat} ({ip})&#10;{pesan}&#10;Waktu: {waktu}"></textarea>
+            </label>
+            <p class="form-note is-error" id="tpl-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="tpl-save" type="submit">Simpan template</button>
+              <button class="btn btn--ghost" id="tpl-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <!-- =====================================================
+           Eskalasi (E2)
+           ===================================================== -->
+      <section class="view" data-view="escalation" aria-labelledby="escalation-title" hidden>
+        <p class="hint-bar" role="status">Aturan aksi yang memilih kebijakan akan menahan pengiriman langsung; langkah eskalasi berjalan sendiri tiap 30 detik selagi masalah terbuka dan belum diakui. Pengakuan atau masalah pulih menghentikan langkah berikutnya.</p>
+        <section class="panel" aria-labelledby="escalation-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="escalation-title">Kebijakan eskalasi</h2>
+              <p class="panel__sub" id="escalation-count">Memuat kebijakan.</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="escalation-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah kebijakan</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr><th scope="col">Nama</th><th scope="col">Langkah</th><th scope="col">Jam kerja</th><th scope="col">Ulang</th><th scope="col">Aktif</th><th scope="col">Aksi</th></tr>
+              </thead>
+              <tbody id="escalation-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="escalation-form-title">
+        <form class="panel" id="escalation-form" aria-labelledby="escalation-form-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="escalation-form-title">Tambah kebijakan</h2>
+              <p class="panel__sub">Langkah dieksekusi berurutan selama masalah masih terbuka &amp; belum diakui.</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>Nama *</span><input id="esc-name" type="text" maxlength="80" autocomplete="off" placeholder="mis. Oncall NOC" /></label>
+              <label class="admin-field"><span>Deskripsi</span><input id="esc-description" type="text" maxlength="500" autocomplete="off" placeholder="opsional" /></label>
+              <label class="admin-field"><span>Ulang langkah terakhir (menit, 0=mati)</span><input id="esc-repeat" type="number" min="0" max="10080" step="1" value="0" inputmode="numeric" /></label>
+              <label class="check admin-field--full"><input id="esc-business-enabled" type="checkbox" /> Hanya kirim pada jam kerja</label>
+              <label class="admin-field"><span>Jam mulai (WIB)</span><input id="esc-business-start" type="time" value="08:00" /></label>
+              <label class="admin-field"><span>Jam selesai (WIB)</span><input id="esc-business-end" type="time" value="17:00" /></label>
+              <label class="admin-field"><span>Hari kerja (1=Senin … 7=Minggu)</span><input id="esc-business-days" type="text" value="1,2,3,4,5" autocomplete="off" /></label>
+              <label class="check"><input id="esc-enabled" type="checkbox" checked /> Kebijakan aktif</label>
+            </div>
+
+            <h3 class="panel__sub mt-1">Langkah eskalasi</h3>
+            <div class="table-wrap">
+              <table class="mon-table">
+                <thead><tr><th scope="col">#</th><th scope="col">Jeda (menit)</th><th scope="col">Tipe target</th><th scope="col">Target</th><th scope="col">Jam kerja</th><th scope="col"></th></tr></thead>
+                <tbody id="esc-step-rows"></tbody>
+              </table>
+            </div>
+            <div class="admin-actions"><button class="btn btn--ghost" id="esc-step-add" type="button">Tambah langkah</button></div>
+            <p class="form-note is-error" id="esc-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="esc-save" type="submit">Simpan kebijakan</button>
+              <button class="btn btn--ghost" id="esc-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <!-- =====================================================
+           Media types
+           ===================================================== -->
+      <section class="view" data-view="media-types" aria-labelledby="channels-title" hidden>
+        <p class="hint-bar" role="status">Tombol “Uji kirim” benar-benar mengirim pesan ke tujuan. Kredensial dan tujuan sensitif tersimpan terenkripsi dan tidak pernah ditampilkan kembali.</p>
+        <section class="panel" aria-labelledby="channels-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="channels-title">Kanal notifikasi</h2>
+              <p class="panel__sub" id="channel-count">Memuat kanal…</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--primary" id="channel-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah kanal</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Kanal</th>
+                  <th scope="col">Tipe</th>
+                  <th scope="col">Tujuan</th>
+                  <th scope="col">Aktif</th>
+                  <th scope="col">Uji kirim</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="channel-rows"></tbody>
+            </table>
+          </div>
+          <p class="channel-test-result" id="channel-test-result" role="status" hidden></p>
+        </section>
+
+        <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="channel-form-title">
+        <form class="panel" id="channel-form" aria-labelledby="channel-form-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="channel-form-title">Tambah kanal</h2>
+              <p class="panel__sub">Kosongkan kolom bertanda “Tersimpan” saat mengubah untuk mempertahankan nilai yang tersimpan.</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field">
+                <span>Tipe kanal *</span>
+                <select id="ch-type">
+                  <option value="telegram" selected>Telegram</option>
+                  <option value="smtp">Email (SMTP)</option>
+                  <option value="webhook">Webhook (HTTPS)</option>
+                </select>
+              </label>
+              <label class="admin-field">
+                <span>Nama kanal *</span>
+                <input id="ch-name" type="text" placeholder="mis. Telegram NOC" autocomplete="off" />
+              </label>
+            </div>
+
+            <div class="form-sub" id="ch-telegram-fields">
+              <div class="admin-form__grid">
+                <label class="admin-field">
+                  <span>Token bot *</span>
+                  <input id="ch-bot-token" type="password" autocomplete="off" placeholder="123456:ABC-DEF…" />
+                </label>
+                <label class="admin-field">
+                  <span>Chat ID *</span>
+                  <input id="ch-chat-id" type="text" autocomplete="off" inputmode="numeric" placeholder="-1001234567890" />
+                </label>
+              </div>
+            </div>
+
+            <div class="form-sub" id="ch-smtp-fields" hidden>
+              <div class="admin-form__grid">
+                <label class="admin-field">
+                  <span>Host SMTP *</span>
+                  <input id="ch-smtp-host" type="text" autocomplete="off" placeholder="smtp.office365.com" />
+                </label>
+                <label class="admin-field">
+                  <span>Port</span>
+                  <input id="ch-smtp-port" type="number" min="1" max="65535" value="587" inputmode="numeric" />
+                </label>
+                <label class="admin-field">
+                  <span>Mode</span>
+                  <span class="check check--inline"><input id="ch-smtp-tls" type="checkbox" checked /> Pakai STARTTLS</span>
+                </label>
+                <label class="admin-field">
+                  <span>Nama pengguna</span>
+                  <input id="ch-smtp-username" type="text" autocomplete="off" placeholder="opsional" />
+                </label>
+                <label class="admin-field">
+                  <span>Kata sandi</span>
+                  <input id="ch-smtp-password" type="password" autocomplete="off" placeholder="opsional" />
+                </label>
+                <label class="admin-field">
+                  <span>Alamat pengirim *</span>
+                  <input id="ch-smtp-from" type="email" autocomplete="off" placeholder="nms@kopegtel.co.id" />
+                </label>
+                <label class="admin-field admin-field--full">
+                  <span>Tujuan (pisahkan dengan koma) *</span>
+                  <input id="ch-smtp-to" type="text" autocomplete="off" placeholder="noc@kopegtel.co.id, oncall@kopegtel.co.id" />
+                </label>
+                <label class="check admin-field--full"><input id="ch-smtp-private" type="checkbox" /> Izinkan target SMTP privat/loopback (khusus admin)</label>
+              </div>
+              <p class="form-note admin-hint">Host SMTP harus alamat publik. Target privat/loopback hanya dapat diaktifkan admin dan tetap divalidasi setiap kali dikirim.</p>
+            </div>
+
+            <div class="form-sub" id="ch-webhook-fields" hidden>
+              <div class="admin-form__grid">
+                <label class="admin-field admin-field--full">
+                  <span>URL *</span>
+                  <input id="ch-webhook-url" type="url" autocomplete="off" placeholder="https://hooks.slack.com/services/T..." />
+                </label>
+                <label class="admin-field">
+                  <span>Prasetel</span>
+                  <select id="ch-webhook-preset">
+                    <option value="generic" selected>JSON generik</option>
+                    <option value="slack">Kompatibel Slack</option>
+                    <option value="discord">Discord</option>
+                  </select>
+                </label>
+                <label class="admin-field">
+                  <span>Kunci HMAC *</span>
+                  <input id="ch-webhook-secret" type="password" autocomplete="off" placeholder="kosongkan agar mempertahankan yang tersimpan" />
+                </label>
+                <label class="admin-field admin-field--full">
+                  <span>Header kustom (JSON, opsional)</span>
+                  <textarea id="ch-webhook-headers" rows="2" autocomplete="off" placeholder='{"Authorization": "Bearer ..."}'></textarea>
+                  <span class="admin-hint">Header sensitif tersimpan terenkripsi. <code>Host</code>, <code>X-NMS-*</code>, dan <code>Content-Type</code> diabaikan.</span>
+                </label>
+                <label class="check admin-field--full"><input id="ch-webhook-http" type="checkbox" /> Izinkan http (tidak disarankan - tanpa TLS, khusus admin)</label>
+                <label class="check admin-field--full"><input id="ch-webhook-private" type="checkbox" /> Izinkan target IP privat/loopback (khusus admin)</label>
+              </div>
+              <p class="form-note admin-hint">Target privat/http hanya dapat diaktifkan admin. Operator tetap dapat mengelola kanal publik, dan setiap target divalidasi ulang saat dikirim.</p>
+              <p class="form-note admin-hint">Tanda tangan: <code>X-NMS-Timestamp</code> dan <code>X-NMS-Signature</code> (HMAC-SHA256 dari rahasia + stempel waktu + body). Penerima memverifikasi dan menolak pengiriman ulang.</p>
+            </div>
+
+            <label class="check"><input id="ch-enabled" type="checkbox" checked /> Kanal aktif</label>
+            <p class="form-note is-error" id="ch-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="ch-save" type="submit">Simpan kanal</button>
+              <button class="btn btn--ghost" id="ch-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/alerts.js?v=10" defer></script>
+</body>
+</html>

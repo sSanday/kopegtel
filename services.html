@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Layanan · NMS Kopegtel</title>
+  <meta name="description" content="Layanan bisnis beserta target dan laporan SLA NMS Kopegtel." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Layanan &amp; SLA</p>
+          <h1 class="topbar__title" id="view-title">Layanan</h1>
+          <p class="topbar__sub"><span id="view-desc">Layanan bisnis dan perangkat penopangnya.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <nav class="page-tabs" role="tablist" aria-label="Bagian layanan">
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="services">Layanan</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="sla">SLA</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="sla-report">Laporan SLA</button>
+      </nav>
+
+      <!-- =====================================================
+           Services
+           ===================================================== -->
+      <section class="view" data-view="services" aria-labelledby="services-title">
+        <div class="stats" aria-label="Ringkasan layanan">
+          <article class="stat">
+            <p class="stat__label">Total Layanan</p>
+            <p class="stat__value" id="svc-total">-</p>
+            <p class="stat__meta">Terdaftar di NMS</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tercapai</p>
+            <p class="stat__value" id="svc-met">-</p>
+            <p class="stat__meta">Target SLA terpenuhi</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tidak Tercapai</p>
+            <p class="stat__value" id="svc-missed">-</p>
+            <p class="stat__meta"><span class="is-warn">Perlu tindakan</span></p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tanpa Data</p>
+            <p class="stat__value" id="svc-nodata">-</p>
+            <p class="stat__meta">Belum ada pemeriksaan</p>
+          </article>
+        </div>
+
+        <section class="panel" aria-labelledby="services-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="services-title">Daftar layanan</h2>
+              <p class="panel__sub" id="service-count">Memuat layanan…</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari layanan</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="service-search" type="search" placeholder="Cari layanan atau divisi…" autocomplete="off" />
+              </label>
+              <button class="btn btn--primary" id="service-add" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                <span>Tambah layanan</span>
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Layanan</th>
+                  <th scope="col">Divisi</th>
+                  <th scope="col">Target SLA</th>
+                  <th scope="col">Mode</th>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="service-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="service-form-title">
+        <form class="panel" id="service-form-panel" aria-labelledby="service-form-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="service-form-title">Tambah layanan</h2>
+              <p class="panel__sub">Mode “semua” = layanan aktif bila seluruh perangkat penopang aktif; “minimal satu” = layanan aktif bila sedikitnya satu perangkat penopang aktif.</p>
+            </div>
+          </div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field">
+                <span>Nama layanan *</span>
+                <input id="svc-name" type="text" placeholder="mis. Jaringan Gedung Pusat" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Divisi</span>
+                <input id="svc-division" type="text" placeholder="mis. IT Infrastruktur" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Target SLA (%)</span>
+                <input id="svc-sla" type="number" min="0" max="100" step="0.1" value="99.9" inputmode="decimal" />
+              </label>
+              <label class="admin-field">
+                <span>Mode ketersediaan</span>
+                <select id="svc-mode">
+                  <option value="all" selected>Semua perangkat penopang harus aktif</option>
+                  <option value="any">Minimal satu perangkat penopang aktif</option>
+                </select>
+              </label>
+            </div>
+            <label class="admin-field admin-field--full">
+              <span>Deskripsi</span>
+              <input id="svc-description" type="text" placeholder="Opsional" autocomplete="off" />
+            </label>
+            <fieldset class="picker">
+              <legend>Perangkat penopang</legend>
+              <div class="picker__list" id="svc-devices"></div>
+              <p class="picker__empty" id="svc-devices-empty" hidden>Belum ada perangkat terdaftar.</p>
+            </fieldset>
+            <p class="form-note is-error" id="svc-form-note" role="alert" hidden></p>
+            <div class="admin-actions">
+              <button class="btn btn--primary" id="svc-save" type="submit">Simpan layanan</button>
+              <button class="btn btn--ghost" id="svc-cancel" type="button">Batal</button>
+            </div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <!-- =====================================================
+           SLA
+           ===================================================== -->
+      <section class="view" data-view="sla" aria-labelledby="sla-title" hidden>
+        <section class="panel" aria-labelledby="sla-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="sla-title">Ketersediaan layanan</h2>
+              <p class="panel__sub">Dihitung dari pemeriksaan perangkat penopang (pemeliharaan dikecualikan)</p>
+            </div>
+            <div class="seg" role="group" aria-label="Periode ketersediaan">
+              <button class="seg__btn is-active" type="button" data-days="1" aria-pressed="true">24 jam</button>
+              <button class="seg__btn" type="button" data-days="7" aria-pressed="false">7 hari</button>
+              <button class="seg__btn" type="button" data-days="30" aria-pressed="false">30 hari</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Layanan</th>
+                  <th scope="col">Ketersediaan</th>
+                  <th scope="col">Target</th>
+                  <th scope="col">Tercapai</th>
+                  <th scope="col">Siklus diperiksa</th>
+                </tr>
+              </thead>
+              <tbody id="sla-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           SLA report
+           ===================================================== -->
+      <section class="view" data-view="sla-report" aria-labelledby="sla-report-title" hidden>
+        <section class="panel" aria-labelledby="sla-report-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="sla-report-title">Laporan SLA</h2>
+              <p class="panel__sub">Ketersediaan vs target per layanan untuk periode terpilih</p>
+            </div>
+            <div class="filters">
+              <label class="field">
+                <span class="sr-only">Periode laporan</span>
+                <select id="sla-period">
+                  <option value="1">24 jam</option>
+                  <option value="7" selected>7 hari</option>
+                  <option value="30">30 hari</option>
+                </select>
+              </label>
+              <a class="btn btn--ghost" id="sla-csv" href="/api/services/sla-report.csv?period=7">Unduh CSV</a>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Layanan</th>
+                  <th scope="col">Divisi</th>
+                  <th scope="col">Target</th>
+                  <th scope="col">Ketersediaan</th>
+                  <th scope="col">Waktu henti</th>
+                  <th scope="col">Tercapai</th>
+                </tr>
+              </thead>
+              <tbody id="sla-report-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/services.js?v=7" defer></script>
+</body>
+</html>

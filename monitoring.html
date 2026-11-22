@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pemantauan · NMS Kopegtel</title>
+  <meta name="description" content="Pusat pemantauan jaringan NMS Kopegtel: masalah, perangkat, data terbaru, dan peta." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Pemantauan Jaringan</p>
+          <h1 class="topbar__title" id="view-title">Masalah</h1>
+          <p class="topbar__sub"><span id="view-desc">Pantau seluruh masalah aktif di jaringan.</span> · <span id="today">Memuat tanggal…</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server">
+            <span class="clock__dot" aria-hidden="true"></span>
+            <span id="clock">--:--:--</span>
+          </span>
+        </div>
+      </header>
+
+      <nav class="page-tabs" role="tablist" aria-label="Bagian pemantauan">
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="true" tabindex="0" data-tab="problems">Masalah</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="hosts">Daftar Host</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="latest-data">Data terbaru</button>
+        <button class="btn btn--ghost" type="button" role="tab" aria-selected="false" tabindex="-1" data-tab="maps">Peta</button>
+      </nav>
+
+      <!-- =====================================================
+           Problems
+           ===================================================== -->
+      <section class="view" data-view="problems" aria-labelledby="problems-title">
+        <div class="stats stats--five" role="group" aria-label="Jumlah masalah per tingkat keparahan">
+          <button class="stat stat--filter stat--disaster" type="button" data-sev="disaster" aria-pressed="false">
+            <span class="stat__label">Bencana</span>
+            <span class="stat__value" id="sev-disaster">-</span>
+            <span class="stat__meta" id="sev-disaster-meta">-</span>
+          </button>
+          <button class="stat stat--filter stat--high" type="button" data-sev="high" aria-pressed="false">
+            <span class="stat__label">Tinggi</span>
+            <span class="stat__value" id="sev-high">-</span>
+            <span class="stat__meta" id="sev-high-meta">-</span>
+          </button>
+          <button class="stat stat--filter stat--average" type="button" data-sev="average" aria-pressed="false">
+            <span class="stat__label">Sedang</span>
+            <span class="stat__value" id="sev-average">-</span>
+            <span class="stat__meta" id="sev-average-meta">-</span>
+          </button>
+          <button class="stat stat--filter stat--warning" type="button" data-sev="warning" aria-pressed="false">
+            <span class="stat__label">Peringatan</span>
+            <span class="stat__value" id="sev-warning">-</span>
+            <span class="stat__meta" id="sev-warning-meta">-</span>
+          </button>
+          <button class="stat stat--filter stat--information" type="button" data-sev="information" aria-pressed="false">
+            <span class="stat__label">Informasi</span>
+            <span class="stat__value" id="sev-information">-</span>
+            <span class="stat__meta" id="sev-information-meta">-</span>
+          </button>
+        </div>
+
+        <section class="panel" aria-labelledby="problems-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="problems-title">Masalah aktif</h2>
+              <p class="panel__sub" id="problem-count">Memuat…</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari masalah atau perangkat</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="problem-search" type="search" placeholder="Cari masalah atau perangkat…" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span class="sr-only">Tingkat keparahan</span>
+                <select id="problem-severity">
+                  <option value="all">Semua tingkat</option>
+                  <option value="disaster">Bencana</option>
+                  <option value="high">Tinggi</option>
+                  <option value="average">Sedang</option>
+                  <option value="warning">Peringatan</option>
+                  <option value="information">Informasi</option>
+                </select>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="problem-unacked" />
+                <span>Belum diakui</span>
+              </label>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Tingkat</th>
+                  <th scope="col">Masalah</th>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Mulai</th>
+                  <th scope="col">Durasi</th>
+                  <th scope="col">Pengakuan</th>
+                </tr>
+              </thead>
+              <tbody id="problem-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Hosts
+           ===================================================== -->
+      <section class="view" data-view="hosts" aria-labelledby="hosts-title" hidden>
+        <section class="stats" aria-label="Ringkasan perangkat">
+          <article class="stat">
+            <p class="stat__label">Total perangkat</p>
+            <p class="stat__value" id="host-total">-</p>
+            <p class="stat__meta" id="host-total-meta">Terdaftar di semua grup</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tersedia</p>
+            <p class="stat__value" id="host-online">-</p>
+            <p class="stat__meta" id="host-online-meta">-</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tidak Tersedia</p>
+            <p class="stat__value" id="host-down">-</p>
+            <p class="stat__meta"><span class="is-warn">Perlu tindakan</span></p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Pemeliharaan</p>
+            <p class="stat__value" id="host-maintenance">-</p>
+            <p class="stat__meta">Masalah ditekan</p>
+          </article>
+        </section>
+
+        <section class="panel" aria-labelledby="hosts-title">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="hosts-title">Daftar Host</h2>
+              <p class="panel__sub"><span id="host-count">Memuat…</span> · interval bawaan <span id="host-interval">-</span> dtk</p>
+            </div>
+            <div class="filters">
+              <label class="field field--search">
+                <span class="sr-only">Cari perangkat</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                <input id="host-search" type="search" placeholder="Cari perangkat, grup, lokasi, atau IP…" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span class="sr-only">Status</span>
+                <select id="host-status">
+                  <option value="">Semua status</option>
+                  <option value="online">Tersambung</option>
+                  <option value="degraded">Degradasi</option>
+                  <option value="offline">Terputus</option>
+                  <option value="maintenance">Pemeliharaan</option>
+                  <option value="unknown">Tidak diketahui</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="sr-only">Grup</span>
+                <select id="host-group"><option value="">Semua grup</option></select>
+              </label>
+              <button class="btn btn--primary" id="host-add" type="button">Tambah perangkat</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Ketersediaan 24 jam</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Grup</th>
+                  <th scope="col">Lokasi</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Terakhir diperiksa</th>
+                </tr>
+              </thead>
+              <tbody id="host-rows"></tbody>
+            </table>
+          </div>
+          <div class="table-foot">
+            <button class="btn btn--ghost" id="host-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="host-page-info">Halaman -</span>
+            <button class="btn btn--ghost" id="host-next" type="button">Berikutnya</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Latest data
+           ===================================================== -->
+      <section class="view" data-view="latest-data" aria-labelledby="latest-title" hidden>
+        <section class="panel" aria-labelledby="latest-title">
+          <div class="panel__head">
+            <div>
+              <h2 class="panel__title" id="latest-title">Data terbaru</h2>
+              <p class="panel__sub">Nilai terakhir yang dikumpulkan per perangkat ("-" bila metrik tidak tersedia)</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead>
+                <tr>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Latensi</th>
+                  <th scope="col">CPU</th>
+                  <th scope="col">Memori</th>
+                  <th scope="col">Penyimpanan</th>
+                  <th scope="col">Suhu</th>
+                  <th scope="col">Waktu aktif</th>
+                  <th scope="col">Detail</th>
+                </tr>
+              </thead>
+              <tbody id="latest-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- =====================================================
+           Maps
+           ===================================================== -->
+      <section class="view" data-view="maps" aria-labelledby="map-title" hidden>
+        <section class="stats" aria-label="Ringkasan topologi">
+          <article class="stat">
+            <p class="stat__label">Total Perangkat</p>
+            <p class="stat__value" id="map-total">-</p>
+            <p class="stat__meta" id="map-total-meta">Pada topologi</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Tersambung</p>
+            <p class="stat__value" id="map-online">-</p>
+            <p class="stat__meta"><b id="map-online-pct">-</b> perangkat tersedia</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Degradasi</p>
+            <p class="stat__value" id="map-degraded">-</p>
+            <p class="stat__meta">Perlu perhatian</p>
+          </article>
+          <article class="stat">
+            <p class="stat__label">Terputus</p>
+            <p class="stat__value" id="map-offline">-</p>
+            <p class="stat__meta">Tidak merespons</p>
+          </article>
+        </section>
+
+        <div class="map-layout">
+          <section class="panel map-panel" aria-labelledby="map-title">
+            <div class="panel__head panel__head--stack">
+              <div>
+                <h2 class="panel__title" id="map-title">Topologi jaringan</h2>
+                <p class="panel__sub">Klik perangkat untuk melihat detail · gunakan Tab untuk menavigasi</p>
+              </div>
+              <label class="field">
+                <span class="sr-only">Filter grup</span>
+                <select id="map-group"><option value="all">Semua grup</option></select>
+              </label>
+            </div>
+            <p class="map-truncation" id="map-truncation" hidden role="status"></p>
+            <div class="map-scroll">
+              <svg id="topology-svg" role="group" aria-label="Peta topologi jaringan" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <div class="map-legend">
+              <span><span class="legend-dot legend-dot--ok"></span>Tersambung</span>
+              <span><span class="legend-dot legend-dot--warn"></span>Degradasi</span>
+              <span><span class="legend-dot legend-dot--down"></span>Terputus</span>
+              <span><span class="legend-line legend-line--fiber"></span>Link fiber (warna = status)</span>
+              <span class="map-legend__hint" id="map-empty-hint" hidden>Belum ada perangkat. Tambahkan lewat halaman Inventaris.</span>
+            </div>
+          </section>
+
+          <aside class="panel map-detail" aria-labelledby="map-detail-title" id="map-detail" hidden>
+            <div class="map-detail__body">
+              <h2 class="map-detail__name" id="map-detail-title">-</h2>
+              <p class="map-detail__type" id="map-detail-type">-</p>
+              <dl class="detail-list">
+                <div><dt>Alamat IP</dt><dd id="map-detail-ip">-</dd></div>
+                <div><dt>Status</dt><dd id="map-detail-status">-</dd></div>
+                <div><dt>Latensi</dt><dd id="map-detail-latency">-</dd></div>
+                <div><dt>Grup</dt><dd id="map-detail-group">-</dd></div>
+                <div><dt>Lokasi</dt><dd id="map-detail-location">-</dd></div>
+              </dl>
+              <div class="map-fiber" id="map-fiber" hidden>
+                <h3 class="detail-subhead">Link fiber</h3>
+                <ul class="fiber-link-list" id="map-fiber-list"></ul>
+              </div>
+              <div class="map-detail__actions">
+                <a class="btn btn--primary" id="map-detail-link" href="inventory.html#hosts">Lihat detail</a>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/device-form.js?v=5" defer></script>
+  <script src="assets/js/monitoring.js?v=6" defer></script>
+</body>
+</html>

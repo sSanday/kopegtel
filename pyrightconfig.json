@@ -1,8 +1,0 @@
-{
-  "venvPath": "<path-proyek>",
-  "venv": "env",
-  "pythonPath": "<path-proyek>/env/bin/python",
-  "extraPaths": [
-    "<path-proyek>/env/lib/python3.12/site-packages"
-  ]
-}

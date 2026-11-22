@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: NMS Kopegtel
+    orgId: 1
+    folder: NMS
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/nms
+      foldersFromFilesStructure: false

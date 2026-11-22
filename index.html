@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Masuk · NMS Kopegtel</title>
+  <meta name="description" content="Portal masuk NMS Kopegtel, sistem manajemen jaringan Koperasi Pegawai Telkom." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/login.css?v=6" />
+</head>
+<body>
+  <a class="skip-link" href="#login-form">Lewati ke formulir masuk</a>
+
+  <div class="auth">
+    <aside class="brand">
+      <div class="brand__top">
+        <a class="lockup" href="index.html" aria-label="NMS Kopegtel, sistem manajemen jaringan">
+          <svg class="lockup__mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="markGradient" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#2fe0c4" />
+                <stop offset="1" stop-color="#5b8dff" />
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="46" height="46" rx="13" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" />
+            <g stroke="url(#markGradient)" stroke-width="1.8" stroke-linecap="round">
+              <path d="M24 24 15.5 15" />
+              <path d="M24 24 33 18" />
+              <path d="M24 24 26 34" />
+            </g>
+            <circle cx="24" cy="24" r="4.2" fill="url(#markGradient)" />
+            <circle cx="15.5" cy="15" r="2.6" fill="#2fe0c4" />
+            <circle cx="33" cy="18" r="2.6" fill="#5b8dff" />
+            <circle cx="26" cy="34" r="2.6" fill="#2fe0c4" />
+          </svg>
+          <span class="lockup__text">
+            <span class="lockup__name">NMS KOPEGTEL</span>
+            <span class="lockup__sub">Sistem manajemen jaringan</span>
+          </span>
+        </a>
+      </div>
+
+      <div class="brand__body">
+        <p class="eyebrow">Portal Operasional Jaringan</p>
+        <p class="brand__title">Pantau seluruh jaringan <span>dari satu tempat</span>.</p>
+        <p class="brand__lead">NMS Kopegtel menyatukan status perangkat, gangguan, dan laporan kinerja jaringan dalam satu dasbor yang mudah dibaca.</p>
+
+        <ul class="features">
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.5 6L14 6l2.5 6H21" /></svg>
+            </span>
+            <div>
+              <p class="feature__title">Pemantauan waktu nyata</p>
+              <p class="feature__desc">Status perangkat, tautan, dan trafik terpantau terus-menerus.</p>
+            </div>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10.5 21h3" /></svg>
+            </span>
+            <div>
+              <p class="feature__title">Notifikasi terpusat</p>
+              <p class="feature__desc">Notifikasi gangguan langsung diteruskan ke tim operasional.</p>
+            </div>
+          </li>
+          <li class="feature">
+            <span class="feature__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5" /><path d="M4 19h16" /><path d="M8 16V10" /><path d="M13 16V7" /><path d="M18 16v-4" /></svg>
+            </span>
+            <div>
+              <p class="feature__title">Riwayat &amp; laporan</p>
+              <p class="feature__desc">Jejak audit dan laporan kinerja jaringan siap diunduh.</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="brand__visual" aria-hidden="true">
+        <svg class="mesh" viewBox="0 0 520 340" focusable="false">
+          <defs>
+            <linearGradient id="meshStroke" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2fe0c4" stop-opacity=".7" />
+              <stop offset="1" stop-color="#5b8dff" stop-opacity=".16" />
+            </linearGradient>
+            <radialGradient id="meshGlow">
+              <stop offset="0" stop-color="#2fe0c4" stop-opacity=".42" />
+              <stop offset="1" stop-color="#2fe0c4" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <g fill="none" stroke="url(#meshStroke)" stroke-width="1.3" stroke-linecap="round">
+            <path d="M90 250 180 120" />
+            <path d="M180 120 300 190" />
+            <path d="M300 190 410 90" />
+            <path d="M300 190 350 290" />
+            <path d="M90 250 210 300" />
+            <path d="M210 300 350 290" />
+            <path d="M180 120 210 300" />
+            <path d="M350 290 470 220" />
+            <path d="M470 220 410 90" />
+          </g>
+          <circle cx="300" cy="190" r="70" fill="url(#meshGlow)" />
+          <g class="node">
+            <circle class="halo d1" cx="300" cy="190" r="6" />
+            <circle class="dot" cx="300" cy="190" r="5" />
+          </g>
+          <g class="node">
+            <circle class="halo d2" cx="180" cy="120" r="5" />
+            <circle class="dot dot--alt" cx="180" cy="120" r="4" />
+          </g>
+          <g class="node">
+            <circle class="halo d3" cx="410" cy="90" r="5" />
+            <circle class="dot" cx="410" cy="90" r="4" />
+          </g>
+          <g class="node">
+            <circle class="halo d4" cx="470" cy="220" r="5" />
+            <circle class="dot dot--alt" cx="470" cy="220" r="4" />
+          </g>
+          <g class="node">
+            <circle class="halo d2" cx="90" cy="250" r="5" />
+            <circle class="dot" cx="90" cy="250" r="4" />
+          </g>
+          <g class="node">
+            <circle class="halo d3" cx="210" cy="300" r="5" />
+            <circle class="dot dot--alt" cx="210" cy="300" r="4" />
+          </g>
+          <g class="node">
+            <circle class="halo d1" cx="350" cy="290" r="5" />
+            <circle class="dot" cx="350" cy="290" r="4" />
+          </g>
+        </svg>
+      </div>
+
+      <p class="brand__foot"><span id="org-name">Koperasi Pegawai Telkom</span> · Infrastruktur &amp; Jaringan</p>
+    </aside>
+
+    <main class="panel">
+      <div class="panel__top">
+        <span class="build" id="build-badge">Internal</span>
+      </div>
+
+      <div class="panel__center">
+        <section class="card" aria-labelledby="login-title">
+          <p class="eyebrow eyebrow--card">Portal Masuk</p>
+          <h1 class="card__title" id="login-title">Selamat datang kembali</h1>
+          <p class="card__sub">Masuk dengan akun internal Kopegtel untuk melanjutkan.</p>
+
+          <form class="form" id="login-form" novalidate>
+            <div class="field">
+              <label for="username">Nama pengguna</label>
+              <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus aria-describedby="username-error" />
+              <p class="field__error" id="username-error" hidden></p>
+            </div>
+
+            <div class="field">
+              <label for="password">Kata sandi</label>
+              <div class="control">
+                <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="password-error" />
+                <button class="toggle" id="toggle-password" type="button" aria-controls="password" aria-pressed="false" aria-label="Tampilkan kata sandi">
+                  <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3.2" /></svg>
+                  <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3.2" /><path d="M4 4l16 16" /></svg>
+                </button>
+              </div>
+              <p class="field__error" id="password-error" hidden></p>
+            </div>
+
+            <div class="remember">
+              <input type="checkbox" id="remember" name="remember" checked />
+              <label for="remember">Tetap masuk di perangkat ini</label>
+            </div>
+
+            <button class="btn" id="submit" type="submit">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__label">Masuk</span>
+            </button>
+
+            <p class="form__note" id="form-note" role="status" aria-live="polite"></p>
+          </form>
+
+          <form class="form" id="mfa-form" novalidate hidden>
+            <div class="field">
+              <label for="mfa-code">Kode MFA</label>
+              <input id="mfa-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456 / XXXXX-XXXXX" required aria-describedby="mfa-error" autofocus />
+              <p class="field__error" id="mfa-error" hidden></p>
+            </div>
+
+            <button class="btn" id="mfa-submit" type="submit">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__label">Verifikasi</span>
+            </button>
+
+            <p class="form__note" id="mfa-note" role="status" aria-live="polite"></p>
+            <button id="mfa-back" type="button" class="link-button">&larr; Kembali ke kata sandi</button>
+          </form>
+        </section>
+
+      </div>
+
+      <footer class="panel__bottom">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/login.js?v=5" defer></script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+# PROGRES.md — E1–E4
+
+Diperbarui: 2026-11-15
+
+## Ringkasan tahap
+
+| Tahap | Status | Keterangan |
+|---|---|---|
+| E1 — Syslog & SNMP trap | selesai | tes 120 lolos; commit `3feafb1` |
+| E2 — Webhook, eskalasi, MFA | selesai | tes 162 lolos; commit `34e42fa` |
+| E3 — Traffic Flow | selesai | tes 179 lolos; commit `94304c3`; produksi hidup |
+| E4 — Metrik Prometheus | selesai | tes 190 lolos; commit E4; produksi hidup |
+
+## Aturan kerja
+
+- Kerjakan berurutan E1 → E4; jangan lompat tahap.
+- Setiap tahap: semua tes lama + baru lolos, lalu commit.
+- Jangan mengubah perilaku endpoint lama. Fitur baru memakai endpoint baru.
+- Tidak ada data contoh di UI/runtime. Empty state menjelaskan cara menyiapkan.
+- Data dari UDP tidak dipercaya: hanya IP perangkat terdaftar, batas laju,
+  batas ukuran, antrean berbatas, batch insert, hitung yang dibuang.
+- Port bawaan ≥ 1024 dan default MATI.
+- Semua teks luar di-escape saat ditampilkan; viewer hanya ringkasan.
+- Retensi mengikuti mekanisme `purge_old_data`.
+
+## Status E2 — selesai (2026-11-11)
+
+### A. Webhook (kanal jenis `webhook`)
+
+- URL https (http hanya dengan izin eksplisit `allow_http`), POST, JSON.
+- Header kustom (disimpan dalam config terenkripsi; Host/X-NMS-*/Content-Type diabaikan).
+- Tanda tangan `X-NMS-Timestamp` + `X-NMS-Signature` = `sha256=<hex(HMAC-SHA256(secret, "<ts>.<body>"))>`.
+- Anti-SSRF: resolusi DNS ditolak untuk loopback/link-local/privat/reserved kecuali
+  `ALLOW_PRIVATE_WEBHOOKS=1` atau `allow_private` pada kanal (khusus admin; env
+  dipromosikan menjadi izin kanal saat disimpan); proxy dinonaktifkan;
+  redirect tidak diikuti; timeout 5 dtk; respons dibatasi (default 1 KB, maks 4 KB).
+- Retry 3x dengan backoff 1s/2s; hasil (status/durasi/galat tanpa secret/header) ke `action_log`.
+- Preset `generic`, `slack`, `discord`; body lewat `json.dumps`.
+- "Uji kirim" benar-benar mengirim (sama jalurnya dengan kirim masalah).
+- API: secret tidak pernah ditampilkan kembali (`has_secret`); edit tanpa secret
+  mempertahankan yang tersimpan; audit `channel.create/update/test`.
+
+### B. Eskalasi
+
+- Tabel `escalation_policies`, `escalation_steps` (urutan, jeda menit dari langkah
+  sebelumnya/awal, target kanal/pengguna, jam kerja per langkah opsional, zona Asia/Jakarta),
+  `escalation_state` (tahan restart, idempoten; problem/ack/recovery tercatat).
+- `action_rules.escalation_policy_id`; aturan aksi dengan kebijakan tidak kirim
+  langsung — mesin tiap 30 detik (`escalation-engine` di poller) mengirim langkah
+  berikutnya selagi problem terbuka & belum diakui; ack menghentikan; problem pulih
+  mengirim notifikasi pemulihan; pemeliharaan menahan pengiriman; parent offline
+  menahan (evaluasi ulang saat parent pulih).
+- Jam kerja: per kebijakan (`business_hours_enabled`, start/end, hari ISO) atau
+  per langkah (`business_hours_only`).
+- Badai notifikasi: >N problem dalam 60 detik (`notification_storm_threshold`,
+  default 5) digabung menjadi satu pesan ringkasan; sisanya ditahan 60 detik.
+- Kontak pengguna: `users.email`, `users.telegram_chat_id` (hanya admin; eskalasi
+  target pengguna memakai kanal Telegram/SMTP pertama yang aktif; "Uji kirim" tetap
+  per kanal).
+- **Jadwal jaga (siapa jaga pada rentang waktu) BELUM diimplementasikan — sengaja
+  dilewati** (opsional, paling berat menurut urutan prioritas). Dicatat sebagai
+  "belum" di TEMUAN.
+
+### C. MFA (TOTP RFC 6238: SHA1, 6 digit, 30 detik)
+
+- Aktivasi di menu **Profil** (halaman baru): secret server-side (Fernet),
+  QR SVG buatan server (segno 1.6.6, dipin), 10 kode pemulihan sekali-pakai
+  (hash SHA-256), aktif setelah kode pertama terverifikasi.
+- Login: password benar → bila MFA aktif, wajib kode di langkah kedua
+  (`/api/mfa/verify-login`, CSRF wajib, TTL 5 menit, anti-replay step waktu);
+  kode pemulihan dapat menggantikan kode TOTP.
+- Pembatasan: 5 gagal / 10 menit per akun+IP (`login_attempts` dengan username `mfa:<id>`).
+- Kebijakan admin: `mfa_required_roles` (JSON list) + `mfa_grace_days`; setelah
+  tenggang habis, peran wajib tidak bisa login; UI banner di Profil; pengaturan di
+  Administrasi → Pengaturan umum.
+- Admin bisa reset MFA pengguna lain (via menu Users, konfirmasi password admin,
+  audit `auth.mfa_reset`); menonaktifkan MFA sendiri butuh password + kode.
+- Kolom terenkripsi baru masuk `check-keys` & `rotate-encryption-key`
+  (`users.mfa_secret`, `users.mfa_pending_secret`).
+- Halaman login menampilkan langkah MFA; Profile menyediakan
+  aktivasi/nonaktif + kode pemulihan sekali tampil.
+- Route map: 129 → **140** rute.
+- Route map E3: 140 → **149** rute (+9: `flow/summary|talkers|apps|conversations|interfaces|status` + 3 CSV).
+- Dependensi baru: **segno==1.6.6** (QR SVG untuk MFA; pure-Python, tanpa dependensi;
+  alasan tertulis di `requirements.txt`).
+- Tes: `tests/test_webhook.py` (17), `tests/test_escalation.py` (12),
+  `tests/test_mfa.py` (13). Total suite 120 → **162 passed**.
+- Produksi direstart; `/healthz` 200; semua halaman 200; `/api/me` &
+  `/api/mfa/status` → 401 (wajib login); `check-keys` mencakup
+  `users.mfa_secret` & `users.mfa_pending_secret` (0 gagal).
+
+Belum terverifikasi (butuh perangkat/sesi nyata):
+- Pengiriman webhook ke endpoint nyata; perintah RouterOS; MFA di ponsel nyata;
+  dashboard/alert belum diuji di Grafana (E4).
+- Jadwal jaga (oncall) belum ada (opsional, dilewati).
+
+## Status E3 — tertunda (menunggu giliran)
+
+## Status E3 — Traffic Flow — selesai (2026-11-11)
+
+| Aspek | Status |
+|---|---|
+| Penerima UDP 2055 (NetFlow v5/v9) & 4739 (IPFIX) | Selesai, default MATI, hanya IP perangkat terdaftar |
+| v5 | Selesai & diuji (paket tiruan) |
+| v9 (template per eksporter/domain) | Selesai & diuji |
+| IPFIX | Selesai & diuji |
+| Agregasi bucket 5 menit + top-N ("lainnya") | Selesai & diuji |
+| Rollup per jam (idempoten) | Selesai & diuji |
+| Retensi 7 hari / 90 hari | Selesai & diuji |
+| ifIndex -> nama interface | Selesai (snapshot mt_interfaces) |
+| Nama host dari lease DHCP | Selesai & diuji |
+| UI: Ringkasan / Top Talkers / Aplikasi / Percakapan / Status | Selesai |
+| Viewer hanya total | Selesai & diuji |
+| flow_top_talker (opsional) | TIDAK diimplementasikan |
+
+Loadtest flow: `--flow 20000 --flow-devices 20` → ~5.476 paket/s, 20.000 flow,
+0 dibuang; 140 baris bucket (top-N aktif). `requirements.lock`: `netflow==0.12.2`
+(pin; MIT, tanpa dependensi). Produksi direstart; `/healthz` 200; semua halaman 200;
+`/api/flow/summary` 401 (wajib login). Total tes 162 → **179 passed**.
+
+## Status E4 — tertunda (menunggu giliran)
+
+## Status E4 — metrik Prometheus — selesai (2026-11-11)
+
+- Token API baca-saja (Administrasi → Token API & metrik): SHA-256 hash,
+  constant-time, allowlist IP, kedaluwarsa, cabut, `last_used_at`, audit.
+- `GET /metrics`: format teks Prometheus via custom collector
+  (`prometheus_client==0.26.0`, dipin); default MATI; Bearer token;
+  rate limit 30/menit/IP; cache 10 detik; hanya dari snapshot DB;
+  stale device dihilangkan; `nms_metrics_series_truncated`; label aman.
+- Metrik: build_info, perangkat per status/tipe, per perangkat up/latency/
+  cpu/memory/disk/temp/uptime/last_poll, interface (penting|semua|tidak),
+  fiber (rx/tx dBm, suhu, redaman, margin, status), problem per severity,
+  ketersediaan layanan, poller (running, durasi, sukses/galat), ingest
+  (syslog/trap/flow diterima/dibuang), ukuran DB.
+- Grafana: `grafana/dashboards/nms-overview.json` (belum diuji di
+  Grafana nyata), provisioning + datasource contoh, `docs/INTEGRASI.md`.
+- Benchmark: payload ~19 KB; repeat ~0 ms (cache 10 dtk); fresh build
+  p50 ~12 ms · p95 ~51 ms · max ~77 ms @ 20 perangkat (docs/SKALA.md).
+- Pasca-commit `94304c3` (E3), E4 live di produksi: screenshot admin
+  membuktikan halaman Token API + buat/cabut token bekerja; `/metrics`
+  aktif setelah dinyalakan di pengaturan (default MATI).
+- **190 passed**; route map 149 → **153**.
+
+## Hasil akhir E1–E4
+
+- E1 syslog/SNMP trap — commit `3feafb1` (120 tes)
+- E2 webhook/eskalasi/MFA — commit `34e42fa` (162 tes)
+- E3 Traffic Flow — commit `94304c3` (179 tes)
+- E4 metrik Prometheus — commit E4 (190 tes)
+- Produksi `http://127.0.0.1:5500` hidup dengan keempat tahap terpasang.
+- Belum terverifikasi di perangkat nyata (MikroTik utama tidak bisa diakses):
+  perintah RouterOS, jalur syslog/trap flow dari perangkat asli, purge optik
+  DDM, pengiriman webhook/eskalasi ke endpoint produksi, scrape Prometheus
+  ke instance nyata, dan dashboard Grafana di instance nyata.
+
+## Catatan sesi
+
+- E1: commit `3feafb1`; produksi hidup (healthz 200); 120 tes lolos.
+- E2: commit E2; produksi hidup (healthz 200); 162 tes lolos.
+- H-3: kredensial scan tidak lagi disimpan; DB lama + backup dibersihkan dengan
+  `VACUUM`/checkpoint; 203 tes lolos; produksi hidup (healthz 200).
+- M-1: job retensi membaca pengaturan UI (termasuk retensi pemeriksaan baru);
+  pratinjau memakai resolver yang sama; 208 tes lolos; produksi hidup (healthz 200).
+- M-2: SSRF webhook/SMTP ditutup (izin privat/http hanya admin, DNS dipin sekali,
+  galat SMTP disanitasi, port internal 5500 & DNS rebinding diuji); 226 tes
+  lolos; produksi hidup (healthz 200).
+- M-3: login dibatasi per IP (bukan hanya akun+IP), audit gagal login dibatasi
+  dan dipotong, body request dibatasi 1 MiB (login/MFA 8 KiB); 234 tes lolos;
+  produksi hidup (healthz 200).
+- M-4: sesi dicabut lewat epoch saat password diganti/direset (termasuk cookie
+  "remember" dan login MFA yang tertunda); 241 tes lolos; produksi hidup
+  (healthz 200).
+- M-5: sel CSV dinetralkan dari formula (`=`, `+`, `-`, `@`, karakter kontrol,
+  termasuk yang didahului spasi) di audit, ketersediaan, dan semua ekspor CSV
+  lain; 252 tes lolos; produksi hidup (healthz 200).
+- M-6: kode pemulihan 6 digit tidak lagi dianggap TOTP, digit non-ASCII
+  ditolak tanpa 500, dan secret MFA kosong/rusak tidak menjadi kunci HMAC
+  kosong; 256 tes lolos; produksi hidup (healthz 200) dan verifikasi live
+  memakai akun sementara berhasil (akun dibersihkan).
+- M-7: non-admin hanya menerima pengaturan/system-info yang aman; COUNT(*)
+  retensi dan tabel pindah ke koneksi baca terpisah + cache 60 detik, dengan
+  indeks waktu baru; 263 tes lolos; produksi hidup (healthz 200) dan
+  verifikasi live per peran berhasil (akun sementara dibersihkan).
+- M-8: `waitress` dan `pyasn1` (impor langsung) ditambahkan ke
+  `requirements.txt`; tes penjaga memastikan semua impor runtime pihak ketiga
+  tercantum dan terkunci versi pasti di `requirements.lock`; 267 tes lolos;
+  produksi hidup (healthz 200).
+- M-9: semua penulisan DB memakai `db.transaction()` (commit sekali, rollback
+  penuh saat gagal, transaksi bersarang ikut terluar); `_lock` me-rollback
+  transaksi yang menggantung di batas blok; `purge_old_data` tidak lagi
+  menelan kegagalan flow; `/healthz` memakai koneksi baca terpisah. Server
+  hidup di `http://127.0.0.1:5000` (healthz 200, satu listener); 273 tes
+  lolos.
+- M-10: migrasi skema + seed admin dipindahkan dari impor `app.py` ke
+  `app.bootstrap()` yang hanya dipanggil setelah lease instance dipegang;
+  `acquire_instance_lease()` membuat tabel lease minimal sendiri; seluruh
+  startup (poller, ingest, flow) berada dalam `try/finally` sehingga kegagalan
+  tetap melepas lease. Server hidup di `http://127.0.0.1:5000` (healthz 200,
+  satu listener); instance kedua ditolak dengan exit 1 tanpa mengganggu
+  instance pertama; 279 tes lolos.
+- M-11: verifikasi TLS untuk RouterOS API-SSL tidak lagi dimatikan; pinning
+  fingerprint SHA-256 per perangkat (self-signed) atau verifikasi CA standar;
+  fingerprint tersimpan di devices.mikrotik_ssl_fingerprint (migrasi
+  terverifikasi pada salinan DB produksi); 17 tes regresi baru; server hidup di
+  `http://127.0.0.1:5000` (healthz 200, satu listener); 296 tes lolos.
+- M-12: kebijakan ALLOWED_NETWORKS kosong disamakan dengan dokumentasi
+  (hanya RFC1918 IPv4 + ULA fc00::/7 IPv6 untuk perangkat, uji, scan, bulk-add;
+  loopback/link-local/CGNAT/publik ditolak); 49 tes regresi baru; suite penuh
+  **345 passed** (1 peringatan deprecation Flask yang sudah ada); server hidup
+  di `http://127.0.0.1:5000` (healthz 200, satu listener). Catatan live: mesin
+  berpindah jaringan (Wi-Fi 10.215.235.143) sehingga perangkat LAN 192.168.30.x
+  tampil offline - bukan regresi; jalur poller tidak memakai ALLOWED_NETWORKS.
+- M-13: asesmen tuntas (lihat TEMUAN.md) - snapshot `nms.db`/`sla_demo.db`
+  terunduh publik tanpa login (HTTP 200) di raw.githubusercontent.com pada
+  `6c8158a`; `sla_demo.db` memuat hash scrypt admin lama; IP internal
+  RFC1918 terekspos; tidak ada community/password tersimpan; zip `.env`
+  (Telegram token) tidak dipakai kode. Remediasi menunggu keputusan pemilik.
+- M-13 remediasi: riwayat `cleanup/rapikan-kode` ditulis ulang (kedua .db
+  dihapus di semua commit; tree identik; refs/original & backup branch dihapus)
+  dan force-pushed (`6f4099d`); URL branch 404; akses via SHA lama tetap 200
+  (butuh purge GitHub Support). TELEGRAM_* dihapus dari .env (backup di Temp).
+  Rotasi token & ganti password admin lama = tanggung jawab pemilik.
+- L-1..L-10: seluruh temuan severity Low dibereskan (lihat TEMUAN.md, bagian
+  L-1 s.d. L-10). Suite regresi baru `tests/test_low_findings.py` (25 tes);
+  suite penuh **370 passed** (1 warning deprecation Flask yang sudah ada);
+  `tests/test_discovery_security.py` & `tests/test_mfa.py` diupdate;
+  `tests/test_events.py`/`test_flow.py` diupdate ke konstruktor RateLimiter
+  yang eksplisit. Detail verifier & catatan residual: ping hanya EN/ID/Linux
+  (locale lain -> fail-safe down sampai token ditambahkan); audit internal
+  tetap memuat detail untuk investigasi.
+- Pasca-eksposur 2026-11-17: password admin (hash lama yang beredar publik)
+  **direset paksa** via CLI `manage.py` (`update_user` → hash scrypt baru,
+  `must_change_password=1`, `session_epoch` 0→1 sehingga semua sesi lama gugur;
+  tercatat `auth.admin_password_reset_cli`). Password sementara disampaikan
+  sekali ke pemilik (tidak ditulis ke berkas/log); login berikutnya wajib
+  mengganti password. Backup `.env` di Temp dihapus; `git reflog expire
+  --expire=now --all; git gc --prune=now` dijalankan — objek `6c8158a` tidak
+  ada lagi di clone lokal (`git cat-file` → Not a valid object name; `fsck
+  --unreachable` bersih). `raw.githubusercontent.com/sSanday/kopegtel/
+  6c8158a/nms.db` masih **HTTP 200** (perlu GitHub Support — teks permintaan
+  siap pakai: `docs/GITHUB-SUPPORT-PURGE.md`; alternatif: jadikan repo
+  private). Rotasi token Telegram tetap tanggung jawab pemilik. Ping kini
+  mengenali 12 bahasa + token kegagalan/timeout/latency multi-bahasa (L-6
+  lanjutan); latency saja tidak lagi jadi bukti hidup; locale tak dikenal =
+  fail-safe down; `tests/test_low_findings.py` kini 56 tes. Catatan jaringan:
+  mesin di Wi-Fi 10.20.26.143 - 192.168.30.1 tidak terjangkau (ping/TCP 8728
+  gagal) sehingga perangkat 6/7/8 tetap tampil offline; bukan regresi.
+  MikroTik RouterOS API perlu diaktifkan di router (`/ip service enable
+  api` + `api-ssl`) lalu kredensial disimpan di perangkat 6.
+- L-2 lanjutan 2026-11-17: `parse_finite_int` kini menolak int64 overflow
+  (pemeriksaan eksak untuk int/string-digit; float diperiksa sesudah int()),
+  menolak bool di `parse_finite_float`/`parse_finite_int`; `_parse_optional_id`
+  batas atas int64; helper `parse_query_int` untuk query-string; hardening
+  OverflowError di port SMTP & `_int_arg`. Repro `channel_id: 10**30` -> 400
+  (dulu 500). `tests/test_low_findings.py` kini **65 tes**; suite penuh
+  **410 passed** (17.4 menit). Server di-restart dengan kode ini (healthz ok).
+- L-2 lanjutan 2 (query-string) 2026-11-17: klaim "semua int(request.args...)
+  aman" di atas keliru - `10**30` adalah int valid sehingga lolos
+  `try/except ValueError` dan melempar OverflowError saat bind SQLite -> 500.
+  Semua titik query-string kini memakai `parse_query_int` dengan batas
+  eksplisit: audit-log/action-log offset (int64 max), mikrotik devices/tab
+  page (`QUERY_PAGE_MAX=1e6`) & per_page, flow exporter_id/limit, devices
+  page/per_page/group, events device_id, backup diff `with`. Layer DB ikut
+  clamp (audit, alerts, devices, flow, ingest, mikrotik). Tes +4 di
+  `tests/test_low_findings.py` (total **69 passed**); suite penuh
+  **414 passed** (17.8 menit).
+- Tinjauan lanjutan 2026-11-17 (H-4, M-14..M-19, L-11..L-13): riwayat port
+  optik 24h/7d tidak lagi 500 (`_downsample` diimpor); perubahan IP perangkat
+  mewajibkan kredensial dimasukkan ulang dan DB menghapus secret kosong saat
+  IP berubah; interval profil langsung menjadwalkan ulang poller; metrik
+  hilang tidak lagi menutup masalah ambang secara palsu; ambang NULL + default
+  suhu 60/75 diperbaiki; poll manual gagal dibalas JSON 502 (bukan 500);
+  job perangkat terhapus dilepas dari scheduler; backup `chmod 0600`; indeks
+  `(device_id, id)` pada `device_metrics`; import tak terpakai dihapus.
+  Regresi `tests/test_review_findings.py` **14 passed**; tes area terdampak
+  **103 passed**. Suite penuh **428 passed** (19.6 menit, 1 warning
+  deprecation Flask yang sudah ada).

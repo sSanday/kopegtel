@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kejadian · NMS Kopegtel</title>
+  <meta name="description" content="Syslog dan SNMP trap dari perangkat MikroTik, aturan kejadian, dan status penerima." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Kejadian</p>
+          <h1 class="topbar__title" id="view-title">Syslog</h1>
+          <p class="topbar__sub"><span id="view-desc">Pesan syslog terbaru dari perangkat terdaftar.</span> · <span id="today">Memuat tanggal.</span></p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="refresh" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v6h-6" /></svg>
+            <span>Muat ulang</span>
+          </button>
+          <span class="clock" title="Waktu server"><span class="clock__dot" aria-hidden="true"></span><span id="clock">--:--:--</span></span>
+        </div>
+      </header>
+
+      <nav class="filters events-tabs" role="tablist" aria-label="Bagian kejadian">
+        <button class="btn btn--ghost" id="tab-syslog" type="button" role="tab" aria-selected="true" aria-controls="panel-syslog" data-tab="syslog">Syslog</button>
+        <button class="btn btn--ghost" id="tab-traps" type="button" role="tab" aria-selected="false" aria-controls="panel-traps" tabindex="-1" data-tab="traps">Trap</button>
+        <button class="btn btn--ghost" id="tab-rules" type="button" role="tab" aria-selected="false" aria-controls="panel-rules" tabindex="-1" data-tab="rules">Aturan</button>
+        <button class="btn btn--ghost" id="tab-status" type="button" role="tab" aria-selected="false" aria-controls="panel-status" tabindex="-1" data-tab="status">Status penerima</button>
+      </nav>
+
+      <section class="view" id="panel-syslog" role="tabpanel" aria-labelledby="tab-syslog" tabindex="0" data-view="syslog">
+        <section class="panel">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="syslog-title">Pesan terbaru</h2>
+              <p class="panel__sub"><span id="syslog-count" role="status" aria-live="polite">Memuat kejadian…</span> · terbaru di atas</p>
+            </div>
+            <div class="filters">
+              <button class="btn btn--ghost" id="syslog-export" type="button" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11" /><path d="m8 10 4 4 4-4" /><path d="M5 20h14" /></svg>
+                Ekspor CSV
+              </button>
+            </div>
+          </div>
+
+          <form class="syslog-filter" id="syslog-filter" role="search" aria-label="Filter syslog">
+            <div class="syslog-filter__row">
+              <label class="admin-field syslog-filter__search">
+                <span>Cari pesan atau tag</span>
+                <input id="syslog-q" type="search" placeholder="Contoh: link down, login, dhcp…" autocomplete="off" />
+              </label>
+              <label class="admin-field">
+                <span>Perangkat</span>
+                <select id="syslog-device"><option value="">Semua perangkat</option></select>
+              </label>
+              <label class="admin-field">
+                <span>Keparahan</span>
+                <select id="syslog-severity">
+                  <option value="">Semua keparahan</option>
+                  <option value="0">0 · Darurat</option>
+                  <option value="1">1 · Siaga</option>
+                  <option value="2">2 · Kritis</option>
+                  <option value="3">3 · Galat</option>
+                  <option value="4">4 · Peringatan</option>
+                  <option value="5">5 · Pemberitahuan</option>
+                  <option value="6">6 · Info</option>
+                  <option value="7">7 · Debug</option>
+                </select>
+              </label>
+            </div>
+            <div class="syslog-filter__row syslog-filter__row--dates">
+              <label class="admin-field admin-field--date">
+                <span>Dari (WIB)</span>
+                <input id="syslog-from" type="datetime-local" />
+              </label>
+              <span class="syslog-filter__dash" aria-hidden="true">–</span>
+              <label class="admin-field admin-field--date">
+                <span>Sampai (WIB)</span>
+                <input id="syslog-to" type="datetime-local" />
+              </label>
+              <div class="syslog-filter__actions">
+                <button class="btn btn--ghost" id="syslog-reset" type="button" disabled>Atur ulang</button>
+                <button class="btn btn--primary" type="submit">Terapkan</button>
+              </div>
+            </div>
+          </form>
+
+          <div class="table-error" id="syslog-error" role="alert" hidden>
+            <p class="table-error__text" id="syslog-error-text">Syslog gagal dimuat.</p>
+            <button class="btn btn--ghost" id="syslog-retry" type="button">Coba lagi</button>
+          </div>
+
+          <div class="empty-state empty-state--panel" id="syslog-empty" hidden>
+            <span class="empty-state__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H7l-3 3V4Z" /><path d="M8 8h8" /><path d="M8 11h5" /></svg>
+            </span>
+            <p class="empty-state__title" id="syslog-empty-title">Belum ada syslog masuk</p>
+            <p class="empty-state__desc" id="syslog-empty-desc">Pesan syslog akan tampil di sini setelah penerima aktif dan perangkat mengirimkannya.</p>
+            <div class="setup-guide" id="syslog-setup">
+              <ol class="setup-guide__steps">
+                <li>Aktifkan <strong>Syslog UDP</strong> di Administrasi → Penerima kejadian.</li>
+                <li>Arahkan logging RouterOS ke alamat server NMS, port <code>5514</code>.</li>
+              </ol>
+              <pre class="code-block"><code>/system logging action add name=nms target=remote remote=IP-NMS remote-port=5514
+/system logging add topics=info action=nms</code></pre>
+              <p class="setup-guide__note">Contoh perintah. Sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
+            </div>
+            <div class="empty-state__actions">
+              <a class="btn btn--primary" id="syslog-empty-cta" href="administration.html#ingest">Buka pengaturan penerima</a>
+              <button class="btn btn--ghost" id="syslog-empty-reset" type="button" hidden>Hapus filter</button>
+            </div>
+          </div>
+
+          <div class="table-wrap" id="syslog-table-wrap">
+            <table class="mon-table log-table">
+              <caption class="sr-only">Daftar pesan syslog terbaru.</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Waktu (WIB)</th>
+                  <th scope="col">Perangkat</th>
+                  <th scope="col">Keparahan</th>
+                  <th scope="col">Tag</th>
+                  <th scope="col">Pesan</th>
+                </tr>
+              </thead>
+              <tbody id="syslog-rows">
+                <tr class="table-state"><td colspan="5"><span class="table-state__spinner" aria-hidden="true"></span>Memuat syslog…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <nav class="table-foot" id="syslog-pager" aria-label="Navigasi halaman syslog" hidden>
+            <button class="btn btn--ghost" id="syslog-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="syslog-page">Halaman 1</span>
+            <button class="btn btn--ghost" id="syslog-next" type="button">Berikutnya</button>
+          </nav>
+        </section>
+      </section>
+
+      <section class="view" id="panel-traps" role="tabpanel" aria-labelledby="tab-traps" tabindex="0" data-view="traps" hidden>
+        <section class="panel">
+          <div class="panel__head panel__head--stack">
+            <div>
+              <h2 class="panel__title" id="traps-title">SNMP trap</h2>
+              <p class="panel__sub" id="traps-count" role="status" aria-live="polite">Memuat trap…</p>
+            </div>
+            <div class="filters traps-head-actions">
+              <button class="btn btn--ghost" id="traps-export" type="button" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11" /><path d="m8 10 4 4 4-4" /><path d="M5 20h14" /></svg>
+                Ekspor CSV
+              </button>
+            </div>
+          </div>
+
+          <form class="traps-filter" id="traps-filter" role="search" aria-label="Filter trap">
+            <label class="admin-field">
+              <span>Perangkat</span>
+              <select id="traps-device"><option value="">Semua perangkat</option></select>
+            </label>
+            <label class="admin-field">
+              <span>Cari OID atau nama</span>
+              <input id="traps-q" type="search" placeholder="Contoh: 1.3.6.1.6.3 atau linkDown" autocomplete="off" />
+            </label>
+            <div class="traps-filter__actions">
+              <button class="btn btn--ghost" id="traps-reset" type="button" disabled>Atur ulang</button>
+              <button class="btn btn--primary" type="submit">Terapkan</button>
+            </div>
+          </form>
+
+          <div class="table-error" id="traps-error" role="alert" hidden>
+            <p class="table-error__text" id="traps-error-text">Trap gagal dimuat.</p>
+            <button class="btn btn--ghost" id="traps-retry" type="button">Coba lagi</button>
+          </div>
+
+          <div class="empty-state empty-state--panel" id="traps-empty" hidden>
+            <span class="empty-state__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m4 13 2.3-5a2 2 0 0 1 1.8-1.2h7.8A2 2 0 0 1 17.7 8L20 13" /><path d="M4 13h4l1.4 2h5.2l1.4-2h4v4.4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" /></svg>
+            </span>
+            <p class="empty-state__title" id="traps-empty-title">Belum ada trap masuk</p>
+            <p class="empty-state__desc" id="traps-empty-desc">Trap SNMP akan tampil di sini setelah penerima aktif dan perangkat mengirimkannya.</p>
+            <div class="setup-guide" id="traps-setup">
+              <ol class="setup-guide__steps">
+                <li>Aktifkan <strong>SNMP trap UDP</strong> di Administrasi → Penerima kejadian.</li>
+                <li>Arahkan target SNMP RouterOS ke alamat server NMS, port <code>1162</code>.</li>
+              </ol>
+              <pre class="code-block"><code>/snmp community add name=nms addresses=IP-NMS
+/snmp target add address=IP-NMS:1162 community=nms</code></pre>
+              <p class="setup-guide__note">Contoh perintah. Sesuaikan alamatnya dan verifikasi pada versi RouterOS Anda.</p>
+            </div>
+            <div class="empty-state__actions">
+              <a class="btn btn--primary" id="traps-empty-cta" href="administration.html#ingest">Buka pengaturan penerima</a>
+              <button class="btn btn--ghost" id="traps-empty-reset" type="button" hidden>Hapus filter</button>
+            </div>
+          </div>
+
+          <div class="table-wrap" id="traps-table-wrap" hidden>
+            <table class="mon-table traps-table">
+              <caption class="sr-only">Daftar SNMP trap yang diterima.</caption>
+              <thead><tr><th scope="col">Waktu (WIB)</th><th scope="col">Perangkat</th><th scope="col">OID trap</th><th scope="col">Nama</th><th scope="col">Varbind</th></tr></thead>
+              <tbody id="traps-rows"></tbody>
+            </table>
+          </div>
+
+          <nav class="table-foot" id="traps-pager" aria-label="Navigasi halaman trap" hidden>
+            <button class="btn btn--ghost" id="traps-prev" type="button">Sebelumnya</button>
+            <span class="table-foot__info" id="traps-page">Halaman 1</span>
+            <button class="btn btn--ghost" id="traps-next" type="button">Berikutnya</button>
+          </nav>
+        </section>
+      </section>
+
+      <section class="view" id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" data-view="rules" hidden>
+        <section class="panel">
+          <div class="panel__head panel__head--stack">
+            <div><h2 class="panel__title" id="rules-title">Aturan kejadian</h2><p class="panel__sub">Kondisi → masalah, dengan jeda dan penyelesaian otomatis.</p></div>
+            <div class="filters"><button class="btn btn--primary" id="rule-add" type="button">Tambah aturan</button></div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead><tr><th>Nama</th><th>Jenis</th><th>Kondisi</th><th>Keparahan</th><th>Jeda</th><th>Selesai otomatis</th><th>Aktif</th><th>Aksi</th></tr></thead>
+              <tbody id="rule-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog class="sheet-dialog" aria-labelledby="rule-form-title">
+        <form class="panel" id="rule-form">
+          <div class="panel__head"><div><h2 class="panel__title" id="rule-form-title">Tambah aturan</h2><p class="panel__sub">Pola regex maksimal 200 karakter; quantifier bersarang ditolak.</p></div></div>
+          <div class="admin-form">
+            <div class="admin-form__grid">
+              <label class="admin-field"><span>Nama *</span><input id="rule-name" type="text" maxlength="80" autocomplete="off" /></label>
+              <label class="admin-field"><span>Jenis *</span><select id="rule-kind"><option value="syslog">Syslog</option><option value="trap">Trap</option></select></label>
+              <label class="admin-field"><span>Tipe cocok</span><select id="rule-match"><option value="contains">Mengandung</option><option value="startswith">Diawali</option><option value="regex">Regex</option></select></label>
+              <label class="admin-field" id="rule-pattern-wrap"><span>Pola pesan *</span><input id="rule-pattern" type="text" maxlength="200" autocomplete="off" /></label>
+              <label class="admin-field" id="rule-oid-wrap" hidden><span>Awalan OID trap *</span><input id="rule-oid" type="text" maxlength="128" placeholder="1.3.6.1.6.3.1.1.5.3" autocomplete="off" /></label>
+              <label class="admin-field"><span>Keparahan minimum</span><select id="rule-min-severity"></select></label>
+              <label class="admin-field"><span>Keparahan masalah</span><select id="rule-problem-severity"></select></label>
+              <label class="admin-field"><span>Perangkat</span><select id="rule-device"><option value="">Semua</option></select></label>
+              <label class="admin-field"><span>Grup</span><select id="rule-group"><option value="">Semua</option></select></label>
+              <label class="admin-field"><span>Jeda notifikasi (detik)</span><input id="rule-cooldown" type="number" min="0" max="86400" value="60" /></label>
+              <label class="admin-field"><span>Selesai otomatis (menit, 0=mati)</span><input id="rule-auto" type="number" min="0" max="10080" value="30" /></label>
+              <label class="admin-field"><span>Pola pemulihan (opsional)</span><input id="rule-recovery" type="text" maxlength="200" autocomplete="off" /></label>
+              <label class="admin-field"><span>Selesaikan aturan lain</span><select id="rule-resolves"><option value="">Tidak ada</option></select></label>
+              <label class="admin-field"><span>Aktif</span><select id="rule-enabled"><option value="1">Ya</option><option value="0">Tidak</option></select></label>
+            </div>
+            <p class="panel__sub" id="rule-note" role="status"></p>
+            <div class="filters"><button class="btn btn--primary" id="rule-save" type="submit">Simpan</button><button class="btn btn--ghost" id="rule-cancel" type="button">Batal</button></div>
+          </div>
+        </form>
+        </dialog>
+      </section>
+
+      <section class="view" id="panel-status" role="tabpanel" aria-labelledby="tab-status" tabindex="0" data-view="status" hidden>
+        <section class="panel">
+          <div class="panel__head panel__head--stack">
+            <div><h2 class="panel__title" id="status-title">Status penerima</h2><p class="panel__sub">Port bawaan MATI sampai admin mengaktifkannya.</p></div>
+            <div class="filters"><a class="btn btn--ghost" href="administration.html#ingest">Pengaturan penerima</a></div>
+          </div>
+          <div class="table-wrap">
+            <table class="mon-table">
+              <thead><tr><th>Penerima</th><th>Status</th><th>Alamat</th><th>Paket terakhir</th><th>Diterima</th><th>Pesan/detik</th><th>Dibuang (asing/laju/autentikasi/antrean)</th><th>Antrean</th></tr></thead>
+              <tbody id="status-rows"></tbody>
+            </table>
+          </div>
+          <p class="panel__sub" id="status-note" role="status"></p>
+        </section>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/events.js?v=13" defer></script>
+</body>
+</html>
+

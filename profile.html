@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profil · NMS Kopegtel</title>
+  <meta name="description" content="Profil pengguna: ganti kata sandi dan kelola MFA TOTP." />
+  <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/tokens.css?v=3" />
+  <link rel="stylesheet" href="assets/css/dashboard.css?v=28" />
+</head>
+<body>
+  <a class="skip-link" href="#konten">Lewati ke konten utama</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navigasi utama"></aside>
+    <main class="main" id="konten">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">Profil</p>
+          <h1 class="topbar__title" id="view-title">Profil</h1>
+          <p class="topbar__sub"><span id="view-desc">Akun Anda: ganti kata sandi dan keamanan MFA.</span> · <span id="today">Memuat tanggal.</span></p>
+        </div>
+        <div class="topbar__actions">
+          <span class="clock" title="Waktu server"><span class="clock__dot" aria-hidden="true"></span><span id="clock">--:--:--</span></span>
+        </div>
+      </header>
+
+      <p class="hint-bar" id="grace-banner" role="status" hidden>MFA wajib untuk peran Anda. Aktifkan MFA di bawah ini sebelum masa tenggang habis, atau Anda tidak dapat masuk lagi.</p>
+
+      <section class="panel" aria-labelledby="pw-title">
+        <div class="panel__head">
+          <div><h2 class="panel__title" id="pw-title">Ganti kata sandi</h2><p class="panel__sub">Kata sandi minimal 10 karakter.</p></div>
+        </div>
+        <form class="admin-form" id="pw-form">
+          <div class="admin-form__grid">
+            <label class="admin-field"><span>Kata sandi saat ini *</span><input id="pw-current" type="password" autocomplete="current-password" /></label>
+            <label class="admin-field"><span>Kata sandi baru * (min. 10)</span><input id="pw-new" type="password" autocomplete="new-password" /></label>
+            <label class="admin-field"><span>Ulangi kata sandi baru *</span><input id="pw-confirm" type="password" autocomplete="new-password" /></label>
+          </div>
+          <p class="form-note" id="pw-note" role="alert" hidden></p>
+          <div class="admin-actions"><button class="btn btn--primary" id="pw-save" type="submit">Ganti kata sandi</button></div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="mfa-title">
+        <div class="panel__head panel__head--stack">
+          <div>
+            <h2 class="panel__title" id="mfa-title">MFA (TOTP)</h2>
+            <p class="panel__sub" id="mfa-status">Memuat status MFA…</p>
+          </div>
+          <div class="filters"><button class="btn btn--ghost" id="mfa-refresh" type="button">Muat ulang</button></div>
+        </div>
+        <div class="admin-form" id="mfa-off-block" hidden>
+          <p class="panel__sub">MFA menambahkan langkah kedua saat masuk (kode 6 digit dari aplikasi autentikator, mis. Google/Microsoft Authenticator). Rahasia hanya tampil sekali saat pendaftaran.</p>
+          <div class="admin-actions"><button class="btn btn--primary" id="mfa-start" type="button">Aktifkan MFA</button></div>
+        </div>
+
+        <div class="admin-form" id="mfa-setup-block" hidden>
+          <p class="panel__sub">1) Pindai QR ini di aplikasi autentikator (atau masukkan rahasia secara manual). 2) Masukkan kode 6 digit untuk mengaktifkan.</p>
+          <div class="mfa-setup">
+            <div class="mfa-qr" id="mfa-qr" aria-hidden="true"></div>
+            <div class="mfa-secret-block">
+              <p class="panel__sub">Rahasia (manual):</p>
+              <code class="mono" id="mfa-secret"></code>
+              <p class="panel__sub mt-half">URI: <code class="mono break-all" id="mfa-uri"></code></p>
+            </div>
+          </div>
+          <form class="admin-form__grid form-narrow" id="mfa-verify-form">
+            <label class="admin-field"><span>Kode 6 digit *</span><input id="mfa-code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" /></label>
+            <div class="admin-actions">
+              <button class="btn btn--primary" type="submit">Verifikasi &amp; aktifkan</button>
+              <button class="btn btn--ghost" id="mfa-cancel" type="button">Batal</button>
+            </div>
+          </form>
+          <p class="form-note" id="mfa-setup-note" role="alert" hidden></p>
+        </div>
+
+        <div class="admin-form" id="mfa-recovery-block" hidden>
+          <p class="panel__sub"><strong>Kode pemulihan (simpan dengan aman, hanya tampil SEKALI):</strong></p>
+          <ul class="mfa-recovery" id="mfa-recovery-list"></ul>
+          <p class="panel__sub">Gunakan salah satu kode ini jika ponsel Anda hilang. Kode sekali pakai.</p>
+          <div class="admin-actions"><button class="btn btn--primary" id="mfa-recovery-done" type="button">Saya sudah menyimpannya</button></div>
+        </div>
+
+        <div class="admin-form" id="mfa-on-block" hidden>
+          <p class="panel__sub">Sisa kode pemulihan: <strong id="mfa-recovery-left">0</strong></p>
+          <form class="admin-form__grid form-wide" id="mfa-disable-form">
+            <label class="admin-field"><span>Kata sandi saat ini *</span><input id="mfa-disable-pw" type="password" autocomplete="current-password" /></label>
+            <label class="admin-field"><span>Kode MFA atau kode pemulihan *</span><input id="mfa-disable-code" type="text" autocomplete="one-time-code" placeholder="000000 / XXXXX-XXXXX" /></label>
+            <div class="admin-actions"><button class="btn btn--ghost" type="submit">Nonaktifkan MFA</button></div>
+          </form>
+          <p class="form-note" id="mfa-disable-note" role="alert" hidden></p>
+        </div>
+      </section>
+
+      <footer class="foot">© 2026, NMS Kopegtel</footer>
+    </main>
+  </div>
+
+  <script src="assets/js/format.js?v=4" defer></script>
+  <script src="assets/js/api.js?v=1" defer></script>
+  <script src="assets/js/store.js?v=2" defer></script>
+  <script src="assets/js/nav.js?v=17" defer></script>
+  <script src="assets/js/shell.js?v=1" defer></script>
+  <script src="assets/js/ui.js?v=5" defer></script>
+  <script src="assets/js/profile.js?v=3" defer></script>
+</body>
+</html>
