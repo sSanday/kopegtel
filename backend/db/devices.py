@@ -19,8 +19,27 @@ from core.validation import (
     parse_query_int,
 )
 
+def _extract_check_reason(detail_json):
+    """Ambil alasan manusiawi dari detail_json pemeriksaan terakhir (metode yang gagal)."""
+    if not detail_json:
+        return None
+    try:
+        detail = json.loads(detail_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(detail, dict):
+        return None
+    for method in ("ping", "snmp", "mikrotik"):
+        entry = detail.get(method)
+        if isinstance(entry, dict) and not entry.get("ok", True):
+            text = entry.get("detail") or entry.get("reason")
+            if text:
+                return str(text)
+    return None
+
+
 def row_to_device(row):
-    """Bentuk dict publik — tanpa secret."""
+    """Bentuk dict publik - tanpa secret."""
     device = dict(row)
     has_snmp = bool(device.get("snmp_community") or device.get("snmp_v3_auth_password"))
     has_mikrotik = bool(device.get("mikrotik_password"))
@@ -50,6 +69,8 @@ def row_to_device(row):
         "status": device["status"],
         "latency_ms": device["latency_ms"],
         "last_seen": device["last_seen"],
+        "last_checked": device.get("last_checked"),
+        "check_reason": _extract_check_reason(device.get("last_check_detail")),
         "snmp_enabled": bool(device["snmp_enabled"]),
         "snmp_version": device["snmp_version"],
         "snmp_port": device["snmp_port"],
@@ -97,6 +118,12 @@ _LATEST_METRICS_JOIN = """
         GROUP BY device_id
     ) AS latest ON latest.device_id = devices.id
     LEFT JOIN device_metrics AS m ON m.id = latest.last_id
+    LEFT JOIN (
+        SELECT device_id, MAX(id) AS last_check_id
+        FROM device_checks
+        GROUP BY device_id
+    ) AS latest_check ON latest_check.device_id = devices.id
+    LEFT JOIN device_checks AS c ON c.id = latest_check.last_check_id
     LEFT JOIN host_groups AS g ON g.id = devices.group_id
     LEFT JOIN devices AS parent ON parent.id = devices.parent_id
 """
@@ -105,6 +132,7 @@ _LATEST_METRICS_SELECT = (
     "devices.*, m.cpu_pct AS cpu_pct, m.mem_used AS mem_used, m.mem_total AS mem_total,"
     " m.disk_used AS disk_used, m.disk_total AS disk_total, m.ts AS metrics_ts,"
     " m.temp_c AS temp_c, m.uptime_s AS uptime_s,"
+    " c.checked_at AS last_checked, c.detail_json AS last_check_detail,"
     " g.name AS group_name, parent.name AS parent_name"
 )
 
