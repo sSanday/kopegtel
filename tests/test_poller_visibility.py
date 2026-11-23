@@ -32,3 +32,11 @@ def test_device_with_check_exposes_reason(fresh_db):
     dev = db.get_device(did)
     assert dev["last_checked"] is not None
     assert "ping" in (dev["check_reason"] or "").lower() or "merespons" in (dev["check_reason"] or "").lower()
+
+
+def test_poller_status_returns_expected_keys(fresh_db):
+    import poller
+    status = poller.poller_status()
+    for key in ("workers", "interval", "last_check_at", "last_error", "heartbeat", "scheduled_devices"):
+        assert key in status, f"key {key} hilang"
+    assert isinstance(status["workers"], int) and status["workers"] >= 1
