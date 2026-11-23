@@ -255,8 +255,8 @@
             `<td class="mono">${escapeHtml(device.ip)}</td>` +
             `<td>${escapeHtml(device.group_name || "-")}</td>` +
             `<td>${escapeHtml(device.location || "-")}</td>` +
-            `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
-            `<td class="mono">${escapeHtml(timeAgo(device.last_seen))}</td>` +
+            `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span>${device.check_reason && (device.status === "offline" || device.status === "degraded") ? `<span class="cell-sub">${escapeHtml(device.check_reason)}</span>` : ""}</td>` +
+            `<td class="mono">${device.last_checked ? escapeHtml(timeAgo(device.last_checked)) : (device.last_seen ? escapeHtml(timeAgo(device.last_seen)) : "Belum diperiksa")}</td>` +
             `</tr>`
           );
         })
