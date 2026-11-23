@@ -39,13 +39,7 @@
 
   const LOCKUP =
     '<a class="lockup" href="dashboard.html" aria-label="NMS Kopegtel">' +
-    '<svg class="lockup__mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">' +
-    '<defs><linearGradient id="markGradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2fe0c4" /><stop offset="1" stop-color="#5b8dff" /></linearGradient></defs>' +
-    '<rect x="1" y="1" width="46" height="46" rx="13" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" />' +
-    '<g stroke="url(#markGradient)" stroke-width="1.8" stroke-linecap="round"><path d="M24 24 15.5 15" /><path d="M24 24 33 18" /><path d="M24 24 26 34" /></g>' +
-    '<circle cx="24" cy="24" r="4.2" fill="url(#markGradient)" />' +
-    '<circle cx="15.5" cy="15" r="2.6" fill="#2fe0c4" /><circle cx="33" cy="18" r="2.6" fill="#5b8dff" /><circle cx="26" cy="34" r="2.6" fill="#2fe0c4" />' +
-    "</svg>" +
+    '<img class="lockup__mark" src="assets/img/kopegtel-malang.png" alt="" width="42" height="42" />' +
     '<span class="lockup__text"><span class="lockup__name">NMS KOPEGTEL</span><span class="lockup__sub">Sistem manajemen jaringan</span></span>' +
     "</a>";
 
