@@ -225,6 +225,13 @@
             <p class="table-error__text">Data perangkat gagal dimuat dari server.</p>
             <button class="btn btn--ghost" id="host-retry" type="button">Coba lagi</button>
           </div>
+          <div class="empty-state" id="host-empty" hidden>
+            <p class="empty-state__title">Belum ada perangkat</p>
+            <p class="empty-state__desc">Tambahkan perangkat pertama Anda untuk mulai memantau jaringan.</p>
+            <div class="empty-state__actions">
+              <button class="btn btn--primary" id="host-add-first" type="button">Tambah perangkat pertama</button>
+            </div>
+          </div>
           <div class="table-wrap">
             <table class="mon-table">
               <thead>

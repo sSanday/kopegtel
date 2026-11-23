@@ -104,6 +104,13 @@
               <tbody id="service-rows"></tbody>
             </table>
           </div>
+          <div class="empty-state" id="service-empty" hidden>
+            <p class="empty-state__title">Belum ada layanan</p>
+            <p class="empty-state__desc">Tambahkan layanan pertama Anda untuk mulai memantau SLA.</p>
+            <div class="empty-state__actions">
+              <button class="btn btn--primary" id="service-add-first" type="button">Tambah layanan pertama</button>
+            </div>
+          </div>
         </section>
 
         <dialog class="sheet-dialog sheet-dialog--wide" aria-labelledby="service-form-title">
@@ -118,7 +125,7 @@
             <div class="admin-form__grid">
               <label class="admin-field">
                 <span>Nama layanan *</span>
-                <input id="svc-name" type="text" placeholder="mis. Jaringan Gedung Pusat" autocomplete="off" />
+                <input id="svc-name" type="text" placeholder="mis. Jaringan Gedung Pusat" autocomplete="off" title="Nama layanan (wajib)" />
               </label>
               <label class="admin-field">
                 <span>Divisi</span>
@@ -126,7 +133,7 @@
               </label>
               <label class="admin-field">
                 <span>Target SLA (%)</span>
-                <input id="svc-sla" type="number" min="0" max="100" step="0.1" value="99.9" inputmode="decimal" />
+                <input id="svc-sla" type="number" min="0" max="100" step="0.1" value="99.9" inputmode="decimal" title="Target SLA dalam persen (0-100)" />
               </label>
               <label class="admin-field">
                 <span>Mode ketersediaan</span>
