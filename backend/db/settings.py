@@ -230,7 +230,7 @@ SETTING_DEFAULTS = {
     "org_name": "Koperasi Pegawai Telkom",
     "timezone": "Asia/Jakarta",
     "default_poll_interval": "60",
-    "idle_timeout_minutes": "30",
+    "idle_timeout_minutes": "120",
     **{key: str(value) for key, value in RETENTION_DEFAULTS.items()},
     # Modul MikroTik
     "mt_write_actions_enabled": "0",
