@@ -48,12 +48,12 @@
     <div class="admin-form__grid">
       <label class="admin-field">
         <span>Nama perangkat *</span>
-        <input id="df-name" name="name" type="text" required autocomplete="off" placeholder="mis. core-sw-01" />
+        <input id="df-name" name="name" type="text" required autocomplete="off" placeholder="mis. core-sw-01" title="Nama unik perangkat (mis. core-sw-01)" />
         <span class="field-error" id="df-name-error" hidden></span>
       </label>
       <label class="admin-field">
         <span>Alamat IP *</span>
-        <input id="df-ip" name="ip" type="text" required autocomplete="off" inputmode="decimal" placeholder="mis. 192.168.30.2" />
+        <input id="df-ip" name="ip" type="text" required autocomplete="off" inputmode="decimal" placeholder="mis. 192.168.30.2" title="Alamat IPv4 (mis. 192.168.30.2)" />
         <span class="field-error" id="df-ip-error" hidden></span>
       </label>
       <label class="admin-field">
@@ -74,7 +74,7 @@
       </label>
       <label class="admin-field">
         <span>Interval polling (detik, min. 10)</span>
-        <input id="df-interval" name="poll_interval" type="number" min="10" max="86400" step="1" value="60" required />
+        <input id="df-interval" name="poll_interval" type="number" min="10" max="86400" step="1" value="60" required title="Interval polling dalam detik (min. 10, maks. 86400)" />
         <span class="field-error" id="df-interval-error" hidden></span>
       </label>
       <label class="admin-field">
@@ -101,14 +101,14 @@
       <div class="admin-form__grid" id="df-snmp-v2c-fields">
         <label class="admin-field admin-field--full">
           <span>Community *</span>
-          <input id="df-snmp-community" name="snmp_community" type="password" autocomplete="off" placeholder="community SNMP" />
+          <input id="df-snmp-community" name="snmp_community" type="password" autocomplete="off" placeholder="community SNMP" title="Community string SNMP v2c" />
           <span class="field-error" id="df-snmp-community-error" hidden></span>
         </label>
       </div>
       <div class="admin-form__grid" id="df-snmp-v3-fields" hidden>
         <label class="admin-field">
           <span>Nama pengguna v3 *</span>
-          <input id="df-snmp-v3-user" name="snmp_v3_user" type="text" autocomplete="off" />
+          <input id="df-snmp-v3-user" name="snmp_v3_user" type="text" autocomplete="off" title="Nama pengguna SNMP v3" />
           <span class="field-error" id="df-snmp-v3-user-error" hidden></span>
         </label>
         <label class="admin-field">
@@ -141,12 +141,12 @@
         </label>
         <label class="admin-field">
           <span>Pengguna RouterOS *</span>
-          <input id="df-mikrotik-user" name="mikrotik_user" type="text" autocomplete="off" />
+          <input id="df-mikrotik-user" name="mikrotik_user" type="text" autocomplete="off" title="Pengguna RouterOS dengan policy read,api" />
           <span class="field-error" id="df-mikrotik-user-error" hidden></span>
         </label>
         <label class="admin-field">
           <span>Kata sandi *</span>
-          <input id="df-mikrotik-password" name="mikrotik_password" type="password" autocomplete="off" placeholder="kata sandi RouterOS" />
+          <input id="df-mikrotik-password" name="mikrotik_password" type="password" autocomplete="off" placeholder="kata sandi RouterOS" title="Kata sandi pengguna RouterOS" />
           <span class="field-error" id="df-mikrotik-password-error" hidden></span>
         </label>
         <label class="admin-field">
