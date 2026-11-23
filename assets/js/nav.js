@@ -38,9 +38,9 @@
   };
 
   const LOCKUP =
-    '<a class="lockup" href="dashboard.html" aria-label="NMS Kopegtel">' +
+    '<a class="lockup" href="dashboard.html" aria-label="NMS Kopegtel, sistem manajemen jaringan">' +
     '<img class="lockup__mark" src="assets/img/kopegtel-malang.png" alt="" width="42" height="42" />' +
-    '<span class="lockup__text"><span class="lockup__name">NMS KOPEGTEL</span><span class="lockup__sub">Sistem manajemen jaringan</span></span>' +
+    '<span class="lockup__text"><span class="lockup__name">NMS KOPEGTEL</span> <span class="lockup__sub">Sistem manajemen jaringan</span></span>' +
     "</a>";
 
   const CHEVRON =

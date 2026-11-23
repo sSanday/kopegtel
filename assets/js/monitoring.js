@@ -84,9 +84,9 @@
     const days = Math.floor(minutes / 1440);
     const hours = Math.floor((minutes % 1440) / 60);
     const mins = minutes % 60;
-    if (days > 0) return `${days}h ${hours}j`;
-    if (hours > 0) return `${hours}j ${mins}m`;
-    return `${mins}m`;
+    if (days > 0) return `${days} hari ${hours} jam`;
+    if (hours > 0) return `${hours} jam ${mins} menit`;
+    return `${mins} menit`;
   }
 
   function renderProblems() {
