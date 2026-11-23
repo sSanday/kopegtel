@@ -66,6 +66,16 @@
         </a>
       </section>
 
+      <section class="panel" id="poller-panel" aria-labelledby="poller-title" hidden>
+        <div class="panel__head"><h2 class="panel__title" id="poller-title">Status poller</h2></div>
+        <div class="stats stats--four">
+          <article class="stat"><p class="stat__label">Worker aktif</p><p class="stat__value" id="poller-workers">-</p></article>
+          <article class="stat"><p class="stat__label">Interval bawaan</p><p class="stat__value" id="poller-interval">-</p></article>
+          <article class="stat"><p class="stat__label">Pemeriksaan terakhir</p><p class="stat__value" id="poller-last">-</p></article>
+          <article class="stat"><p class="stat__label">Error terakhir</p><p class="stat__value" id="poller-error">-</p></article>
+        </div>
+      </section>
+
       <div class="table-error dashboard-error" id="dashboard-error" role="alert" hidden>
         <p class="table-error__text" id="dashboard-error-text">Data dasbor gagal dimuat.</p>
         <button class="btn btn--ghost" id="dashboard-retry" type="button">Coba lagi</button>

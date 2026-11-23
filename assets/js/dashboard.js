@@ -222,8 +222,29 @@
     }
   }
 
+  async function loadPollerStatus() {
+    const panel = document.getElementById("poller-panel");
+    if (!panel) return;
+    const me = window.__nmsMe || {};
+    if (me.role !== "admin" && me.role !== "operator") {
+      panel.hidden = true;
+      return;
+    }
+    try {
+      const s = await window.apiFetch("/api/poller/status");
+      document.getElementById("poller-workers").textContent = String(s.workers);
+      document.getElementById("poller-interval").textContent = `${s.interval} dtk`;
+      document.getElementById("poller-last").textContent = s.last_check_at ? timeAgo(s.last_check_at) : "Belum ada";
+      document.getElementById("poller-error").textContent = s.last_error || "Tidak ada";
+      panel.hidden = false;
+    } catch {
+      panel.hidden = true;
+    }
+  }
+
   whenReady(() => {
     document.getElementById("dash-add-first")?.addEventListener("click", () => window.openDeviceForm());
+    loadPollerStatus();
     if (dashboardRetry) {
       dashboardRetry.addEventListener("click", async () => {
         dashboardRetry.disabled = true;
