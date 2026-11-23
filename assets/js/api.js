@@ -124,4 +124,15 @@
 
   window.apiFetch = apiFetch;
   window.rememberCsrf = rememberCsrf;
+
+  // Auto-refresh token: perpanjang sesi tiap 10 menit selama tab terlihat.
+  (function autoRefresh() {
+    const INTERVAL_MS = 10 * 60 * 1000;
+    setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      window.apiFetch("/api/me")
+        .then((me) => { if (me && me.csrf_token) window.rememberCsrf(me.csrf_token); })
+        .catch(() => { /* abaikan; sesi mungkin kadaluarsa */ });
+    }, INTERVAL_MS);
+  })();
 })();
