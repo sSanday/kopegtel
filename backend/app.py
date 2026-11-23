@@ -94,9 +94,34 @@ def _seed_admin():
     log.info("Akun admin awal dibuat: %s (wajib mengganti kata sandi pada login pertama)", username)
 
 
+def _seed_dummy_device():
+    """Buat 1 perangkat contoh jika tabel devices masih kosong."""
+    try:
+        devices = db.query_devices(per_page=1)
+        if devices.get("total", 0) > 0:
+            return
+    except Exception:
+        return
+    try:
+        db.create_device({
+            "name": "contoh-router", "ip": "192.168.30.99", "type": "router",
+            "location": "Contoh (bisa dihapus)", "poll_interval": 60, "maintenance": False,
+            "snmp_enabled": False, "snmp_version": "v2c", "snmp_port": 161,
+            "snmp_community": None, "snmp_v3_user": None,
+            "snmp_v3_auth_proto": "SHA", "snmp_v3_auth_password": None,
+            "snmp_v3_priv_proto": "AES", "snmp_v3_priv_password": None,
+            "mikrotik_enabled": False, "mikrotik_port": 8728,
+            "mikrotik_user": None, "mikrotik_password": None,
+            "mikrotik_ssl": False, "mikrotik_ssl_fingerprint": None,
+            "group_id": None, "parent_id": None,
+        })
+        log.info("Perangkat contoh 'contoh-router' dibuat (bisa dihapus).")
+    except Exception as exc:
+        log.warning("Gagal membuat perangkat contoh: %s", exc)
+
+
 def bootstrap():
     """Siapkan skema database dan akun admin awal.
-
     Sengaja TIDAK dipanggil saat modul diimpor: entrypoint (``serve.py``)
     harus mengambil lease instance terlebih dahulu, agar instance kedua tidak
     menjalankan migrasi skema saat instance pertama masih hidup. Tes memanggil
@@ -104,6 +129,7 @@ def bootstrap():
     """
     db.init_db()
     _seed_admin()
+    _seed_dummy_device()
 
 
 def _positive_int_env(name, default, minimum=1):
