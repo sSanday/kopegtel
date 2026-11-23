@@ -324,6 +324,10 @@
         })
         .join("");
     }
+    const hostEmpty = document.getElementById("host-empty");
+    if (hostEmpty) hostEmpty.hidden = hostState.total > 0;
+    const hostEmptyBtn = document.getElementById("host-add-first");
+    if (hostEmptyBtn) hostEmptyBtn.onclick = () => document.getElementById("add-device-btn")?.click();
     hostPageInfo.textContent = `Halaman ${data.page} dari ${hostState.pages}`;
     hostPrev.disabled = data.page <= 1;
     hostNext.disabled = data.page >= hostState.pages;
