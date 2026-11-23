@@ -58,3 +58,28 @@ def test_html_hrefs_resolve():
 def test_inventory_detail_route_exists():
     page_path = os.path.join(BASE_DIR, "inventory.html")
     assert 'data-view="host"' in open(page_path, encoding="utf-8").read()
+
+
+def test_sidebar_lockup_accessible_name_matches_visible_text():
+    """Nama aksesibel link logo harus memuat seluruh teks yang terlihat."""
+    nav_path = os.path.join(BASE_DIR, "assets", "js", "nav.js")
+    with open(nav_path, encoding="utf-8") as fh:
+        nav = fh.read()
+    match = re.search(r'<a class="lockup"[^>]*aria-label="([^"]+)"', nav)
+    assert match, "Lockup sidebar tidak memiliki aria-label"
+    label = match.group(1).lower()
+    assert "nms kopegtel" in label
+    assert "sistem manajemen jaringan" in label
+
+
+def test_sidebar_lockup_text_spans_are_separated():
+    """Nama dan subjudul harus dipisah spasi agar teks terlihat tidak menempel."""
+    nav_path = os.path.join(BASE_DIR, "assets", "js", "nav.js")
+    with open(nav_path, encoding="utf-8") as fh:
+        nav = fh.read()
+    match = re.search(
+        r'<span class="lockup__name">([^<]+)</span>(\s*)<span class="lockup__sub">([^<]+)</span>',
+        nav,
+    )
+    assert match, "Struktur lockup sidebar tidak ditemukan"
+    assert match.group(2), "Nama dan subjudul lockup harus dipisahkan spasi"
