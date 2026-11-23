@@ -29,12 +29,25 @@ def _extract_check_reason(detail_json):
         return None
     if not isinstance(detail, dict):
         return None
+    reason_label = {
+        "unreachable": "tidak merespons ping",
+        "timeout": "tidak merespons (timeout)",
+        "error": "gagal memeriksa",
+        "auth_failed": "autentikasi gagal",
+        "api_disabled": "API tidak aktif",
+        "snmp_no_response": "SNMP tidak merespons",
+    }
     for method in ("ping", "snmp", "mikrotik"):
         entry = detail.get(method)
         if isinstance(entry, dict) and not entry.get("ok", True):
-            text = entry.get("detail") or entry.get("reason")
-            if text:
-                return str(text)
+            reason = str(entry.get("reason") or "")
+            detail_text = entry.get("detail")
+            if reason in reason_label:
+                return reason_label[reason]
+            if detail_text:
+                return str(detail_text)
+            if reason:
+                return reason
     return None
 
 
