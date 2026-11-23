@@ -252,11 +252,11 @@
             <div class="admin-form__grid">
               <label class="admin-field">
                 <span>Nama link *</span>
-                <input id="link-name" type="text" placeholder="mis. Trunk Gedung A ↔ ONT lantai 3" autocomplete="off" />
+                <input id="link-name" type="text" title="Nama link fiber (wajib)" placeholder="mis. Trunk Gedung A ↔ ONT lantai 3" autocomplete="off" />
               </label>
               <label class="admin-field">
                 <span>Panjang serat (km) *</span>
-                <input id="link-length" type="number" min="0.001" max="10000" step="0.001" placeholder="mis. 2.5" inputmode="decimal" />
+                <input id="link-length" type="number" min="0.001" max="10000" step="0.001" placeholder="mis. 2.5" inputmode="decimal" title="Panjang serat dalam km (wajib)" />
               </label>
               <label class="admin-field">
                 <span>Perangkat ujung A *</span>
@@ -264,7 +264,7 @@
               </label>
               <label class="admin-field">
                 <span>Port ujung A *</span>
-                <input id="link-port-a" type="text" list="link-ports-a" placeholder="mis. sfp-sfpplus1" autocomplete="off" />
+                <input id="link-port-a" type="text" list="link-ports-a" placeholder="mis. sfp-sfpplus1" autocomplete="off" title="Port ujung A (wajib)" />
                 <datalist id="link-ports-a"></datalist>
               </label>
               <label class="admin-field">

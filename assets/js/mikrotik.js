@@ -353,6 +353,10 @@
         })
         .join("");
     }
+    const mtEmpty = document.getElementById("mt-empty");
+    if (mtEmpty) mtEmpty.hidden = (data.total || 0) > 0;
+    const mtEmptyBtn = document.getElementById("mt-add-first");
+    if (mtEmptyBtn) mtEmptyBtn.onclick = () => document.getElementById("add-device-btn")?.click();
     state.fleet.pages = data.pages || 1;
     fleetPageInfo.textContent = `Halaman ${data.page || 1} dari ${state.fleet.pages}`;
     fleetPrev.disabled = (data.page || 1) <= 1;

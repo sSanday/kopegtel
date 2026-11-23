@@ -104,6 +104,11 @@
     serviceCount.textContent = `${servicesCache.length} layanan terdaftar`;
     document.getElementById("svc-total").textContent = String(servicesCache.length);
 
+    const serviceEmpty = document.getElementById("service-empty");
+    if (serviceEmpty) serviceEmpty.hidden = servicesCache.length > 0;
+    const serviceEmptyBtn = document.getElementById("service-add-first");
+    if (serviceEmptyBtn) serviceEmptyBtn.onclick = () => document.getElementById("service-add")?.click();
+
     if (visible.length === 0) {
       serviceRows.innerHTML = servicesCache.length === 0
         ? '<tr class="empty-row"><td colspan="7">Belum ada layanan. Tambahkan layanan pertama Anda.</td></tr>'
