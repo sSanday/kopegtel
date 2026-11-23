@@ -105,7 +105,7 @@ def _seed_dummy_device():
     try:
         db.create_device({
             "name": "contoh-router", "ip": "192.168.30.99", "type": "router",
-            "location": "Contoh (bisa dihapus)", "poll_interval": 60, "maintenance": False,
+            "location": "Contoh (bisa dihapus)", "poll_interval": 60, "maintenance": True,
             "snmp_enabled": False, "snmp_version": "v2c", "snmp_port": 161,
             "snmp_community": None, "snmp_v3_user": None,
             "snmp_v3_auth_proto": "SHA", "snmp_v3_auth_password": None,
