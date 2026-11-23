@@ -67,6 +67,41 @@ def _beat():
     LAST_HEARTBEAT = time.time()
 
 
+def poller_status():
+    """Ringkasan status poller untuk UI (worker, interval, pemeriksaan terakhir, error)."""
+    try:
+        interval = int(db.get_setting("default_poll_interval", "60"))
+    except (TypeError, ValueError):
+        interval = DEFAULT_INTERVAL_SECONDS
+    last_check_at = None
+    last_error = None
+    try:
+        with _lock:
+            conn = db.get_conn()
+            row = conn.execute("SELECT MAX(checked_at) AS t FROM device_checks").fetchone()
+            last_check_at = row["t"] if row else None
+            err = conn.execute(
+                "SELECT metrics_error FROM devices WHERE metrics_error IS NOT NULL AND metrics_error != '' ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            last_error = err["metrics_error"] if err else None
+    except sqlite3.Error:
+        pass
+    scheduled = 0
+    if _scheduler is not None:
+        try:
+            scheduled = len(_scheduler.get_jobs())
+        except Exception:
+            scheduled = 0
+    return {
+        "workers": MAX_WORKERS,
+        "interval": interval,
+        "last_check_at": last_check_at,
+        "last_error": last_error,
+        "heartbeat": LAST_HEARTBEAT,
+        "scheduled_devices": scheduled,
+    }
+
+
 def _decrypted_snmp_config(device):
     config = {
         "ip": device["ip"],

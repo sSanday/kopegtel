@@ -271,7 +271,7 @@
       data = await window.apiFetch(`/api/devices?${params.toString()}`);
     } catch (error) {
       hostError.hidden = false;
-      hostRows.innerHTML = `<tr class="empty-row"><td colspan="12">Gagal memuat perangkat: ${escapeHtml(error.message)}</td></tr>`;
+      hostRows.innerHTML = `<tr class="empty-row"><td colspan="13">Gagal memuat perangkat: ${escapeHtml(error.message)}</td></tr>`;
       return;
     }
 
@@ -294,8 +294,8 @@
     if (devices.length === 0) {
       const filtered = hostSearch.value.trim() || hostStatus.value || hostGroup.value || hostType.value || hostRouteros.value || hostModel.value;
       hostRows.innerHTML = filtered
-        ? '<tr class="empty-row"><td colspan="12">Tidak ada perangkat yang cocok dengan filter saat ini.</td></tr>'
-        : '<tr class="empty-row"><td colspan="12">Belum ada perangkat. Tambahkan perangkat pertama lewat tombol Tambah perangkat.</td></tr>';
+        ? '<tr class="empty-row"><td colspan="13">Tidak ada perangkat yang cocok dengan filter saat ini.</td></tr>'
+        : '<tr class="empty-row"><td colspan="13">Belum ada perangkat. Tambahkan perangkat pertama lewat tombol Tambah perangkat.</td></tr>';
     } else {
       const editable = canEdit();
       hostRows.innerHTML = devices
@@ -314,7 +314,8 @@
             `<td>${escapeHtml(device.location || "-")}</td>` +
             `<td class="mono">${device.latency_ms == null ? "-" : `${Number(device.latency_ms).toFixed(0)} ms`}</td>` +
             cpu + mem +
-            `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span></td>` +
+            `<td class="mono">${device.last_checked ? escapeHtml(timeAgo(device.last_checked)) : "Belum diperiksa"}</td>` +
+            `<td><span class="status ${escapeHtml(meta.cls)}">${escapeHtml(meta.label)}</span>${device.check_reason && (device.status === "offline" || device.status === "degraded") ? `<span class="cell-sub">${escapeHtml(device.check_reason)}</span>` : ""}</td>` +
             `<td>${editable
               ? `<button class="ack-toggle" type="button" data-action="edit" data-id="${device.id}">Ubah</button> ` +
                 `<button class="ack-toggle" type="button" data-action="delete" data-id="${device.id}">Hapus</button>`

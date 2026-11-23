@@ -274,6 +274,12 @@ def api_list_devices():
     )
 
 
+@bp.get("/api/poller/status")
+@roles("admin", "operator")
+def api_poller_status():
+    return jsonify(poller.poller_status())
+
+
 @bp.post("/api/devices")
 @roles("admin", "operator")
 def api_create_device():
