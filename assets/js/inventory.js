@@ -325,7 +325,8 @@
         .join("");
     }
     const hostEmpty = document.getElementById("host-empty");
-    if (hostEmpty) hostEmpty.hidden = hostState.total > 0;
+    const hasFilter = hostSearch.value.trim() || hostStatus.value || hostGroup.value || hostType.value || hostRouteros.value || hostModel.value;
+    if (hostEmpty) hostEmpty.hidden = hostState.total > 0 || !!hasFilter;
     const hostEmptyBtn = document.getElementById("host-add-first");
     if (hostEmptyBtn) hostEmptyBtn.onclick = () => document.getElementById("add-device-btn")?.click();
     hostPageInfo.textContent = `Halaman ${data.page} dari ${hostState.pages}`;
