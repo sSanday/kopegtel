@@ -81,6 +81,10 @@ python tools/route_map.py rute.txt
 
 # uji beban perangkat tiruan (lihat docs/SKALA.md)
 python tools/loadtest.py --scale 200
+
+# laporan dampak pilot dari data nyata (database dibaca read-only)
+.\.venv\Scripts\python.exe tools\pilot_report.py --days 7
+.\.venv\Scripts\python.exe tools\pilot_report.py --since 2026-11-20 --until 2026-11-25 --out laporan
 ```
 
 Jangan menjalankan `pytest` atau `loadtest` saat produksi memakai database
@@ -344,9 +348,9 @@ backend/
   dbbackup.py       backup online database terjadwal
 assets/             front-end statis (JS per halaman, CSS, ikon)
 tests/              pytest; fake RouterOS HANYA di sini
-tools/              util dev/QA (package.py, route_map.py, loadtest.py, pilot_connectivity.py)
+tools/              util dev/QA (package.py, route_map.py, loadtest.py, pilot_connectivity.py, pilot_report.py)
 tools/dev/          skrip pengembangan satu-kali (tidak dipakai produksi)
-docs/               SKALA.md, TEMUAN.md, route-map.baseline.txt
+docs/               SKALA.md, TEMUAN.md, LAPORAN-DAMPAK.md, route-map.baseline.txt
 logs/               nms.log (rotasi 5 × 10 MB, git-ignored)
 backups/            backup DB (git-ignored)
 ```
