@@ -1,7 +1,7 @@
 # Design: Pilot Nyata + Prediksi Degradasi Fiber + Paket Bukti Penilaian
 
 **Tanggal:** 2026-11-24
-**Status:** menunggu persetujuan
+**Status:** menunggu persetujuan (revisi pasca builder-check)
 **Branch dasar:** `main`
 **Tenggat penilaian:** 2026-12-22
 
@@ -24,6 +24,9 @@ ditunjukkan berasal dari pilot.
 - **G2 Fitur**: prediksi waktu-ke-ambang Rx fiber per link/ujung (ETA hari),
   peringkat link berisiko, problem proaktif `fiber_predicted`, proyeksi di
   grafik.
+- **G2b Prasyarat data**: rollup optik per jam berjalan saat jam kerja +
+  maintenance catch-up saat startup, agar tren/baseline/grafik benar-benar
+  terisi selama pilot.
 - **G3 Bukti**: laporan dampak berisi angka nyata (insiden terdeteksi, waktu
   deteksi, alarm berguna, ETA), logbook Tim IT, dan batasan yang jujur.
 - **G4 Paket penilaian**: alur presentasi 10 menit + README/handover, memakai
@@ -62,6 +65,10 @@ ditunjukkan berasal dari pilot.
 
 - `optical_readings` + `optical_hourly` menyimpan DDM; baseline median 7 hari,
   tren regresi 14 hari (`backend/fiber.py`).
+- **Celah data (temuan review)**: `optical_hourly` hanya diisi job pembersihan
+  02.35 untuk data mentah >7 hari; laptop mati malam → hourly tidak pernah
+  terisi, sehingga tren/baseline/grafik kosong selama pilot. Job pembersihan
+  dan backup 02.30/02.45 juga tidak pernah jalan. Ini prasyarat P0.
 - Problem fiber: `fiber_los`, `fiber_rx_low`, `fiber_rx_high`,
   `fiber_margin_low`, `fiber_asymmetry`, `fiber_drop`, `fiber_trend`,
   `fiber_deviation`; evaluasi tiap 60 detik dengan 2 evaluasi berturut +
@@ -113,65 +120,123 @@ Sub-pendekatan prediksi:
   panjang, splice, konektor.
 - **Operasi**: nyalakan 08.00, matikan 17.00; cek `/healthz`; catat jam
   operasi.
+- **Maintenance saat startup**: purge cek/data + backup yang terlewat dijalankan
+  sekali setelah poller hidup (idempoten), karena jadwal 02.30–02.45 tidak
+  pernah tercapai saat laptop mati.
 - **Logbook Tim IT**: tanggal, alarm, valid/tidak, tindakan, catatan (manual,
   dilampirkan di laporan).
-- **Alat bukti**: `tools/pilot_report.py` (baru) → Markdown/CSV: jendela
-  observasi, perangkat, total cek, insiden per kind, waktu deteksi (pemeriksaan
-  buruk pertama → `action_log` alert pertama), prediksi fiber & hasil, uptime
-  dalam jendela, daftar alarm.
+- **Alat bukti**: `tools/pilot_report.py` (baru) → Markdown/CSV:
+  - **Jendela observasi**: jam pertama/terakhir tiap hari; klaim hanya untuk
+    jam teramati.
+  - **Cakupan**: perangkat, total cek, cek gagal, uptime dalam jendela.
+  - **Insiden**: satu baris `problems` = satu insiden; deteksi = `started_at`;
+    latensi alert = `action_log` pertama untuk problem itu − `started_at`;
+    MTTR = `resolved_at` − `started_at`.
+  - **Prediksi**: `fiber_predicted` dihitung sebagai peringatan dini, bukan
+    insiden; lead time = waktu ambang benar-benar terlewati − waktu prediksi;
+    status "terkonfirmasi" bila crossing dalam ±3 hari ETA, "belum
+    terverifikasi" bila belum terjadi sampai 22 Des.
+  - Daftar alarm + kolom "berguna?" dari logbook Tim IT.
 
 ### 8.2 Prediksi Fiber
+
+#### 8.2.0 Prasyarat P0 — rollup optik per jam + maintenance startup
+
+Tanpa ini, fitur prediksi tidak akan pernah punya data saat pilot.
+
+- `db.rollup_optical_hourly()` menggantikan upsert aditif di `purge_old_data`:
+  agregasi jam-jam yang sudah selesai dari `optical_readings` dengan
+  `ON CONFLICT ... DO UPDATE SET` yang **mengganti** nilai (bukan menambah
+  `samples`), sehingga aman dijalankan berulang.
+- Job `optical-hourly-rollup` tiap jam menit ke-5 + sekali saat startup
+  (catch-up). `purge_old_data` memanggil rollup sebelum menghapus data mentah.
+- Job `maintenance-startup` sekali setelah poller hidup: `purge_old_checks`,
+  `purge_old_data`, dan `dbbackup.run_due_backup` (yang sudah idempoten) agar
+  jadwal 02.30/02.35/02.45 yang terlewat tetap berjalan saat laptop dinyalakan.
+- Tes: rollup dua kali tidak menggandakan `samples`; catch-up startup; purge
+  tidak menghapus data yang belum ter-rollup; grafik `7d` dan `trend_rx` melihat
+  jam terbaru; maintenance startup idempoten.
+- Ini PR terpisah sebelum prediksi, karena juga memperbaiki `fiber_trend` dan
+  baseline yang sudah ada.
+
+#### 8.2.1 Fungsi prediksi
 
 **Setting baru** (default, rentang):
 
 - `fiber_predict_horizon_days` = 14 (1–90)
 - `fiber_predict_min_slope_db_per_week` = 0.1 (0.01–5)
+- `fiber_predict_close_margin_days` = 3 (0–30)
 
 **Fungsi murni** `link_eval.predict_crossing(rx_now, slope_per_week, warn_low,
-crit_low, horizon_days, min_slope)`:
+crit_low, horizon_days, min_slope, close_margin_days=0)`:
 
-- Guard: `warn_low` ada; `rx_now` ada dan > `warn_low` (belum melanggar);
-  `slope_per_week <= -min_slope`.
-- `days = (rx_now - warn_low) / (-slope_per_week / 7)`; valid bila
-  `0 < days <= horizon`.
-- Hitung juga `days_to_crit` bila `crit_low` ada dan `rx_now > crit_low`.
-- Kembalikan `{days_to_warn, days_to_crit, target: "warn"|"crit",
-  threshold_dbm}` atau `None`.
+- Guard: `rx_now` dan `slope_per_week` ada; `slope_per_week <= -min_slope`.
+- Tentukan ambang berikutnya:
+  - `rx_now > warn_low` → `target="warn"`, `threshold=warn_low`.
+  - `crit_low < rx_now <= warn_low` → `target="crit"`, `threshold=crit_low`.
+  - `rx_now <= crit_low` → `None` (sudah ditangani `fiber_rx_low`).
+- `days = (rx_now - threshold) / (-slope_per_week / 7)`; valid bila
+  `0 < days <= horizon_days + close_margin_days`.
+- Kembalikan `{target, days, threshold_dbm, slope_db_per_week}` atau `None`.
+- Dengan aturan ini `target="crit"` benar-benar tercapai untuk link yang sudah
+  di bawah ambang waspada tetapi belum kritis.
 
-**Integrasi `evaluate_link`**: per ujung A/B, tambah issue `fiber_predicted`:
+#### 8.2.2 Integrasi `evaluate_link` dan poller
 
-- severity `warning` bila `days_to_warn <= 7`, selain itu `average`.
-- pesan: "Link X: Rx ujung A diprediksi menyentuh ambang waspada (−15,00 dBm)
+- Per ujung A/B, tambah issue `fiber_predicted` bila ada prediksi.
+- Severity mengikuti skala proyek (`average` rank 3 > `warning` rank 2):
+  - target `crit` → `high` (rank 4) bila ETA ≤ 7 hari, `average` bila > 7 hari.
+  - target `warn` → `average` bila ETA ≤ 7 hari, `warning` bila > 7 hari.
+- Pesan: "Link X: Rx ujung A diprediksi menyentuh ambang waspada (−15,00 dBm)
   dalam ~9 hari (Rx kini −11,30 dBm, tren −0,42 dB/minggu)".
 - `device_side` diisi agar problem tercatat di perangkat yang tepat.
+- Poller: tambah `fiber_predicted` ke `FIBER_PROBLEM_KINDS` dan
+  `_FIBER_EVAL_KINDS`; dedupe/alert yang ada dipakai apa adanya.
+  `open_problem` hanya memperbarui pesan/severity tanpa alert ulang saat ETA
+  berubah.
+- Anti-flap: saat `fiber_predicted` sudah terbuka (`was_bad`), horizon
+  diperpanjang `close_margin_days`; problem ditutup hanya bila prediksi hilang
+  sepenuhnya. Tidak ada buka/tutup berulang saat ETA berayun di batas horizon.
 
-**Poller**: tambah `fiber_predicted` ke `FIBER_PROBLEM_KINDS` dan
-`_FIBER_EVAL_KINDS`; dedupe/histeresis/alerts yang ada dipakai apa adanya.
-`open_problem` hanya memperbarui pesan/severity tanpa alert ulang saat ETA
-berubah.
+#### 8.2.3 Riwayat prediksi (bukti)
 
-**Cache & API**:
+Tabel baru `fiber_prediction_log`:
+
+`id, link_id, side, device_id, if_name, evaluated_at, rx_dbm,
+slope_db_per_week, target, threshold_dbm, days, severity`
+
+- Ditulis poller paling banyak sekali per jam per link/ujung saat prediksi ada
+  (snapshot), bukan tiap 60 detik.
+- Retensi `fiber_prediction_retention_days` (default 180) dibersihkan di
+  `purge_old_data`.
+- `pilot_report.py` memakainya untuk menjawab: kapan prediksi terbit, ETA saat
+  itu, kapan ambang benar-benar terlewati, dan berapa hari lebih awal.
+
+#### 8.2.4 Cache & API
 
 - Tambah field prediksi ke `LINK_STATE_METRICS_KEYS`: `predicted_days_a/b`,
   `predicted_target_a/b`, `predicted_threshold_a/b`, `predicted_slope_a/b`.
 - `/api/optical/summary`: `links_at_risk`, `at_risk_links` (top 5: nama, side,
-  rx, threshold, slope, days).
+  rx, threshold, slope, days, target).
 - `/api/fiber-links/<id>`: `predictions` per ujung.
 
-**UI**:
+#### 8.2.5 UI
 
 - Ringkasan: kartu "Link berisiko" + panel "Prediksi degradasi" (5 baris,
   tautan ke detail).
 - Detail link: chip "Prediksi: ~9 hari ke ambang waspada" + garis proyeksi
   putus-putus di grafik.
-- Pengaturan fiber: 2 input baru.
+- Pengaturan fiber: 3 input baru (horizon, slope minimum, margin tutup).
 - Label "estimasi linier dari tren 14 hari; bukan jaminan".
 - `KIND_LABELS` di `reports.js`: `fiber_predicted` → "Prediksi Rx melewati
   ambang".
 
-**Tes**: unit fungsi murni (data kurang, slope positif, sudah di bawah ambang,
-batas horizon, crit), integrasi poller buka/tutup, API summary/detail, validasi
-setting. Data sintetis hanya di `tests/`, bukan demo.
+#### 8.2.6 Tes
+
+Unit fungsi murni (data kurang, slope positif, sudah di bawah ambang, batas
+horizon, target crit, margin tutup), rollup idempoten, integrasi poller
+buka/tutup, riwayat prediksi, API summary/detail, validasi setting. Data
+sintetis hanya di `tests/`, bukan demo.
 
 ### 8.3 Paket Bukti & Penilaian
 
@@ -185,11 +250,13 @@ setting. Data sintetis hanya di `tests/`, bukan demo.
 
 ## 9. Linimasa
 
-- **24–30 Nov**: TDD prediksi + API; mulai pilot (perangkat, Telegram, fiber
-  link).
-- **1–7 Des**: UI ringkasan/detail/pengaturan; `pilot_report.py`; data
+- **25–27 Nov**: P0 rollup optik per jam + maintenance startup; tes.
+- **28–30 Nov**: TDD fungsi prediksi + riwayat; mulai pilot (perangkat,
+  Telegram, fiber link).
+- **1–4 Des**: integrasi poller + API + cache; uji problem buka/tutup.
+- **5–9 Des**: UI ringkasan/detail/pengaturan; `pilot_report.py`; data
   terkumpul; umpan balik Tim IT #1.
-- **8–14 Des**: perbaikan dari pilot; suite penuh; draf laporan dampak.
+- **10–12 Des**: perbaikan dari pilot; suite penuh; draf laporan dampak.
 - **15–21 Des**: freeze fitur; angka final; latihan presentasi; serah terima.
 - **22 Des**: penilaian.
 
@@ -197,8 +264,10 @@ setting. Data sintetis hanya di `tests/`, bukan demo.
 
 - **Pilot**: ≥10 perangkat, ≥10 hari kerja, ≥1 insiden nyata terdeteksi, Tim IT
   mengonfirmasi ≥1 alarm berguna.
-- **Fitur**: prediksi muncul dari data nyata; minimal 1 link dengan ETA; tidak
-  ada problem storm; semua tes hijau.
+- **Fitur**: prediksi muncul dari data nyata; minimal 1 link dengan ETA;
+  riwayat prediksi tercatat; tidak ada problem storm; semua tes hijau.
+- **Data**: selama jam kerja `optical_hourly` terisi hingga jam terakhir;
+  tren/baseline/grafik tidak kosong; maintenance harian berjalan saat startup.
 - **Bukti**: laporan memuat angka + batasan; presentasi 10 menit siap; tidak ada
   data sintetis.
 - Jika prediksi belum terbukti pada data nyata, laporan menyatakan "belum
@@ -209,15 +278,27 @@ setting. Data sintetis hanya di `tests/`, bukan demo.
 - **Akses DDM berubah** → ganti pembeda ke wallboard NOC sebelum 1 Des; tanpa
   demo palsu.
 - **Data malam kosong** → hitung per jendela teramati; tulis batasan.
+- **Rollup terlewat saat laptop mati** → job tiap jam + catch-up startup; tes
+  idempoten.
+- **Maintenance malam tidak jalan** → `maintenance-startup` sekali setelah
+  poller hidup.
+- **Riwayat prediksi membengkak** → snapshot per jam + retensi 180 hari.
 - **Sedikit insiden** → ukur degradasi/early warning; logbook Tim IT.
 - **ETA tidak akurat** → guardrail, label estimasi, evaluasi; turunkan klaim
   bila perlu.
-- **Problem storm** → severity average/warning, horizon, min slope, dedupe; uji.
+- **Problem storm** → severity sesuai skala, horizon, min slope, dedupe,
+  margin tutup; uji.
 - **Waktu habis** → fitur freeze 15 Des; pilot + bukti diprioritaskan.
 
 ## 12. Keputusan yang Diambil (Builder Calls)
 
+- P0: rollup optik per jam + maintenance startup, sebelum fitur prediksi.
 - Kind baru `fiber_predicted`, bukan memperluas `fiber_trend`.
+- Prediksi ambang berikutnya (`warn` atau `crit`), bukan hanya `warn`.
+- Severity mengikuti skala proyek: `average` > `warning`; `high` untuk crit
+  dekat.
+- Anti-flap dengan `close_margin_days`, bukan membiarkan tutup langsung.
+- Riwayat prediksi per jam di tabel sendiri, bukan menimpa cache.
 - Prediksi di poller + cache, bukan on-demand.
 - Regresi linier + guardrail; tanpa ML.
 - CLI `tools/pilot_report.py`, bukan halaman UI baru.
@@ -235,5 +316,6 @@ setting. Data sintetis hanya di `tests/`, bukan demo.
 - Tim IT: akses read-only 1–2 perangkat SFP, daftar 10–30 perangkat, grup
   Telegram.
 - Jadwal di kantor untuk menyalakan laptop.
-- Data DDM minimal 24 jam per jam sebelum ETA bisa dihitung (target: aktif
-  26 Nov).
+- Data DDM minimal 24 titik per jam sebelum ETA bisa dihitung; dengan 9 jam
+  kerja/hari itu ≈ 3 hari kerja (target: rollup aktif 27 Nov, ETA pertama
+  ~1 Des).
