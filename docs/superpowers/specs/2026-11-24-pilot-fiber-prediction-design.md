@@ -1,7 +1,7 @@
 # Design: Pilot Nyata + Prediksi Degradasi Fiber + Paket Bukti Penilaian
 
 **Tanggal:** 2026-11-24
-**Status:** menunggu persetujuan (revisi pasca builder-check)
+**Status:** disetujui; inti P1 diimplementasikan (verifikasi suite penuh berjalan)
 **Branch dasar:** `main`
 **Tenggat penilaian:** 2026-12-22
 

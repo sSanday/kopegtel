@@ -215,6 +215,15 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
         # transaksi, jadi error di sini harus membatalkan semuanya agar tidak
         # ada rollup/DELETE flow yang tersimpan setengah jalan.
         flow_result = _flow_db.purge_flow(flow_days, flow_hourly_days, conn=conn)
+        # Prediksi fiber: retensi riwayat.
+        try:
+            pred_days = int(fiber.get("fiber_prediction_retention_days", 180))
+        except (TypeError, ValueError, OverflowError):
+            pred_days = 180
+        conn.execute(
+            "DELETE FROM fiber_prediction_log WHERE evaluated_at < ?",
+            (_days_ago(pred_days),),
+        )
         # Backup: simpan N versi terakhir per perangkat.
         try:
             backup_keep = int(settings.get("mt_backup_retention_versions", 30))

@@ -1,12 +1,14 @@
 """Fiber optik: pengukuran DDM, modul optik, link, verifikasi."""
 
 import json
+from datetime import datetime, timezone
 
 from .connection import (
     _lock,
     transaction,
     _now,
     get_conn,
+    parse_ts,
 )
 
 FIBER_SETTING_DEFAULTS = {
@@ -28,11 +30,18 @@ FIBER_SETTING_DEFAULTS = {
     "fiber_hysteresis_db": "1",
     "fiber_avg_readings": "3",
     "retention_optical_hourly_days": "90",
+    # Prediksi degradasi Rx (P1)
+    "fiber_predict_horizon_days": "14",
+    "fiber_predict_min_slope_db_per_week": "0.1",
+    "fiber_predict_close_margin_days": "3",
+    "fiber_prediction_retention_days": "180",
 }
 
 _FIBER_INT_KEYS = {
     "fiber_drop_baseline_days", "fiber_trend_days", "fiber_consec_required",
     "fiber_avg_readings", "retention_optical_hourly_days",
+    "fiber_predict_horizon_days", "fiber_predict_close_margin_days",
+    "fiber_prediction_retention_days",
 }
 
 def get_fiber_settings():
@@ -522,4 +531,60 @@ def delete_fiber_measurement(measurement_id):
     with transaction() as conn:
         cursor = conn.execute("DELETE FROM fiber_measurements WHERE id = ?", (measurement_id,))
         return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------
+# Riwayat prediksi degradasi fiber (P1)
+# ---------------------------------------------------------
+def record_fiber_prediction_if_due(link_id, side, device_id, if_name, rx_dbm,
+                                  slope_db_per_week, target, threshold_dbm,
+                                  days, severity, min_interval_minutes=60):
+    """Simpan snapshot prediksi bila belum ada yang tercatat dalam interval.
+
+    Mengembalikan True bila baris baru ditulis.
+    """
+    side = (side or "").lower()
+    now = _now()
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT evaluated_at FROM fiber_prediction_log "
+            "WHERE link_id = ? AND side = ? ORDER BY id DESC LIMIT 1",
+            (link_id, side),
+        ).fetchone()
+        if row is not None:
+            last = parse_ts(row["evaluated_at"])
+            if last is not None:
+                delta = (datetime.now(timezone.utc) - last).total_seconds()
+                if delta < min_interval_minutes * 60:
+                    return False
+        conn.execute(
+            """
+            INSERT INTO fiber_prediction_log
+                (link_id, side, device_id, if_name, evaluated_at, rx_dbm,
+                 slope_db_per_week, target, threshold_dbm, days, severity)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (link_id, side, device_id, if_name, now, rx_dbm,
+             slope_db_per_week, target, threshold_dbm, days, severity),
+        )
+        return True
+
+
+def list_fiber_predictions(link_id=None, side=None, since=None, limit=200):
+    with _lock:
+        sql = "SELECT * FROM fiber_prediction_log WHERE 1=1"
+        params = []
+        if link_id is not None:
+            sql += " AND link_id = ?"
+            params.append(link_id)
+        if side is not None:
+            sql += " AND side = ?"
+            params.append(side.lower())
+        if since is not None:
+            sql += " AND evaluated_at >= ?"
+            params.append(since)
+        sql += " ORDER BY evaluated_at DESC LIMIT ?"
+        params.append(int(limit))
+        rows = get_conn().execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
 

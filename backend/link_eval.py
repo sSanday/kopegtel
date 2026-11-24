@@ -32,6 +32,44 @@ def worst_rx(reading):
 
 
 # ---------------------------------------------------------
+# Prediksi waktu-ke-ambang Rx (P1)
+# ---------------------------------------------------------
+def predict_crossing(rx_now, slope_per_week, warn_low, crit_low,
+                     horizon_days, min_slope, close_margin_days=0):
+    """Prediksi kapan Rx akan menyentuh ambang berikutnya.
+
+    Mengembalikan dict {target, days, threshold_dbm, slope_db_per_week} atau
+    None bila tidak ada prediksi (data kurang, slope tidak cukup negatif,
+    sudah di bawah ambang, atau ETA di luar horizon).
+    target = "warn" bila Rx masih di atas ambang waspada, "crit" bila sudah
+    di bawah waspada tetapi di atas kritis.
+    """
+    if rx_now is None or slope_per_week is None or warn_low is None:
+        return None
+    if rx_now > warn_low:
+        target = "warn"
+        threshold = warn_low
+    elif crit_low is not None and rx_now > crit_low:
+        target = "crit"
+        threshold = crit_low
+    else:
+        return None
+    if slope_per_week > -abs(min_slope):
+        return None
+    days = (rx_now - threshold) / (-slope_per_week / 7.0)
+    if days <= 0:
+        return None
+    if days > horizon_days + close_margin_days:
+        return None
+    return {
+        "target": target,
+        "days": days,
+        "threshold_dbm": threshold,
+        "slope_db_per_week": slope_per_week,
+    }
+
+
+# ---------------------------------------------------------
 # Evaluasi lengkap satu link
 # ---------------------------------------------------------
 
@@ -239,6 +277,43 @@ def evaluate_link(link, profile, settings, reading_a, reading_b,
                 f"{link_label}: tren Rx ujung {side} memburuk {abs(trend):.2f} dB/minggu (ambang {trend_limit} dB/minggu)",
                 device_side=side.lower())
 
+    # Prediksi degradasi: kapan ambang berikutnya (warn/crit) akan terlewati.
+    _horizon = settings.get("fiber_predict_horizon_days", 14)
+    _min_slope = settings.get("fiber_predict_min_slope_db_per_week", 0.1)
+    _close_margin = (
+        settings.get("fiber_predict_close_margin_days", 3)
+        if "fiber_predicted" in was_bad else 0
+    )
+    predictions = {"a": None, "b": None}
+    for side, rx, trend in (("A", rx_a, trend_rx_a), ("B", rx_b, trend_rx_b)):
+        if rx is None:
+            continue
+        pred = predict_crossing(
+            rx, trend, rx_warn_low, rx_crit_low,
+            _horizon, _min_slope, _close_margin,
+        )
+        if pred is None:
+            continue
+        predictions[side.lower()] = pred
+        target = pred["target"]
+        days = pred["days"]
+        threshold = pred["threshold_dbm"]
+        if target == "crit":
+            severity = "high" if days <= 7 else "average"
+            label = "kritis"
+        else:
+            severity = "average" if days <= 7 else "warning"
+            label = "waspada"
+        reading = reading_a if side == "A" else reading_b
+        add(
+            "fiber_predicted", severity,
+            f"{link_label}: Rx ujung {side} diprediksi menyentuh ambang {label} "
+            f"({threshold:.2f} dBm) dalam ~{days:.0f} hari "
+            f"(Rx kini {rx:.2f} dBm, tren {trend:.2f} dB/minggu)",
+            port=(reading or {}).get("if_name"), rx=rx,
+            redaman=att_ab if side == "A" else att_ba, device_side=side.lower(),
+        )
+
     # Status link = terburuk dari LOS, Rx, margin, deviasi, asimetri.
     static_levels = [
         "crit" if (los_a or los_b) else None,
@@ -355,4 +430,5 @@ def evaluate_link(link, profile, settings, reading_a, reading_b,
             "rx_a_dbm": rx_a, "tx_a_dbm": tx_a,
             "rx_b_dbm": rx_b, "tx_b_dbm": tx_b,
         },
+        "predictions": predictions,
     }

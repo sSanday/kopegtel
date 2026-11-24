@@ -467,6 +467,23 @@ def init_db():
                 updated_at TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS fiber_prediction_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                link_id INTEGER NOT NULL REFERENCES fiber_links(id) ON DELETE CASCADE,
+                side TEXT NOT NULL,                 -- 'a' | 'b'
+                device_id INTEGER REFERENCES devices(id) ON DELETE SET NULL,
+                if_name TEXT,
+                evaluated_at TEXT NOT NULL,
+                rx_dbm REAL,
+                slope_db_per_week REAL,
+                target TEXT NOT NULL,              -- 'warn' | 'crit'
+                threshold_dbm REAL,
+                days REAL,
+                severity TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_fiber_prediction_log_link
+                ON fiber_prediction_log (link_id, side, evaluated_at);
+
             -- ============================================================
             -- Modul MikroTik (M1-M6)
             -- ============================================================

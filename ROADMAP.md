@@ -1,0 +1,141 @@
+# ROADMAP — NMS Kopegtel (24 Nov – 22 Des 2026)
+
+**Periode:** 24 Nov 2026 – 22 Des 2026 (28 hari, ~20 hari kerja)
+**Tenggat:** 22 Des 2026 (penilaian magang)
+**Status:** P0 selesai; inti P1 diimplementasikan (verifikasi suite penuh berjalan); P2 berikutnya
+**Branch dasar:** `main` @ `c4a3937` (suite 444/444 = 100%)
+
+## 0. Prinsip & batasan
+
+- **Jam kerja:** laptop menyala 08.00–17.00 di kantor. Malam/weekend tidak ada
+  data. Semua klaim dihitung dari jendela teramati (tidak ada klaim 24/7).
+- **Data nyata saja:** tidak ada demo dengan data sintetis. Jika data nyata
+  belum cukup, laporan menyatakan "belum terverifikasi" secara jujur (pola yang
+  sudah dipakai proyek).
+- **Satu fitur pembeda:** prediksi degradasi fiber (ETA ambang Rx). Tidak
+  menambah fitur lain yang tidak dipakai/divalidasi Tim IT.
+- **Tidak mengubah:** status warna, layout, ID, `data-*`, business logic,
+  mekanisme alert/eskalasi. Semua tes lama harus tetap hijau.
+- **K freeze:** fitur freeze 15 Des; 16–22 Des hanya laporan, presentasi,
+  serah terima.
+
+## 1. Prioritas (urutan kerja)
+
+| Prioritas | Cakupan | Alasan |
+|---|---|---|
+| **P0** | Rollup optik per jam + maintenance startup | Tanpa ini, `fiber_trend`, baseline, grafik, dan prediksi kosong selama pilot (laptop mati malam). |
+| **P1** | Prediksi degradasi fiber (fungsi, poller, cache, API, UI) | Satu fitur pembeda berbasis data nyata; melengkapi `fiber_trend` yang sudah ada. |
+| **P2** | Pilot nyata + `pilot_report.py` + laporan dampak | Bukti manfaat nyata untuk Tim IT dan dosen. |
+| **P3** | Paket penilaian (presentasi, handover, README) | Membungkus semua hasil jadi alur 10 menit. |
+| **P4** (cadangan) | Wallboard NOC / config drift | Hanya jika akses DDM batal atau waktu berlebih. |
+
+## 2. Minggu 1 — 24–27 Nov: fondasi data & pilot siap
+
+**Tujuan:** data optik terisi saat jam kerja; pilot siap jalan.
+
+### P0 — Rollup optik per jam + maintenance startup (PR terpisah)
+- [x] `db.rollup_optical_hourly()` idempoten (replace, bukan additive).
+- [x] Job `optical-hourly-rollup` tiap jam menit ke-5 + catch-up startup.
+- [x] `purge_old_data` panggil rollup sebelum hapus; hilangkan upsert aditif.
+- [x] `maintenance-startup`: purge cek/data + `run_due_backup` sekali setelah poller hidup.
+- [x] Tes: double-run tidak menggandakan `samples`; catch-up startup; grafik `7d` dan `trend_rx` melihat jam terbaru.
+- [ ] Merge ke `main` sebelum 28 Nov.
+
+### Pilot — persiapan (paralel, operasional)
+- [ ] Daftar 10–30 perangkat pilihan Tim IT; akses read-only 1–2 MikroTik ber-SFP.
+- [ ] Grup Telegram Tim IT; uji kirim; aturan aksi default severity warning/high.
+- [ ] Daftarkan link fiber nyata + isi profil ambang (datasheet SFP, panjang, splice, konektor).
+- [ ] Dokumen jam operasi + checklist harian (nyalakan 08.00, cek `/healthz`, matikan 17.00).
+
+**Acceptance:** rollup PR hijau; `/healthz` 200; data `optical_hourly` terisi hingga jam terakhir di hari kerja.
+
+## 3. Minggu 2 — 30 Nov – 4 Des: prediksi fiber inti
+
+**Tujuan:** fungsi prediksi + integrasi poller + API hijau; minimal 1 link dengan ETA.
+
+### P1 — Fungsi & riwayat
+- [x] Setting baru: `fiber_predict_horizon_days` (14), `fiber_predict_min_slope_db_per_week` (0.1), `fiber_predict_close_margin_days` (3).
+- [x] `link_eval.predict_crossing(...)` next-threshold (warn/crit), guard slope, margin tutup.
+- [x] Tabel `fiber_prediction_log` (snapshot per jam) + retensi 180 hari.
+- [x] Tes unit: data kurang, slope positif, sudah di bawah ambang, batas horizon, target crit, margin tutup.
+
+### P1 — Integrasi
+- [x] `evaluate_link`: issue `fiber_predicted` per ujung; severity sesuai skala proyek (`average` > `warning`; `high` untuk crit dekat); pesan informatif.
+- [x] Poller: tambah kind ke `FIBER_PROBLEM_KINDS`/`_FIBER_EVAL_KINDS`; dedupe/alert existing; anti-flap dengan margin.
+- [x] Cache & API: field prediksi di `LINK_STATE_METRICS_KEYS`; `/api/optical/summary` (top 5 link berisiko); `/api/fiber-links/<id>`.
+
+**Acceptance:** integrasi poller buka/tutup hijau; tidak ada problem storm; minimal 1 link menampilkan ETA dari data nyata; riwayat prediksi tercatat.
+
+## 4. Minggu 3 — 7 – 11 Des: UI + alat bukti
+
+**Tujuan:** panel prediksi terlihat di UI; `pilot_report.py` siap; umpan balik Tim IT #1.
+
+### P1 — UI
+- [x] Ringkasan: kartu "Link berisiko" + panel "Prediksi degradasi" (5 baris, tautan detail).
+- [ ] Detail link: chip prediksi + garis proyeksi putus-putus di grafik. (chip selesai; garis proyeksi belum)
+- [x] Pengaturan fiber: 3 input baru + label estimasi.
+- [x] `KIND_LABELS`: `fiber_predicted` → "Prediksi Rx melewati ambang".
+
+### P2 — Alat bukti
+- [ ] `tools/pilot_report.py`: jendela observasi, cakupan, insiden (MTTD/MTTR), prediksi (lead time, terkonfirmasi/belum), alarm + kolom "berguna?".
+- [x] Full suite (`pytest tests/ -q`) hijau — 470 passed, 1 warning (25 Nov 2026).
+- [ ] Umpan balik Tim IT #1: validasi alarm, catat false positive.
+
+**Acceptance:** UI menampilkan prediksi dari data nyata; `pilot_report.py` menghasilkan Markdown/CSV; 0 regresi.
+
+## 5. Minggu 4 — 14 – 18 Des: freeze, bukti, presentasi
+
+**Tujuan:** fitur freeze; angka final; presentasi & handover siap.
+
+- [ ] 15 Des: feature freeze (tidak ada fitur baru; hanya bugfix).
+- [ ] Snapshot data pilot (backup DB + CSV report).
+- [ ] `docs/LAPORAN-DAMPAK.md`: konteks, metode, cakupan jam kerja, perangkat/cek, insiden, waktu deteksi, alarm berguna, hasil prediksi (lead time), batasan.
+- [ ] `docs/ALUR-PRESENTASI.md`: 10 menit (dashboard → masalah → fiber → angka → batasan).
+- [ ] README: bagian "Pilot & dampak" + tautan.
+- [ ] Handover: akun viewer/operator, runbook start/stop, backup, Telegram.
+- [ ] Latihan presentasi dengan data pilot.
+
+**Acceptance:** laporan berisi angka nyata + batasan jujur; presentasi 10 menit siap; handover lengkap.
+
+## 6. 21 – 22 Des: finalisasi & penilaian
+
+- [ ] 21 Des: rehearsal terakhir, cek `/healthz`, backup final, koreksi typo.
+- [ ] 22 Des: penilaian — demo dashboard → masalah → fiber prediksi → angka → batasan.
+
+## 7. Kriteria sukses (22 Des)
+
+- **Pilot:** ≥10 perangkat, ≥10 hari kerja, ≥1 insiden nyata terdeteksi, Tim IT mengonfirmasi ≥1 alarm berguna.
+- **Fitur:** prediksi muncul dari data nyata; minimal 1 link dengan ETA; riwayat prediksi tercatat; tidak ada problem storm; semua tes hijau.
+- **Data:** selama jam kerja `optical_hourly` terisi hingga jam terakhir; tren/baseline/grafik tidak kosong; maintenance harian berjalan saat startup.
+- **Bukti:** laporan memuat angka + batasan; presentasi 10 menit siap; tidak ada data sintetis.
+- **Jujur:** jika prediksi belum terbukti pada data nyata, laporan menyatakan "belum terverifikasi".
+
+## 8. Risiko & mitigasi
+
+| Risiko | Mitigasi |
+|---|---|
+| Akses DDM berubah | Ganti pembeda ke wallboard NOC sebelum 1 Des; tanpa demo palsu. |
+| Data malam kosong | Hitung per jendela teramati; tulis batasan. |
+| Rollup terlewat (laptop mati) | Job tiap jam + catch-up startup; tes idempoten. |
+| Maintenance malam tidak jalan | `maintenance-startup` sekali setelah poller hidup. |
+| ETA tidak akurat | Guardrail, label estimasi, evaluasi; turunkan klaim bila perlu. |
+| Problem storm | Severity sesuai skala, horizon, min slope, dedupe, margin tutup; uji. |
+| Waktu habis | Freeze 15 Des; pilot + bukti diprioritaskan. |
+
+## 9. Non-goals (tidak dikerjakan periode ini)
+
+- Tidak ada data sintetis di presentasi/demo.
+- Tidak ada ML/black box.
+- Tidak mengubah arsitektur (PostgreSQL, poller terpisah, HA).
+- Tidak ada auto-remediasi/tulis perangkat.
+- Tidak mengganti mekanisme alert/eskalasi.
+- Tidak menambah halaman besar baru; panel di halaman fiber yang ada.
+- Tidak mengerjakan logbook (di luar scope; dikerjakan terpisah).
+
+## 10. Catatan operasional
+
+- Server: `python backend/serve.py` (waitress, default port dari `.env` = 5000).
+- Health check: `http://127.0.0.1:5000/healthz` (200 bila DB terbaca & heartbeat poller < 90 dtk).
+- Satu instance per database (lease `instance_lease`); jangan start ganda; tunggu lease kedaluwarsa (~30 dtk) bila restart.
+- Tes: `python -m pytest tests/ -q` (database sementara; jangan saat produksi).
+- Branch kerja: `feat/pilot-fiber-prediction`; PR → merge ke `main` per langkah besar.

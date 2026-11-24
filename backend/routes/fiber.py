@@ -76,6 +76,31 @@ def api_optical_summary():
             )
     problem_links.sort(key=lambda item: (0 if item["status"] == "crit" else 1, -(item["attenuation_ab_db"] or 0)))
     summary["problem_links"] = problem_links[:10]
+
+    at_risk = []
+    for link in db.list_fiber_links():
+        status, metrics = fiber_calc.cached_or_live_metrics(link)
+        for side in ("a", "b"):
+            days = metrics.get(f"predicted_days_{side}")
+            if days is None:
+                continue
+            at_risk.append(
+                {
+                    "link_id": link["id"],
+                    "name": link["name"],
+                    "side": side.upper(),
+                    "rx_dbm": metrics.get(f"rx_{side}_dbm"),
+                    "threshold_dbm": metrics.get(f"predicted_threshold_{side}"),
+                    "slope_db_per_week": metrics.get(f"predicted_slope_{side}"),
+                    "target": metrics.get(f"predicted_target_{side}"),
+                    "days": days,
+                    "device_name": link["device_a_name"] if side == "a" else (link["device_b_name"] or link.get("end_b_label") or "—"),
+                    "port": link["port_a"] if side == "a" else link.get("port_b"),
+                }
+            )
+    at_risk.sort(key=lambda item: item["days"])
+    summary["links_at_risk"] = len(at_risk)
+    summary["at_risk_links"] = at_risk[:5]
     return jsonify(summary)
 
 
@@ -696,11 +721,14 @@ def api_update_optical_settings():
         "fiber_asymmetry_warn": (0.5, 30.0),
         "fiber_drop_db": (0.5, 30.0),
         "fiber_trend_db_per_week": (0.05, 20.0),
+        "fiber_predict_min_slope_db_per_week": (0.01, 5.0),
         "fiber_hysteresis_db": (0.0, 6.0),
     }
     int_specs = {
         "fiber_drop_baseline_days": (1, 90),
         "fiber_trend_days": (3, 90),
+        "fiber_predict_horizon_days": (1, 90),
+        "fiber_predict_close_margin_days": (0, 30),
         "fiber_consec_required": (1, 10),
         "fiber_avg_readings": (1, 10),
         "retention_optical_hourly_days": (1, 3650),

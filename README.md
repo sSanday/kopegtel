@@ -41,8 +41,8 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock
 copy .env.example .env
 # isi .env (lihat tabel di bawah)
-python backend\manage.py check-config
-python backend\serve.py
+.\.venv\Scripts\python.exe backend\manage.py check-config
+.\.venv\Scripts\python.exe backend\serve.py
 ```
 
 ### Linux
@@ -57,13 +57,22 @@ nano .env
 ```
 
 Aplikasi berjalan di `http://127.0.0.1:5500` secara default (`HOST`/`PORT`
-di `.env`). Mode dev (`app.run`, bukan untuk produksi): `python backend/app.py`.
+di `.env`). Mode dev (`app.run`, bukan untuk produksi):
+`.\.venv\Scripts\python.exe backend\app.py`.
+
+> **Windows:** selalu jalankan lewat `.venv\Scripts\python.exe`, bukan `python`
+> polos. Jika `python` menunjuk ke Microsoft Store (`WindowsApps`), proses
+> berjalan di AppContainer dan Windows memblokir ICMP/ping serta UDP SNMP —
+> gejalanya `Ping: Gagal: unreachable` dan `SNMP: No response` walau perangkat
+> hidup. Folder proyek berlabel integritas *Low* juga menyebabkan hal yang sama;
+> simpan venv di folder biasa dan jalankan
+> `tools\pilot_connectivity.py` untuk memeriksa.
 
 ## Pengembangan & pengujian
 
 ```bash
 # seluruh tes (database sementara; tidak menyentuh backend/nms.db)
-python -m pytest tests/ -q
+.\.venv\Scripts\python.exe -m pytest tests/ -q
 
 # peta rute harus sama dengan docs/route-map.baseline.txt (117 rute)
 python tools/route_map.py rute.txt
@@ -269,12 +278,12 @@ atau centang *SNMP* pada pengaturan perangkat. Tamu (viewer) hanya melihat jumla
 
 ```bash
 # 1. Backup database (wajib)
-python backend/manage.py backup-db
+.\.venv\Scripts\python.exe backend/manage.py backup-db
 # 2. Perbarui kode & dependensi
 git pull
-pip install -r requirements.lock
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock
 # 3. Mulai layanan; migrasi skema otomatis bila perlu
-python backend/serve.py
+.\.venv\Scripts\python.exe backend/serve.py
 # 4. Verifikasi
 curl -s http://127.0.0.1:5500/healthz   # {"status":"ok"}
 ```
@@ -289,6 +298,7 @@ Kembalikan dari backup jika gagal: `python backend/manage.py restore-db`.
 | Perangkat `api_disabled` | API MikroTik belum diaktifkan | Aktifkan di pengaturan perangkat |
 | Tab MikroTik `auth_failed` | User/kata sandi salah | Periksa user & kredensial |
 | `snmp_no_response` | SNMP mati/diblokir | Cek `snmp` di router, ACL, UDP 161 |
+| Ping `unreachable` + SNMP timeout, padahal perangkat hidup | Proses Python berjalan Low/AppContainer (Microsoft Store) sehingga ICMP & UDP diblokir | Jalankan `.venv\Scripts\python.exe` dari Python biasa; pastikan folder venv tidak berlabel *Low*; uji dengan `tools\pilot_connectivity.py` |
 | `database is locked` | Dua proses menulis DB | Ada satu instance saja; cek `instance_lease` |
 | `/healthz` 503 | Poller mati/DB rusak | Lihat `logs/nms.log`; restart service; restore bila perlu |
 | Login gagal berulang | Akun atau IP terblokir sementara | Tunggu 10 menit atau hubungi admin |
@@ -334,7 +344,7 @@ backend/
   dbbackup.py       backup online database terjadwal
 assets/             front-end statis (JS per halaman, CSS, ikon)
 tests/              pytest; fake RouterOS HANYA di sini
-tools/              util dev/QA (package.py, route_map.py, loadtest.py)
+tools/              util dev/QA (package.py, route_map.py, loadtest.py, pilot_connectivity.py)
 tools/dev/          skrip pengembangan satu-kali (tidak dipakai produksi)
 docs/               SKALA.md, TEMUAN.md, route-map.baseline.txt
 logs/               nms.log (rotasi 5 × 10 MB, git-ignored)

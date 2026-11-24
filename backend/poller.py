@@ -414,7 +414,7 @@ def _record_metrics(device, metrics_source, mikrotik_result, ping_result, in_mai
 
 _FIBER_EVAL_KINDS = (
     "fiber_los", "fiber_rx_low", "fiber_rx_high", "fiber_margin_low",
-    "fiber_asymmetry", "fiber_drop", "fiber_trend",
+    "fiber_asymmetry", "fiber_drop", "fiber_trend", "fiber_predicted",
 )
 
 
@@ -589,6 +589,29 @@ def _evaluate_one_link(link, settings):
     metrics = {key: result.get(key) for key in fiber_calc.LINK_STATE_METRICS_KEYS}
     metrics["los_a"] = result.get("los_a")
     metrics["los_b"] = result.get("los_b")
+    # Riwayat prediksi (snapshot per jam) — bukti untuk laporan dampak.
+    for side_key in ("a", "b"):
+        pred = (result.get("predictions") or {}).get(side_key)
+        if not pred:
+            continue
+        device_id = link["device_a_id"] if side_key == "a" else link.get("device_b_id")
+        if not device_id:
+            continue
+        reading = result.get("reading_a") if side_key == "a" else result.get("reading_b")
+        if_name = (reading or {}).get("if_name") or (
+            link["port_a"] if side_key == "a" else link.get("port_b")
+        )
+        rx_val = (result.get("signals") or {}).get(f"rx_{side_key}_dbm")
+        side_issues = [
+            i for i in result.get("issues", [])
+            if i.get("kind") == "fiber_predicted" and i.get("device_side") == side_key
+        ]
+        severity = side_issues[0]["severity"] if side_issues else "warning"
+        db.record_fiber_prediction_if_due(
+            link["id"], side_key, device_id, if_name, rx_val,
+            pred["slope_db_per_week"], pred["target"], pred["threshold_dbm"],
+            pred["days"], severity,
+        )
     db.save_link_state(
         link["id"], consec=consec, status=result["status"],
         metrics=metrics, ts=db._now(),

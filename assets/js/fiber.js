@@ -261,6 +261,36 @@
           );
         })
         .join("");
+
+      // Prediksi degradasi (link berisiko)
+      try {
+        const predictRows = summary.at_risk_links || [];
+        const predictTbody = document.getElementById("fib-predict-rows");
+        const predictCount = document.getElementById("fib-predict-count");
+        if (predictRows.length === 0) {
+          predictTbody.innerHTML = emptyRow(6, summary.links_total
+            ? "Belum ada link dengan prediksi degradasi (butuh >=24 jam data per jam)."
+            : "Belum ada link fiber terdaftar.");
+          predictCount.textContent = summary.links_total ? "0 link berisiko" : "Belum ada link";
+        } else {
+          predictCount.textContent = `${predictRows.length} link berisiko`;
+          predictTbody.innerHTML = predictRows
+            .map((row) => {
+              const targetLabel = row.target === "crit" ? "kritis" : "waspada";
+              return (
+                `<tr><td><a class="linklike" href="#links/${row.link_id}">${escapeHtml(row.name)}</a></td>` +
+                `<td>${escapeHtml(row.device_name)} · ${escapeHtml(row.port || "—")}</td>` +
+                `<td class="mono">${fmtDbm(row.rx_dbm)}</td>` +
+                `<td class="mono">${fmtDbm(row.threshold_dbm)}</td>` +
+                `<td class="mono">${row.slope_db_per_week == null ? "-" : Number(row.slope_db_per_week).toFixed(2)}</td>` +
+                `<td class="mono">${Math.round(row.days)} hari (${targetLabel})</td></tr>`
+              );
+            })
+            .join("");
+        }
+      } catch (e) {
+        /* panel prediksi bersifat pelengkap */
+      }
     } catch (error) {
       showError(document.getElementById("fib-problem-count"), error.message || "Gagal memuat ringkasan fiber.");
     }
@@ -560,6 +590,16 @@
         `Asimetri <b>${escapeHtml(fmtDb(metrics.asymmetry_db))}</b> · ` +
         `Deviasi <b>${deviationWorst == null ? "-" : escapeHtml(fmtDb(deviationWorst))}</b> · ` +
         `Margin min <b>${marginMin == null ? "-" : escapeHtml(fmtDb(marginMin))}</b>`;
+       const preds = evaluation.predictions || {};
+       const predChips = ["a", "b"].map((side) => {
+         const p = preds[side];
+         if (!p) return "";
+         const label = p.target === "crit" ? "kritis" : "waspada";
+         return `<span class="chip chip--warn">Prediksi ujung ${side.toUpperCase()}: ~${Math.round(p.days)} hari ke ambang ${label} (${fmtDbm(p.threshold_dbm)})</span>`;
+       }).filter(Boolean).join(" ");
+       if (predChips) {
+         linkVerdict.innerHTML += `<br>${predChips}<br><span class="muted" style="font-size:.85em">estimasi linier dari tren 14 hari; bukan jaminan</span>`;
+       }
 
       linkSteps.innerHTML = (evaluation.steps || [])
         .map((step) => {
@@ -795,11 +835,14 @@
     "set-fiber-asymmetry_warn": "fiber_asymmetry_warn",
     "set-fiber-drop_db": "fiber_drop_db",
     "set-fiber-trend_db_per_week": "fiber_trend_db_per_week",
+    "set-fiber-predict_min_slope_db_per_week": "fiber_predict_min_slope_db_per_week",
     "set-fiber-hysteresis_db": "fiber_hysteresis_db",
   };
   const SETTINGS_INT_IDS = {
     "set-fiber-drop_baseline_days": "fiber_drop_baseline_days",
     "set-fiber-trend_days": "fiber_trend_days",
+    "set-fiber-predict_horizon_days": "fiber_predict_horizon_days",
+    "set-fiber-predict_close_margin_days": "fiber_predict_close_margin_days",
     "set-fiber-consec_required": "fiber_consec_required",
     "set-fiber-avg_readings": "fiber_avg_readings",
     "set-retention_optical_hourly_days": "retention_optical_hourly_days",
