@@ -164,20 +164,21 @@ def _expected_office_hours(since_utc, until_utc, tz, office, now=None):
 
 
 def _observed_office_hours(checks, tz, office):
-    """Jumlah jam teramati yang benar-benar beririsan dengan jam kerja."""
-    grouped = {}
+    """Hitung menit unik ber-cek di dalam jam kerja Senin-Jumat.
+
+    Satu menit dihitung teramati bila ada minimal satu cek pada menit itu.
+    Jeda panjang (mis. laptop sleep) tidak dihitung sebagai waktu teramati.
+    """
+    minutes = set()
+    office_start_time = time(hour=office[0])
+    office_end_time = time(hour=office[1])
     for check in checks:
         local = to_local(check["checked_at"], tz)
-        if local is not None:
-            grouped.setdefault(local.date(), []).append(local)
-    total = 0.0
-    for day, times in grouped.items():
-        office_start, office_end = _office_bounds(day, tz, office)
-        lower = max(min(times), office_start)
-        upper = min(max(times), office_end)
-        if upper > lower:
-            total += (upper - lower).total_seconds() / 3600
-    return round(total, 2)
+        if local is None or local.weekday() >= 5:
+            continue
+        if office_start_time <= local.time() < office_end_time:
+            minutes.add(local.replace(second=0, microsecond=0))
+    return round(len(minutes) / 60, 2)
 
 
 def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), now=None):
@@ -196,12 +197,20 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), no
     per_device_raw = {}
     seen = set()
     check_days = set()
+    office_days = set()
+    office_start_time = time(hour=office[0])
+    office_end_time = time(hour=office[1])
     for check in checks:
         device_id = check["device_id"]
         seen.add(device_id)
         local = to_local(check["checked_at"], tz)
         if local is not None:
             check_days.add(local.date())
+            if (
+                local.weekday() < 5
+                and office_start_time <= local.time() < office_end_time
+            ):
+                office_days.add(local.date())
         entry = per_device_raw.setdefault(
             device_id, {"checks": 0, "statuses": {}, "first": None, "last": None}
         )
@@ -222,6 +231,7 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), no
 
     windows = observe_windows([check["checked_at"] for check in checks], tz)
     days_with_data = len(check_days)
+    days_with_office_data = len(office_days)
     observed_hours = _observed_office_hours(checks, tz, office)
     expected_hours, expected_days = _expected_office_hours(
         since_utc, until_utc, tz, office, now=now
@@ -229,7 +239,7 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), no
     coverage_pct = (
         round(observed_hours / expected_hours * 100, 1) if expected_hours else None
     )
-    days_without_data = len(expected_days - check_days)
+    days_without_data = len(expected_days - office_days)
 
     per_device = []
     for device in devices:
@@ -267,6 +277,7 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), no
         "status_counts": status_counts,
         "online_pct": online_pct,
         "days_with_data": days_with_data,
+        "days_with_office_data": days_with_office_data,
         "days_expected": len(expected_days),
         "days_without_data": days_without_data,
         "observed_hours": observed_hours,
@@ -651,10 +662,11 @@ def render_markdown(report):
                 f"- Status non-maintenance: {statuses or 'n/a'};"
                 f" online: **{_num(coverage['online_pct'], 1, '%')}**",
                 f"- Hari dengan data: **{coverage['days_with_data']}**;"
+                f" hari dengan data di jam kerja: **{coverage['days_with_office_data']}**;"
                 f" hari kerja yang diharapkan: **{coverage['days_expected']}**;"
                 f" hari kerja tanpa data: **{coverage['days_without_data']}**",
-                f"- Jam teramati di dalam jam kerja:"
-                f" **{_num(coverage['observed_hours'], 1)} jam**;"
+                f"- Waktu teramati di dalam jam kerja (menit unik):"
+                f" **{_num(coverage['observed_hours'], 2)} jam**;"
                 f" cakupan terhadap {_num(coverage['expected_hours'], 1)} jam kerja"
                 f" (Senin-Jumat): **{_num(coverage['coverage_pct'], 1, '%')}**",
                 "",
@@ -711,7 +723,9 @@ def render_markdown(report):
             " yang sama sampai problem tercatat. Nilai hanya dihitung bila cek"
             " `online` terakhir berada <= 3x interval polling (minimal 3 menit)"
             " sebelum cek gagal pertama; bila NMS sempat mati atau pindah jaringan,"
-            " hasilnya `n/a` - bukan nol. Masalah fiber tidak punya gejala cek"
+            " hasilnya `n/a` - bukan nol. Karena poller menulis cek gagal dan"
+            " problem pada siklus yang sama, nilai kecil mengukur latensi"
+            " pencatatan, bukan durasi outage. Masalah fiber tidak punya gejala cek"
             " perangkat, sehingga MTTD-nya `n/a`."
             " MTTR = `resolved_at - started_at` untuk problem yang sudah selesai.",
             "",
@@ -882,6 +896,9 @@ def render_markdown(report):
             "- Cakupan dihitung terhadap jam kerja Senin-Jumat (08:00-17:00);"
             " hari libur tidak dikecualikan dan hari ini dihitung sampai waktu"
             " laporan dibuat.",
+            "- Waktu teramati dihitung dari menit unik yang memiliki minimal"
+            " satu cek di dalam jam kerja; jeda panjang tidak dihitung sebagai"
+            " waktu teramati.",
             "- MTTD hanya dihitung bila transisi online->gagal teramati rapat;"
             " jeda karena NMS mati atau pindah jaringan menghasilkan `n/a`."
             " Nilai itu bukan nol.",

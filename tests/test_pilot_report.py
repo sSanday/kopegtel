@@ -1,7 +1,7 @@
 """Tes alat bukti pilot: tools/pilot_report.py."""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -17,6 +17,28 @@ def _make_db(tmp_path, seed):
     finally:
         conn.close()
     return path
+
+
+def _add_checks(conn, device_id, start_utc, end_utc, status="online", maintenance=0):
+    """Isi cek per menit pada rentang UTC [start, end)."""
+    current = datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(end_utc.replace("Z", "+00:00"))
+    rows = []
+    while current < end:
+        rows.append(
+            (
+                device_id,
+                current.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                status,
+                maintenance,
+            )
+        )
+        current += timedelta(minutes=1)
+    conn.executemany(
+        "INSERT INTO device_checks (device_id, checked_at, status, maintenance)"
+        " VALUES (?, ?, ?, ?)",
+        rows,
+    )
 
 
 def test_parse_period_default_seven_days_uses_local_day_boundaries():
@@ -88,9 +110,9 @@ def test_build_coverage_excludes_maintenance_and_counts_status(tmp_path):
     assert cov["days_with_data"] == 1
     assert cov["days_expected"] == 1
     assert cov["days_without_data"] == 0
-    assert cov["observed_hours"] == 2.0
+    assert cov["observed_hours"] == 0.05
     assert cov["expected_hours"] == 9.0
-    assert cov["coverage_pct"] == pytest.approx(22.2, abs=0.1)
+    assert cov["coverage_pct"] == pytest.approx(0.6, abs=0.1)
     assert cov["per_device"][0]["checks_non_maintenance"] == 3
     assert cov["per_device"][1]["checks_non_maintenance"] == 1
 
@@ -334,12 +356,9 @@ def test_build_coverage_clips_office_hours_and_counts_missing_weekdays(tmp_path)
             CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
                 checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
             INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
-            INSERT INTO device_checks VALUES
-              (1,1,'2026-11-22T17:00:00Z','online',0),
-              (2,1,'2026-11-23T05:00:00Z','online',0),
-              (3,1,'2026-11-23T06:00:00Z','online',0);
             """
         )
+        _add_checks(conn, 1, "2026-11-23T00:00:00Z", "2026-11-23T11:00:00Z")
         conn.commit()
 
     conn = pilot_report.connect_ro(_make_db(tmp_path, seed))
@@ -349,9 +368,9 @@ def test_build_coverage_clips_office_hours_and_counts_missing_weekdays(tmp_path)
         "2026-11-24T17:00:00Z",
         now=datetime(2026, 11, 26, 0, 0, tzinfo=timezone.utc),
     )
-    assert cov["observed_hours"] == 5.0  # 08:00-13:00 WIB, bukan 00:00-13:00
+    assert cov["observed_hours"] == 9.0  # 08:00-17:00 WIB, bukan 00:00-18:00
     assert cov["expected_hours"] == 18.0  # Senin + Selasa
-    assert cov["coverage_pct"] == pytest.approx(27.8, abs=0.1)
+    assert cov["coverage_pct"] == pytest.approx(50.0, abs=0.1)
     assert cov["days_expected"] == 2
     assert cov["days_without_data"] == 1
 
@@ -364,11 +383,9 @@ def test_build_coverage_prorates_today_before_office_hours(tmp_path):
             CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
                 checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
             INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
-            INSERT INTO device_checks VALUES
-              (1,1,'2026-11-23T02:00:00Z','online',0),
-              (2,1,'2026-11-23T03:00:00Z','online',0);
             """
         )
+        _add_checks(conn, 1, "2026-11-23T02:00:00Z", "2026-11-23T03:00:00Z")
         conn.commit()
 
     conn = pilot_report.connect_ro(_make_db(tmp_path, seed))
@@ -465,3 +482,63 @@ def test_render_markdown_capitalizes_unverified_prediction_status(tmp_path):
     text = pilot_report.render_markdown(report)
     assert "| Belum terverifikasi |" in text
     assert "| belum terverifikasi |" not in text
+
+
+def test_build_coverage_excludes_weekend_from_numerator(tmp_path):
+    def seed(conn):
+        conn.executescript(
+            """
+            CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT);
+            CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
+                checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
+            INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
+            """
+        )
+        # Jumat 08:00-17:00 WIB dan Sabtu 08:00-16:00 WIB, cek per menit.
+        _add_checks(conn, 1, "2026-11-06T01:00:00Z", "2026-11-06T10:00:00Z")
+        _add_checks(conn, 1, "2026-11-07T01:00:00Z", "2026-11-07T09:00:00Z")
+        conn.commit()
+
+    conn = pilot_report.connect_ro(_make_db(tmp_path, seed))
+    cov = pilot_report.build_coverage(
+        conn,
+        "2026-11-05T17:00:00Z",
+        "2026-11-07T17:00:00Z",
+        now=datetime(2026, 11, 8, 0, 0, tzinfo=timezone.utc),
+    )
+    assert cov["observed_hours"] == 9.0  # hanya Jumat 08:00-17:00
+    assert cov["expected_hours"] == 9.0
+    assert cov["coverage_pct"] == 100.0
+    assert cov["days_with_data"] == 2
+    assert cov["days_with_office_data"] == 1
+
+
+def test_build_coverage_weekday_with_only_night_checks_is_missing(tmp_path):
+    def seed(conn):
+        conn.executescript(
+            """
+            CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT);
+            CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
+                checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
+            INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
+            INSERT INTO device_checks VALUES
+              (1,1,'2026-11-22T17:00:00Z','online',0),
+              (2,1,'2026-11-22T19:00:00Z','online',0),
+              (3,1,'2026-11-24T02:00:00Z','online',0),
+              (4,1,'2026-11-24T03:00:00Z','online',0);
+            """
+        )
+        conn.commit()
+
+    conn = pilot_report.connect_ro(_make_db(tmp_path, seed))
+    cov = pilot_report.build_coverage(
+        conn,
+        "2026-11-22T17:00:00Z",
+        "2026-11-24T17:00:00Z",
+        now=datetime(2026, 11, 25, 0, 0, tzinfo=timezone.utc),
+    )
+    assert cov["observed_hours"] == 0.03  # hanya dua menit Selasa
+    assert cov["expected_hours"] == 18.0
+    assert cov["days_with_data"] == 2
+    assert cov["days_with_office_data"] == 1
+    assert cov["days_without_data"] == 1  # Senin hanya punya cek malam

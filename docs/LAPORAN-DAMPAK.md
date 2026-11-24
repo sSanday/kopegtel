@@ -49,7 +49,8 @@
 - MTTR dihitung dari `resolved_at - started_at` untuk problem yang selesai.
 - Cakupan dihitung terhadap jam kerja Senin-Jumat (08:00-17:00). Hari kerja
   tanpa data tetap dihitung dalam penyebut; hari ini dihitung sampai waktu
-  laporan dibuat.
+  laporan dibuat. Sabtu/Minggu tidak dihitung, dan waktu teramati memakai
+  menit unik yang memiliki minimal satu cek (jeda panjang tidak dihitung).
 - Prediksi fiber dibandingkan dengan jam pertama ketika `rx_avg` benar-benar
   melewati ambang. Prediksi yang belum terlewati dilaporkan sebagai
   **Belum terverifikasi**.
@@ -99,8 +100,11 @@ Interpretasi wajib jujur:
 - Data hanya ada saat laptop NMS hidup; jam aktual dan jeda terlihat di tabel
   jendela observasi. Malam dan akhir pekan tidak diklaim sebagai waktu
   terpantau.
-- Cakupan dihitung terhadap jam kerja Senin-Jumat (08:00-17:00); hari libur
-  tidak dikecualikan dan hari ini dihitung sampai waktu laporan dibuat.
+- Cakupan dihitung terhadap jam kerja Senin-Jumat (08:00-17:00); Sabtu/Minggu
+  tidak dihitung, hari libur tidak dikecualikan, dan hari ini dihitung sampai
+  waktu laporan dibuat.
+- Waktu teramati memakai menit unik yang memiliki minimal satu cek; jeda
+  panjang (mis. laptop sleep) tidak dihitung sebagai waktu teramati.
 - MTTD `n/a` berarti transisi online->gagal tidak teramati rapat (mis. NMS
   mati atau pindah jaringan), bukan nol detik.
 - Perangkat hanya bisa dijangkau dari jaringan kantor atau VPN; dari WiFi lain
