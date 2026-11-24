@@ -9,6 +9,7 @@ Bagian tanpa data ditampilkan sebagai "Belum terverifikasi".
 """
 
 import argparse
+import csv
 import os
 import sqlite3
 import statistics
@@ -213,6 +214,7 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
         "observed_hours": observed_hours,
         "expected_hours": expected_hours,
         "coverage_pct": coverage_pct,
+        "windows": windows,
         "per_device": per_device,
     }
 
@@ -446,6 +448,405 @@ def build_alarms(conn, since_utc, until_utc, tz=DEFAULT_TZ):
     return {"items": items, "summary": summary}
 
 
+def build_report(conn, since_utc, until_utc, tz=DEFAULT_TZ, db_path=""):
+    """Susun seluruh bagian laporan dari koneksi read-only."""
+    until_local = to_local(until_utc, tz) - timedelta(seconds=1)
+    return {
+        "generated_at": datetime.now(_zone(tz)).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "tz": tz,
+        "db_path": db_path,
+        "period_since": to_local(since_utc, tz).strftime("%Y-%m-%d %H:%M"),
+        "period_until": until_local.strftime("%Y-%m-%d %H:%M"),
+        "coverage": build_coverage(conn, since_utc, until_utc, tz),
+        "incidents": build_incidents(conn, since_utc, until_utc, tz),
+        "predictions": build_predictions(conn, since_utc, until_utc, tz),
+        "alarms": build_alarms(conn, since_utc, until_utc, tz),
+    }
+
+
+def _md_cell(value):
+    if value is None:
+        return "n/a"
+    return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
+
+
+def _md_table(headers, rows):
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(_md_cell(cell) for cell in row) + " |")
+    return "\n".join(lines)
+
+
+def _num(value, digits=2, suffix=""):
+    if value is None:
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.{digits}f}{suffix}"
+    return f"{value}{suffix}"
+
+
+def render_markdown(report):
+    """Render laporan sebagai Markdown yang siap ditempel ke dokumen."""
+    coverage = report["coverage"]
+    incidents = report["incidents"]
+    predictions = report["predictions"]
+    alarms = report["alarms"]
+    lines = [
+        "# Laporan Dampak Pilot NMS Kopegtel",
+        "",
+        f"- **Periode ({report['tz']}):** {report['period_since']} - {report['period_until']}",
+        f"- **Dibuat:** {report['generated_at']}",
+        f"- **Sumber:** `{report['db_path'] or 'database NMS'}` (dibaca read-only)",
+        "",
+        "> Laporan ini hanya memuat data yang benar-benar tercatat di database NMS."
+        " Tidak ada data sintetis. Bagian yang kosong ditulis **Belum terverifikasi**;"
+        " angka `n/a` berarti bukti belum tersedia, bukan nol.",
+        "",
+        "## 1. Cakupan & jendela observasi",
+        "",
+    ]
+
+    if coverage["checks_total"] == 0:
+        lines.append("Belum terverifikasi (belum ada pemeriksaan pada periode ini).")
+    else:
+        statuses = ", ".join(
+            f"{key}={value}" for key, value in sorted(coverage["status_counts"].items())
+        )
+        lines.extend(
+            [
+                f"- Perangkat terdaftar: **{coverage['devices_registered']}**;"
+                f" terpantau: **{coverage['devices_seen']}**",
+                f"- Pemeriksaan: **{coverage['checks_total']}**"
+                f" (maintenance: {coverage['checks_maintenance']})",
+                f"- Status non-maintenance: {statuses or 'n/a'};"
+                f" online: **{_num(coverage['online_pct'], 1, '%')}**",
+                f"- Hari dengan data: **{coverage['days_with_data']}**;"
+                f" jam teramati: **{_num(coverage['observed_hours'], 1)} jam**;"
+                f" cakupan terhadap {_num(coverage['expected_hours'], 1)} jam kerja:"
+                f" **{_num(coverage['coverage_pct'], 1, '%')}**",
+                "",
+                "### Jendela observasi per hari",
+                "",
+                _md_table(
+                    ["Tanggal", "Mulai", "Selesai", "Jam"],
+                    [
+                        (window["tanggal"], window["mulai"], window["selesai"], window["jam"])
+                        for window in coverage.get("windows", [])
+                    ],
+                ),
+                "",
+                "### Cakupan per perangkat",
+                "",
+                _md_table(
+                    [
+                        "Perangkat",
+                        "IP",
+                        "Cek",
+                        "Online",
+                        "Degraded",
+                        "Offline",
+                        "Online %",
+                        "Pertama",
+                        "Terakhir",
+                    ],
+                    [
+                        (
+                            device["name"],
+                            device["ip"],
+                            device["checks"],
+                            device["online"],
+                            device["degraded"],
+                            device["offline"],
+                            _num(device["online_pct"], 1),
+                            device["first_seen"],
+                            device["last_seen"],
+                        )
+                        for device in coverage["per_device"]
+                    ],
+                ),
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 2. Insiden",
+            "",
+            "**Definisi:** MTTD = selisih waktu dari pemeriksaan gagal pertama"
+            " (`device_down`/`high_latency`) sampai problem tercatat. Masalah fiber"
+            " tidak punya gejala cek perangkat, sehingga MTTD-nya `n/a`."
+            " MTTR = `resolved_at - started_at` untuk problem yang sudah selesai.",
+            "",
+        ]
+    )
+    incident_summary = incidents["summary"]
+    severity_text = ", ".join(
+        f"{key}={value}" for key, value in sorted(incident_summary["by_severity"].items())
+    )
+    lines.extend(
+        [
+            f"- Total: **{incident_summary['total']}**;"
+            f" terbuka: **{incident_summary['open']}**;"
+            f" selesai: **{incident_summary['resolved']}**",
+            f"- Severity: {severity_text or 'n/a'}",
+            f"- MTTD median: **{_num(incident_summary['mttd_median_sec'], 1, ' detik')}**"
+            f" ({incident_summary['mttd_samples']} sampel);"
+            f" MTTR median: **{_num(incident_summary['mttr_median_min'], 1, ' menit')}**;"
+            f" rata-rata: **{_num(incident_summary['mttr_avg_min'], 1, ' menit')}**",
+            "",
+        ]
+    )
+    if not incidents["items"]:
+        lines.append("Belum terverifikasi (tidak ada insiden tercatat pada periode ini).")
+    else:
+        lines.append(
+            _md_table(
+                [
+                    "Mulai",
+                    "Selesai",
+                    "Durasi (menit)",
+                    "Severity",
+                    "Jenis",
+                    "Perangkat",
+                    "Link",
+                    "MTTD (detik)",
+                    "Status",
+                    "Ack",
+                ],
+                [
+                    (
+                        item["started_at"],
+                        item["resolved_at"],
+                        _num(item["duration_min"], 1),
+                        item["severity"],
+                        item["kind"],
+                        item["device_name"] or item["device_ip"],
+                        item["link_name"],
+                        _num(item["mttd_sec"], 1),
+                        item["status"],
+                        item["acked_by"],
+                    )
+                    for item in incidents["items"]
+                ],
+            )
+        )
+
+    lines.extend(["", "## 3. Prediksi degradasi fiber", ""])
+    prediction_summary = predictions["summary"]
+    lines.extend(
+        [
+            f"- Total prediksi: **{prediction_summary['total']}**;"
+            f" terkonfirmasi: **{prediction_summary['confirmed']}**;"
+            f" belum: **{prediction_summary['unconfirmed']}**",
+            f"- Median lead time prediksi terkonfirmasi:"
+            f" **{_num(prediction_summary['median_lead_days'], 1, ' hari')}**",
+            "",
+        ]
+    )
+    if not predictions["items"]:
+        lines.append("Belum terverifikasi (belum ada prediksi pada periode ini).")
+    else:
+        lines.append(
+            _md_table(
+                [
+                    "Link",
+                    "Ujung",
+                    "Target",
+                    "Ambang (dBm)",
+                    "Prediksi terbit",
+                    "ETA (hari)",
+                    "Rx (dBm)",
+                    "Slope (dB/minggu)",
+                    "Ambang terlewati",
+                    "Lead (hari)",
+                    "Selisih (hari)",
+                    "Status",
+                ],
+                [
+                    (
+                        item["link_name"],
+                        item["side"],
+                        item["target"],
+                        _num(item["threshold_dbm"], 2),
+                        item["first_evaluated_at"],
+                        _num(item["eta_days"], 1),
+                        _num(item["rx_dbm"], 2),
+                        _num(item["slope_db_per_week"], 2),
+                        item["crossing_at"],
+                        _num(item["lead_days"], 1),
+                        _num(item["error_days"], 1),
+                        item["status"],
+                    )
+                    for item in predictions["items"]
+                ],
+            )
+        )
+
+    lines.extend(["", "## 4. Alarm & notifikasi", ""])
+    alarm_summary = alarms["summary"]
+    channels = ", ".join(
+        f"{key}={value}" for key, value in sorted(alarm_summary["by_channel"].items())
+    )
+    lines.extend(
+        [
+            f"- Total alarm: **{alarm_summary['total']}**;"
+            f" terkirim: **{alarm_summary['sent']}**;"
+            f" gagal: **{alarm_summary['failed']}**;"
+            f" dilewati: **{alarm_summary['skipped']}**",
+            f"- Per channel: {channels or 'n/a'}",
+            "",
+        ]
+    )
+    if not alarms["items"]:
+        lines.append("Belum terverifikasi (belum ada alarm terkirim pada periode ini).")
+    else:
+        lines.append(
+            _md_table(
+                [
+                    "Waktu",
+                    "Problem",
+                    "Jenis",
+                    "Severity",
+                    "Channel",
+                    "Status",
+                    "Detail",
+                    "Berguna? (isi Tim IT)",
+                ],
+                [
+                    (
+                        item["ts"],
+                        item["problem_id"],
+                        item["kind"],
+                        item["severity"],
+                        item["channel_name"] or "(tanpa channel)",
+                        item["status"],
+                        item["detail"],
+                        item["berguna"],
+                    )
+                    for item in alarms["items"]
+                ],
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 5. Batasan",
+            "",
+            "- Data hanya tercatat saat laptop NMS hidup pada jam kerja; malam dan"
+            " akhir pekan tidak diklaim.",
+            "- Jendela observasi dihitung dari timestamp pemeriksaan yang benar-benar"
+            " tersimpan, bukan dari asumsi 24/7.",
+            "- Prediksi fiber adalah estimasi linier dari tren Rx; bukan jaminan."
+            " Prediksi yang belum terlewati ditandai **belum terverifikasi**.",
+            "- Perangkat yang tidak terjangkau dari jaringan NMS (mis. laptop di"
+            " WiFi lain) tercatat offline; gunakan `tools/pilot_connectivity.py`"
+            " untuk membedakan gangguan jaringan NMS dari perangkat mati.",
+            "- Jika NMS sempat mati atau berpindah jaringan, jeda pemeriksaan dapat"
+            " memperbesar MTTD; jam teramati di bagian cakupan menunjukkan cakupan"
+            " sebenarnya.",
+            "- Angka `n/a` berarti bukti belum tersedia, bukan nol.",
+            "- Kolom **Berguna?** diisi manual oleh Tim IT; kosong berarti belum"
+            " divalidasi.",
+            "",
+            "_Dokumen ini dihasilkan otomatis oleh `tools/pilot_report.py`._",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+CSV_SPECS = (
+    (
+        "cakupan-perangkat.csv",
+        [
+            "device_id",
+            "name",
+            "ip",
+            "checks",
+            "online",
+            "degraded",
+            "offline",
+            "online_pct",
+            "first_seen",
+            "last_seen",
+        ],
+        ("coverage", "per_device"),
+    ),
+    (
+        "insiden.csv",
+        [
+            "id",
+            "kind",
+            "severity",
+            "status",
+            "device_name",
+            "device_ip",
+            "link_name",
+            "started_at",
+            "resolved_at",
+            "duration_min",
+            "acked_by",
+            "acked_at",
+            "mttd_sec",
+            "message",
+        ],
+        ("incidents", "items"),
+    ),
+    (
+        "prediksi.csv",
+        [
+            "link_name",
+            "side",
+            "target",
+            "threshold_dbm",
+            "first_evaluated_at",
+            "eta_days",
+            "rx_dbm",
+            "slope_db_per_week",
+            "crossing_at",
+            "lead_days",
+            "error_days",
+            "status",
+        ],
+        ("predictions", "items"),
+    ),
+    (
+        "alarm.csv",
+        [
+            "ts",
+            "problem_id",
+            "kind",
+            "severity",
+            "channel_name",
+            "status",
+            "detail",
+            "berguna",
+        ],
+        ("alarms", "items"),
+    ),
+)
+
+
+def write_csvs(report, outdir):
+    """Tulis empat CSV pendukung; kembalikan daftar path yang dibuat."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for filename, headers, (section, key) in CSV_SPECS:
+        path = outdir / filename
+        rows = report[section][key]
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=headers, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+        paths.append(path)
+    return paths
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -463,7 +864,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
-        parse_period(
+        since_utc, until_utc = parse_period(
             days=args.days, since=args.since, until=args.until, tz=args.tz
         )
     except ValueError as exc:
@@ -477,9 +878,24 @@ def main(argv=None):
 
     conn = connect_ro(db_path)
     try:
-        print("Belum ada data")
+        report = build_report(
+            conn, since_utc, until_utc, tz=args.tz, db_path=str(db_path)
+        )
     finally:
         conn.close()
+
+    markdown = render_markdown(report)
+    if args.out:
+        outdir = Path(args.out)
+        csv_paths = write_csvs(report, outdir)
+        stamp = datetime.now(_zone(args.tz)).strftime("%Y%m%d-%H%M")
+        md_path = outdir / f"pilot-report-{stamp}.md"
+        md_path.write_text(markdown, encoding="utf-8")
+        print(f"Laporan Markdown: {md_path}")
+        for path in csv_paths:
+            print(f"CSV: {path}")
+    else:
+        print(markdown)
     return 0
 
 

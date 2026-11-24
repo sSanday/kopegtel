@@ -173,15 +173,40 @@ def test_build_predictions_unconfirmed_when_no_crossing(tmp_path):
     assert data["items"][0]["status"] == "belum terverifikasi"
 
 
-def _seed_alarms(conn):
+def _seed_empty(conn):
     conn.executescript(
         """
-        CREATE TABLE problems (id INTEGER PRIMARY KEY, kind TEXT, severity TEXT);
+        CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT);
+        CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
+            checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
+        CREATE TABLE fiber_links (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE problems (id INTEGER PRIMARY KEY, device_id INTEGER, kind TEXT,
+            severity TEXT, message TEXT, status TEXT, started_at TEXT, resolved_at TEXT,
+            acked_by TEXT, acked_at TEXT, link_id INTEGER);
+        CREATE TABLE fiber_prediction_log (id INTEGER PRIMARY KEY, link_id INTEGER,
+            side TEXT, device_id INTEGER, if_name TEXT, evaluated_at TEXT, rx_dbm REAL,
+            slope_db_per_week REAL, target TEXT, threshold_dbm REAL, days REAL, severity TEXT);
+        CREATE TABLE optical_hourly (device_id INTEGER, if_name TEXT, hour_ts TEXT,
+            rx_min REAL, rx_avg REAL, rx_max REAL, tx_min REAL, tx_avg REAL, tx_max REAL,
+            temp_min REAL, temp_avg REAL, temp_max REAL, samples INTEGER);
         CREATE TABLE notification_channels (id INTEGER PRIMARY KEY, name TEXT, type TEXT);
         CREATE TABLE action_log (id INTEGER PRIMARY KEY, ts TEXT, rule_id INTEGER,
             channel_id INTEGER, device_id INTEGER, problem_id INTEGER,
             status TEXT, detail TEXT);
-        INSERT INTO problems VALUES (1,'device_down','high'),(2,'fiber_rx_low','warning');
+        """
+    )
+    conn.commit()
+
+
+def _seed_alarms(conn):
+    _seed_empty(conn)
+    conn.executescript(
+        """
+        INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
+        INSERT INTO fiber_links VALUES (1,'Link A');
+        INSERT INTO problems VALUES
+          (1,1,'device_down','high','mati','resolved','2026-11-24T02:00:00Z','2026-11-24T02:05:00Z',NULL,NULL,NULL),
+          (2,1,'fiber_rx_low','warning','rx turun','open','2026-11-24T03:00:00Z',NULL,NULL,NULL,1);
         INSERT INTO notification_channels VALUES (3,'kopegtell','telegram');
         INSERT INTO action_log VALUES
           (1,'2026-11-24T02:00:00Z',1,3,1,1,'sent','ok'),
@@ -199,3 +224,41 @@ def test_build_alarms_keeps_rows_without_channel_and_blank_useful(tmp_path):
     assert data["summary"]["failed"] == 1
     assert all(item["berguna"] == "" for item in data["items"])
     assert any(item["channel_name"] is None for item in data["items"])
+
+
+def test_render_markdown_empty_db_says_belum_terverifikasi(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_empty))
+    report = pilot_report.build_report(conn, "2026-11-23T17:00:00Z", "2026-11-25T17:00:00Z")
+    text = pilot_report.render_markdown(report)
+    assert "# Laporan Dampak Pilot NMS Kopegtel" in text
+    assert "Belum terverifikasi" in text
+    assert "Tidak ada data sintetis" in text
+
+
+def test_write_csvs_creates_four_files_with_useful_column(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_alarms))
+    report = pilot_report.build_report(conn, "2026-11-23T17:00:00Z", "2026-11-25T17:00:00Z")
+    paths = pilot_report.write_csvs(report, tmp_path / "out")
+    names = sorted(p.name for p in paths)
+    assert names == ["alarm.csv", "cakupan-perangkat.csv", "insiden.csv", "prediksi.csv"]
+    assert "berguna" in (tmp_path / "out" / "alarm.csv").read_text(encoding="utf-8").splitlines()[0]
+
+
+def test_main_end_to_end_writes_markdown_and_csv(tmp_path, capsys):
+    db = _make_db(tmp_path, _seed_alarms)
+    out = tmp_path / "laporan"
+    code = pilot_report.main(
+        [
+            "--db",
+            str(db),
+            "--since",
+            "2026-11-20",
+            "--until",
+            "2026-11-25",
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+    assert len(list(out.glob("*.md"))) == 1
+    assert len(list(out.glob("*.csv"))) == 4
