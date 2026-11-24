@@ -453,3 +453,17 @@ git commit -m "feat(pilot): laporan Markdown/CSV + template laporan dampak"
 - **Type consistency:** `since_utc`/`until_utc` dipakai konsisten; item prediksi memakai `lead_days`/`error_days` di tes dan renderer.
 - **Review focus:** setiap baris punya tes di task yang memiliki kode (empty DB, hari lokal, overlap, prediksi tak terkonfirmasi, alarm tanpa channel, NULL).
 - **Proportion:** rencana ±5 task; implementasi di satu file + tes + template dokumen.
+
+---
+
+## Revisi pasca-review (25 Nov 2026)
+
+Review independen menemukan dua metrik yang tidak defensible pada rencana awal:
+
+1. **MTTD** tidak boleh mengambil cek gagal mana pun dalam 24 jam. MTTD kini dihitung dari cek gagal pertama setelah cek `online` terakhir pada outage yang sama, dan hanya bila jeda ke cek gagal pertama <= 3x interval polling (minimal 3 menit). Jika NMS mati atau pindah jaringan, nilainya `n/a`, bukan nol.
+2. **Cakupan** tidak boleh memakai `max-min` per hari tanpa klip dan tidak boleh memakai `days_with_data` sebagai penyebut. Cakupan kini memakai irisan dengan jam kerja (08:00-17:00), penyebut seluruh hari kerja Senin-Jumat pada periode, hari ini diprorata sampai waktu laporan, dan hari kerja tanpa data dilaporkan terpisah.
+3. **Alarm** memisahkan uji kanal (`Uji kirim:`) dari alarm produksi; keduanya tetap terlihat di tabel dan CSV.
+4. **`online_pct`** bernilai `None`/`n/a` bila tidak ada cek non-maintenance, bukan `0.0`.
+5. Perbaikan kecil: validasi `--since` setelah default, penanganan DB rusak/zona waktu tidak valid, kolom `checks_non_maintenance`, netralisasi formula CSV, dan status prediksi ditampilkan "Belum terverifikasi" (data tetap lowercase sesuai kontrak).
+
+Tes pilot bertambah dari 14 menjadi 25 (regresi MTTD, cakupan, alarm uji, error handling, CSV).

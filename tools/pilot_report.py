@@ -75,12 +75,12 @@ def parse_period(days=7, since=None, until=None, now=None, tz=DEFAULT_TZ):
     today = _as_utc(now).astimezone(zone).date()
     since_date = _parse_date(since, "since") if since else None
     until_date = _parse_date(until, "until") if until else None
-    if since_date and until_date and since_date > until_date:
-        raise ValueError("since tidak boleh setelah until")
     if since_date is None:
         since_date = (until_date or today) - timedelta(days=days - 1)
     if until_date is None:
         until_date = today
+    if since_date > until_date:
+        raise ValueError("since tidak boleh setelah until")
     since_dt = datetime.combine(since_date, time.min, tzinfo=zone)
     until_dt = datetime.combine(until_date + timedelta(days=1), time.min, tzinfo=zone)
     return _fmt_utc(since_dt), _fmt_utc(until_dt)
@@ -130,8 +130,58 @@ def observe_windows(rows, tz=DEFAULT_TZ):
     return windows
 
 
-def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
-    """Ringkas cakupan pemeriksaan dan jam operasi pada periode laporan."""
+def _office_bounds(day, tz, office):
+    zone = _zone(tz)
+    return (
+        datetime.combine(day, time(hour=office[0]), tzinfo=zone),
+        datetime.combine(day, time(hour=office[1]), tzinfo=zone),
+    )
+
+
+def _expected_office_hours(since_utc, until_utc, tz, office, now=None):
+    """Hitung jam kerja (Senin-Jumat) yang seharusnya teramati."""
+    since_local = to_local(since_utc, tz)
+    until_local = to_local(until_utc, tz)
+    now_local = to_local(now or datetime.now(timezone.utc), tz)
+    day = since_local.date()
+    last_day = (until_local - timedelta(microseconds=1)).date()
+    expected = 0.0
+    expected_days = set()
+    while day <= last_day:
+        if day.weekday() < 5:
+            day_start = datetime.combine(day, time.min, tzinfo=_zone(tz))
+            day_end = day_start + timedelta(days=1)
+            office_start, office_end = _office_bounds(day, tz, office)
+            lower = max(since_local, day_start, office_start)
+            upper = min(until_local, day_end, office_end)
+            if day == now_local.date():
+                upper = min(upper, now_local)
+            if upper > lower:
+                expected += (upper - lower).total_seconds() / 3600
+                expected_days.add(day)
+        day += timedelta(days=1)
+    return round(expected, 2), expected_days
+
+
+def _observed_office_hours(checks, tz, office):
+    """Jumlah jam teramati yang benar-benar beririsan dengan jam kerja."""
+    grouped = {}
+    for check in checks:
+        local = to_local(check["checked_at"], tz)
+        if local is not None:
+            grouped.setdefault(local.date(), []).append(local)
+    total = 0.0
+    for day, times in grouped.items():
+        office_start, office_end = _office_bounds(day, tz, office)
+        lower = max(min(times), office_start)
+        upper = min(max(times), office_end)
+        if upper > lower:
+            total += (upper - lower).total_seconds() / 3600
+    return round(total, 2)
+
+
+def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17), now=None):
+    """Ringkas cakupan pemeriksaan dan jam kerja pada periode laporan."""
     devices = conn.execute("SELECT id, name, ip FROM devices ORDER BY id").fetchall()
     checks = conn.execute(
         "SELECT device_id, checked_at, status, COALESCE(maintenance, 0) AS maintenance"
@@ -145,10 +195,13 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
     status_counts = {}
     per_device_raw = {}
     seen = set()
+    check_days = set()
     for check in checks:
         device_id = check["device_id"]
         seen.add(device_id)
         local = to_local(check["checked_at"], tz)
+        if local is not None:
+            check_days.add(local.date())
         entry = per_device_raw.setdefault(
             device_id, {"checks": 0, "statuses": {}, "first": None, "last": None}
         )
@@ -165,16 +218,18 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
 
     non_maintenance = sum(status_counts.values())
     online = status_counts.get("online", 0)
-    online_pct = round(online / non_maintenance * 100, 1) if non_maintenance else 0.0
+    online_pct = round(online / non_maintenance * 100, 1) if non_maintenance else None
 
     windows = observe_windows([check["checked_at"] for check in checks], tz)
-    days_with_data = len({window["tanggal"] for window in windows})
-    observed_hours = round(sum(window["jam"] for window in windows), 2)
-    office_hours = max(0, office[1] - office[0])
-    expected_hours = float(days_with_data * office_hours)
-    coverage_pct = (
-        round(observed_hours / expected_hours * 100, 1) if expected_hours else 0.0
+    days_with_data = len(check_days)
+    observed_hours = _observed_office_hours(checks, tz, office)
+    expected_hours, expected_days = _expected_office_hours(
+        since_utc, until_utc, tz, office, now=now
     )
+    coverage_pct = (
+        round(observed_hours / expected_hours * 100, 1) if expected_hours else None
+    )
+    days_without_data = len(expected_days - check_days)
 
     per_device = []
     for device in devices:
@@ -190,10 +245,11 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
                 "name": device["name"],
                 "ip": device["ip"],
                 "checks": entry["checks"],
+                "checks_non_maintenance": total,
                 "online": statuses.get("online", 0),
                 "degraded": statuses.get("degraded", 0),
                 "offline": statuses.get("offline", 0),
-                "online_pct": round(device_online / total * 100, 1) if total else 0.0,
+                "online_pct": round(device_online / total * 100, 1) if total else None,
                 "first_seen": entry["first"].strftime("%Y-%m-%d %H:%M:%S")
                 if entry["first"]
                 else None,
@@ -211,6 +267,8 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
         "status_counts": status_counts,
         "online_pct": online_pct,
         "days_with_data": days_with_data,
+        "days_expected": len(expected_days),
+        "days_without_data": days_without_data,
         "observed_hours": observed_hours,
         "expected_hours": expected_hours,
         "coverage_pct": coverage_pct,
@@ -222,6 +280,66 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
 def _median(values):
     values = [value for value in values if value is not None]
     return float(statistics.median(values)) if values else None
+
+
+MTTD_MAX_GAP_SECONDS = 180
+
+
+def _poll_interval(conn, device_id):
+    """Interval polling perangkat; default aman bila kolom tidak ada."""
+    try:
+        row = conn.execute(
+            "SELECT poll_interval FROM devices WHERE id = ?", (device_id,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 60
+    try:
+        return max(10, int(row["poll_interval"])) if row and row["poll_interval"] else 60
+    except (TypeError, ValueError):
+        return 60
+
+
+def _mttd_seconds(conn, device_id, started):
+    """Deteksi latency hanya bila transisi online->gagal teramati rapat.
+
+    MTTD dihitung dari cek gagal pertama pada outage yang sama, yaitu cek
+    setelah cek ``online`` terakhir. Bila jeda ke cek gagal pertama lebih besar
+    dari 3x interval polling (minimal 3 menit), penyebabnya adalah NMS mati/
+    pindah jaringan, bukan deteksi lambat; nilai dikembalikan ``None``.
+    """
+    last_online_row = conn.execute(
+        "SELECT MAX(checked_at) AS ts FROM device_checks"
+        " WHERE device_id = ? AND status = 'online'"
+        " AND COALESCE(maintenance, 0) = 0 AND checked_at <= ?",
+        (device_id, _fmt_utc(started)),
+    ).fetchone()
+    last_online = (
+        _parse_utc(last_online_row["ts"])
+        if last_online_row and last_online_row["ts"]
+        else None
+    )
+    if last_online is None:
+        return None
+
+    first_bad_row = conn.execute(
+        "SELECT MIN(checked_at) AS ts FROM device_checks"
+        " WHERE device_id = ? AND status != 'online'"
+        " AND COALESCE(maintenance, 0) = 0"
+        " AND checked_at >= ? AND checked_at <= ?",
+        (device_id, _fmt_utc(last_online), _fmt_utc(started)),
+    ).fetchone()
+    first_bad = (
+        _parse_utc(first_bad_row["ts"])
+        if first_bad_row and first_bad_row["ts"]
+        else None
+    )
+    if first_bad is None:
+        return None
+
+    max_gap = max(3 * _poll_interval(conn, device_id), MTTD_MAX_GAP_SECONDS)
+    if (first_bad - last_online).total_seconds() > max_gap:
+        return None
+    return max(0.0, (started - first_bad).total_seconds())
 
 
 def build_incidents(conn, since_utc, until_utc, tz=DEFAULT_TZ):
@@ -247,17 +365,7 @@ def build_incidents(conn, since_utc, until_utc, tz=DEFAULT_TZ):
 
         mttd_sec = None
         if row["kind"] in ("device_down", "high_latency") and row["device_id"] and started:
-            lower = _fmt_utc(started - timedelta(hours=24))
-            upper = _fmt_utc(started)
-            first_bad = conn.execute(
-                "SELECT MIN(checked_at) AS first_bad FROM device_checks"
-                " WHERE device_id = ? AND status != 'online'"
-                " AND COALESCE(maintenance, 0) = 0"
-                " AND checked_at >= ? AND checked_at <= ?",
-                (row["device_id"], lower, upper),
-            ).fetchone()["first_bad"]
-            if first_bad:
-                mttd_sec = max(0.0, (started - _parse_utc(first_bad)).total_seconds())
+            mttd_sec = _mttd_seconds(conn, row["device_id"], started)
 
         items.append(
             {
@@ -423,8 +531,12 @@ def build_alarms(conn, since_utc, until_utc, tz=DEFAULT_TZ):
     items = []
     by_channel = {}
     for row in rows:
-        channel = row["channel_name"] or "(tanpa channel)"
-        by_channel[channel] = by_channel.get(channel, 0) + 1
+        is_test = row["problem_id"] is None or (row["detail"] or "").startswith(
+            "Uji kirim:"
+        )
+        if not is_test:
+            channel = row["channel_name"] or "(tanpa channel)"
+            by_channel[channel] = by_channel.get(channel, 0) + 1
         items.append(
             {
                 "ts": _fmt_local(row["ts"], tz),
@@ -434,16 +546,23 @@ def build_alarms(conn, since_utc, until_utc, tz=DEFAULT_TZ):
                 "channel_name": row["channel_name"],
                 "status": row["status"],
                 "detail": row["detail"],
+                "is_test": is_test,
                 "berguna": "",
             }
         )
 
+    production = [item for item in items if not item["is_test"]]
+    tests = [item for item in items if item["is_test"]]
     summary = {
-        "total": len(items),
-        "sent": sum(1 for item in items if item["status"] == "sent"),
-        "failed": sum(1 for item in items if item["status"] == "failed"),
-        "skipped": sum(1 for item in items if item["status"] == "skipped"),
+        "total": len(production),
+        "sent": sum(1 for item in production if item["status"] == "sent"),
+        "failed": sum(1 for item in production if item["status"] == "failed"),
+        "skipped": sum(1 for item in production if item["status"] == "skipped"),
         "by_channel": by_channel,
+        "test_total": len(tests),
+        "test_sent": sum(1 for item in tests if item["status"] == "sent"),
+        "test_failed": sum(1 for item in tests if item["status"] == "failed"),
+        "test_skipped": sum(1 for item in tests if item["status"] == "skipped"),
     }
     return {"items": items, "summary": summary}
 
@@ -488,6 +607,14 @@ def _num(value, digits=2, suffix=""):
     return f"{value}{suffix}"
 
 
+def _status_label(value):
+    if value == "belum terverifikasi":
+        return "Belum terverifikasi"
+    if value == "terkonfirmasi":
+        return "Terkonfirmasi"
+    return value
+
+
 def render_markdown(report):
     """Render laporan sebagai Markdown yang siap ditempel ke dokumen."""
     coverage = report["coverage"]
@@ -524,9 +651,12 @@ def render_markdown(report):
                 f"- Status non-maintenance: {statuses or 'n/a'};"
                 f" online: **{_num(coverage['online_pct'], 1, '%')}**",
                 f"- Hari dengan data: **{coverage['days_with_data']}**;"
-                f" jam teramati: **{_num(coverage['observed_hours'], 1)} jam**;"
-                f" cakupan terhadap {_num(coverage['expected_hours'], 1)} jam kerja:"
-                f" **{_num(coverage['coverage_pct'], 1, '%')}**",
+                f" hari kerja yang diharapkan: **{coverage['days_expected']}**;"
+                f" hari kerja tanpa data: **{coverage['days_without_data']}**",
+                f"- Jam teramati di dalam jam kerja:"
+                f" **{_num(coverage['observed_hours'], 1)} jam**;"
+                f" cakupan terhadap {_num(coverage['expected_hours'], 1)} jam kerja"
+                f" (Senin-Jumat): **{_num(coverage['coverage_pct'], 1, '%')}**",
                 "",
                 "### Jendela observasi per hari",
                 "",
@@ -545,6 +675,7 @@ def render_markdown(report):
                         "Perangkat",
                         "IP",
                         "Cek",
+                        "Cek non-maint",
                         "Online",
                         "Degraded",
                         "Offline",
@@ -557,6 +688,7 @@ def render_markdown(report):
                             device["name"],
                             device["ip"],
                             device["checks"],
+                            device["checks_non_maintenance"],
                             device["online"],
                             device["degraded"],
                             device["offline"],
@@ -575,9 +707,12 @@ def render_markdown(report):
             "",
             "## 2. Insiden",
             "",
-            "**Definisi:** MTTD = selisih waktu dari pemeriksaan gagal pertama"
-            " (`device_down`/`high_latency`) sampai problem tercatat. Masalah fiber"
-            " tidak punya gejala cek perangkat, sehingga MTTD-nya `n/a`."
+            "**Definisi:** MTTD = selisih waktu dari cek gagal pertama pada outage"
+            " yang sama sampai problem tercatat. Nilai hanya dihitung bila cek"
+            " `online` terakhir berada <= 3x interval polling (minimal 3 menit)"
+            " sebelum cek gagal pertama; bila NMS sempat mati atau pindah jaringan,"
+            " hasilnya `n/a` - bukan nol. Masalah fiber tidak punya gejala cek"
+            " perangkat, sehingga MTTD-nya `n/a`."
             " MTTR = `resolved_at - started_at` untuk problem yang sudah selesai.",
             "",
         ]
@@ -662,7 +797,7 @@ def render_markdown(report):
                     "Slope (dB/minggu)",
                     "Ambang terlewati",
                     "Lead (hari)",
-                    "Selisih (hari)",
+                    "Selisih (hari; negatif = lebih awal dari ETA)",
                     "Status",
                 ],
                 [
@@ -678,7 +813,7 @@ def render_markdown(report):
                         item["crossing_at"],
                         _num(item["lead_days"], 1),
                         _num(item["error_days"], 1),
-                        item["status"],
+                        _status_label(item["status"]),
                     )
                     for item in predictions["items"]
                 ],
@@ -692,11 +827,15 @@ def render_markdown(report):
     )
     lines.extend(
         [
-            f"- Total alarm: **{alarm_summary['total']}**;"
+            f"- Alarm produksi: **{alarm_summary['total']}**;"
             f" terkirim: **{alarm_summary['sent']}**;"
             f" gagal: **{alarm_summary['failed']}**;"
             f" dilewati: **{alarm_summary['skipped']}**",
-            f"- Per channel: {channels or 'n/a'}",
+            f"- Uji kanal (tidak dihitung sebagai alarm produksi):"
+            f" **{alarm_summary['test_total']}**;"
+            f" terkirim: **{alarm_summary['test_sent']}**;"
+            f" gagal: **{alarm_summary['test_failed']}**",
+            f"- Per channel (produksi): {channels or 'n/a'}",
             "",
         ]
     )
@@ -707,6 +846,7 @@ def render_markdown(report):
             _md_table(
                 [
                     "Waktu",
+                    "Kategori",
                     "Problem",
                     "Jenis",
                     "Severity",
@@ -718,6 +858,7 @@ def render_markdown(report):
                 [
                     (
                         item["ts"],
+                        "uji kanal" if item["is_test"] else "produksi",
                         item["problem_id"],
                         item["kind"],
                         item["severity"],
@@ -736,19 +877,23 @@ def render_markdown(report):
             "",
             "## 5. Batasan",
             "",
-            "- Data hanya tercatat saat laptop NMS hidup pada jam kerja; malam dan"
-            " akhir pekan tidak diklaim.",
-            "- Jendela observasi dihitung dari timestamp pemeriksaan yang benar-benar"
-            " tersimpan, bukan dari asumsi 24/7.",
+            "- Data hanya tercatat saat laptop NMS hidup; jam aktual dan jeda"
+            " terlihat di tabel jendela observasi, bukan asumsi 24/7.",
+            "- Cakupan dihitung terhadap jam kerja Senin-Jumat (08:00-17:00);"
+            " hari libur tidak dikecualikan dan hari ini dihitung sampai waktu"
+            " laporan dibuat.",
+            "- MTTD hanya dihitung bila transisi online->gagal teramati rapat;"
+            " jeda karena NMS mati atau pindah jaringan menghasilkan `n/a`."
+            " Nilai itu bukan nol.",
             "- Prediksi fiber adalah estimasi linier dari tren Rx; bukan jaminan."
-            " Prediksi yang belum terlewati ditandai **belum terverifikasi**.",
+            " Prediksi yang belum terlewati ditandai **Belum terverifikasi**.",
             "- Perangkat yang tidak terjangkau dari jaringan NMS (mis. laptop di"
             " WiFi lain) tercatat offline; gunakan `tools/pilot_connectivity.py`"
             " untuk membedakan gangguan jaringan NMS dari perangkat mati.",
-            "- Jika NMS sempat mati atau berpindah jaringan, jeda pemeriksaan dapat"
-            " memperbesar MTTD; jam teramati di bagian cakupan menunjukkan cakupan"
-            " sebenarnya.",
-            "- Angka `n/a` berarti bukti belum tersedia, bukan nol.",
+            "- Uji kanal (`Uji kirim:`) tidak dihitung sebagai alarm produksi dan"
+            " dilaporkan terpisah.",
+            "- Angka `n/a` dan sel kosong di CSV berarti bukti belum tersedia,"
+            " bukan nol.",
             "- Kolom **Berguna?** diisi manual oleh Tim IT; kosong berarti belum"
             " divalidasi.",
             "",
@@ -767,6 +912,7 @@ CSV_SPECS = (
             "name",
             "ip",
             "checks",
+            "checks_non_maintenance",
             "online",
             "degraded",
             "offline",
@@ -818,6 +964,7 @@ CSV_SPECS = (
         "alarm.csv",
         [
             "ts",
+            "kategori",
             "problem_id",
             "kind",
             "severity",
@@ -831,6 +978,13 @@ CSV_SPECS = (
 )
 
 
+def _csv_safe(value):
+    """Cegah formula injection tanpa mengubah angka negatif (float)."""
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def write_csvs(report, outdir):
     """Tulis empat CSV pendukung; kembalikan daftar path yang dibuat."""
     outdir = Path(outdir)
@@ -842,7 +996,13 @@ def write_csvs(report, outdir):
         with path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=headers, extrasaction="ignore")
             writer.writeheader()
-            writer.writerows(rows)
+            for row in rows:
+                record = dict(row)
+                if "kategori" in headers:
+                    record["kategori"] = (
+                        "uji kanal" if record.get("is_test") else "produksi"
+                    )
+                writer.writerow({name: _csv_safe(record.get(name)) for name in headers})
         paths.append(path)
     return paths
 
@@ -867,6 +1027,9 @@ def main(argv=None):
         since_utc, until_utc = parse_period(
             days=args.days, since=args.since, until=args.until, tz=args.tz
         )
+    except KeyError:
+        print(f"Zona waktu tidak valid: {args.tz}")
+        return 2
     except ValueError as exc:
         print(f"Periode tidak valid: {exc}")
         return 2
@@ -876,11 +1039,18 @@ def main(argv=None):
         print(f"Database tidak ditemukan: {db_path}")
         return 2
 
-    conn = connect_ro(db_path)
+    try:
+        conn = connect_ro(db_path)
+    except sqlite3.Error as exc:
+        print(f"Database tidak dapat dibuka: {exc}")
+        return 2
     try:
         report = build_report(
             conn, since_utc, until_utc, tz=args.tz, db_path=str(db_path)
         )
+    except sqlite3.Error as exc:
+        print(f"Database tidak dapat dibaca: {exc}")
+        return 2
     finally:
         conn.close()
 
