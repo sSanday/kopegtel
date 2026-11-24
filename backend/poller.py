@@ -1119,6 +1119,36 @@ def schedule_immediate_check(device_id, delay_seconds=2):
     )
 
 
+def _rollup_optical_hourly_job():
+    """Rollup optik tiap jam, dibatasi jendela retensi data mentah."""
+    try:
+        raw_days = int(db.retention_days().get("retention_raw_days", 7) or 7)
+    except (TypeError, ValueError):
+        raw_days = 7
+    since = (datetime.now(timezone.utc) - timedelta(days=raw_days)).strftime(
+        "%Y-%m-%dT%H:00:00Z"
+    )
+    db.rollup_optical_hourly(since_hour=since)
+
+
+def _maintenance_startup():
+    """Jalankan tugas harian yang terlewat saat server hanya hidup di jam kerja.
+
+    Jadwal 02.30/02.35/02.45 tidak pernah tercapai bila laptop dimatikan malam;
+    menjalankannya sekali saat start membuat retensi dan backup tetap berjalan.
+    """
+    jobs = (
+        (db.purge_old_checks, "purge-old-checks"),
+        (db.purge_old_data, "purge-old-data"),
+        (dbbackup.run_due_backup, "db-backup"),
+    )
+    for job, name in jobs:
+        try:
+            job()
+        except Exception:
+            log.exception("Maintenance startup %s gagal (dilewati).", name)
+
+
 def start_poller():
     global _scheduler
     if _scheduler is not None:
@@ -1156,6 +1186,27 @@ def start_poller():
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+    )
+
+    # Rollup optik tiap jam (menit ke-5). Server pilot hanya hidup di jam kerja,
+    # jadi tidak boleh bergantung pada jadwal tengah malam.
+    _scheduler.add_job(
+        _rollup_optical_hourly_job,
+        trigger=CronTrigger(minute=5),
+        id="optical-hourly-rollup",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
+    # Tugas harian yang terlewat (retensi + backup) dijalankan sekali saat start.
+    _scheduler.add_job(
+        _maintenance_startup,
+        trigger="date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=10),
+        id="maintenance-startup",
+        replace_existing=True,
+        misfire_grace_time=300,
     )
 
     # Evaluasi semua link fiber tiap menit (konsisten untuk semua link;
