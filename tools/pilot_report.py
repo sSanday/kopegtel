@@ -302,6 +302,150 @@ def build_incidents(conn, since_utc, until_utc, tz=DEFAULT_TZ):
     return {"items": items, "summary": summary}
 
 
+def _split_episodes(rows):
+    """Pecah log prediksi menjadi episode per link/ujung (jeda > 24 jam)."""
+    episodes = []
+    current = []
+    last_key = None
+    last_time = None
+    for row in rows:
+        key = (row["link_id"], row["side"])
+        evaluated = _parse_utc(row["evaluated_at"])
+        if current and (
+            key != last_key
+            or evaluated is None
+            or last_time is None
+            or evaluated - last_time > timedelta(hours=24)
+        ):
+            episodes.append(current)
+            current = []
+        current.append(row)
+        last_key = key
+        last_time = evaluated
+    if current:
+        episodes.append(current)
+    return episodes
+
+
+def build_predictions(conn, since_utc, until_utc, tz=DEFAULT_TZ):
+    """Rangkum prediksi fiber dan bandingkan ETA dengan ambang nyata."""
+    rows = conn.execute(
+        "SELECT l.*, fl.name AS link_name"
+        " FROM fiber_prediction_log l"
+        " LEFT JOIN fiber_links fl ON fl.id = l.link_id"
+        " WHERE l.evaluated_at IS NOT NULL AND l.evaluated_at < ?"
+        " ORDER BY l.link_id, l.side, l.evaluated_at",
+        (until_utc,),
+    ).fetchall()
+
+    items = []
+    for episode in _split_episodes(rows):
+        first = episode[0]
+        last = episode[-1]
+        if last["evaluated_at"] < since_utc:
+            continue
+        first_eval = _parse_utc(first["evaluated_at"])
+        eta_days = float(first["days"]) if first["days"] is not None else None
+        crossing = None
+        if (
+            first["device_id"] is not None
+            and first["if_name"]
+            and first["threshold_dbm"] is not None
+            and first_eval is not None
+        ):
+            crossing_row = conn.execute(
+                "SELECT MIN(hour_ts) AS crossing FROM optical_hourly"
+                " WHERE device_id = ? AND if_name = ?"
+                " AND hour_ts >= ? AND hour_ts < ?"
+                " AND rx_avg IS NOT NULL AND rx_avg <= ?",
+                (
+                    first["device_id"],
+                    first["if_name"],
+                    _fmt_utc(first_eval),
+                    until_utc,
+                    first["threshold_dbm"],
+                ),
+            ).fetchone()
+            crossing = crossing_row["crossing"] if crossing_row else None
+
+        lead_days = None
+        error_days = None
+        if crossing and first_eval:
+            lead_days = round(
+                (_parse_utc(crossing) - first_eval).total_seconds() / 86400, 2
+            )
+            if eta_days is not None:
+                error_days = round(lead_days - eta_days, 2)
+
+        items.append(
+            {
+                "link_name": first["link_name"],
+                "side": (first["side"] or "").upper(),
+                "target": first["target"],
+                "threshold_dbm": first["threshold_dbm"],
+                "first_evaluated_at": _fmt_local(first["evaluated_at"], tz),
+                "eta_days": eta_days,
+                "rx_dbm": first["rx_dbm"],
+                "slope_db_per_week": first["slope_db_per_week"],
+                "crossing_at": _fmt_local(crossing, tz),
+                "lead_days": lead_days,
+                "error_days": error_days,
+                "status": "terkonfirmasi" if crossing else "belum terverifikasi",
+            }
+        )
+
+    items.sort(key=lambda item: item["first_evaluated_at"] or "", reverse=True)
+    confirmed = [item for item in items if item["status"] == "terkonfirmasi"]
+    summary = {
+        "total": len(items),
+        "confirmed": len(confirmed),
+        "unconfirmed": len(items) - len(confirmed),
+        "median_lead_days": _median([item["lead_days"] for item in confirmed]),
+    }
+    return {"items": items, "summary": summary}
+
+
+def build_alarms(conn, since_utc, until_utc, tz=DEFAULT_TZ):
+    """Rekap pengiriman alarm; kolom berguna dikosongkan untuk Tim IT."""
+    rows = conn.execute(
+        "SELECT al.*, p.kind AS problem_kind, p.severity AS problem_severity,"
+        " nc.name AS channel_name"
+        " FROM action_log al"
+        " LEFT JOIN problems p ON p.id = al.problem_id"
+        " LEFT JOIN notification_channels nc ON nc.id = al.channel_id"
+        " WHERE al.ts >= ? AND al.ts < ?"
+        " ORDER BY al.ts DESC",
+        (since_utc, until_utc),
+    ).fetchall()
+
+    items = []
+    by_channel = {}
+    for row in rows:
+        channel = row["channel_name"] or "(tanpa channel)"
+        by_channel[channel] = by_channel.get(channel, 0) + 1
+        items.append(
+            {
+                "ts": _fmt_local(row["ts"], tz),
+                "problem_id": row["problem_id"],
+                "kind": row["problem_kind"],
+                "severity": row["problem_severity"],
+                "channel_name": row["channel_name"],
+                "status": row["status"],
+                "detail": row["detail"],
+                "berguna": "",
+            }
+        )
+
+    summary = {
+        "total": len(items),
+        "sent": sum(1 for item in items if item["status"] == "sent"),
+        "failed": sum(1 for item in items if item["status"] == "failed"),
+        "skipped": sum(1 for item in items if item["status"] == "skipped"),
+        "by_channel": by_channel,
+    }
+    return {"items": items, "summary": summary}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

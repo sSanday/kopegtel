@@ -131,3 +131,71 @@ def test_build_incidents_includes_problem_started_before_range(tmp_path):
     conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_problems))
     data = pilot_report.build_incidents(conn, "2026-11-24T00:05:00Z", "2026-11-24T01:00:00Z")
     assert [i["id"] for i in data["items"]] == [1]
+
+
+def _seed_predictions(conn):
+    conn.executescript(
+        """
+        CREATE TABLE fiber_links (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE fiber_prediction_log (id INTEGER PRIMARY KEY, link_id INTEGER,
+            side TEXT, device_id INTEGER, if_name TEXT, evaluated_at TEXT, rx_dbm REAL,
+            slope_db_per_week REAL, target TEXT, threshold_dbm REAL, days REAL, severity TEXT);
+        CREATE TABLE optical_hourly (device_id INTEGER, if_name TEXT, hour_ts TEXT,
+            rx_min REAL, rx_avg REAL, rx_max REAL, tx_min REAL, tx_avg REAL, tx_max REAL,
+            temp_min REAL, temp_avg REAL, temp_max REAL, samples INTEGER);
+        INSERT INTO fiber_links VALUES (1,'Link A');
+        INSERT INTO fiber_prediction_log VALUES
+          (1,1,'a',1,'sfp1','2026-11-20T02:00:00Z',-14.0,-0.35,'warn',-15.0,10.0,'average'),
+          (2,1,'a',1,'sfp1','2026-11-20T03:00:00Z',-14.2,-0.36,'warn',-15.0,9.0,'average');
+        INSERT INTO optical_hourly VALUES
+          (1,'sfp1','2026-11-25T02:00:00Z',-15.4,-15.2,-15.0,-3,-3,-3,20,20,20,30);
+        """
+    )
+    conn.commit()
+
+
+def test_build_predictions_confirmed_with_lead_time(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_predictions))
+    data = pilot_report.build_predictions(conn, "2026-11-19T17:00:00Z", "2026-11-26T17:00:00Z")
+    assert data["summary"]["total"] == 1
+    assert data["summary"]["confirmed"] == 1
+    item = data["items"][0]
+    assert item["status"] == "terkonfirmasi"
+    assert item["eta_days"] == 10.0
+    assert item["lead_days"] == pytest.approx(5.0)
+    assert item["error_days"] == pytest.approx(-5.0)
+
+
+def test_build_predictions_unconfirmed_when_no_crossing(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_predictions))
+    data = pilot_report.build_predictions(conn, "2026-11-19T17:00:00Z", "2026-11-21T17:00:00Z")
+    assert data["summary"]["unconfirmed"] == 1
+    assert data["items"][0]["status"] == "belum terverifikasi"
+
+
+def _seed_alarms(conn):
+    conn.executescript(
+        """
+        CREATE TABLE problems (id INTEGER PRIMARY KEY, kind TEXT, severity TEXT);
+        CREATE TABLE notification_channels (id INTEGER PRIMARY KEY, name TEXT, type TEXT);
+        CREATE TABLE action_log (id INTEGER PRIMARY KEY, ts TEXT, rule_id INTEGER,
+            channel_id INTEGER, device_id INTEGER, problem_id INTEGER,
+            status TEXT, detail TEXT);
+        INSERT INTO problems VALUES (1,'device_down','high'),(2,'fiber_rx_low','warning');
+        INSERT INTO notification_channels VALUES (3,'kopegtell','telegram');
+        INSERT INTO action_log VALUES
+          (1,'2026-11-24T02:00:00Z',1,3,1,1,'sent','ok'),
+          (2,'2026-11-24T03:00:00Z',2,NULL,1,2,'failed','timeout');
+        """
+    )
+    conn.commit()
+
+
+def test_build_alarms_keeps_rows_without_channel_and_blank_useful(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_alarms))
+    data = pilot_report.build_alarms(conn, "2026-11-23T17:00:00Z", "2026-11-25T17:00:00Z")
+    assert data["summary"]["total"] == 2
+    assert data["summary"]["sent"] == 1
+    assert data["summary"]["failed"] == 1
+    assert all(item["berguna"] == "" for item in data["items"])
+    assert any(item["channel_name"] is None for item in data["items"])
