@@ -39,7 +39,7 @@
 - [x] `purge_old_data` panggil rollup sebelum hapus; hilangkan upsert aditif.
 - [x] `maintenance-startup`: purge cek/data + `run_due_backup` sekali setelah poller hidup.
 - [x] Tes: double-run tidak menggandakan `samples`; catch-up startup; grafik `7d` dan `trend_rx` melihat jam terbaru.
-- [ ] Merge ke `main` sebelum 28 Nov.
+- [x] Merge ke `main` — tercakup PR #10 (25 Nov 2026).
 
 ### Pilot — persiapan (paralel, operasional)
 - [ ] Daftar 10–30 perangkat pilihan Tim IT; akses read-only 1–2 MikroTik ber-SFP.
@@ -63,6 +63,7 @@
 - [x] `evaluate_link`: issue `fiber_predicted` per ujung; severity sesuai skala proyek (`average` > `warning`; `high` untuk crit dekat); pesan informatif.
 - [x] Poller: tambah kind ke `FIBER_PROBLEM_KINDS`/`_FIBER_EVAL_KINDS`; dedupe/alert existing; anti-flap dengan margin.
 - [x] Cache & API: field prediksi di `LINK_STATE_METRICS_KEYS`; `/api/optical/summary` (top 5 link berisiko); `/api/fiber-links/<id>`.
+- [x] Merge ke `main` — PR #10 (25 Nov 2026), suite 470 passed.
 
 **Acceptance:** integrasi poller buka/tutup hijau; tidak ada problem storm; minimal 1 link menampilkan ETA dari data nyata; riwayat prediksi tercatat.
 
