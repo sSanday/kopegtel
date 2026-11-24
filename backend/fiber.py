@@ -21,6 +21,7 @@ FIBER_PROBLEM_KINDS = (
     "fiber_drop",
     "fiber_trend",
     "fiber_deviation",
+    "fiber_predicted",
 )
 
 # Sehingga status bisa di-cache di optical_link_state dan /api/summary murah.
@@ -29,6 +30,11 @@ LINK_STATE_METRICS_KEYS = (
     "budget_ab_db", "budget_ba_db",
     "deviation_ab_db", "deviation_ba_db",
     "margin_a_db", "margin_b_db",
+    "rx_a_dbm", "rx_b_dbm",
+    "predicted_days_a", "predicted_days_b",
+    "predicted_target_a", "predicted_target_b",
+    "predicted_threshold_a", "predicted_threshold_b",
+    "predicted_slope_a", "predicted_slope_b",
 )
 
 
@@ -137,6 +143,19 @@ def evaluate_link(link, was_bad=None, settings=None):
     result["baseline_samples_b"] = baseline_n_b
     result["trend_rx_a_db_per_week"] = trend_a
     result["trend_rx_b_db_per_week"] = trend_b
+    result["rx_a_dbm"] = (reading_a or {}).get("rx_dbm") if reading_a else None
+    result["rx_b_dbm"] = (reading_b or {}).get("rx_dbm") if reading_b else None
+    _preds = result.get("predictions") or {}
+    _pa = _preds.get("a")
+    _pb = _preds.get("b")
+    result["predicted_days_a"] = _pa["days"] if _pa else None
+    result["predicted_target_a"] = _pa["target"] if _pa else None
+    result["predicted_threshold_a"] = _pa["threshold_dbm"] if _pa else None
+    result["predicted_slope_a"] = _pa["slope_db_per_week"] if _pa else None
+    result["predicted_days_b"] = _pb["days"] if _pb else None
+    result["predicted_target_b"] = _pb["target"] if _pb else None
+    result["predicted_threshold_b"] = _pb["threshold_dbm"] if _pb else None
+    result["predicted_slope_b"] = _pb["slope_db_per_week"] if _pb else None
     result["profile"] = profile
     result["settings"] = settings
     result["reading_a"] = reading_a
@@ -155,6 +174,11 @@ def public_eval(result):
             "wavelength_ab_nm", "wavelength_ba_nm", "signals",
             "baseline_rx_a_dbm", "baseline_rx_b_dbm",
             "trend_rx_a_db_per_week", "trend_rx_b_db_per_week",
+            "predictions",
+            "predicted_days_a", "predicted_days_b",
+            "predicted_target_a", "predicted_target_b",
+            "predicted_threshold_a", "predicted_threshold_b",
+            "predicted_slope_a", "predicted_slope_b",
         )
     }
 

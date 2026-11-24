@@ -6,6 +6,7 @@ masalah, histeresis saat pulih, dan atribusi severity LOS.
 """
 
 import sys
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -39,7 +40,7 @@ def _device_payload():
     }
 
 
-def _seed_link(db_module, device_id, name="Link Uji"):
+def _seed_link(db_module, device_id, name="Link Uji", length_km=10.0):
     profile_id = db_module.create_optical_profile(
         {
             "name": f"Profil {name}",
@@ -73,6 +74,57 @@ def _seed_link(db_module, device_id, name="Link Uji"):
             "notes": "",
         }
     )
+
+
+def _hourly_trend(db_module, device_id, port, start_rx, end_rx, *, hours=72, end_hours_ago=25):
+    """Insert hourly readings membentuk tren linier (untuk uji prediksi)."""
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    span = hours - 1
+    for i in range(hours):
+        ts = now - timedelta(hours=end_hours_ago + span - i)
+        rx = start_rx + (end_rx - start_rx) * (i / span)
+        db_module.record_optical_readings(
+            device_id,
+            ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            [
+                {
+                    "if_name": port,
+                    "rx_dbm": rx,
+                    "tx_dbm": -1.0,
+                    "temp_c": 45.0,
+                    "voltage_v": 3.3,
+                    "bias_ma": 6.0,
+                    "rx_loss": False,
+                    "tx_fault": False,
+                    "module_present": True,
+                    "ddm_supported": True,
+                }
+            ],
+        )
+
+
+def _hourly_flat(db_module, device_id, port, rx_dbm, *, hours=24, start_hours_ago=24):
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    for i in range(hours):
+        ts = now - timedelta(hours=start_hours_ago - i)
+        db_module.record_optical_readings(
+            device_id,
+            ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            [
+                {
+                    "if_name": port,
+                    "rx_dbm": rx_dbm,
+                    "tx_dbm": -1.0,
+                    "temp_c": 45.0,
+                    "voltage_v": 3.3,
+                    "bias_ma": 6.0,
+                    "rx_loss": False,
+                    "tx_fault": False,
+                    "module_present": True,
+                    "ddm_supported": True,
+                }
+            ],
+        )
 
 
 def _reading(db_module, device_id, rx_dbm, rx_loss=False):
@@ -152,3 +204,39 @@ def test_flap_between_evaluations_does_not_open(fresh_db):
         poller._evaluate_fiber_links()
     kinds = [p["kind"] for p in fresh_db.list_problems("open", 10)]
     assert "fiber_rx_low" not in kinds
+
+
+def test_poller_opens_and_resolves_fiber_predicted(fresh_db):
+    """Tren Rx menurun → fiber_predicted terbuka dan tercatat; pulih → tertutup."""
+    device_id = fresh_db.create_device(_device_payload())
+    link_id = _seed_link(fresh_db, device_id, "Link Prediksi", length_km=33.0)
+
+    # 3 hari data menurun -14.2 → -14.8 dB (≈ -1.4 dB/minggu, ETA ke waspada ~4 hari).
+    _hourly_trend(fresh_db, device_id, "sfp-sfpplus1", -14.2, -14.8, hours=72, end_hours_ago=25)
+    fresh_db.rollup_optical_hourly()
+
+    poller._evaluate_fiber_links()
+    assert "fiber_predicted" not in [p["kind"] for p in fresh_db.list_problems("open", 10)], (
+        "Prediksi butuh dua evaluasi berturut-turut seperti masalah fiber lain"
+    )
+    poller._evaluate_fiber_links()
+
+    problems = [p for p in fresh_db.list_problems("open", 10) if p["kind"] == "fiber_predicted"]
+    assert problems, "Tren menurun dalam horizon harus membuka fiber_predicted"
+    assert problems[0]["link_name"] == "Link Prediksi"
+    assert problems[0]["severity"] in ("average", "warning")
+
+    snapshots = fresh_db.list_fiber_predictions(link_id)
+    assert snapshots, "Snapshot prediksi per jam harus tercatat sebagai bukti laporan"
+    assert snapshots[0]["side"] == "a"
+    assert snapshots[0]["target"] == "warn"
+
+    # Rx pulih ke -12 (jauh dari ambang) + tren tidak lagi menurun → masalah ditutup.
+    _hourly_flat(fresh_db, device_id, "sfp-sfpplus1", -12.0, hours=24, start_hours_ago=24)
+    fresh_db.rollup_optical_hourly()
+    poller._evaluate_fiber_links()
+
+    open_kinds = [p["kind"] for p in fresh_db.list_problems("open", 10)]
+    assert "fiber_predicted" not in open_kinds
+    resolved = [p for p in fresh_db.list_problems("resolved", 10) if p["kind"] == "fiber_predicted"]
+    assert resolved, "Prediksi yang tidak lagi relevan harus ditutup, bukan menggantung"

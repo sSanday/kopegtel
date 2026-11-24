@@ -84,6 +84,7 @@
     fiber_rx_high: "Rx di atas ambang",
     fiber_drop: "Penurunan mendadak Rx",
     fiber_trend: "Tren Rx memburuk",
+    fiber_predicted: "Prediksi Rx melewati ambang",
     fiber_asymmetry: "Asimetri redaman",
     fiber_margin_low: "Margin operasi rendah",
     sfp_tx_fault: "Tx fault modul SFP",

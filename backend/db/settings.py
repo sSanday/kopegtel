@@ -62,6 +62,51 @@ def retention_cutoff(days, hourly=False):
     return moment.strftime("%Y-%m-%dT%H:00:00Z" if hourly else "%Y-%m-%dT%H:%M:%SZ")
 
 
+def rollup_optical_hourly(since_hour=None):
+    """Agregasi pembacaan optik mentah yang jamnya sudah selesai ke optical_hourly.
+
+    Idempoten: nilai jam yang sama diganti (bukan ditambah), jadi aman dijalankan
+    berulang tiap jam dan saat startup. ``since_hour`` membatasi agregasi ke jam
+    yang masih tercakup retensi mentah, sehingga jam yang datanya sudah sebagian
+    dibuang tidak dihitung ulang dengan sampel parsial.
+    """
+    current_hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
+    where = "ts < ?"
+    params = [current_hour]
+    if since_hour:
+        where += " AND ts >= ?"
+        params.append(since_hour)
+    with transaction() as conn:
+        cursor = conn.execute(
+            f"""
+            INSERT INTO optical_hourly (device_id, if_name, hour_ts,
+                rx_min, rx_avg, rx_max, tx_min, tx_avg, tx_max, temp_min, temp_avg, temp_max, samples)
+            SELECT device_id, if_name,
+                   strftime('%Y-%m-%dT%H:00:00Z', replace(ts, 'Z', '')) AS hour_ts,
+                   MIN(rx_dbm), AVG(rx_dbm), MAX(rx_dbm),
+                   MIN(tx_dbm), AVG(tx_dbm), MAX(tx_dbm),
+                   MIN(temp_c), AVG(temp_c), MAX(temp_c),
+                   COUNT(*)
+            FROM optical_readings
+            WHERE {where}
+            GROUP BY device_id, if_name, strftime('%Y-%m-%dT%H:00:00Z', replace(ts, 'Z', ''))
+            ON CONFLICT(device_id, if_name, hour_ts) DO UPDATE SET
+                rx_min = excluded.rx_min,
+                rx_avg = excluded.rx_avg,
+                rx_max = excluded.rx_max,
+                tx_min = excluded.tx_min,
+                tx_avg = excluded.tx_avg,
+                tx_max = excluded.tx_max,
+                temp_min = excluded.temp_min,
+                temp_avg = excluded.temp_avg,
+                temp_max = excluded.temp_max,
+                samples = excluded.samples
+            """,
+            params,
+        )
+        return cursor.rowcount
+
+
 def purge_old_checks(days=None):
     """Hapus riwayat pemeriksaan perangkat yang lebih tua dari retensi.
 
@@ -130,33 +175,9 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
         metrics_deleted = conn.execute("DELETE FROM device_metrics WHERE ts < ?", (raw_cutoff,)).rowcount
         interfaces_deleted = conn.execute("DELETE FROM interface_stats WHERE ts < ?", (raw_cutoff,)).rowcount
         # --- Roll-up optik: mentah → optical_hourly (min/avg/max), lalu buang ---
-        conn.execute(
-            """
-            INSERT INTO optical_hourly (device_id, if_name, hour_ts,
-                rx_min, rx_avg, rx_max, tx_min, tx_avg, tx_max, temp_min, temp_avg, temp_max, samples)
-            SELECT device_id, if_name,
-                   strftime('%Y-%m-%dT%H:00:00Z', replace(ts, 'Z', '')) AS hour_ts,
-                   MIN(rx_dbm), AVG(rx_dbm), MAX(rx_dbm),
-                   MIN(tx_dbm), AVG(tx_dbm), MAX(tx_dbm),
-                   MIN(temp_c), AVG(temp_c), MAX(temp_c),
-                   COUNT(*)
-            FROM optical_readings
-            WHERE ts < ?
-            GROUP BY device_id, if_name, strftime('%Y-%m-%dT%H:00:00Z', replace(ts, 'Z', ''))
-            ON CONFLICT(device_id, if_name, hour_ts) DO UPDATE SET
-                rx_min = MIN(optical_hourly.rx_min, excluded.rx_min),
-                rx_avg = (optical_hourly.samples * optical_hourly.rx_avg + excluded.samples * excluded.rx_avg) / (optical_hourly.samples + excluded.samples),
-                rx_max = MAX(optical_hourly.rx_max, excluded.rx_max),
-                tx_min = MIN(optical_hourly.tx_min, excluded.tx_min),
-                tx_avg = (optical_hourly.samples * optical_hourly.tx_avg + excluded.samples * excluded.tx_avg) / (optical_hourly.samples + excluded.samples),
-                tx_max = MAX(optical_hourly.tx_max, excluded.tx_max),
-                temp_min = MIN(optical_hourly.temp_min, excluded.temp_min),
-                temp_avg = (optical_hourly.samples * optical_hourly.temp_avg + excluded.samples * excluded.temp_avg) / (optical_hourly.samples + excluded.samples),
-                temp_max = MAX(optical_hourly.temp_max, excluded.temp_max),
-                samples = optical_hourly.samples + excluded.samples
-            """,
-            (raw_cutoff,),
-        )
+        # Rollup yang sama dipakai job per jam; di sini dijalankan lebih dulu agar
+        # jam yang datanya akan dihapus tetap punya ringkasan.
+        rollup_optical_hourly()
         optical_deleted = conn.execute("DELETE FROM optical_readings WHERE ts < ?", (raw_cutoff,)).rowcount
         optical_hourly_deleted = conn.execute("DELETE FROM optical_hourly WHERE hour_ts < ?", (optical_hourly_cutoff,)).rowcount
         hourly_deleted = conn.execute("DELETE FROM device_metrics_hourly WHERE hour_ts < ?", (hourly_cutoff,)).rowcount
@@ -194,6 +215,15 @@ def purge_old_data(days=None, hourly_days=None, events_days=None, audit_days=Non
         # transaksi, jadi error di sini harus membatalkan semuanya agar tidak
         # ada rollup/DELETE flow yang tersimpan setengah jalan.
         flow_result = _flow_db.purge_flow(flow_days, flow_hourly_days, conn=conn)
+        # Prediksi fiber: retensi riwayat.
+        try:
+            pred_days = int(fiber.get("fiber_prediction_retention_days", 180))
+        except (TypeError, ValueError, OverflowError):
+            pred_days = 180
+        conn.execute(
+            "DELETE FROM fiber_prediction_log WHERE evaluated_at < ?",
+            (_days_ago(pred_days),),
+        )
         # Backup: simpan N versi terakhir per perangkat.
         try:
             backup_keep = int(settings.get("mt_backup_retention_versions", 30))
