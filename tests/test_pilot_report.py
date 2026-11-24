@@ -89,3 +89,45 @@ def test_build_coverage_excludes_maintenance_and_counts_status(tmp_path):
     assert cov["observed_hours"] == 2.0
     assert cov["expected_hours"] == 9.0
     assert cov["coverage_pct"] == pytest.approx(22.2, abs=0.1)
+
+
+def _seed_problems(conn):
+    conn.executescript(
+        """
+        CREATE TABLE devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT);
+        CREATE TABLE fiber_links (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE problems (id INTEGER PRIMARY KEY, device_id INTEGER, kind TEXT,
+            severity TEXT, message TEXT, status TEXT, started_at TEXT, resolved_at TEXT,
+            acked_by TEXT, acked_at TEXT, link_id INTEGER);
+        CREATE TABLE device_checks (id INTEGER PRIMARY KEY, device_id INTEGER,
+            checked_at TEXT, status TEXT, maintenance INTEGER DEFAULT 0);
+        INSERT INTO devices VALUES (1,'Mikrotik','192.168.30.1');
+        INSERT INTO fiber_links VALUES (1,'Link A');
+        INSERT INTO device_checks VALUES (1,1,'2026-11-24T00:00:00Z','offline',0);
+        INSERT INTO problems VALUES
+          (1,1,'device_down','high','mati','resolved','2026-11-24T00:00:30Z','2026-11-24T00:10:30Z',NULL,NULL,NULL),
+          (2,1,'fiber_rx_low','warning','rx turun','open','2026-11-24T05:00:00Z',NULL,'operator',NULL,1);
+        """
+    )
+    conn.commit()
+
+
+def test_build_incidents_mttd_mttr_and_open_overlap(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_problems))
+    data = pilot_report.build_incidents(conn, "2026-11-23T17:00:00Z", "2026-11-25T17:00:00Z")
+    assert data["summary"]["total"] == 2
+    assert data["summary"]["open"] == 1
+    assert data["summary"]["resolved"] == 1
+    assert data["summary"]["mttr_median_min"] == 10.0
+    assert data["summary"]["mttd_median_sec"] == 30.0
+    down = next(i for i in data["items"] if i["kind"] == "device_down")
+    assert down["mttd_sec"] == 30.0
+    fiber = next(i for i in data["items"] if i["kind"] == "fiber_rx_low")
+    assert fiber["mttd_sec"] is None
+    assert fiber["resolved_at"] is None
+
+
+def test_build_incidents_includes_problem_started_before_range(tmp_path):
+    conn = pilot_report.connect_ro(_make_db(tmp_path, _seed_problems))
+    data = pilot_report.build_incidents(conn, "2026-11-24T00:05:00Z", "2026-11-24T01:00:00Z")
+    assert [i["id"] for i in data["items"]] == [1]

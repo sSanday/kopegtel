@@ -11,6 +11,7 @@ Bagian tanpa data ditampilkan sebagai "Belum terverifikasi".
 import argparse
 import os
 import sqlite3
+import statistics
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -33,6 +34,24 @@ def _as_utc(now):
 
 def _fmt_utc(value):
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_utc(value):
+    """Parse timestamp DB menjadi datetime UTC; None aman."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        result = value
+    else:
+        result = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if result.tzinfo is None:
+        result = result.replace(tzinfo=timezone.utc)
+    return result.astimezone(timezone.utc)
+
+
+def _fmt_local(value, tz=DEFAULT_TZ):
+    local = to_local(value, tz)
+    return local.strftime("%Y-%m-%d %H:%M:%S") if local else None
 
 
 def _parse_date(value, label):
@@ -196,6 +215,91 @@ def build_coverage(conn, since_utc, until_utc, tz=DEFAULT_TZ, office=(8, 17)):
         "coverage_pct": coverage_pct,
         "per_device": per_device,
     }
+
+
+def _median(values):
+    values = [value for value in values if value is not None]
+    return float(statistics.median(values)) if values else None
+
+
+def build_incidents(conn, since_utc, until_utc, tz=DEFAULT_TZ):
+    """Ambil masalah yang beririsan dengan periode, plus MTTD/MTTR."""
+    rows = conn.execute(
+        "SELECT p.*, d.name AS device_name, d.ip AS device_ip, fl.name AS link_name"
+        " FROM problems p"
+        " LEFT JOIN devices d ON d.id = p.device_id"
+        " LEFT JOIN fiber_links fl ON fl.id = p.link_id"
+        " WHERE p.started_at < ?"
+        " AND (p.resolved_at IS NULL OR p.resolved_at >= ?)"
+        " ORDER BY p.started_at DESC",
+        (until_utc, since_utc),
+    ).fetchall()
+
+    items = []
+    for row in rows:
+        started = _parse_utc(row["started_at"])
+        resolved = _parse_utc(row["resolved_at"]) if row["resolved_at"] else None
+        duration_min = None
+        if started and resolved and resolved >= started:
+            duration_min = round((resolved - started).total_seconds() / 60, 1)
+
+        mttd_sec = None
+        if row["kind"] in ("device_down", "high_latency") and row["device_id"] and started:
+            lower = _fmt_utc(started - timedelta(hours=24))
+            upper = _fmt_utc(started)
+            first_bad = conn.execute(
+                "SELECT MIN(checked_at) AS first_bad FROM device_checks"
+                " WHERE device_id = ? AND status != 'online'"
+                " AND COALESCE(maintenance, 0) = 0"
+                " AND checked_at >= ? AND checked_at <= ?",
+                (row["device_id"], lower, upper),
+            ).fetchone()["first_bad"]
+            if first_bad:
+                mttd_sec = max(0.0, (started - _parse_utc(first_bad)).total_seconds())
+
+        items.append(
+            {
+                "id": row["id"],
+                "kind": row["kind"],
+                "severity": row["severity"],
+                "status": row["status"],
+                "device_name": row["device_name"],
+                "device_ip": row["device_ip"],
+                "link_name": row["link_name"],
+                "started_at": _fmt_local(row["started_at"], tz),
+                "resolved_at": _fmt_local(row["resolved_at"], tz),
+                "duration_min": duration_min,
+                "acked_by": row["acked_by"],
+                "acked_at": _fmt_local(row["acked_at"], tz),
+                "mttd_sec": mttd_sec,
+                "message": row["message"],
+            }
+        )
+
+    by_severity = {}
+    for item in items:
+        severity = item["severity"] or "unknown"
+        by_severity[severity] = by_severity.get(severity, 0) + 1
+    mttr_values = [
+        item["duration_min"]
+        for item in items
+        if item["status"] == "resolved" and item["duration_min"] is not None
+    ]
+    mttd_values = [item["mttd_sec"] for item in items if item["mttd_sec"] is not None]
+
+    summary = {
+        "total": len(items),
+        "open": sum(1 for item in items if item["status"] == "open"),
+        "resolved": sum(1 for item in items if item["status"] == "resolved"),
+        "by_severity": by_severity,
+        "mttr_median_min": _median(mttr_values),
+        "mttr_avg_min": round(sum(mttr_values) / len(mttr_values), 1)
+        if mttr_values
+        else None,
+        "mttd_median_sec": _median(mttd_values),
+        "mttd_samples": len(mttd_values),
+    }
+    return {"items": items, "summary": summary}
 
 
 def main(argv=None):
