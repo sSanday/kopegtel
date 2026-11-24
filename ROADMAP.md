@@ -2,7 +2,7 @@
 
 **Periode:** 24 Nov 2026 – 22 Des 2026 (28 hari, ~20 hari kerja)
 **Tenggat:** 22 Des 2026 (penilaian magang)
-**Status:** P0 selesai; inti P1 diimplementasikan (verifikasi suite penuh berjalan); P2 berikutnya
+**Status:** P0/P1 merged (PR #10); alat bukti P2 merged (PR #11); suite 497 passed; pilot berjalan — angka final menunggu data nyata
 **Branch dasar:** `main` @ `c4a3937` (suite 444/444 = 100%)
 
 ## 0. Prinsip & batasan
@@ -78,9 +78,12 @@
 - [x] `KIND_LABELS`: `fiber_predicted` → "Prediksi Rx melewati ambang".
 
 ### P2 — Alat bukti
-- [ ] `tools/pilot_report.py`: jendela observasi, cakupan, insiden (MTTD/MTTR), prediksi (lead time, terkonfirmasi/belum), alarm + kolom "berguna?".
-- [x] Full suite (`pytest tests/ -q`) hijau — 470 passed, 1 warning (25 Nov 2026).
+- [x] `tools/pilot_report.py`: jendela observasi, cakupan jam kerja, insiden (MTTD/MTTR), prediksi (lead time, terkonfirmasi/belum), alarm + kolom "berguna?" — PR #11 (25 Nov 2026).
+- [x] Template `docs/LAPORAN-DAMPAK.md` + daftar alat bukti di README — PR #11.
+- [x] Review independen: MTTD berjangkar cek `online` terakhir, cakupan memakai menit unik tanpa akhir pekan, uji kanal dipisah dari alarm produksi (`20ed3ef`, `7fd958a`).
+- [x] Full suite (`pytest tests/ -q`) hijau — 497 passed, 1 warning (25 Nov 2026).
 - [ ] Umpan balik Tim IT #1: validasi alarm, catat false positive.
+- [ ] Jalankan `pilot_report.py` pada data pilot nyata dan isi angka final di `docs/LAPORAN-DAMPAK.md`.
 
 **Acceptance:** UI menampilkan prediksi dari data nyata; `pilot_report.py` menghasilkan Markdown/CSV; 0 regresi.
 
