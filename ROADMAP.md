@@ -43,8 +43,8 @@
 
 ### Pilot — persiapan (paralel, operasional)
 - [ ] Daftar 10–30 perangkat pilihan Tim IT; akses read-only 1–2 MikroTik ber-SFP.
-  - 25 Nov: perangkat pilot saat ini (CCR1016-12G) **tidak punya port SFP** dan API 8728/8729 tertutup. Permintaan akses SFP/DDM disiapkan di `docs/PERMINTAAN-AKSES-DDM.md` (target 28 Nov; pivot 1 Des bila tidak ada).
-- [ ] Grup Telegram Tim IT; uji kirim; aturan aksi default severity warning/high.
+  - 25 Nov: perangkat pilot saat ini (CCR1016-12G) **tidak punya port SFP** dan API 8728/8729 tertutup. Permintaan akses SFP/DDM disiapkan di `docs/PERMINTAAN-AKSES-DDM.md` (target 28 Nov; pivot 1 Des bila tidak ada). Pesan konsolidasi (DDM + status Host `.211` + 10–30 perangkat tambahan) ada di §8; **belum dikirim** per 25 Nov.
+- [ ] Grup Telegram Tim IT; uji kirim; aturan aksi default severity warning/high. **Belum dikonfigurasi** per 25 Nov (`action_rules`/`message_templates` kosong).
 - [ ] Daftarkan link fiber nyata + isi profil ambang (datasheet SFP, panjang, splice, konektor).
 - [ ] Dokumen jam operasi + checklist harian (nyalakan 08.00, cek `/healthz`, matikan 17.00).
 
@@ -84,7 +84,7 @@
 - [x] `tools/pilot_report.py`: jendela observasi, cakupan jam kerja, insiden (MTTD/MTTR), prediksi (lead time, terkonfirmasi/belum), alarm + kolom "berguna?" — PR #11 (25 Nov 2026).
 - [x] Template `docs/LAPORAN-DAMPAK.md` + daftar alat bukti di README — PR #11.
 - [x] Review independen: MTTD berjangkar cek `online` terakhir, cakupan memakai menit unik tanpa akhir pekan, uji kanal dipisah dari alarm produksi (`20ed3ef`, `7fd958a`).
-- [x] Full suite (`pytest tests/ -q`) hijau — 497 passed, 1 warning (25 Nov 2026).
+- [x] Full suite (`pytest tests/ -q`) hijau — 497 passed, 1 warning (25 Nov 2026, **sebelum** fix storm). Setelah fix: 90 tes area alarm (termasuk 27 tes pilot_report) hijau; full suite penuh belum dijalankan ulang karena batas waktu harness, bukan karena kegagalan.
 - [ ] Umpan balik Tim IT #1: validasi alarm, catat false positive.
 - [ ] Jalankan `pilot_report.py` pada data pilot nyata dan isi angka final di `docs/LAPORAN-DAMPAK.md`.
 
