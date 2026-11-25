@@ -85,15 +85,15 @@ function Invoke-TailscaleUp {
 
     $tsArgs = @(
         'up',
-        "--advertise-routes=$Subnet",
-        '--accept-routes',
-        "--hostname=$Hostname"
+        "--hostname=$Hostname",
+        '--accept-routes=false',
+        '--unattended'
     )
     if ($Reset) { $tsArgs += '--reset' }
-    if ($AuthKey) { $tsArgs += "--authkey=$AuthKey" }
+    if ($AuthKey) { $tsArgs += "--auth-key=$AuthKey" }
 
     $displayArgs = $tsArgs | ForEach-Object {
-        if ($_ -like '--authkey=*') { '--authkey=<REDACTED>' } else { $_ }
+        if ($_ -like '--auth-key=*' -or $_ -like '--authkey=*') { '--auth-key=<REDACTED>' } else { $_ }
     }
     Write-Host ("Perintah: tailscale " + ($displayArgs -join ' '))
 
@@ -103,6 +103,27 @@ function Invoke-TailscaleUp {
     & $TailscalePath @tsArgs
     if ($LASTEXITCODE -ne 0) {
         throw "tailscale up gagal (exit $LASTEXITCODE). Jika node sudah pernah login dengan konfigurasi lain, jalankan ulang dengan -Reset."
+    }
+}
+
+function Set-TailscaleRoutes {
+    param(
+        [string]$TailscalePath,
+        [string]$Subnet,
+        [switch]$DryRun
+    )
+
+    Write-Host "Perintah: tailscale set --advertise-routes=$Subnet --accept-routes=false"
+    if ($DryRun) { return }
+    if (-not $TailscalePath) { throw 'tailscale.exe tidak ditemukan.' }
+
+    & $TailscalePath set "--advertise-routes=$Subnet" '--accept-routes=false'
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'tailscale set gagal; mencoba fallback tailscale up --advertise-routes...'
+        & $TailscalePath up "--advertise-routes=$Subnet" '--accept-routes=false'
+        if ($LASTEXITCODE -ne 0) {
+            throw "Gagal mengiklankan rute $Subnet (exit $LASTEXITCODE)."
+        }
     }
 }
 
@@ -131,7 +152,8 @@ if ($DryRun) {
         Write-Host 'Aksi      : install Tailscale (winget atau installer resmi)'
     }
     Write-Host 'Aksi      : start service Tailscale'
-    Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Subnet $Subnet -Hostname $Hostname -Reset:$Reset -DryRun
+    Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Hostname $Hostname -Reset:$Reset -DryRun
+    Set-TailscaleRoutes -TailscalePath $tailscale -Subnet $Subnet -DryRun
     Write-Host 'Aksi      : tailscale status'
     Write-Host 'Aksi      : tailscale ip -4'
     Write-Host "Aksi      : ping $Target"
@@ -152,7 +174,8 @@ if (-not $tailscale) {
 }
 
 Start-TailscaleService
-Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Subnet $Subnet -Hostname $Hostname -Reset:$Reset
+Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Hostname $Hostname -Reset:$Reset
+Set-TailscaleRoutes -TailscalePath $tailscale -Subnet $Subnet
 
 Write-Host '== Status Tailscale =='
 & $tailscale status
