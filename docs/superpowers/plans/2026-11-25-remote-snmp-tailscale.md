@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status implementasi (26 November 2026):** Langkah di bawah adalah rencana awal. Implementasi final mengikuti bagian **Revisi pasca code review** di akhir dokumen. Parameter `-AuthKey` dan `$env:TAILSCALE_AUTH_KEY` sudah dihapus; gunakan `-AuthKeyFile` atau prompt. Preferensi Tailscale diatur dengan `tailscale set`, bukan `tailscale up` berulang.
+
 **Goal:** PC kantor menjadi Tailscale subnet router untuk `192.168.30.0/24`, sehingga laptop di luar kantor bisa melakukan polling SNMP ke MikroTik asli `192.168.30.1` tanpa mengubah kode NMS dan tanpa membuka port ke internet.
 
 **Architecture:** Satu PC Windows di kantor menjalankan Tailscale dan mengiklankan rute `192.168.30.0/24`. Laptop join tailnet yang sama dan menerima rute. NMS tetap memakai device 6 dengan IP `192.168.30.1`; Tailscale yang meneruskan paket.
