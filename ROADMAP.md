@@ -48,7 +48,7 @@
 - [ ] Daftarkan link fiber nyata + isi profil ambang (datasheet SFP, panjang, splice, konektor).
 - [ ] Dokumen jam operasi + checklist harian (nyalakan 08.00, cek `/healthz`, matikan 17.00).
 
-**Jendela data bersih:** mulai 25 Nov 2026 13:15 WIB (setelah laptop kembali ke Wi-Fi kantor). Periode 19–25 Nov sebelum itu memuat cek dari jaringan salah dan **tidak dipakai untuk angka final**; laporan final memakai periode bersih (mis. 26 Nov–12 Des).
+**Jendela data bersih:** mulai 25 Nov 2026 13:15 WIB (setelah laptop kembali ke Wi-Fi kantor). Periode 19–25 Nov sebelum itu memuat cek dari jaringan salah dan **tidak dipakai untuk angka final**. 25 Nov sendiri masih memiliki jeda ~30 menit akibat restart server (13:43–14:17 dan 14:42–15:12), jadi laporan final memakai periode 26 Nov–12 Des.
 
 **Acceptance:** rollup PR hijau; `/healthz` 200; data `optical_hourly` terisi hingga jam terakhir di hari kerja.
 

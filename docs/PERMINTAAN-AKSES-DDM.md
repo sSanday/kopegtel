@@ -90,3 +90,23 @@ pilot saat ini tidak memiliki port SFP.
 > merek/model, port SFP, dan modul SFP-nya; data link (panjang, splice,
 > splitter) juga membantu. Target akses 28 Nov agar ETA pertama muncul ~1 Des.
 > NMS hanya membaca, tidak mengubah konfigurasi. Terima kasih.
+
+## 8. Pesan konsolidasi untuk Tim IT (DDM + Host .211 + perangkat tambahan)
+
+> Selamat siang Pak/Bu, saya Sandi (magang NMS Kopegtel). Ada tiga hal yang
+> kami butuhkan untuk pilot NMS:
+>
+> 1. **Akses DDM (prioritas).** Mohon akses read-only ke 1–2 perangkat yang
+>    punya port SFP/SFP+ dengan DDM/DOM aktif (SNMP v2c/v3 atau API MikroTik),
+>    dari laptop NMS `192.168.110.158`. CCR1016-12G saat ini tidak punya port
+>    SFP. Mohon info merek/model, port SFP, modul SFP, dan data link (panjang,
+>    splice, splitter). Target akses 28 Nov agar ETA pertama ~1 Des.
+> 2. **Status Host `192.168.30.211`.** NMS mencatat ICMP timeout dan problem
+>    terbuka sejak 24 Nov 00:24 WIB. Apakah host memang down, atau ICMP
+>    diblokir? Jika diblokir, mohon akses SNMP/agent read-only agar statusnya
+>    bisa dipantau.
+> 3. **Perangkat pilot tambahan.** Saat ini baru 4 perangkat (MikroTik, ONT,
+>    web, host). Mohon 10–30 perangkat lagi (IP + SNMP community read-only)
+>    agar cakupan pilot memadai.
+>
+> NMS hanya membaca, tidak mengubah konfigurasi. Terima kasih.
