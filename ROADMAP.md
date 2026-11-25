@@ -2,7 +2,7 @@
 
 **Periode:** 24 Nov 2026 – 22 Des 2026 (28 hari, ~20 hari kerja)
 **Tenggat:** 22 Des 2026 (penilaian magang)
-**Status:** P0/P1 merged (PR #10); alat bukti P2 merged (PR #11); suite 497 passed; pilot berjalan — angka final menunggu data nyata
+**Status:** P0/P1 merged (PR #10); alat bukti P2 merged (PR #11); fix race alarm (PR #12); pilot berjalan — angka final menunggu data nyata
 **Branch dasar:** `main` @ `c4a3937` (suite 444/444 = 100%)
 
 ## 0. Prinsip & batasan
@@ -146,3 +146,7 @@
 - Satu instance per database (lease `instance_lease`); jangan start ganda; tunggu lease kedaluwarsa (~30 dtk) bila restart.
 - Tes: `python -m pytest tests/ -q` (database sementara; jangan saat produksi).
 - Branch kerja: `feat/pilot-fiber-prediction`; PR → merge ke `main` per langkah besar.
+- 25 Nov: race `deque mutated during iteration` di `alerts._storm_gate` diperbaiki
+  (PR #12): lock + snapshot; regresi test
+  `test_storm_gate_uses_snapshot_when_entries_mutated`. 13 tes eskalasi hijau;
+  full suite dijalankan ulang per kelompok karena restart harness.
