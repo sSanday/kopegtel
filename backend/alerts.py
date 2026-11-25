@@ -10,6 +10,7 @@ import logging
 import smtplib
 import socket
 import ssl
+import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -267,6 +268,7 @@ def _rule_matches(rule, severity_rank, device):
 
 
 _STORM = {"entries": deque(maxlen=1000), "active_until": 0.0}
+_STORM_LOCK = threading.Lock()
 _STORM_WINDOW_SECONDS = 60.0
 _STORM_MAX_LINES = 25
 
@@ -282,28 +284,34 @@ def _storm_threshold():
 def _storm_gate(problem, device):
     """Kendali badai: >N masalah dalam 60 detik -> satu pesan ringkasan."""
     now = time.time()
-    entries = _STORM["entries"]
-    while entries and now - entries[0]["ts"] >= _STORM_WINDOW_SECONDS:
-        entries.popleft()
-    entries.append({
-        "ts": now,
-        "problem_id": problem.get("id"),
-        "kind": problem.get("kind"),
-        "severity": problem.get("severity"),
-        "device": device.get("name"),
-        "message": (problem.get("message") or "")[:120],
-    })
-    if now < _STORM["active_until"]:
-        return "suppressed"
-    if len({entry["problem_id"] for entry in entries}) >= _storm_threshold():
-        _STORM["active_until"] = now + _STORM_WINDOW_SECONDS
+    with _STORM_LOCK:
+        entries = _STORM["entries"]
+        while entries and now - entries[0]["ts"] >= _STORM_WINDOW_SECONDS:
+            entries.popleft()
+        entries.append({
+            "ts": now,
+            "problem_id": problem.get("id"),
+            "kind": problem.get("kind"),
+            "severity": problem.get("severity"),
+            "device": device.get("name"),
+            "message": (problem.get("message") or "")[:120],
+        })
+        if now < _STORM["active_until"]:
+            return "suppressed"
+        snapshot = list(entries)
+    if len({entry["problem_id"] for entry in snapshot}) >= _storm_threshold():
+        with _STORM_LOCK:
+            if now < _STORM["active_until"]:
+                return "suppressed"
+            _STORM["active_until"] = now + _STORM_WINDOW_SECONDS
         return "summary"
     return None
 
 
 def _send_storm_summary(problem, device, matched):
-    entries = list(_STORM["entries"])
-    _STORM["entries"].clear()
+    with _STORM_LOCK:
+        entries = list(_STORM["entries"])
+        _STORM["entries"].clear()
     lines = [f"Badai notifikasi: {len(entries)} problem dalam 60 detik terakhir:"]
     for entry in entries[-_STORM_MAX_LINES:]:
         lines.append(

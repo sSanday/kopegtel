@@ -2,6 +2,8 @@
 
 import os
 import sys
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -307,6 +309,38 @@ def test_storm_merge_batches_notifications(fresh_db, telegram_capture):
             "SELECT status, detail FROM action_log ORDER BY id"
         ).fetchall()
     assert any("digabung" in (row["detail"] or "").lower() for row in rows)
+
+
+def test_storm_gate_uses_snapshot_when_entries_mutated(monkeypatch):
+    """Regresi: jangan iterasi deque live saat worker lain mengubahnya."""
+    alerts._STORM["entries"].clear()
+    alerts._STORM["active_until"] = 0.0
+    monkeypatch.setattr(alerts, "_storm_threshold", lambda: 100)
+
+    mutated = {"done": False}
+
+    class _MutatingId(int):
+        def __hash__(self):
+            if not mutated["done"]:
+                mutated["done"] = True
+                alerts._STORM["entries"].append({
+                    "ts": time.time(), "problem_id": 999, "kind": "other",
+                    "severity": "high", "device": "d", "message": "m",
+                })
+            return int.__hash__(self)
+
+    alerts._STORM["entries"].append({
+        "ts": time.time(), "problem_id": _MutatingId(1), "kind": "k",
+        "severity": "high", "device": "d", "message": "m",
+    })
+
+    result = alerts._storm_gate(
+        {"id": 2, "kind": "k", "severity": "high", "message": "m"},
+        {"name": "d"},
+    )
+
+    assert mutated["done"] is True
+    assert result is None
 
 
 # ---------------------------------------------------------
