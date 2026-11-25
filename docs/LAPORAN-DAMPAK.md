@@ -112,6 +112,9 @@ Interpretasi wajib jujur:
   mati.
 - Prediksi memakai regresi linier sederhana; bukan jaminan dan tidak
   menggantikan pemeriksaan fisik fiber.
+- Prediksi fiber hanya bisa dihitung bila ada data DDM dari port SFP.
+  Perangkat pilot saat ini tidak memiliki port SFP; sampai akses SFP/DDM
+  tersedia, bagian prediksi ditulis **Belum terverifikasi** — bukan klaim.
 - Jumlah insiden nyata bisa nol. Bila demikian, tulis "belum ada insiden nyata
   pada periode ini" — jangan mengarang insiden.
 - Angka `n/a` dan sel kosong di CSV berarti bukti belum tersedia, bukan nol.

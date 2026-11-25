@@ -43,9 +43,12 @@
 
 ### Pilot — persiapan (paralel, operasional)
 - [ ] Daftar 10–30 perangkat pilihan Tim IT; akses read-only 1–2 MikroTik ber-SFP.
+  - 25 Nov: perangkat pilot saat ini (CCR1016-12G) **tidak punya port SFP** dan API 8728/8729 tertutup. Permintaan akses SFP/DDM disiapkan di `docs/PERMINTAAN-AKSES-DDM.md` (target 28 Nov; pivot 1 Des bila tidak ada).
 - [ ] Grup Telegram Tim IT; uji kirim; aturan aksi default severity warning/high.
 - [ ] Daftarkan link fiber nyata + isi profil ambang (datasheet SFP, panjang, splice, konektor).
 - [ ] Dokumen jam operasi + checklist harian (nyalakan 08.00, cek `/healthz`, matikan 17.00).
+
+**Jendela data bersih:** mulai 25 Nov 2026 13:15 WIB (setelah laptop kembali ke Wi-Fi kantor). Periode 19–25 Nov sebelum itu memuat cek dari jaringan salah dan **tidak dipakai untuk angka final**; laporan final memakai periode bersih (mis. 26 Nov–12 Des).
 
 **Acceptance:** rollup PR hijau; `/healthz` 200; data `optical_hourly` terisi hingga jam terakhir di hari kerja.
 
