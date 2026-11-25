@@ -299,6 +299,8 @@ def _storm_gate(problem, device):
         if now < _STORM["active_until"]:
             return "suppressed"
         snapshot = list(entries)
+    # Hitung di luar lock agar db.get_setting tidak menahan lock; cek ulang
+    # active_until di dalam lock supaya hanya satu worker yang mengirim ringkasan.
     if len({entry["problem_id"] for entry in snapshot}) >= _storm_threshold():
         with _STORM_LOCK:
             if now < _STORM["active_until"]:

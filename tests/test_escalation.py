@@ -2,7 +2,6 @@
 
 import os
 import sys
-import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -315,7 +314,7 @@ def test_storm_gate_uses_snapshot_when_entries_mutated(monkeypatch):
     """Regresi: jangan iterasi deque live saat worker lain mengubahnya."""
     alerts._STORM["entries"].clear()
     alerts._STORM["active_until"] = 0.0
-    monkeypatch.setattr(alerts, "_storm_threshold", lambda: 100)
+    monkeypatch.setattr(alerts, "_storm_threshold", lambda: 3)
 
     mutated = {"done": False}
 
