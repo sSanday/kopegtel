@@ -1,14 +1,16 @@
 [CmdletBinding()]
 param(
-    [string]$AuthKey = $env:TAILSCALE_AUTH_KEY,
+    [string]$AuthKeyFile,
     [string]$Subnet = '192.168.30.0/24',
     [string]$Hostname = 'kopegtel-office',
     [string]$Target = '192.168.30.1',
+    [string]$TailscalePath,
     [switch]$Reset,
     [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'tailscale-setup-common.ps1')
 
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -73,58 +75,11 @@ function Start-TailscaleService {
     throw 'Service Tailscale tidak berjalan setelah 30 detik.'
 }
 
-function Invoke-TailscaleUp {
-    param(
-        [string]$TailscalePath,
-        [string]$AuthKey,
-        [string]$Subnet,
-        [string]$Hostname,
-        [switch]$Reset,
-        [switch]$DryRun
-    )
-
-    $tsArgs = @(
-        'up',
-        "--hostname=$Hostname",
-        '--accept-routes=false',
-        '--unattended'
-    )
-    if ($Reset) { $tsArgs += '--reset' }
-    if ($AuthKey) { $tsArgs += "--auth-key=$AuthKey" }
-
-    $displayArgs = $tsArgs | ForEach-Object {
-        if ($_ -like '--auth-key=*' -or $_ -like '--authkey=*') { '--auth-key=<REDACTED>' } else { $_ }
-    }
-    Write-Host ("Perintah: tailscale " + ($displayArgs -join ' '))
-
-    if ($DryRun) { return }
-    if (-not $TailscalePath) { throw 'tailscale.exe tidak ditemukan.' }
-
-    & $TailscalePath @tsArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "tailscale up gagal (exit $LASTEXITCODE). Jika node sudah pernah login dengan konfigurasi lain, jalankan ulang dengan -Reset."
-    }
-}
-
-function Set-TailscaleRoutes {
-    param(
-        [string]$TailscalePath,
-        [string]$Subnet,
-        [switch]$DryRun
-    )
-
-    Write-Host "Perintah: tailscale set --advertise-routes=$Subnet --accept-routes=false"
-    if ($DryRun) { return }
-    if (-not $TailscalePath) { throw 'tailscale.exe tidak ditemukan.' }
-
-    & $TailscalePath set "--advertise-routes=$Subnet" '--accept-routes=false'
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host 'tailscale set gagal; mencoba fallback tailscale up --advertise-routes...'
-        & $TailscalePath up "--advertise-routes=$Subnet" '--accept-routes=false'
-        if ($LASTEXITCODE -ne 0) {
-            throw "Gagal mengiklankan rute $Subnet (exit $LASTEXITCODE)."
-        }
-    }
+function Test-TailscaleLoggedIn {
+    param([string]$Path)
+    $output = & $Path ip -4 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return (($output -join ' ') -match '\b100\.')
 }
 
 function Test-OfficeTarget {
@@ -138,8 +93,23 @@ function Test-OfficeTarget {
     }
 }
 
+function Show-ForwardingInstructions {
+    Write-Host 'IP forwarding Windows belum aktif.'
+    Write-Host 'Route boleh diiklankan, tetapi paket tidak akan diteruskan ke 192.168.30.1.'
+    Write-Host 'Jalankan PowerShell sebagai Administrator:'
+    Write-Host "  Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name IPEnableRouter -Value 1"
+    Write-Host '  Restart-Computer'
+    Write-Host 'Setelah reboot, jalankan script ini lagi.'
+}
+
 $isAdmin = Test-IsAdmin
-$tailscale = Get-TailscalePath
+$tailscale = if ($TailscalePath) { $TailscalePath } else { Get-TailscalePath }
+$forwarding = Test-IPForwardingEnabled
+$hasKeyInput = [bool]$AuthKeyFile
+
+if ($AuthKeyFile -and -not (Test-Path -LiteralPath $AuthKeyFile)) {
+    throw "File auth key tidak ditemukan: $AuthKeyFile"
+}
 
 if ($DryRun) {
     Write-Host '== Dry-run setup Tailscale subnet router =='
@@ -148,12 +118,21 @@ if ($DryRun) {
     Write-Host "Target    : $Target"
     Write-Host "Admin     : $isAdmin"
     Write-Host "Tailscale : $(if ($tailscale) { $tailscale } else { 'TIDAK terdeteksi' })"
+    Write-Host "IP forward: $(if ($forwarding) { 'AKTIF' } else { 'TIDAK AKTIF' })"
     if (-not $tailscale) {
         Write-Host 'Aksi      : install Tailscale (winget atau installer resmi)'
     }
     Write-Host 'Aksi      : start service Tailscale'
-    Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Hostname $Hostname -Reset:$Reset -DryRun
-    Set-TailscaleRoutes -TailscalePath $tailscale -Subnet $Subnet -DryRun
+    if (-not $forwarding) {
+        Write-Host 'Aksi      : aktifkan IPEnableRouter=1 lalu reboot'
+    }
+
+    $upAuthFile = if ($hasKeyInput) { '<auth-key-file>' } else { '' }
+    $upArgs = New-TailscaleUpArgs -AuthKeyFile $upAuthFile -Reset:$Reset
+    Write-Host ("Perintah: " + (Format-TailscaleCommand -Arguments $upArgs))
+    $setArgs = New-TailscaleSetArgs -Subnet $Subnet -Hostname $Hostname
+    Write-Host ("Perintah: " + (Format-TailscaleCommand -Arguments $setArgs))
+
     Write-Host 'Aksi      : tailscale status'
     Write-Host 'Aksi      : tailscale ip -4'
     Write-Host "Aksi      : ping $Target"
@@ -174,28 +153,70 @@ if (-not $tailscale) {
 }
 
 Start-TailscaleService
-Invoke-TailscaleUp -TailscalePath $tailscale -AuthKey $AuthKey -Hostname $Hostname -Reset:$Reset
-Set-TailscaleRoutes -TailscalePath $tailscale -Subnet $Subnet
 
-Write-Host '== Status Tailscale =='
-& $tailscale status
-if ($LASTEXITCODE -ne 0) {
-    Write-Host 'Status belum tersedia; login mungkin belum selesai.'
-}
-Write-Host '== IP Tailscale =='
-& $tailscale ip -4
-
-Test-OfficeTarget -Target $Target
-
-if ($env:TAILSCALE_AUTH_KEY) {
-    Remove-Item Env:TAILSCALE_AUTH_KEY -ErrorAction SilentlyContinue
+if (-not $forwarding) {
+    Show-ForwardingInstructions
+    exit 1
 }
 
-Write-Host ''
-Write-Host 'Langkah berikutnya:'
-Write-Host '1. Buka https://login.tailscale.com/admin/machines'
-Write-Host "2. Pilih mesin '$Hostname' -> Edit route settings -> approve $Subnet"
-Write-Host '3. Di laptop: tailscale up --accept-routes'
-Write-Host "4. Uji: ping $Target dan python tools/pilot_connectivity.py --device 6"
+$tempKeyFile = $null
+try {
+    $loggedIn = Test-TailscaleLoggedIn -Path $tailscale
+    $shouldRunUp = Test-ShouldRunTailscaleUp -LoggedIn $loggedIn -Reset:$Reset
+    $key = $null
 
-exit 0
+    if ($shouldRunUp -and -not $loggedIn) {
+        if ($AuthKeyFile) {
+            $key = (Get-Content -LiteralPath $AuthKeyFile -Raw).Trim()
+            if (-not $key) {
+                throw "File auth key kosong: $AuthKeyFile"
+            }
+        } else {
+            Write-Host 'Belum login ke Tailscale.'
+            $key = Read-AuthKeySecure
+            if (-not $key) {
+                throw 'Auth key kosong. Buat auth key di https://login.tailscale.com/admin/settings/keys lalu jalankan ulang.'
+            }
+        }
+    } elseif ($AuthKeyFile -and $loggedIn) {
+        Write-Host 'Sudah login ke Tailscale; auth key diabaikan.'
+    }
+
+    if ($key) {
+        $tempKeyFile = New-ProtectedAuthKeyFile -AuthKey $key
+    }
+
+    if ($shouldRunUp) {
+        $upAuthFile = if ($loggedIn) { '' } else { $tempKeyFile }
+        $upArgs = New-TailscaleUpArgs -AuthKeyFile $upAuthFile -Reset:$Reset
+        Invoke-TailscaleCommand -TailscalePath $tailscale -Arguments $upArgs -Redact $key
+    } else {
+        Write-Host 'Sudah login; melewati tailscale up.'
+    }
+
+    $setArgs = New-TailscaleSetArgs -Subnet $Subnet -Hostname $Hostname
+    Invoke-TailscaleCommand -TailscalePath $tailscale -Arguments $setArgs
+
+    Write-Host '== Status Tailscale =='
+    & $tailscale status
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Status belum tersedia; login mungkin belum selesai.'
+    }
+    Write-Host '== IP Tailscale =='
+    & $tailscale ip -4
+
+    Test-OfficeTarget -Target $Target
+
+    Write-Host ''
+    Write-Host 'Langkah berikutnya:'
+    Write-Host '1. Buka https://login.tailscale.com/admin/machines'
+    Write-Host "2. Pilih mesin '$Hostname' -> Edit route settings -> approve $Subnet"
+    Write-Host '3. Di laptop: tailscale set --accept-routes'
+    Write-Host "4. Uji: ping $Target dan python tools/pilot_connectivity.py --device 6"
+
+    exit 0
+} finally {
+    if ($tempKeyFile) {
+        Remove-Item -LiteralPath $tempKeyFile -Force -ErrorAction SilentlyContinue
+    }
+}

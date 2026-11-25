@@ -13,11 +13,12 @@ Prasyarat: Tailscale di PC kantor dan laptop sudah aktif, route
 ```powershell
 tailscale status
 tailscale ping kopegtel-office
+tailscale debug prefs
 ping 192.168.30.1
 & "F:\Tugas Kuliah\Magang\kopegtel-venv\Scripts\python.exe" tools\pilot_connectivity.py --device 6
 ```
 
-Jika empat langkah itu lolos, baru nyalakan NMS.
+Jika langkah-langkah itu lolos, baru nyalakan NMS.
 
 ## 1. Sebelum konek
 
@@ -34,13 +35,14 @@ Expected:
 - daftar peer memuat `kopegtel-office` dengan status `online`,
 - laptop punya IP `100.x.y.z`.
 
-Jika `kopegtel-office` tidak muncul, akun/tailnet berbeda. Login ulang dengan
-akun yang sama seperti PC kantor.
+Jika `kopegtel-office` tidak muncul, akun/tailnet berbeda. Jalankan
+`tailscale logout`, lalu login ulang dengan akun yang sama seperti PC kantor.
 
 ## 2. Cek rute
 
 ```powershell
 tailscale status
+tailscale debug prefs
 Get-NetRoute -DestinationPrefix '192.168.30.0/24' -ErrorAction SilentlyContinue
 tailscale ping kopegtel-office
 ```
@@ -48,6 +50,7 @@ tailscale ping kopegtel-office
 Expected:
 - `tailscale status` menampilkan `kopegtel-office` dan route
   `192.168.30.0/24` (atau label `subnet`),
+- `tailscale debug prefs` menampilkan `RouteAll: true` di laptop,
 - `Get-NetRoute` menampilkan rute ke `192.168.30.0/24` lewat interface
   Tailscale,
 - `tailscale ping kopegtel-office` mendapat balasan `pong`.
@@ -79,12 +82,12 @@ Jika ping timeout, cek:
 & "F:\Tugas Kuliah\Magang\kopegtel-venv\Scripts\python.exe" tools\pilot_connectivity.py --device 6
 ```
 
-Expected:
+Expected (angka dan sysDescr bisa berbeda):
 
 ```
-Ping : BERHASIL
-SNMP : BERHASIL
-Verdict: ok
+Ping : OK (12.3 ms)
+SNMP : OK (RouterOS CCR1016-12G)
+Verdict: ok — OK - jalur jaringan dan SNMP berhasil.
 ```
 
 Jika ping berhasil tetapi SNMP gagal, periksa community tersimpan di device 6.
@@ -97,19 +100,19 @@ agar memakai kredensial tersimpan.
 Setelah langkah 4 lolos:
 
 ```powershell
-& "F:\Tugas Kuliah\Magang\kopegtel-venv\Scripts\python.exe" backend\serve.py
+& "F:\Tugas Kuliah\Magang\kopegtel-venv\Scripts\python.exe" backend\serve.py --port 5000
 ```
 
 Di terminal lain:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:5000/healthz -NoProxy
+Invoke-RestMethod http://127.0.0.1:5000/healthz
 ```
 
 Expected: `{"status":"ok"}`.
 
 Di UI:
-1. Buka **Monitoring → Hosts**.
+1. Buka **Pemantauan → Daftar Host**.
 2. Pilih **Mikrotik Utama**.
 3. Status harus `online`.
 4. Detail SNMP harus memuat `sys_descr` `RouterOS CCR1016-12G`.
@@ -123,6 +126,7 @@ Catat di `ROADMAP.md` dan
 |---|---|
 | Waktu verifikasi | `YYYY-MM-DD HH:MM WIB` |
 | `tailscale status` | peer `kopegtel-office` online |
+| `tailscale debug prefs` | `RouteAll: true` di laptop |
 | `ping 192.168.30.1` | 4/4 balasan |
 | `pilot_connectivity.py --device 6` | `Verdict: ok` |
 | `/healthz` | `{"status":"ok"}` |
@@ -137,17 +141,20 @@ bersih 26 Nov–12 Des.
 
 | Gejala | Penyebab | Tindakan |
 |---|---|---|
-| `kopegtel-office` tidak muncul | Akun berbeda | Login ulang dengan akun yang sama |
-| Peer muncul, `tailscale ping` gagal | PC kantor sleep/mati/firewall | Cek PC, power plan, firewall |
-| `tailscale ping` OK, `ping 192.168.30.1` gagal | Route belum approved | Approve di admin console |
-| Route approved, ping tetap gagal | IP forwarding Windows | `IPEnableRouter=1`, reboot |
+| `kopegtel-office` tidak muncul | Akun berbeda | `tailscale logout`, login ulang dengan akun yang sama |
+| Peer muncul, `tailscale ping` gagal | PC kantor sleep/mati/firewall | Cek PC, `powercfg` power plan, firewall |
+| `tailscale ping` OK, `ping 192.168.30.1` gagal | Route belum approved | Approve di **Edit route settings** |
+| Route approved, ping tetap gagal | IP forwarding Windows | `IPEnableRouter=1`, reboot PC kantor |
 | Ping OK, SNMP timeout | Community/ACL/perangkat | Uji lewat Edit, cek device 6 |
+| `tailscale up` error soal non-default flags | Flag `tailscale up` tidak lengkap | Gunakan `tailscale set` |
 | Semua gagal setelah perubahan | Perlu rollback | Lihat bagian 12 `docs/AKSES-REMOTE-TAILSCALE.md` |
 
 ## 8. Setelah verifikasi
 
 - Biarkan NMS berjalan selama jam kantor.
 - Jangan mengubah IP device 6.
+- Jangan menjalankan `tailscale down` saat NMS sedang polling; hentikan NMS
+  dulu atau terima device 6 `offline` sebagai konsekuensi tunnel mati.
 - Jika tunnel dimatikan, hentikan NMS atau biarkan device 6 `offline`; jangan
   menganggapnya insiden nyata.
 - Jalankan `tools/pilot_report.py` setelah data bersih terkumpul.

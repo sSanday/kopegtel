@@ -60,7 +60,7 @@ if ($output -notmatch 'tailscale up') { throw "Dry-run tidak menampilkan perinta
 if ($output -notmatch '192\.168\.30\.0/24') { throw "Dry-run tidak menampilkan subnet" }
 if ($output -notmatch 'kopegtel-office') { throw "Dry-run tidak menampilkan hostname" }
 if ($output -match 'tskey-auth-[A-Za-z0-9]+') { throw "Dry-run membocorkan auth key" }
-Write-Host 'OK: dry-run valid'
+Write-Host 'OK: smoke test valid'
 ```
 
 - [ ] **Step 2: Jalankan test untuk memastikan gagal**
@@ -107,7 +107,8 @@ Run:
 ```powershell
 pwsh -NoProfile -File tools/test_office-tailscale-subnet.ps1
 ```
-Expected: `OK: dry-run valid`.
+Expected: `OK: smoke test valid` (test diperluas pasca review; lihat bagian
+Revisi pasca code review).
 
 - [ ] **Step 5: Commit**
 
@@ -308,3 +309,27 @@ NMS akan melaporkan device 6 offline; tidak ada data palsu.
 - **Type consistency:** parameter script (`AuthKey`, `Subnet`, `Hostname`, `Target`, `DryRun`) dipakai konsisten di dokumen dan test.
 - **Review focus:** auth key, route approval, sleep/firewall, `--reset`, subnet, akun beda, dan admin semuanya punya langkah verifikasi/troubleshooting.
 - **Proportion:** plan lebih pendek dari implementasi; script dan dokumen ditulis saat eksekusi, bukan ditranskrip di sini.
+
+## Revisi pasca code review (26 November 2026)
+
+Review whole-branch menemukan prosedur `tailscale set` lalu `tailscale up` tidak
+bisa dijalankan: `tailscale up` menuntut semua flag non-default disebut setiap
+kali. Implementasi direvisi:
+
+- Skrip hanya menjalankan `tailscale up` saat belum login (dengan
+  `--auth-key=file:...`) atau saat `-Reset`. Setelah login, `up` dilewati agar
+  preferensi non-default dari `tailscale set` tidak memicu error; `tailscale
+  set` sendiri idempoten dan aman diulang.
+- Auth key tidak lagi lewat argv/history atau environment variable: skrip hanya
+  menerima `-AuthKeyFile` atau prompt `Read-Host -AsSecureString`, menyalin key
+  ke file sementara ber-ACL, dan menghapusnya di blok `finally`.
+- Skrip memeriksa `IPEnableRouter` dan berhenti dengan instruksi bila IP
+  forwarding belum aktif.
+- Smoke test diperluas: dry-run, argumen persis, CLI palsu, pemanggilan kedua
+  (idempoten), ACL file sementara, dan putusan melewati `up` setelah login.
+- Dokumen diselaraskan: output `pilot_connectivity.py` (`Ping : OK`,
+  `SNMP : OK`), `backend\serve.py --port 5000`, label UI
+  `Pemantauan → Daftar Host`, batas paket gratis, power plan, dan `-NoProxy`
+  dihapus.
+- Full suite sebelum revisi (tanpa perubahan Python): 499 passed, 2 warnings,
+  29m28s. Revisi hanya menyentuh PowerShell dan dokumentasi.
