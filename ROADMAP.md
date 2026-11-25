@@ -148,5 +148,6 @@
 - Branch kerja: `feat/pilot-fiber-prediction`; PR → merge ke `main` per langkah besar.
 - 25 Nov: race `deque mutated during iteration` di `alerts._storm_gate` diperbaiki
   (PR #12): lock + snapshot; regresi test
-  `test_storm_gate_uses_snapshot_when_entries_mutated`. 13 tes eskalasi hijau;
-  full suite dijalankan ulang per kelompok karena restart harness.
+  `test_storm_gate_uses_snapshot_when_entries_mutated`. Verifikasi: 13 tes
+  eskalasi + 77 tes events/webhook/pilot_report hijau; full suite penuh
+  terputus oleh restart harness, bukan kegagalan tes.
