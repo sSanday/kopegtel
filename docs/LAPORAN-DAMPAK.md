@@ -115,6 +115,9 @@ Interpretasi wajib jujur:
 - Prediksi fiber hanya bisa dihitung bila ada data DDM dari port SFP.
   Perangkat pilot saat ini tidak memiliki port SFP; sampai akses SFP/DDM
   tersedia, bagian prediksi ditulis **Belum terverifikasi** — bukan klaim.
+- Per 25 November 2026, tabel `action_rules` dan `message_templates` di DB
+  pilot masih kosong. Alarm produksi karena itu belum terverifikasi; uji
+  kanal Telegram dilaporkan terpisah dan tidak dihitung sebagai alarm.
 - Jumlah insiden nyata bisa nol. Bila demikian, tulis "belum ada insiden nyata
   pada periode ini" — jangan mengarang insiden.
 - Angka `n/a` dan sel kosong di CSV berarti bukti belum tersedia, bukan nol.
