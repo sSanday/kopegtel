@@ -367,6 +367,22 @@ def api_test_device():
         return jsonify({"error": "IP berada di luar ALLOWED_NETWORKS yang diizinkan."}), 400
     ip = str(addr)
 
+    # Form "Tambah perangkat" tidak boleh dipakai untuk menguji IP yang sudah
+    # terdaftar: kredensial tersimpan hanya dipakai lewat Edit (by ID), sehingga
+    # uji duplikat akan gagal SNMP dan menyesatkan. Arahkan ke perangkat asli.
+    if existing is None:
+        duplicate = db.get_device_by_ip(ip)
+        if duplicate is not None:
+            return jsonify(
+                {
+                    "error": (
+                        f"IP {ip} sudah terdaftar sebagai '{duplicate['name']}'. "
+                        "Buka Edit pada perangkat tersebut untuk menguji dengan "
+                        "kredensial tersimpan."
+                    )
+                }
+            ), 400
+
     snmp_enabled = netguard.as_bool(data.get("snmp_enabled"))
     mikrotik_enabled = netguard.as_bool(data.get("mikrotik_enabled"))
 

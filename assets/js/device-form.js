@@ -162,7 +162,7 @@
       </div>
     </div>
 
-    <p class="admin-note" id="df-secret-hint" hidden>Kosongkan kolom kata sandi untuk mempertahankan kredensial yang tersimpan.</p>
+    <p class="admin-note" id="df-secret-hint" hidden>Kosongkan kolom kata sandi atau community untuk mempertahankan kredensial yang tersimpan.</p>
 
     <div class="test-results" id="df-test-results" hidden>
       <p class="test-results__title">Hasil uji koneksi</p>

@@ -253,6 +253,18 @@ def ip_exists(ip, exclude_id=None):
         ).fetchone()
         return row is not None
 
+
+def get_device_by_ip(ip):
+    """Cari perangkat berdasarkan IP persis; tanpa secret."""
+    with _lock:
+        row = get_conn().execute(
+            "SELECT * FROM devices WHERE ip = ?", (ip,)
+        ).fetchone()
+    if row is None:
+        return None
+    return row_to_device(row)
+
+
 def name_exists(name, exclude_id=None):
     with _lock:
         row = get_conn().execute(

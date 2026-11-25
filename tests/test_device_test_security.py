@@ -160,3 +160,33 @@ def test_stored_credentials_only_reach_stored_device(client, fresh_db, operator,
     assert mikrotik_config["ip"] == DEVICE_IP
     assert mikrotik_config["port"] == 8728
     assert mikrotik_config["password"] == MIKROTIK_PASSWORD
+
+
+def test_new_device_with_existing_ip_is_rejected_before_testing(
+    client, fresh_db, operator, collectors
+):
+    """Uji koneksi pada form Tambah dengan IP yang sudah terdaftar harus
+    diarahkan ke Edit perangkat, bukan diuji dengan community kosong/salah."""
+    _device(fresh_db)
+    csrf = _login(client)
+
+    response = client.post(
+        "/api/devices/test",
+        json={
+            "name": "Duplikat",
+            "ip": DEVICE_IP,
+            "type": "mikrotik",
+            "snmp_enabled": True,
+            "snmp_version": "v2c",
+            "snmp_port": 161,
+            "snmp_community": "public",
+            "mikrotik_enabled": False,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 400
+    error = response.get_json()["error"]
+    assert "sudah terdaftar" in error
+    assert "Router H-1" in error
+    assert collectors == {"ping": [], "snmp": [], "mikrotik": []}
