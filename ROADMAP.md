@@ -2,7 +2,7 @@
 
 **Periode:** 24 Nov 2026 – 22 Des 2026 (28 hari, ~20 hari kerja)
 **Tenggat:** 22 Des 2026 (penilaian magang)
-**Status:** P0/P1 merged (PR #10); alat bukti P2 merged (PR #11); fix race alarm (PR #12); pilot berjalan — angka final menunggu data nyata
+**Status:** P0/P1 merged (PR #10); alat bukti P2 merged (PR #11); fix race alarm (PR #12); fix uji SNMP/IP duplikat (PR #14); pilot berjalan — angka final menunggu data nyata
 **Branch dasar:** `main` @ `c4a3937` (suite 444/444 = 100%)
 
 ## 0. Prinsip & batasan
@@ -49,6 +49,8 @@
 - [ ] Dokumen jam operasi + checklist harian (nyalakan 08.00, cek `/healthz`, matikan 17.00).
 
 **Jendela data bersih:** mulai 25 Nov 2026 13:15 WIB (setelah laptop kembali ke Wi-Fi kantor). Periode 19–25 Nov sebelum itu memuat cek dari jaringan salah dan **tidak dipakai untuk angka final**. 25 Nov sendiri masih memiliki jeda ~30 menit akibat restart server (13:43–14:17 dan 14:42–15:12), jadi laporan final memakai periode 26 Nov–12 Des.
+
+**Catatan jaringan 25 Nov 16:15:** laptop berpindah ke Wi-Fi `mabooo` (`10.31.248.143/24`); MikroTik/ONT tidak terjangkau. Server sengaja dihentikan agar tidak mencatat offline palsu. Problem 147 (ONT) dan 148 (MikroTik) yang terbuka adalah artefak jaringan salah, bukan insiden nyata; keduanya akan tertutup sendiri saat server kembali melihat perangkat `online`. Setelah kembali ke Wi-Fi kantor: nyalakan server, lalu uji SNMP lewat **Edit "Mikrotik Utama"** dengan community dikosongkan (memakai kredensial tersimpan).
 
 **Acceptance:** rollup PR hijau; `/healthz` 200; data `optical_hourly` terisi hingga jam terakhir di hari kerja.
 
