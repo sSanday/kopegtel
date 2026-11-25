@@ -179,6 +179,9 @@ Invoke-RestMethod http://127.0.0.1:5000/healthz -NoProxy
 Expected: `{"status":"ok"}`. Di UI, **Monitoring → Hosts → Mikrotik Utama**
 harus `online` dan SNMP `sys_descr` `RouterOS CCR1016-12G`.
 
+Checklist verifikasi lengkap (termasuk cek rute, tracert, dan bukti):
+`docs/VERIFIKASI-REMOTE-SNMP.md`.
+
 ## 10. Troubleshooting
 
 | Gejala | Penyebab umum | Tindakan |
