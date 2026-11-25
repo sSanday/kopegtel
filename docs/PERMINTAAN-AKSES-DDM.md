@@ -57,7 +57,8 @@ pilot saat ini tidak memiliki port SFP.
 ## 4. Target waktu
 
 - Akses aktif: **Jumat, 28 November 2026** (atau lebih cepat).
-- Data DDM minimal 24 titik per jam (hourly) — sekitar 3 hari kerja.
+- Data DDM minimal 24 titik hourly (satu per jam) — sekitar 3 hari kerja
+  dengan 9 jam/hari.
 - ETA pertama: **~1 Desember 2026**.
 - Jika akses belum tersedia sampai **1 Desember**, pilot beralih ke rencana
   cadangan (wallboard NOC) sesuai spec; tidak ada demo dengan data palsu.
