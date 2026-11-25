@@ -25,16 +25,16 @@ cukup satu PC kantor yang selalu menyala sebagai jalur Tailscale.
    memungkinkan, saya kirim auth key lewat jalur pribadi (file, bukan chat
    grup).
 3. Setelah reboot, buka PowerShell **sebagai Administrator** lagi. Jika belum
-   login, login dulu dengan auth key dari file:
+   login, login dengan auth key **dan semua preferensi sekaligus**:
    ```powershell
-   tailscale up --auth-key=file:C:\path\ke\auth-key.txt
+   tailscale up --hostname=kopegtel-office --accept-routes=false --unattended --advertise-routes=192.168.30.0/24 --auth-key=file:C:\path\ke\auth-key.txt
    ```
-   Lalu atur semua preferensi dengan `tailscale set`:
+   Jika sudah login, cukup atur preferensi (aman diulang):
    ```powershell
    tailscale set --hostname=kopegtel-office --accept-routes=false --unattended --advertise-routes=192.168.30.0/24
    ```
-   Jangan menjalankan `tailscale up` dengan sebagian flag; `tailscale up`
-   menuntut semua flag non-default disebut ulang. `tailscale set` aman diulang.
+   `--auth-key` bukan preferensi, jadi tidak wajib disebut ulang. Tetapi
+   `tailscale up` menuntut semua preferensi non-default disebut setiap kali.
 4. Buka <https://console.tailscale.com/admin/machines>, pilih
    `kopegtel-office` → **Edit route settings** → centang
    `192.168.30.0/24` → **Save**.

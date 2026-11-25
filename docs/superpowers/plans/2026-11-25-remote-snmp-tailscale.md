@@ -308,7 +308,7 @@ NMS akan melaporkan device 6 offline; tidak ada data palsu.
 
 - **Spec coverage:** masalah, tujuan, non-tujuan, pendekatan, keamanan, verifikasi, risiko, rollback, dan ketergantungan manusia semuanya punya task.
 - **Step scan:** setiap langkah punya perintah/checkable result; tidak ada "handle edge cases" tanpa detail.
-- **Type consistency:** parameter script (`AuthKey`, `Subnet`, `Hostname`, `Target`, `DryRun`) dipakai konsisten di dokumen dan test.
+- **Type consistency:** parameter script (`AuthKeyFile`, `Subnet`, `Hostname`, `Target`, `Reset`, `DryRun`) dipakai konsisten di dokumen dan test.
 - **Review focus:** auth key, route approval, sleep/firewall, `--reset`, subnet, akun beda, dan admin semuanya punya langkah verifikasi/troubleshooting.
 - **Proportion:** plan lebih pendek dari implementasi; script dan dokumen ditulis saat eksekusi, bukan ditranskrip di sini.
 
@@ -318,20 +318,29 @@ Review whole-branch menemukan prosedur `tailscale set` lalu `tailscale up` tidak
 bisa dijalankan: `tailscale up` menuntut semua flag non-default disebut setiap
 kali. Implementasi direvisi:
 
-- Skrip hanya menjalankan `tailscale up` saat belum login (dengan
-  `--auth-key=file:...`) atau saat `-Reset`. Setelah login, `up` dilewati agar
-  preferensi non-default dari `tailscale set` tidak memicu error; `tailscale
-  set` sendiri idempoten dan aman diulang.
+- Skrip membaca `tailscale status --json`. `tailscale up` hanya dijalankan saat
+  `BackendState` bukan `Running` (misalnya `NeedsLogin`, `Stopped`, `NoState`),
+  dan saat itu selalu menyebut keempat preferensi sekaligus plus
+  `--auth-key=file:...` bila perlu. Setelah `Running`, `up` dilewati dan
+  `tailscale set` selalu dijalankan agar hasil akhir idempoten. Ini menutup
+  jalur re-login dan node `Stopped` yang sebelumnya bisa memicu error flag
+  non-default.
+- Pemanggilan native memakai `Invoke-NativeCapture` yang menurunkan
+  `$ErrorActionPreference` sementara. Di Windows PowerShell 5.1, stderr native
+  yang diarahkan (`2>&1`) menjadi `ErrorRecord` dan sebelumnya melempar
+  `RemoteException` pada jalur pertama (node belum login).
 - Auth key tidak lagi lewat argv/history atau environment variable: skrip hanya
   menerima `-AuthKeyFile` atau prompt `Read-Host -AsSecureString`, menyalin key
   ke file sementara ber-ACL, dan menghapusnya di blok `finally`.
 - Skrip memeriksa `IPEnableRouter` dan berhenti dengan instruksi bila IP
   forwarding belum aktif.
-- Smoke test diperluas: dry-run, argumen persis, CLI palsu, pemanggilan kedua
-  (idempoten), ACL file sementara, dan putusan melewati `up` setelah login.
+- Smoke test diperluas dan dijalankan di pwsh 7 maupun Windows PowerShell 5.1:
+  dry-run, argumen persis, ACL file sementara, CLI palsu yang menulis stderr,
+  `status --json` NeedsLogin dengan exit code nonzero, dan script asli dua kali
+  (run pertama `up` + `set`, run kedua hanya `set`, file key terhapus).
 - Dokumen diselaraskan: output `pilot_connectivity.py` (`Ping : OK`,
   `SNMP : OK`), `backend\serve.py --port 5000`, label UI
-  `Pemantauan → Daftar Host`, batas paket gratis, power plan, dan `-NoProxy`
-  dihapus.
+  `Pemantauan → Daftar Host`, batas paket gratis, power plan, `-NoProxy`
+  dihapus, dan peringatan bahwa setiap run menimpa empat preferensi.
 - Full suite sebelum revisi (tanpa perubahan Python): 499 passed, 2 warnings,
   29m28s. Revisi hanya menyentuh PowerShell dan dokumentasi.

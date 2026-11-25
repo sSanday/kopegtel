@@ -4,12 +4,23 @@
 function New-TailscaleUpArgs {
     param(
         [string]$AuthKeyFile,
+        [string]$Subnet,
+        [string]$Hostname,
         [switch]$Reset
     )
 
-    # Login-only "up": preferensi diatur terpisah dengan "tailscale set" agar
-    # aman dijalankan ulang tanpa error "requires mentioning all non-default flags".
-    $arguments = @('up')
+    # "up" hanya dipanggil saat node belum Running (misalnya NeedsLogin atau
+    # Stopped). Saat itu preferensi lama masih tersimpan, jadi semua preferensi
+    # yang kita kelola harus disebut; kalau tidak, Tailscale menolak dengan
+    # "requires mentioning all non-default flags". "set" tetap dijalankan
+    # setelahnya agar hasil akhirnya idempoten.
+    $arguments = @(
+        'up',
+        "--hostname=$Hostname",
+        '--accept-routes=false',
+        '--unattended',
+        "--advertise-routes=$Subnet"
+    )
     if ($Reset) { $arguments += '--reset' }
     if ($AuthKeyFile) { $arguments += "--auth-key=file:$AuthKeyFile" }
     return ,$arguments
@@ -17,15 +28,25 @@ function New-TailscaleUpArgs {
 
 function Test-ShouldRunTailscaleUp {
     param(
-        [bool]$LoggedIn,
+        [string]$BackendState,
         [switch]$Reset
     )
 
-    # Setelah login, "tailscale up" tanpa flag bisa ditolak karena preferensi
-    # non-default dari "tailscale set" belum disebut. Jadi lewati "up" kecuali
-    # memang belum login atau user meminta reset.
-    if ($LoggedIn -and -not $Reset) { return $false }
-    return $true
+    # "up" diperlukan saat node belum Running. Setelah Running, "set" saja yang
+    # dijalankan agar tidak memicu error flag non-default. Jika state tidak
+    # terbaca, coba "up" untuk memulihkan backend.
+    if ($Reset) { return $true }
+    if (-not $BackendState) { return $true }
+    return ($BackendState -ne 'Running')
+}
+
+function Test-TailscaleNeedsAuthKey {
+    param([string]$BackendState)
+
+    # Login ulang hanya diperlukan saat belum punya identitas. Node Stopped
+    # atau NeedsMachineAuth sudah terautentikasi dan tidak butuh auth key.
+    if (-not $BackendState) { return $true }
+    return ($BackendState -eq 'NeedsLogin' -or $BackendState -eq 'NoState')
 }
 
 function New-TailscaleSetArgs {
@@ -42,6 +63,62 @@ function New-TailscaleSetArgs {
         '--unattended',
         "--advertise-routes=$Subnet"
     )
+}
+
+function Invoke-NativeCapture {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string[]]$Arguments
+    )
+
+    if (-not $Path) { throw 'tailscale.exe tidak ditemukan.' }
+
+    # Windows PowerShell 5.1 mengubah stderr native menjadi ErrorRecord dan
+    # $ErrorActionPreference='Stop' akan melempar RemoteException. Turunkan
+    # EAP hanya selama pemanggilan, lalu kembalikan.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $Path @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+
+    return [pscustomobject]@{
+        Output = @($output)
+        ExitCode = $exitCode
+    }
+}
+
+function Get-TailscaleBackendState {
+    param(
+        [string]$Path,
+        [int]$Attempts = 20,
+        [int]$DelaySeconds = 1
+    )
+
+    # status --json tetap bisa mengeluarkan JSON saat NeedsLogin, kadang dengan
+    # exit code nonzero. Karena itu JSON dibaca dari stdout, bukan dari exit code.
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        $result = Invoke-NativeCapture -Path $Path -Arguments @('status', '--json')
+        $text = ($result.Output |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } |
+            ForEach-Object { [string]$_ }) -join "`n"
+
+        if ($text.Trim()) {
+            try {
+                $state = [string](($text | ConvertFrom-Json).BackendState)
+                if ($state -and $state -notin @('Starting', 'NoState')) { return $state }
+                if ($state -and ($attempt + 1) -ge $Attempts) { return $state }
+            } catch {
+                # Output belum JSON yang valid; tunggu service selesai start.
+            }
+        }
+
+        if (($attempt + 1) -lt $Attempts) { Start-Sleep -Seconds $DelaySeconds }
+    }
+    return $null
 }
 
 function Format-TailscaleCommand {
@@ -67,17 +144,18 @@ function Invoke-TailscaleCommand {
     if (-not $TailscalePath) { throw 'tailscale.exe tidak ditemukan.' }
 
     Write-Host ("Perintah: " + (Format-TailscaleCommand -Arguments $Arguments))
-    $output = & $TailscalePath @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    # Gunakan Invoke-NativeCapture agar stderr native tidak melempar
+    # RemoteException di Windows PowerShell 5.1.
+    $result = Invoke-NativeCapture -Path $TailscalePath -Arguments $Arguments
 
-    foreach ($line in $output) {
+    foreach ($line in $result.Output) {
         $text = [string]$line
         if ($Redact) { $text = $text.Replace($Redact, '<REDACTED>') }
         Write-Host $text
     }
 
-    if ($exitCode -ne 0) {
-        throw "tailscale $($Arguments[0]) gagal (exit $exitCode)."
+    if ($result.ExitCode -ne 0) {
+        throw "tailscale $($Arguments[0]) gagal (exit $($result.ExitCode))."
     }
 }
 

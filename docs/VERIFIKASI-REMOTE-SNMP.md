@@ -70,9 +70,17 @@ Expected:
 - 4 balasan dari `192.168.30.1`,
 - hop terakhir menuju MikroTik.
 
+Di PC kantor (PowerShell sebagai Administrator), pastikan IP forwarding aktif:
+
+```powershell
+(Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -Name IPEnableRouter).IPEnableRouter
+```
+
+Expected: `1`.
+
 Jika ping timeout, cek:
 1. route `192.168.30.0/24` sudah approved,
-2. IP forwarding Windows di PC kantor sudah aktif,
+2. IP forwarding Windows di PC kantor sudah aktif (`IPEnableRouter=1`),
 3. PC kantor tidak sleep,
 4. PC kantor memang bisa `ping 192.168.30.1` dari jaringan kantor.
 
@@ -146,7 +154,7 @@ bersih 26 Nov–12 Des.
 | `tailscale ping` OK, `ping 192.168.30.1` gagal | Route belum approved | Approve di **Edit route settings** |
 | Route approved, ping tetap gagal | IP forwarding Windows | `IPEnableRouter=1`, reboot PC kantor |
 | Ping OK, SNMP timeout | Community/ACL/perangkat | Uji lewat Edit, cek device 6 |
-| `tailscale up` error soal non-default flags | Flag `tailscale up` tidak lengkap | Gunakan `tailscale set` |
+| `tailscale up` error soal non-default flags | Preferensi tidak disebut semua | Sebutkan hostname, accept-routes, unattended, advertise-routes saat `up`; gunakan script `office-tailscale-subnet.ps1` |
 | Semua gagal setelah perubahan | Perlu rollback | Lihat bagian 12 `docs/AKSES-REMOTE-TAILSCALE.md` |
 
 ## 8. Setelah verifikasi

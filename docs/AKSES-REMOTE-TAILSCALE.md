@@ -40,8 +40,10 @@ Tidak ada UDP 161 atau TCP 8728 yang dibuka ke internet.
    tailscale set --hostname=kopegtel-office --accept-routes=false --unattended --advertise-routes=192.168.30.0/24
    ```
    `tailscale set` hanya mengubah preferensi yang disebut dan aman diulang.
-   Jangan menjalankan `tailscale up` dengan sebagian flag: `tailscale up`
-   menuntut **semua** flag non-default disebut setiap kali.
+   Jika PC **belum login**, jangan menjalankan `tailscale up` hanya dengan
+   `--auth-key`: sertakan juga keempat preferensi di atas, atau gunakan script
+   bagian 6. `tailscale up` menuntut **semua** preferensi non-default disebut
+   setiap kali.
 5. Buka <https://console.tailscale.com/admin/machines>, pilih
    `kopegtel-office` → **Edit route settings** → approve `192.168.30.0/24`
    → **Save**.
@@ -108,9 +110,14 @@ Script ada di `tools/office-tailscale-subnet.ps1`. Script akan:
 - memeriksa IP forwarding Windows dan berhenti dengan instruksi bila belum aktif,
 - mendeteksi Tailscale (install via winget/installer jika belum ada),
 - menyalakan service,
-- login memakai auth key dari file atau prompt aman (bukan command line),
-- mengatur hostname, `--accept-routes=false`, `--unattended`, dan
-  `--advertise-routes=192.168.30.0/24` lewat `tailscale set`,
+- membaca status backend (`tailscale status --json`),
+- jika node belum `Running` (misalnya `NeedsLogin` atau `Stopped`): login memakai
+  auth key dari file atau prompt aman (bukan command line) dan menjalankan
+  `tailscale up` dengan hostname, `--accept-routes=false`, `--unattended`, dan
+  `--advertise-routes=192.168.30.0/24` sekaligus,
+- jika node sudah `Running`: melewati `tailscale up`,
+- selalu menjalankan `tailscale set` dengan empat preferensi yang sama agar
+  hasil akhirnya idempoten,
 - mencetak status dan langkah approve route.
 
 Jalankan dari PowerShell **sebagai Administrator** di folder repo. Simpan auth
@@ -125,15 +132,23 @@ notepad C:\Users\<nama-anda>\tailscale-auth.txt   # tempel key, simpan, tutup
 Remove-Item C:\Users\<nama-anda>\tailscale-auth.txt
 ```
 
-Jika PC sudah login ke Tailscale, auth key tidak wajib; script akan melewati
-`tailscale up` dan langsung menjalankan `tailscale set`. Jika belum login dan
-tidak ada auth key, script meminta key lewat prompt `Read-Host -AsSecureString`.
+Jika status backend sudah `Running`, auth key tidak wajib; script akan melewati
+`tailscale up` dan langsung menjalankan `tailscale set`. Jika status
+`NeedsLogin`/`Stopped`, script menjalankan `tailscale up` dengan keempat
+preferensi sekaligus. Tanpa `-AuthKeyFile`, key diminta lewat prompt
+`Read-Host -AsSecureString`; saat `NeedsLogin`, key wajib diisi.
 
 Script tidak menerima auth key lewat argumen command line. Gunakan
 `-AuthKeyFile` atau prompt.
 
 Script tidak mencetak auth key. Perintah `tailscale up` memakai
 `--auth-key=file:<path>` dan file sementara dihapus di blok `finally`.
+
+**Perhatian:** setiap run menulis ulang empat preferensi di atas. Jika PC kantor
+sudah mengiklankan subnet lain atau memakai hostname khusus, catat dulu
+konfigurasinya. Script akan menggantinya; `-Reset` lebih luas lagi karena
+mengembalikan preferensi lain yang tidak disebut ke default. Untuk PC yang
+dipakai bersama, kabari Tim IT sebelum menjalankan.
 
 Jika PC sudah pernah memakai Tailscale dengan preferensi lain dan ingin
 mengulang dari awal:
@@ -220,7 +235,7 @@ Checklist verifikasi lengkap (termasuk cek rute, tracert, dan bukti):
 | PC kantor terlihat, tapi `ping 192.168.30.1` timeout | Route belum approved | Approve `192.168.30.0/24` di **Edit route settings** |
 | Route sudah approved, ping tetap timeout | IP forwarding Windows belum aktif | Jalankan `IPEnableRouter=1`, reboot |
 | Ping ke IP Tailscale PC kantor gagal | PC sleep/mati atau firewall | `powercfg /change standby-timeout-ac 0`; cek Windows Firewall |
-| `tailscale up` error “requires mentioning all non-default flags” | Flag `tailscale up` tidak lengkap | Gunakan `tailscale set`, jangan `tailscale up` dengan sebagian flag |
+| `tailscale up` error “requires mentioning all non-default flags” | Preferensi non-default tidak disebut semua | Sebutkan `--hostname`, `--accept-routes=false`, `--unattended`, `--advertise-routes` saat `up`, atau jalankan script bagian 6 |
 | `tailscale set` tidak dikenal | Tailscale terlalu lama | Update Tailscale ke versi terbaru |
 | `tailscale up` access denied | PowerShell bukan Administrator | Buka PowerShell sebagai Administrator |
 | SNMP timeout padahal ping OK | Community berubah / ACL / perangkat down | Uji lewat **Edit** perangkat, jangan form Tambah |
