@@ -146,6 +146,37 @@ Environment=PATH=/opt/nms/.venv/bin
 WantedBy=multi-user.target
 ```
 
+### Windows tanpa admin (Startup folder)
+
+Jika tidak ada hak admin untuk NSSM/Task Scheduler, pasang autostart per-user
+lewat folder Startup:
+
+```powershell
+# Pasang shortcut dan jalankan supervisor sekarang
+pwsh -NoProfile -File tools\install-nms-autostart.ps1
+
+# Hanya pasang shortcut, tanpa menyalakan supervisor
+pwsh -NoProfile -File tools\install-nms-autostart.ps1 -NoStart
+
+# Uji tanpa mengubah apa pun
+pwsh -NoProfile -File tools\test_nms-autostart.ps1
+
+# Hapus shortcut (proses yang sedang berjalan tidak dihentikan)
+pwsh -NoProfile -File tools\install-nms-autostart.ps1 -Remove
+```
+
+Supervisor `tools/nms-autostart.ps1` berjalan saat user login dan akan:
+
+- memakai mutex + cek port agar tidak ada instance ganda;
+- tidak menyalakan NMS jika `192.168.30.1` tidak terjangkau, supaya data
+  tidak tercatat `offline` palsu saat laptop pindah jaringan;
+- menyalakan ulang NMS jika proses berhenti.
+
+Log supervisor ada di `logs/nms-autostart.log`; output server per proses ada di
+`logs/nms-serve-*.out.log` dan `*.err.log`. Autostart ini berjalan setelah user
+login dan laptop harus menyala. Untuk service sebelum login, gunakan NSSM dengan
+hak admin.
+
 ## Reverse proxy (contoh)
 
 Atur `COOKIE_SECURE=1`, `HSTS_ENABLED=1`, `TRUSTED_PROXIES=1`; biarkan
