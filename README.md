@@ -168,9 +168,13 @@ pwsh -NoProfile -File tools\install-nms-autostart.ps1 -Remove
 Supervisor `tools/nms-autostart.ps1` berjalan saat user login dan akan:
 
 - memakai mutex + cek port agar tidak ada instance ganda;
-- tidak menyalakan NMS jika `192.168.30.1` tidak terjangkau, supaya data
-  tidak tercatat `offline` palsu saat laptop pindah jaringan;
+- tidak menyalakan NMS jika `192.168.30.1` tidak terjangkau, supaya tidak
+  mulai memantau dari jaringan yang salah;
 - menyalakan ulang NMS jika proses berhenti.
+
+Supervisor tidak menghentikan NMS yang **sudah berjalan** ketika laptop pindah
+jaringan. Hentikan NMS dulu sebelum pindah Wi-Fi; jika tidak, perangkat bisa
+tercatat `offline` palsu dan mengotori data pilot.
 
 Log supervisor ada di `logs/nms-autostart.log`; output server per proses ada di
 `logs/nms-serve-*.out.log` dan `*.err.log`. Autostart ini berjalan setelah user
