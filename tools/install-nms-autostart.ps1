@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$StartupDir = [Environment]::GetFolderPath('Startup'),
+    [ValidateRange(0, 65535)]
+    [int]$Port = 0,
     [switch]$Remove,
     [switch]$NoStart,
     [switch]$DryRun
@@ -15,6 +17,13 @@ $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powersh
 
 if ($Remove) {
     if (Test-Path -LiteralPath $launcher) {
+        $existingShell = New-Object -ComObject WScript.Shell
+        $existing = $existingShell.CreateShortcut($launcher)
+        if ($existing.Arguments -notmatch [regex]::Escape($supervisor)) {
+            [Console]::Error.WriteLine("Shortcut bukan milik supervisor ini; tidak dihapus: $launcher")
+            [Console]::Error.WriteLine("Target: $($existing.TargetPath) $($existing.Arguments)")
+            exit 1
+        }
         if ($DryRun) {
             Write-Host "DryRun: hapus shortcut $launcher"
             exit 0
@@ -36,6 +45,9 @@ if (-not (Test-Path -LiteralPath $powershell)) {
 }
 
 $arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $supervisor
+if ($Port -gt 0) {
+    $arguments += ' -Port {0}' -f $Port
+}
 
 if ($DryRun) {
     Write-Host "DryRun: buat shortcut $launcher"
@@ -73,7 +85,18 @@ if (-not (Test-Path -LiteralPath $logDirectory)) {
 }
 $logPath = Join-Path $logDirectory 'nms-autostart.log'
 
+$hostOut = Join-Path $logDirectory 'nms-autostart-host.out.log'
+$hostErr = Join-Path $logDirectory 'nms-autostart-host.err.log'
 $process = Start-Process -FilePath $powershell -ArgumentList $arguments `
-    -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
+    -WorkingDirectory $repoRoot -WindowStyle Hidden `
+    -RedirectStandardOutput $hostOut -RedirectStandardError $hostErr -PassThru
+
+Start-Sleep -Milliseconds 700
+$process.Refresh()
+if ($process.HasExited) {
+    Write-Host "Supervisor langsung berhenti (exit $($process.ExitCode)); cek $logPath dan $hostErr."
+    exit 1
+}
+
 Write-Host "Supervisor dijalankan (PID $($process.Id)); log: $logPath"
 exit 0
