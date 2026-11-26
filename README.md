@@ -146,6 +146,51 @@ Environment=PATH=/opt/nms/.venv/bin
 WantedBy=multi-user.target
 ```
 
+### Windows tanpa admin (Startup folder)
+
+Jika tidak ada hak admin untuk NSSM/Task Scheduler, pasang autostart per-user
+lewat folder Startup:
+
+```powershell
+# Pasang shortcut dan jalankan supervisor sekarang
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\install-nms-autostart.ps1
+
+# Hanya pasang shortcut, tanpa menyalakan supervisor
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\install-nms-autostart.ps1 -NoStart
+
+# Uji di kedua shell; memakai DB sementara dan benar-benar start/restart NMS
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\test_nms-autostart.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools\test_nms-autostart.ps1
+
+# Hapus shortcut (proses yang sedang berjalan tidak dihentikan)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\install-nms-autostart.ps1 -Remove
+```
+
+`-ExecutionPolicy Bypass` diperlukan karena policy mesin bisa `Restricted`; flag
+ini hanya berlaku untuk proses tersebut dan tidak mengubah policy sistem.
+
+Supervisor `tools/nms-autostart.ps1` berjalan saat user login dan akan:
+
+- memakai mutex + cek port agar tidak ada instance ganda;
+- memakai port dari `-Port`, lalu env `PORT`, lalu `PORT` di `.env`, lalu default
+  5500; installer meneruskan `-Port` ke shortcut bila diberikan (mis.
+  `install-nms-autostart.ps1 -Port 5000`);
+- tidak menyalakan NMS jika `192.168.30.1` tidak terjangkau, supaya tidak
+  mulai memantau dari jaringan yang salah;
+- menyalakan ulang NMS jika proses berhenti.
+
+Supervisor tidak menghentikan NMS yang **sudah berjalan** ketika laptop pindah
+jaringan. Hentikan NMS dulu sebelum pindah Wi-Fi; jika tidak, perangkat bisa
+tercatat `offline` palsu dan mengotori data pilot.
+
+Log supervisor ada di `logs/nms-autostart.log` dan dirotasi ke `.1` saat mencapai
+1 MB; output server per proses ada di `logs/nms-serve-*.out.log` dan `*.err.log`
+(20 file terbaru disimpan). Smoke test memakai `NMS_DB_PATH` sementara dan
+`DB_BACKUP_ENABLED=0`, jadi data pilot tidak tersentuh; durasinya bisa sekitar
+2 menit karena benar-benar menyalakan dan me-restart NMS. Autostart ini berjalan
+setelah user login dan laptop harus menyala. Untuk service sebelum login,
+gunakan NSSM dengan hak admin.
+
 ## Reverse proxy (contoh)
 
 Atur `COOKIE_SECURE=1`, `HSTS_ENABLED=1`, `TRUSTED_PROXIES=1`; biarkan
